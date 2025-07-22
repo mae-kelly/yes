@@ -1,4 +1,28 @@
-# Python
+# Scherman Crypto Trading System - .gitignore
+
+# ============================================================================
+# CRITICAL SECURITY: NEVER COMMIT THESE FILES
+# ============================================================================
+.env
+.env.*
+!.env.template
+*.key
+*.pem
+*.p12
+config/encryption.key
+config/api_keys.json
+secrets/
+*.secret
+
+# API Keys and Credentials
+*api_key*
+*secret*
+*passphrase*
+*credentials*
+
+# ============================================================================
+# PYTHON
+# ============================================================================
 __pycache__/
 *.py[cod]
 *$py.class
@@ -19,11 +43,43 @@ wheels/
 *.egg-info/
 .installed.cfg
 *.egg
+MANIFEST
 
 # Virtual Environment
 venv/
 env/
 ENV/
+.venv/
+
+# ============================================================================
+# TRADING SYSTEM SPECIFIC
+# ============================================================================
+
+# Logs (keep structure, ignore content)
+logs/*.log
+logs/**/*.log
+!logs/.gitkeep
+
+# Trading Data
+data/cache/
+data/exports/
+data/backups/
+!data/.gitkeep
+
+# Database Files
+*.db
+*.sqlite
+*.sqlite3
+
+# Configuration Files with Secrets
+config/production.yaml
+config/live.json
+config/environments/.env.*
+!config/environments/.env.template
+
+# ============================================================================
+# DEVELOPMENT
+# ============================================================================
 
 # IDE
 .vscode/
@@ -31,39 +87,70 @@ ENV/
 *.swp
 *.swo
 *~
-
-# OS
 .DS_Store
 Thumbs.db
-
-# Logs
-*.log
-logs/
-
-# API Keys and Secrets
-.env
-secrets.json
-api_keys.txt
-
-# Backups
-*.backup
-*.bak
-
-# Models and Data
-models/
-*.pkl
-*.h5
-*.model
 
 # Testing
 .pytest_cache/
 .coverage
 htmlcov/
+.tox/
+.nox/
+coverage.xml
+*.cover
+.hypothesis/
 
 # Jupyter
 .ipynb_checkpoints/
 *.ipynb
 
-# Custom
-config.json
-private_config.py
+# ============================================================================
+# BACKUPS AND TEMPORARY FILES
+# ============================================================================
+*.backup
+*.bak
+*.tmp
+*.temp
+*~
+.#*
+
+# Backup files
+backup_*
+*.tar.gz
+*.tar.gz.enc
+*.zip.enc
+
+# ============================================================================
+# MONITORING AND METRICS
+# ============================================================================
+monitoring/data/
+*.rrd
+prometheus_data/
+grafana_data/
+
+# ============================================================================
+# SYSTEM FILES
+# ============================================================================
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# Linux
+*~
+.fuse_hidden*
+.directory
+.Trash-*
+
+# ============================================================================
+# DOCKER
+# ============================================================================
+Dockerfile.local
+docker-compose.override.yml
+.dockerignore
+

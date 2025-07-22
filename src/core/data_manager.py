@@ -1,5 +1,5 @@
-import ccxt
-import numpy as np
+from dotenv import load_dotenvimport ccxt
+load_dotenv()import numpy as np
 import pandas as pd
 import os
 import requests
@@ -34,8 +34,8 @@ class EnterpriseDataManager:
         self.max_cache_age = 300
         self.logger = self._setup_logging()
         self.api_keys = {
-            'alchemy': os.getenv('ALCHEMY_API_KEY', 'alcht_oZ7wU7JpIoZejlOWUcMFOpNsIlLDsX'),
-            'etherscan': os.getenv('ETHERSCAN_API_KEY', 'K4SEVFZ3PI8STM73VKV84C8PYZJUK7HB2G'),
+            'alchemy': os.getenv('ALCHEMY_API_KEY', 'os.getenv("ALCHEMY_API_KEY")'),
+            'etherscan': os.getenv('ETHERSCAN_API_KEY', 'os.getenv("ETHERSCAN_API_KEY")'),
         }
         self.free_apis = {
             'fear_greed': 'https://api.alternative.me/fng/',
