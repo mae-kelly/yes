@@ -1,7 +1,3 @@
-#!/bin/bash
-set -e
-
-cat > advanced_risk_system.py << 'EOF'
 import numpy as np
 import pandas as pd
 from datetime import datetime, timedelta
@@ -279,6 +275,3 @@ class AdvancedRiskSystem:
                         concentration_score * 0.25 + correlation_score * 0.15)
         
         return min(overall_score, 1.0)
-EOF
-
-echo "✅ Advanced risk system with real-time monitoring implemented"
