@@ -1,4 +1,8 @@
 #!/usr/bin/env python3
+"""
+Scherman Crypto Strategy - Production Version
+A live crypto trading system implementing VIX divergence methodology
+"""
 
 import os
 import warnings
@@ -10,11 +14,10 @@ import ccxt
 from datetime import datetime, timedelta
 import asyncio
 import time
-import json
-from typing import Dict, List, Tuple, Optional
 import getpass
+from typing import Dict, List
 
-# Import our modules
+# Import core modules
 from data_manager import CryptoDataManager
 from risk_manager import RiskManager
 from portfolio_manager import PortfolioManager
@@ -29,6 +32,7 @@ class SchermanCryptoStrategy:
         self.config = config
         self.okx_client = self._init_okx_client()
         
+        # Initialize core components
         self.data_manager = CryptoDataManager(config, self.okx_client)
         self.risk_manager = RiskManager(config)
         self.portfolio_manager = PortfolioManager(config, self.okx_client)
@@ -38,9 +42,9 @@ class SchermanCryptoStrategy:
         self.signal_fusion = HybridSignalFusion(config)
         self.ml_integration = RenaissanceMLIntegration(config)
         
+        # Trading state
         self.positions = {}
         self.trade_log = []
-        self.equity_curve = []
         self.running = False
         
     def _init_okx_client(self):
@@ -77,7 +81,6 @@ class SchermanCryptoStrategy:
             return
             
         print("🟢 Live trading confirmed - Starting execution...")
-        
         self.running = True
         
         try:
@@ -106,6 +109,7 @@ class SchermanCryptoStrategy:
             
     def _generate_real_signal(self, symbol: str) -> Dict:
         try:
+            # Get market data
             data = self.data_manager.get_historical_data(symbol, self.config['timeframe'], 100)
             if data is None or len(data) < 50:
                 return None
@@ -113,16 +117,17 @@ class SchermanCryptoStrategy:
             market_data = self.data_manager.get_market_data(symbol)
             alt_data = self.data_manager.get_alternative_data(symbol)
             
+            # Generate VIX divergence signal
             vix_signal = self.vix_core.detect_crypto_vix_divergence(
                 data, 
                 [alt_data.get('fear_greed_index', 50)]
             )
             
+            # Generate ML prediction
             features_df = self._generate_features(data)
             ml_prediction = {}
             
             try:
-                import asyncio
                 loop = asyncio.new_event_loop()
                 asyncio.set_event_loop(loop)
                 ml_prediction = loop.run_until_complete(
@@ -133,12 +138,14 @@ class SchermanCryptoStrategy:
                 print(f"⚠️  ML prediction failed: {e}")
                 ml_prediction = {}
             
+            # Fuse signals
             fused_signal = self.signal_fusion.fuse_signals(
                 vix_signal, 
                 ml_prediction, 
                 market_data
             )
             
+            # Validate with risk manager
             if fused_signal and self.risk_manager.validate_signal(symbol, fused_signal, self.positions):
                 return fused_signal
                 
@@ -149,18 +156,22 @@ class SchermanCryptoStrategy:
             return None
             
     def _generate_features(self, data: pd.DataFrame) -> pd.DataFrame:
+        """Generate basic technical features"""
         features = pd.DataFrame(index=data.index)
         
+        # Price features
         features['returns'] = data['close'].pct_change()
         features['volatility'] = features['returns'].rolling(24).std()
         
+        # Moving averages
         for period in [5, 10, 20, 50]:
             features[f'sma_{period}'] = data['close'].rolling(period).mean()
             features[f'ema_{period}'] = data['close'].ewm(span=period).mean()
             
+        # Volume features
         features['volume_ratio'] = data['volume'] / data['volume'].rolling(20).mean()
         
-        # Add more technical features
+        # Technical indicators
         features['rsi_14'] = self._calculate_rsi(data['close'], 14)
         features['bb_position'] = self._calculate_bb_position(data['close'])
         
@@ -234,18 +245,12 @@ class SchermanCryptoStrategy:
     def _update_performance_metrics(self):
         try:
             total_equity = self.portfolio_manager.get_total_equity()
-            
-            self.equity_curve.append({
-                'timestamp': datetime.now(),
-                'equity': total_equity
-            })
-            
             print(f"💰 Portfolio Equity: ${total_equity:,.2f}")
-            
         except Exception as e:
             print(f"Error updating performance: {e}")
 
 def get_credentials():
+    """Securely get user credentials"""
     print("🔐 Enter your OKX API credentials:")
     api_key = getpass.getpass("API Key: ").strip()
     secret = getpass.getpass("Secret: ").strip()
@@ -260,9 +265,16 @@ def get_credentials():
         'sandbox': sandbox
     }
 
-if __name__ == "__main__":
+def main():
     print("=" * 60)
-    print("🏆 SCHERMAN CRYPTO STRATEGY - PRODUCTION VERSION")
+    print("🏆 SCHERMAN CRYPTO STRATEGY - LIVE TRADING SYSTEM")
+    print("=" * 60)
+    print("📋 Features:")
+    print("   ✅ VIX Divergence Methodology")
+    print("   ✅ Machine Learning Integration")
+    print("   ✅ Advanced Risk Management")
+    print("   ✅ Real-time Data Feeds")
+    print("   ✅ Professional Execution")
     print("=" * 60)
     
     credentials = get_credentials()
@@ -271,15 +283,31 @@ if __name__ == "__main__":
         **credentials,
         'symbols': ['BTC-USDT-SWAP', 'ETH-USDT-SWAP', 'SOL-USDT-SWAP'],
         'timeframe': '1h',
-        'signal_interval': 300,
+        'signal_interval': 300,  # 5 minutes
         'risk_per_trade': 0.02,
-        'max_portfolio_heat': 0.8,
+        'max_portfolio_heat': 0.15,
         'min_signal_confidence': 0.65
     }
     
     strategy = SchermanCryptoStrategy(config)
     
     if strategy.initialize():
-        strategy.run_live_trading()
+        print("\n🎯 Choose your mode:")
+        print("1. Live Trading (Real Money)")
+        print("2. Paper Trading (Simulation)")
+        print("3. Exit")
+        
+        choice = input("\nEnter choice (1-3): ").strip()
+        
+        if choice == "1":
+            strategy.run_live_trading()
+        elif choice == "2":
+            print("📊 Paper trading mode not implemented yet")
+            print("💡 Use sandbox mode for safe testing")
+        else:
+            print("👋 Goodbye!")
     else:
         print("❌ Failed to initialize strategy")
+
+if __name__ == "__main__":
+    main()

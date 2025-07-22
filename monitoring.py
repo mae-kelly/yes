@@ -40,21 +40,24 @@ class PerformanceMonitor:
             self.performance_data = {'equity_curve': [], 'daily_returns': [], 'monthly_returns': [], 'annual_returns': [], 'rolling_sharpe': [], 'rolling_volatility': [], 'rolling_drawdown': []}
             print("✅ Performance tracking initialized")
         except Exception as e:
-            print(f"❌ Error setting up performance tracking: {e}")
+            pass
+            # print(f"❌ Error setting up performance tracking: {e}")
             
     def setup_risk_monitoring(self):
         try:
             self.risk_metrics = {'portfolio_var': 0, 'portfolio_cvar': 0, 'maximum_drawdown': 0, 'current_drawdown': 0, 'portfolio_volatility': 0, 'portfolio_beta': 0, 'concentration_risk': 0, 'leverage_ratio': 0}
             print("✅ Risk monitoring initialized")
         except Exception as e:
-            print(f"❌ Error setting up risk monitoring: {e}")
+            pass
+            # print(f"❌ Error setting up risk monitoring: {e}")
             
     def setup_execution_monitoring(self):
         try:
             self.execution_metrics = {'total_orders': 0, 'successful_orders': 0, 'failed_orders': 0, 'average_latency': 0, 'average_slippage': 0, 'fill_rate': 0, 'execution_cost': 0, 'market_impact': 0}
             print("✅ Execution monitoring initialized")
         except Exception as e:
-            print(f"❌ Error setting up execution monitoring: {e}")
+            pass
+            # print(f"❌ Error setting up execution monitoring: {e}")
             
     def update_performance_metrics(self, equity: float, returns: float, positions: Dict, trades: List):
         try:
@@ -74,7 +77,8 @@ class PerformanceMonitor:
             self._update_strategy_metrics(equity, returns, trades)
             self._check_performance_alerts(equity, returns)
         except Exception as e:
-            print(f"❌ Error updating performance metrics: {e}")
+            pass
+            # print(f"❌ Error updating performance metrics: {e}")
             
     def _calculate_rolling_sharpe(self, returns: pd.Series, window: int = 30) -> float:
         try:
@@ -86,6 +90,7 @@ class PerformanceMonitor:
                 return 0.0
             return (rolling_mean / rolling_std) * np.sqrt(365)
         except Exception as e:
+            pass
             return 0.0
             
     def _calculate_rolling_drawdown(self, equity: pd.Series, window: int = 30) -> float:
@@ -99,6 +104,7 @@ class PerformanceMonitor:
                 return 0.0
             return (peak - current) / peak
         except Exception as e:
+            pass
             return 0.0
             
     def _update_strategy_metrics(self, equity: float, returns: float, trades: List):
@@ -134,7 +140,8 @@ class PerformanceMonitor:
                 self.strategy_metrics['profit_factor'] = profits / losses if losses > 0 else 0
                 
         except Exception as e:
-            print(f"❌ Error updating strategy metrics: {e}")
+            pass
+            # print(f"❌ Error updating strategy metrics: {e}")
             
     def _calculate_trade_pnl(self, trade: Dict) -> float:
         try:
@@ -147,6 +154,7 @@ class PerformanceMonitor:
                     return (trade['entry_price'] - trade['exit_price']) * trade['size']
             return 0.0
         except Exception as e:
+            pass
             return 0.0
             
     def update_risk_metrics(self, positions: Dict, portfolio_value: float, market_data: Dict):
@@ -171,7 +179,8 @@ class PerformanceMonitor:
                 
             self._check_risk_alerts()
         except Exception as e:
-            print(f"❌ Error updating risk metrics: {e}")
+            pass
+            # print(f"❌ Error updating risk metrics: {e}")
             
     def _calculate_portfolio_var(self, positions: Dict, portfolio_value: float, confidence: float = 0.95) -> float:
         try:
@@ -184,6 +193,7 @@ class PerformanceMonitor:
             var_percentile = np.percentile(returns_array, (1 - confidence) * 100)
             return abs(var_percentile * portfolio_value)
         except Exception as e:
+            pass
             return portfolio_value * 0.02
             
     def _calculate_portfolio_cvar(self, positions: Dict, portfolio_value: float, confidence: float = 0.95) -> float:
@@ -202,6 +212,7 @@ class PerformanceMonitor:
                 cvar = abs(var_percentile * portfolio_value)
             return cvar
         except Exception as e:
+            pass
             return portfolio_value * 0.03
             
     def _calculate_concentration_risk(self, positions: Dict, portfolio_value: float) -> float:
@@ -218,6 +229,7 @@ class PerformanceMonitor:
             herfindahl_index = sum([w**2 for w in position_weights])
             return herfindahl_index
         except Exception as e:
+            pass
             return 0.0
             
     def _calculate_leverage_ratio(self, positions: Dict, portfolio_value: float) -> float:
@@ -227,6 +239,7 @@ class PerformanceMonitor:
             total_notional = sum([abs(position.get('notional', 0)) for position in positions.values()])
             return total_notional / portfolio_value
         except Exception as e:
+            pass
             return 0.0
             
     def update_execution_metrics(self, order_results: List[Dict]):
@@ -268,7 +281,8 @@ class PerformanceMonitor:
                 
             self._check_execution_alerts()
         except Exception as e:
-            print(f"❌ Error updating execution metrics: {e}")
+            pass
+            # print(f"❌ Error updating execution metrics: {e}")
             
     def _check_performance_alerts(self, equity: float, returns: float):
         try:
@@ -282,7 +296,8 @@ class PerformanceMonitor:
                 self._create_alert('LOW_WIN_RATE', f"Win rate below threshold: {self.strategy_metrics['win_rate']:.1f}%", 'MEDIUM')
                 
         except Exception as e:
-            print(f"❌ Error checking performance alerts: {e}")
+            pass
+            # print(f"❌ Error checking performance alerts: {e}")
             
     def _check_risk_alerts(self):
         try:
@@ -299,7 +314,8 @@ class PerformanceMonitor:
                 self._create_alert('HIGH_LEVERAGE', f"Leverage ratio high: {self.risk_metrics['leverage_ratio']:.2f}", 'HIGH')
                 
         except Exception as e:
-            print(f"❌ Error checking risk alerts: {e}")
+            pass
+            # print(f"❌ Error checking risk alerts: {e}")
             
     def _check_execution_alerts(self):
         try:
@@ -313,7 +329,8 @@ class PerformanceMonitor:
                 self._create_alert('HIGH_SLIPPAGE', f"Average slippage high: {self.execution_metrics['average_slippage']:.4f}", 'MEDIUM')
                 
         except Exception as e:
-            print(f"❌ Error checking execution alerts: {e}")
+            pass
+            # print(f"❌ Error checking execution alerts: {e}")
             
     def _create_alert(self, alert_type: str, message: str, severity: str):
         try:
@@ -329,7 +346,8 @@ class PerformanceMonitor:
                 self._send_notification(alert)
                 
         except Exception as e:
-            print(f"❌ Error creating alert: {e}")
+            pass
+            # print(f"❌ Error creating alert: {e}")
             
     def _send_notification(self, alert: Dict):
         try:
@@ -338,7 +356,8 @@ class PerformanceMonitor:
             if self.notification_settings.get('slack'):
                 self._send_slack_notification(alert)
         except Exception as e:
-            print(f"❌ Error sending notification: {e}")
+            pass
+            # print(f"❌ Error sending notification: {e}")
             
     def _send_webhook_notification(self, alert: Dict):
         try:
@@ -347,7 +366,8 @@ class PerformanceMonitor:
             payload = {'alert_type': alert['type'], 'message': alert['message'], 'severity': alert['severity'], 'timestamp': alert['timestamp'].isoformat()}
             requests.post(webhook_url, json=payload, timeout=5)
         except Exception as e:
-            print(f"❌ Error sending webhook notification: {e}")
+            pass
+            # print(f"❌ Error sending webhook notification: {e}")
             
     def _send_slack_notification(self, alert: Dict):
         try:
@@ -356,13 +376,15 @@ class PerformanceMonitor:
             slack_message = {'text': f"🚨 {alert['type']}: {alert['message']}", 'username': 'Scherman Strategy Bot', 'icon_emoji': ':warning:'}
             requests.post(slack_url, json=slack_message, timeout=5)
         except Exception as e:
-            print(f"❌ Error sending Slack notification: {e}")
+            pass
+            # print(f"❌ Error sending Slack notification: {e}")
             
     def get_performance_summary(self) -> Dict:
         try:
             return {'strategy_metrics': self.strategy_metrics, 'risk_metrics': self.risk_metrics, 'execution_metrics': self.execution_metrics, 'benchmark_metrics': self.benchmark_metrics, 'last_updated': datetime.now()}
         except Exception as e:
-            print(f"❌ Error getting performance summary: {e}")
+            pass
+            # print(f"❌ Error getting performance summary: {e}")
             return {}
             
     def get_recent_alerts(self, hours: int = 24) -> List[Dict]:
@@ -371,7 +393,8 @@ class PerformanceMonitor:
             recent_alerts = [alert for alert in self.alerts if alert['timestamp'] > cutoff_time]
             return sorted(recent_alerts, key=lambda x: x['timestamp'], reverse=True)
         except Exception as e:
-            print(f"❌ Error getting recent alerts: {e}")
+            pass
+            # print(f"❌ Error getting recent alerts: {e}")
             return []
             
     def acknowledge_alert(self, alert_index: int) -> bool:
@@ -381,7 +404,8 @@ class PerformanceMonitor:
                 return True
             return False
         except Exception as e:
-            print(f"❌ Error acknowledging alert: {e}")
+            pass
+            # print(f"❌ Error acknowledging alert: {e}")
             return False
             
     def generate_daily_report(self) -> Dict:
@@ -400,7 +424,8 @@ class PerformanceMonitor:
                 
             return report
         except Exception as e:
-            print(f"❌ Error generating daily report: {e}")
+            pass
+            # print(f"❌ Error generating daily report: {e}")
             return {}
             
     def update_system_health(self, cpu_usage: float, memory_usage: float, disk_usage: float, network_latency: float, api_status: bool):
@@ -419,7 +444,8 @@ class PerformanceMonitor:
                 self._create_alert('API_DOWN', "API connection lost", 'HIGH')
                 
         except Exception as e:
-            print(f"❌ Error updating system health: {e}")
+            pass
+            # print(f"❌ Error updating system health: {e}")
             
     def cleanup_old_data(self, days: int = None):
         try:
@@ -434,7 +460,8 @@ class PerformanceMonitor:
             
             print(f"✅ Cleaned up data older than {days} days")
         except Exception as e:
-            print(f"❌ Error cleaning up old data: {e}")
+            pass
+            # print(f"❌ Error cleaning up old data: {e}")
             
     def export_performance_data(self, format: str = 'json') -> str:
         try:
@@ -449,7 +476,8 @@ class PerformanceMonitor:
                 return json.dumps(export_data, default=str)
                 
         except Exception as e:
-            print(f"❌ Error exporting performance data: {e}")
+            pass
+            # print(f"❌ Error exporting performance data: {e}")
             return ""
             
     def get_real_time_dashboard_data(self) -> Dict:
@@ -458,5 +486,6 @@ class PerformanceMonitor:
             
             return dashboard_data
         except Exception as e:
-            print(f"❌ Error getting dashboard data: {e}")
+            pass
+            # print(f"❌ Error getting dashboard data: {e}")
             return {}

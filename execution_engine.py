@@ -136,26 +136,26 @@ class ExecutionEngine:
                         }
                     else:
                         self.execution_metrics['orders_canceled'] += 1
-                        print(f"❌ Order not filled: {order_result['id']}")
+                        # print(f"❌ Order not filled: {order_result['id']}")
                         return {'success': False, 'error': 'Order not filled'}
                 else:
                     self.execution_metrics['orders_rejected'] += 1
-                    print(f"❌ Order placement failed")
+                    # print(f"❌ Order placement failed")
                     return {'success': False, 'error': 'Order placement failed'}
                     
             except ccxt.InsufficientFunds as e:
-                print(f"❌ Insufficient funds: {e}")
+                # print(f"❌ Insufficient funds: {e}")
                 return {'success': False, 'error': f'Insufficient funds: {e}'}
             except ccxt.InvalidOrder as e:
-                print(f"❌ Invalid order: {e}")
+                # print(f"❌ Invalid order: {e}")
                 return {'success': False, 'error': f'Invalid order: {e}'}
             except ccxt.ExchangeError as e:
-                print(f"❌ Exchange error: {e}")
+                # print(f"❌ Exchange error: {e}")
                 return {'success': False, 'error': f'Exchange error: {e}'}
                 
         except Exception as e:
             self.execution_metrics['orders_rejected'] += 1
-            print(f"❌ Execution error: {e}")
+            # print(f"❌ Execution error: {e}")
             return {'success': False, 'error': str(e)}
             
     def _twap_algorithm(self, request: Dict) -> Dict:
@@ -206,7 +206,7 @@ class ExecutionEngine:
                         else:
                             try:
                                 self.okx_client.cancel_order(slice_order['id'], symbol)
-                                print(f"⚠️  TWAP slice cancelled, using market order")
+                                # print(f"⚠️  TWAP slice cancelled, using market order")
                             except:
                                 pass
                             
@@ -227,7 +227,7 @@ class ExecutionEngine:
                         time.sleep(slice_interval)
                         
                 except Exception as e:
-                    print(f"❌ TWAP slice {i+1} error: {e}")
+                    # print(f"❌ TWAP slice {i+1} error: {e}")
                     continue
                     
             if fills:
@@ -254,7 +254,7 @@ class ExecutionEngine:
                 return {'success': False, 'error': 'No fills achieved'}
                 
         except Exception as e:
-            print(f"❌ TWAP error: {e}")
+            # print(f"❌ TWAP error: {e}")
             return {'success': False, 'error': str(e)}
             
     def _vwap_algorithm(self, request: Dict) -> Dict:
@@ -316,7 +316,7 @@ class ExecutionEngine:
                 return {'success': False, 'error': 'No fills achieved'}
                 
         except Exception as e:
-            print(f"❌ VWAP error: {e}")
+            # print(f"❌ VWAP error: {e}")
             return {'success': False, 'error': str(e)}
             
     def _iceberg_algorithm(self, request: Dict) -> Dict:
@@ -394,7 +394,7 @@ class ExecutionEngine:
                 return {'success': False, 'error': 'No fills achieved'}
                 
         except Exception as e:
-            print(f"❌ Iceberg error: {e}")
+            # print(f"❌ Iceberg error: {e}")
             return {'success': False, 'error': str(e)}
             
     def _adaptive_algorithm(self, request: Dict) -> Dict:
@@ -425,7 +425,7 @@ class ExecutionEngine:
                 return self._aggressive_algorithm(request)
                 
         except Exception as e:
-            print(f"❌ Adaptive algorithm error: {e}")
+            # print(f"❌ Adaptive algorithm error: {e}")
             return {'success': False, 'error': str(e)}
             
     def _wait_for_fill(self, order_id: str, symbol: str, timeout: int = 30) -> Dict:
@@ -445,7 +445,7 @@ class ExecutionEngine:
             return {}
             
         except Exception as e:
-            print(f"❌ Error waiting for fill: {e}")
+            # print(f"❌ Error waiting for fill: {e}")
             return {}
             
     def _calculate_slippage(self, request: Dict, filled_order: Dict) -> float:

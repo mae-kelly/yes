@@ -82,6 +82,7 @@ class CryptoDataManager:
             df.set_index('timestamp', inplace=True)
             df = df.astype(float)
             
+            # Data validation
             df = df.drop_duplicates()
             df = df.sort_index()
             df = df[(df['high'] >= df['low']) & (df['high'] >= df['open']) & (df['high'] >= df['close'])]
@@ -119,7 +120,6 @@ class CryptoDataManager:
             
     def get_whale_alerts(self, symbol: str) -> Dict:
         if not self.api_keys['whale_alert']:
-            print("⚠️  Whale Alert API key not provided")
             return {'whale_transactions': [], 'total_volume': 0, 'net_flow': 0}
             
         try:
@@ -181,7 +181,6 @@ class CryptoDataManager:
             
     def get_news_sentiment(self, symbol: str) -> Dict:
         if not self.api_keys['newsapi']:
-            print("⚠️  NewsAPI key not provided")
             return {'sentiment_score': 0, 'news_count': 0}
             
         try:
@@ -244,7 +243,6 @@ class CryptoDataManager:
         
     def get_social_sentiment(self, symbol: str) -> Dict:
         if not self.api_keys['lunarcrush']:
-            print("⚠️  LunarCrush API key not provided")
             return {'social_score': 50, 'social_volume': 0}
             
         try:

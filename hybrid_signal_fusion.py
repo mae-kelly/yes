@@ -18,7 +18,7 @@ class HybridSignalFusion:
     def fuse_signals(self, scherman_signal: Dict, renaissance_prediction: Dict, market_data: Dict) -> Dict:
         """Real-time signal fusion with adaptive weighting"""
         if not scherman_signal and not renaissance_prediction:
-            print("❌ No signals to fuse")
+            # print("❌ No signals to fuse")
             return {}
             
         print(f"🔄 Fusing signals:")
@@ -57,7 +57,7 @@ class HybridSignalFusion:
         print(f"   Confidence: {final_confidence:.3f}")
         
         if final_confidence < self.min_confidence_threshold:
-            print(f"❌ Signal rejected: Low confidence ({final_confidence:.3f} < {self.min_confidence_threshold})")
+            # print(f"❌ Signal rejected: Low confidence ({final_confidence:.3f} < {self.min_confidence_threshold})")
             return {}
             
         fused_signal = {
@@ -171,7 +171,7 @@ class HybridSignalFusion:
             return np.clip(prediction_value * confidence, -1.0, 1.0)
             
         except Exception as e:
-            print(f"❌ Error normalizing Renaissance prediction: {e}")
+            # print(f"❌ Error normalizing Renaissance prediction: {e}")
             return 0.0
         
     def _determine_direction_and_strength(self, scherman_signal: Dict, renaissance_prediction: Dict, combined_score: float) -> tuple:
