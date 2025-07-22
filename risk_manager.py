@@ -2,7 +2,6 @@ import numpy as np
 import pandas as pd
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Tuple
-from scipy import stats
 import warnings
 warnings.filterwarnings('ignore')
 
