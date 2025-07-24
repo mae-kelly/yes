@@ -1,7 +1,0 @@
-2025-07-22 03:34:43,395 | INFO | 🚀 Initializing Perfect Trading System...
-2025-07-22 03:34:43,397 | INFO | 🔧 Mode: SANDBOX
-2025-07-22 03:34:43,397 | INFO | 💰 Risk per trade: 2.0%
-2025-07-22 03:34:43,397 | INFO | 🎯 Symbols: ['BTC-USDT-SWAP', 'ETH-USDT-SWAP']
-2025-07-22 03:34:56,399 | ERROR | ❌ System tests failed
-2025-07-22 03:34:56,400 | ERROR | ❌ Exchange connection failed: okx {"msg":"API key doesn't exist","code":"50119"}
-2025-07-22 03:34:56,400 | ERROR | ❌ System tests failed

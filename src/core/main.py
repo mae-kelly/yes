@@ -21,10 +21,10 @@ import hashlib
 
 warnings.filterwarnings('ignore')
 
-from secure_data_manager import EnterpriseDataManager
-from vix_divergence_core import SchermanVIXDivergenceCore
-from risk_manager import RiskManager
-from execution_engine import ExecutionEngine
+from .data_manager import EnterpriseDataManager
+from .signal_engine import SchermanVIXDivergenceCore
+from .risk_manager import RiskManager
+from .execution_engine import ExecutionEngine
 
 @dataclass
 class TradingMetrics:
@@ -118,7 +118,10 @@ class PerfectTradingSystem:
         })
         
     def initialize(self) -> bool:
-        try:
+        # Validate credentials first
+        if not self._validate_credentials():
+            self.logger.error("❌ Invalid or missing credentials")
+            return False        try:
             self.logger.info("🚀 Initializing Perfect Trading System...")
             self.logger.info(f"🔧 Mode: {'SANDBOX' if self.config.get('sandbox') else '🚨 LIVE'}")
             self.logger.info(f"💰 Risk per trade: {self.config.get('risk_per_trade', 0.01)*100:.1f}%")
@@ -1092,3 +1095,15 @@ def main():
 if __name__ == "__main__":
     exit_code = main()
     sys.exit(exit_code)
+    
+    def _validate_credentials(self) -> bool:
+        """Validate that all required credentials are present"""
+        required_keys = ['okx_api_key', 'okx_secret', 'okx_passphrase']
+        
+        for key in required_keys:
+            value = self.config.get(key)
+            if not value or len(str(value)) < 10:
+                self.logger.error(f"Missing or invalid credential: {key}")
+                return False
+        
+        return True

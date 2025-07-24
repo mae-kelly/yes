@@ -1,3 +1,0 @@
-2025-07-22 03:34:56,399 | PerfectTradingSystem | ERROR | _run_comprehensive_tests:193 | ❌ System tests failed
-2025-07-22 03:34:56,400 | PerfectTradingSystem | ERROR | _run_comprehensive_tests:197 | ❌ Exchange connection failed: okx {"msg":"API key doesn't exist","code":"50119"}
-2025-07-22 03:34:56,400 | PerfectTradingSystem | ERROR | initialize:131 | ❌ System tests failed

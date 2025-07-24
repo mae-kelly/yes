@@ -90,3 +90,25 @@ class SchermanVIXDivergenceCore:
         confidence = signal.get('confidence', 0.65)
         volatility = market_conditions.get('volatility', 0.25)
         return base_size * confidence * min(0.2 / volatility, 2.0)
+    
+    def _validate_inputs(self, data, fear_data):
+        """Validate inputs before processing"""
+        if data is None or len(data) < 20:
+            return False
+        
+        if fear_data is None or len(fear_data) == 0:
+            return False
+        
+        required_columns = ['close', 'volume', 'high', 'low']
+        for col in required_columns:
+            if col not in data.columns:
+                return False
+        
+        return True
+    
+    def detect_crypto_vix_divergence_safe(self, data, fear_data):
+        """Safe version with validation"""
+        if not self._validate_inputs(data, fear_data):
+            return {}
+        
+        return self.detect_crypto_vix_divergence(data, fear_data)
