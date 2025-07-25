@@ -70,15 +70,6 @@ class UltraIntelligentNLPMatcher:
             }
         }
         
-        # Add alias for backward compatibility
-        self.ao1_metric_requirements = self.ao1_visibility_requirements
-
-    def __getattr__(self, name):
-        """Handle missing attributes gracefully for backward compatibility"""
-        if name == 'ao1_metric_requirements':
-            return self.ao1_visibility_requirements
-        raise AttributeError(f"'{self.__class__.__name__}' object has no attribute '{name}'")
-        
         self.semantic_embeddings = self._build_advanced_embeddings()
         self.pattern_library = self._build_pattern_library()
         self.abbreviation_engine = self._build_abbreviation_engine()
@@ -668,8 +659,15 @@ class DataDrivenMetricsRecommender:
         self.mapping_data = None
         self.original_data = None
         self.nlp_matcher = UltraIntelligentNLPMatcher()
+        
+        # Initialize AO1 visibility requirements FIRST
+        self._initialize_ao1_requirements()
+        
+        # Then load results
         self.load_results()
 
+    def _initialize_ao1_requirements(self):
+        """Initialize the brilliant AO1 visibility requirements"""
         # BRILLIANT AO1 VISIBILITY METRICS - Comprehensive Security Intelligence Framework
         self.ao1_visibility_requirements = {
             'Network': {
@@ -935,6 +933,30 @@ class DataDrivenMetricsRecommender:
                 }
             }
         }
+        
+        # Add aliases for backward compatibility
+        self.ao1_metric_requirements = self.ao1_visibility_requirements
+        
+        # Debug print to verify attribute exists
+        print(f"AO1 requirements initialized with {len(self.ao1_visibility_requirements)} domains")
+
+    def __getattr__(self, name):
+        """Handle missing attributes gracefully for backward compatibility"""
+        if name == 'ao1_metric_requirements':
+            return getattr(self, 'ao1_visibility_requirements', {})
+        if name == 'ao1_visibility_requirements':
+            # If for some reason it's not set, return empty dict
+            return {}
+        raise AttributeError(f"'{self.__class__.__name__}' object has no attribute '{name}'")
+
+    def check_requirements(self):
+        """Debug method to check if requirements are properly loaded"""
+        print(f"ao1_visibility_requirements exists: {hasattr(self, 'ao1_visibility_requirements')}")
+        print(f"ao1_metric_requirements exists: {hasattr(self, 'ao1_metric_requirements')}")
+        if hasattr(self, 'ao1_visibility_requirements'):
+            print(f"Number of domains: {len(self.ao1_visibility_requirements)}")
+            print(f"Domains: {list(self.ao1_visibility_requirements.keys())}")
+        return True
 
     def load_results(self):
         try:
@@ -1123,9 +1145,11 @@ class DataDrivenMetricsRecommender:
                                     'size_category': table_info['size_category'],
                                     'size_priority_score': table_info['size_priority_score'],
                                     'feasibility_score': final_feasibility,
-                                    'intelligence_score': intelligence_score,  # ADD THIS LINE
+                                    'intelligence_score': intelligence_score,
                                     'description': factor_info['description'],
                                     'visibility_query': factor_info['visibility_query'],
+                                    'business_impact': factor_info.get('business_impact', 'Not specified'),
+                                    'threat_context': factor_info.get('threat_context', 'Not specified'),
                                     'matched_columns': visibility_matches,
                                     'column_count': len(visibility_matches),
                                     'implementation_difficulty': 'AO1_Trivial' if final_feasibility > 0.8 else 'AO1_Easy' if final_feasibility > 0.6 else 'AO1_Medium'
@@ -1165,7 +1189,7 @@ class DataDrivenMetricsRecommender:
         return sorted(all_recommendations, 
                      key=lambda x: (-x['feasibility_score'], 
                                    -x['size_priority_score'],
-                                   -x.get('intelligence_score', 0),  # Use .get() for safety
+                                   -x.get('intelligence_score', 0),
                                    x['implementation_difficulty']))
 
     def generate_implementation_guide(self, recommendations: List[Dict[str, Any]]) -> str:
@@ -1208,6 +1232,8 @@ class DataDrivenMetricsRecommender:
                     guide.append(f"   Table Size: {rec['row_count']:,} rows ({rec['size_category']})")
                     guide.append(f"   Description: {rec['description']}")
                     guide.append(f"   Visibility Query: {rec['visibility_query']}")
+                    guide.append(f"   Business Impact: {rec['business_impact']}")
+                    guide.append(f"   Threat Context: {rec['threat_context']}")
                     guide.append(f"   AI Confidence: {rec['feasibility_score']:.3f} (Intelligence: {rec.get('intelligence_score', 0)})")
                     
                     if rec['matched_columns']:
@@ -1253,6 +1279,8 @@ class DataDrivenMetricsRecommender:
                 quick_start.append(f"   📊 USE TABLE: {rec['dataset']}.{rec['table_name']} ({rec['row_count']:,} rows - {rec['size_category']})")
                 quick_start.append(f"   📈 MEASURE: {rec['description']}")
                 quick_start.append(f"   💡 VISIBILITY QUERY: {rec['visibility_query']}")
+                quick_start.append(f"   💼 BUSINESS IMPACT: {rec['business_impact']}")
+                quick_start.append(f"   ⚠️  THREAT CONTEXT: {rec['threat_context']}")
                 quick_start.append(f"   🤖 AI CONFIDENCE: {rec['feasibility_score']:.3f} (Intelligence Score: {rec.get('intelligence_score', 0)})")
                 
                 if rec['matched_columns']:
@@ -1280,6 +1308,8 @@ class DataDrivenMetricsRecommender:
                 quick_start.append(f"   📊 USE TABLE: {rec['dataset']}.{rec['table_name']} ({rec['row_count']:,} rows - {rec['size_category']})")
                 quick_start.append(f"   📈 MEASURE: {rec['description']}")
                 quick_start.append(f"   💡 VISIBILITY QUERY: {rec['visibility_query']}")
+                quick_start.append(f"   💼 BUSINESS IMPACT: {rec['business_impact']}")
+                quick_start.append(f"   ⚠️  THREAT CONTEXT: {rec['threat_context']}")
                 quick_start.append(f"   🤖 AI CONFIDENCE: {rec['feasibility_score']:.3f} (Intelligence Score: {rec.get('intelligence_score', 0)})")
                 
                 ultra_matches = [m for m in rec['matched_columns'] if m['match_type'] == 'ultra_semantic']
@@ -1331,15 +1361,33 @@ class DataDrivenMetricsRecommender:
         logger.info(f"AO1 visibility recommendations saved to {output_file}")
 
 if __name__ == "__main__":
-    analyzer = DataDrivenMetricsRecommender()
-    
-    quick_start = analyzer.generate_quick_start_recommendations()
-    print(quick_start)
-    print("\n" + "="*90 + "\n")
-    
-    recommendations = analyzer.map_metrics_to_data()
-    prioritized = analyzer.prioritize_recommendations(recommendations)
-    full_guide = analyzer.generate_implementation_guide(prioritized)
-    print(full_guide)
-    
-    analyzer.save_recommendations()
+    try:
+        print("Initializing DataDrivenMetricsRecommender...")
+        analyzer = DataDrivenMetricsRecommender()
+        
+        print("Checking requirements...")
+        analyzer.check_requirements()
+        
+        print("Generating quick start recommendations...")
+        quick_start = analyzer.generate_quick_start_recommendations()
+        print(quick_start)
+        print("\n" + "="*90 + "\n")
+        
+        print("Mapping metrics to data...")
+        recommendations = analyzer.map_metrics_to_data()
+        prioritized = analyzer.prioritize_recommendations(recommendations)
+        full_guide = analyzer.generate_implementation_guide(prioritized)
+        print(full_guide)
+        
+        print("Saving recommendations...")
+        analyzer.save_recommendations()
+        
+    except AttributeError as e:
+        print(f"AttributeError: {e}")
+        print("Available attributes:")
+        analyzer = DataDrivenMetricsRecommender()
+        print([attr for attr in dir(analyzer) if not attr.startswith('_')])
+        raise
+    except Exception as e:
+        print(f"Unexpected error: {e}")
+        raise
