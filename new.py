@@ -1,471 +1,1307 @@
 import json
 import pandas as pd
-from collections import defaultdict
-from typing import Dict, List, Set, Tuple
+from collections import defaultdict, Counter
+from typing import Dict, List, Any, Set
 import logging
 import re
+import math
+from difflib import SequenceMatcher
+import unicodedata
+import itertools
+from functools import lru_cache
+import hashlib
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-class ComprehensiveKeyMapper:
-    def __init__(self, results_file: str):
-        self.results_file = results_file
-        self.data = None
-        self.load_results()
-        
-        self.security_requirements = {
-            'Network': {
-                'Firewall Traffic': [
-                    'firewall', 'fw', 'filter', 'traffic', 'packet', 'flow', 'connection', 'session',
-                    'iptables', 'pf', 'ufw', 'pfctl', 'netfilter', 'pix', 'asa', 'fwsm', 'checkpoint', 'fw1',
-                    'fortigate', 'fortinet', 'fortianalyzer', 'fortimanager', 'palo_alto', 'paloalto', 'panorama',
-                    'juniper', 'srx', 'netscreen', 'cisco_asa', 'cisco_pix', 'sonicwall', 'watchguard', 'firebox',
-                    'barracuda', 'sophos', 'astaro', 'cyberoam', 'smoothwall', 'endian', 'untangle', 'clearos',
-                    'pfense', 'opnsense', 'ipfire', 'zeroshell', 'vyos', 'vyatta', 'mikrotik', 'routeros',
-                    'allow', 'deny', 'drop', 'reject', 'block', 'permit', 'accept', 'forward', 'route',
-                    'nat', 'pat', 'xlate', 'translation', 'masquerade', 'snat', 'dnat', 'port_forward',
-                    'acl', 'access_list', 'rule', 'policy', 'security_policy', 'zone', 'interface',
-                    'ingress', 'egress', 'inbound', 'outbound', 'north_south', 'east_west'
-                ],
-                'IDS/IPS': [
-                    'ids', 'ips', 'intrusion', 'detection', 'prevention', 'signature', 'alert', 'event',
-                    'anomaly', 'threat', 'attack', 'exploit', 'malware', 'virus', 'trojan', 'worm',
-                    'snort', 'suricata', 'zeek', 'bro', 'emerging_threats', 'et_pro', 'vrt', 'talos',
-                    'sourcefire', 'firesight', 'cisco_ips', 'cisco_ids', 'checkpoint_ips', 'smart_defense',
-                    'juniper_ips', 'juniper_ids', 'fortinet_ips', 'fortigate_ips', 'palo_alto_threat',
-                    'wildfire', 'mcafee_ips', 'mcafee_ids', 'tippingpoint', 'hp_tippingpoint', 'trend_micro',
-                    'deep_security', 'nessus', 'rapid7', 'nexpose', 'qualys', 'tenable', 'greenbone',
-                    'ossim', 'ossec', 'samhain', 'aide', 'prelude', 'suricata_eve', 'fast_log',
-                    'behavioral', 'heuristic', 'machine_learning', 'ai_detection', 'statistical', 'baseline',
-                    'correlation', 'rule_based', 'signature_based', 'anomaly_based', 'reputation_based',
-                    'nids', 'hids', 'nips', 'hips', 'network_intrusion', 'host_intrusion', 'endpoint_detection'
-                ],
-                'NDR': [
-                    'ndr', 'network_detection', 'network_detection_response', 'network_monitoring', 'netmon',
-                    'traffic_analysis', 'flow_analysis', 'packet_analysis', 'deep_packet_inspection', 'dpi',
-                    'behavioral_analysis', 'anomaly_detection', 'lateral_movement', 'east_west', 'north_south',
-                    'darktrace', 'vectra', 'extrahop', 'corelight', 'plixer', 'scrutinizer', 'flowmon',
-                    'kentik', 'gigamon', 'ixia', 'netscout', 'arbor', 'radware', 'a10_networks',
-                    'netflow', 'sflow', 'ipfix', 'jflow', 'cflowd', 'nfcapd', 'softflowd', 'fprobe',
-                    'metadata', 'session_data', 'connection_tracking', 'state_tracking', 'flow_record',
-                    'network_forensics', 'pcap', 'packet_capture', 'full_packet', 'session_reconstruction'
-                ],
-                'Proxy': [
-                    'proxy', 'gateway', 'web_gateway', 'secure_web_gateway', 'swg', 'web_security',
-                    'web_filter', 'content_filter', 'url_filter', 'category_filter', 'reputation_filter',
-                    'squid', 'squidguard', 'dansguardian', 'e2guardian', 'bluecoat', 'proxysg', 'packetshaper',
-                    'zscaler', 'zpa', 'zia', 'forcepoint', 'websense', 'triton', 'mcafee_proxy', 'web_gateway',
-                    'symantec_proxy', 'broadcom_proxy', 'cisco_wsa', 'ironport', 'smoothwall', 'untangle',
-                    'forward_proxy', 'reverse_proxy', 'transparent_proxy', 'explicit_proxy', 'intercepting_proxy',
-                    'http_proxy', 'https_proxy', 'socks_proxy', 'connect_proxy', 'ssl_proxy', 'tls_proxy'
-                ],
-                'DNS': [
-                    'dns', 'domain', 'hostname', 'fqdn', 'subdomain', 'tld', 'nameserver', 'resolver',
-                    'bind', 'named', 'bind9', 'isc_bind', 'unbound', 'powerdns', 'pdns', 'knot', 'knot_dns',
-                    'nsd', 'authoritative', 'recursive', 'dnsmasq', 'systemd_resolved', 'windows_dns',
-                    'active_directory_dns', 'ad_dns', 'infoblox', 'bluecat', 'efficient_ip',
-                    'dnssec', 'dns_over_https', 'doh', 'dns_over_tls', 'dot', 'dns_crypt', 'quad9',
-                    'dns_poisoning', 'dns_spoofing', 'dns_hijacking', 'dns_tunneling', 'dns_exfiltration',
-                    'dga', 'domain_generation', 'malicious_domain', 'typosquatting', 'homograph', 'punycode'
-                ],
-                'WAF': [
-                    'waf', 'web_application_firewall', 'application_firewall', 'web_protection', 'app_protection',
-                    'f5_asm', 'f5_awaf', 'f5_bigip', 'imperva', 'incapsula', 'cloudflare', 'cloudflare_waf',
-                    'akamai', 'kona', 'prolexic', 'aws_waf', 'azure_waf', 'azure_front_door', 'gcp_armor',
-                    'barracuda_waf', 'fortinet_waf', 'fortigate_waf', 'checkpoint_waf', 'radware', 'alteon',
-                    'modsecurity', 'apache_modsecurity', 'nginx_modsecurity', 'sucuri', 'wordfence',
-                    'owasp', 'sql_injection', 'sqli', 'cross_site_scripting', 'xss', 'csrf', 'xxe',
-                    'ssrf', 'lfi', 'rfi', 'path_traversal', 'command_injection', 'code_injection'
-                ]
+class UltraIntelligentNLPMatcher:
+    def __init__(self):
+        self.security_taxonomy = {
+            'network': {
+                'layer2': ['mac', 'ethernet', 'switch', 'vlan', 'trunk', 'spanning_tree', 'arp'],
+                'layer3': ['ip', 'routing', 'subnet', 'gateway', 'router', 'ospf', 'bgp', 'rip'],
+                'layer4': ['tcp', 'udp', 'port', 'socket', 'connection', 'session', 'flow'],
+                'layer7': ['http', 'https', 'ftp', 'smtp', 'dns', 'dhcp', 'snmp', 'ssh', 'telnet'],
+                'topology': ['source', 'destination', 'origin', 'target', 'from', 'to', 'via', 'through'],
+                'metrics': ['bandwidth', 'latency', 'jitter', 'packet_loss', 'throughput', 'utilization'],
+                'protocols': ['icmp', 'igmp', 'gre', 'ipsec', 'vpn', 'mpls', 'vxlan'],
+                'wireless': ['wifi', 'wlan', 'ssid', 'bssid', 'wpa', 'wep', 'radius', '802.11']
             },
-            'Endpoint': {
-                'OS logs (WinEVT, Linux syslog)': [
-                    'winevent', 'winevt', 'eventlog', 'event_log', 'windows_event', 'win_event', 'evtx', 'evt',
-                    'security_log', 'system_log', 'application_log', 'setup_log', 'forwarded_events', 'wef', 'wec',
-                    'sysmon', 'process_monitor', 'procmon', 'audit_policy', 'advanced_audit', 'sacl', 'dacl',
-                    'syslog', 'rsyslog', 'syslog_ng', 'journald', 'systemd_journal', 'kern_log', 'daemon_log',
-                    'auth_log', 'secure_log', 'messages', 'var_log', 'system_journal', 'user_journal',
-                    'auditd', 'ausearch', 'aureport', 'pam_log', 'sudo_log', 'su_log', 'cron_log'
-                ],
-                'EDR': [
-                    'edr', 'endpoint_detection', 'endpoint_detection_response', 'endpoint_protection', 'endpoint_security',
-                    'crowdstrike', 'falcon', 'falcon_sensor', 'carbon_black', 'cb_response', 'cb_protection',
-                    'sentinelone', 's1_agent', 'sentinel_agent', 'cylance', 'cylance_protect', 'blackberry_cylance',
-                    'defender_atp', 'microsoft_defender', 'windows_defender_atp', 'mdatp', 'mde', 'cortex_xdr',
-                    'palo_alto_traps', 'traps_agent', 'symantec_endpoint', 'sep', 'mcafee_endpoint', 'trellix',
-                    'behavioral_analysis', 'machine_learning_detection', 'threat_hunting', 'incident_response',
-                    'process_tracking', 'file_analysis', 'network_analysis', 'memory_analysis', 'registry_analysis'
-                ],
-                'DLP': [
-                    'dlp', 'data_loss_prevention', 'data_leak_prevention', 'information_protection', 'data_protection',
-                    'symantec_dlp', 'broadcom_dlp', 'forcepoint_dlp', 'websense_dlp', 'mcafee_dlp', 'trellix_dlp',
-                    'microsoft_purview', 'information_protection', 'azure_information_protection', 'aip',
-                    'pii', 'personally_identifiable', 'phi', 'protected_health', 'pci', 'payment_card', 'ssn',
-                    'data_classification', 'content_classification', 'sensitive_data', 'confidential_data'
-                ],
-                'FIM': [
-                    'fim', 'file_integrity', 'file_integrity_monitoring', 'integrity_monitoring', 'file_monitoring',
-                    'tripwire', 'tripwire_enterprise', 'aide', 'samhain', 'ossec', 'ossec_hids', 'wazuh',
-                    'osquery', 'facebook_osquery', 'auditbeat', 'elastic_auditbeat', 'filebeat', 'winlogbeat',
-                    'system_files', 'configuration_files', 'registry', 'windows_registry', 'boot_sector',
-                    'file_hash', 'checksum', 'md5', 'sha1', 'sha256', 'modification_time', 'permissions'
-                ]
+            'security': {
+                'threats': ['malware', 'virus', 'trojan', 'worm', 'ransomware', 'spyware', 'adware', 'rootkit', 'botnet', 'apt'],
+                'attacks': ['dos', 'ddos', 'mitm', 'phishing', 'spoofing', 'hijacking', 'injection', 'overflow', 'poisoning'],
+                'vulnerabilities': ['cve', 'exploit', 'zero_day', 'buffer_overflow', 'sql_injection', 'xss', 'csrf', 'lfi', 'rfi'],
+                'controls': ['firewall', 'ids', 'ips', 'waf', 'proxy', 'antivirus', 'edr', 'dlp', 'sandbox', 'honeypot'],
+                'cryptography': ['encryption', 'decryption', 'hash', 'digest', 'signature', 'certificate', 'pki', 'ssl', 'tls'],
+                'analysis': ['forensics', 'incident', 'investigation', 'attribution', 'indicators', 'ioc', 'ttp', 'mitre'],
+                'intelligence': ['threat_intel', 'feeds', 'reputation', 'blacklist', 'whitelist', 'indicators', 'yara', 'sigma']
             },
-            'Cloud': {
-                'Cloud Event': [
-                    'cloudtrail', 'aws_cloudtrail', 'cloudwatch', 'aws_cloudwatch', 'vpc_flow_logs', 'aws_config',
-                    'guardduty', 'aws_guardduty', 'macie', 'aws_macie', 'inspector', 'aws_inspector',
-                    'activity_log', 'azure_activity_log', 'azure_monitor', 'log_analytics', 'azure_sentinel',
-                    'cloud_logging', 'stackdriver', 'cloud_audit_logs', 'admin_activity', 'data_access',
-                    'cloud_security', 'cloud_audit', 'cloud_compliance', 'infrastructure_logs', 'platform_logs'
-                ],
-                'Cloud Load Balancer': [
-                    'elb', 'elastic_load_balancer', 'alb', 'application_load_balancer', 'nlb', 'network_load_balancer',
-                    'azure_load_balancer', 'application_gateway', 'front_door', 'traffic_manager',
-                    'cloud_load_balancing', 'http_load_balancer', 'https_load_balancer', 'tcp_load_balancer',
-                    'load_balancing', 'traffic_distribution', 'session_affinity', 'sticky_session'
-                ]
+            'identity': {
+                'authentication': ['login', 'logon', 'signin', 'sso', 'mfa', '2fa', 'biometric', 'token', 'password', 'pin'],
+                'authorization': ['permission', 'privilege', 'access', 'role', 'group', 'policy', 'acl', 'rbac', 'abac'],
+                'provisioning': ['create', 'modify', 'delete', 'disable', 'enable', 'suspend', 'unlock', 'reset'],
+                'federation': ['saml', 'oauth', 'oidc', 'jwt', 'kerberos', 'ldap', 'ad', 'radius', 'tacacs'],
+                'lifecycle': ['joiner', 'mover', 'leaver', 'onboard', 'offboard', 'transfer', 'promote', 'terminate'],
+                'attributes': ['username', 'email', 'domain', 'group', 'role', 'department', 'title', 'manager']
             },
-            'Application': {
-                'Web Logs (HTTP Access)': [
-                    'apache', 'httpd', 'apache_access', 'apache_error', 'nginx', 'nginx_access', 'nginx_error',
-                    'iis', 'internet_information_services', 'iis_log', 'w3c_log', 'ncsa_log', 'tomcat', 'catalina',
-                    'access_log', 'error_log', 'combined_log', 'common_log', 'referer_log', 'agent_log',
-                    'http_request', 'http_response', 'http_method', 'status_code', 'response_code', 'user_agent',
-                    'django', 'flask', 'fastapi', 'rails', 'express', 'spring', 'laravel', 'asp.net', 'php'
-                ],
-                'API Gateway': [
-                    'api_gateway', 'aws_api_gateway', 'azure_api_management', 'gcp_api_gateway', 'apigee',
-                    'kong', 'kong_gateway', 'ambassador', 'istio', 'envoy_proxy', 'traefik', 'zuul',
-                    'rate_limiting', 'throttling', 'api_key', 'oauth', 'jwt', 'bearer_token', 'api_versioning'
-                ]
+            'data': {
+                'classification': ['public', 'internal', 'confidential', 'restricted', 'secret', 'top_secret', 'pii', 'phi'],
+                'handling': ['create', 'read', 'update', 'delete', 'copy', 'move', 'share', 'print', 'download'],
+                'protection': ['encryption', 'masking', 'tokenization', 'anonymization', 'pseudonymization', 'redaction'],
+                'formats': ['json', 'xml', 'csv', 'pdf', 'doc', 'xls', 'txt', 'binary', 'compressed', 'archive'],
+                'storage': ['database', 'file', 'object', 'block', 'cloud', 'on_premise', 'hybrid', 'backup'],
+                'governance': ['retention', 'disposal', 'archival', 'compliance', 'audit', 'lineage', 'catalog']
             },
-            'Identity_Authentication': {
-                'Authentication attempts': [
-                    'auth', 'login', 'authentication', 'signin', 'logon', 'kerberos', 'ldap', 'saml', 'oauth',
-                    'active_directory', 'ad_audit', 'identity_provider', 'sso', 'single_sign_on', 'mfa',
-                    'multi_factor', 'two_factor', '2fa', 'okta', 'ping_identity', 'azure_ad', 'google_identity'
-                ],
-                'Privilege escalation': [
-                    'privilege', 'escalation', 'sudo', 'runas', 'su_log', 'elevation', 'admin_access', 'root_access',
-                    'administrator', 'elevated', 'impersonation', 'token_manipulation', 'uac', 'user_account_control'
-                ],
-                'Identity creation/modification/destroy': [
-                    'user_creation', 'user_modification', 'user_deletion', 'account_creation', 'account_modification',
-                    'identity_management', 'provisioning', 'deprovisioning', 'user_lifecycle', 'joiner_mover_leaver',
-                    'role_assignment', 'group_membership', 'permission_change', 'access_change', 'entitlement'
-                ]
+            'operations': {
+                'monitoring': ['log', 'event', 'alert', 'alarm', 'notification', 'dashboard', 'metric', 'kpi'],
+                'analysis': ['correlation', 'aggregation', 'enrichment', 'normalization', 'parsing', 'filtering'],
+                'response': ['incident', 'investigation', 'containment', 'eradication', 'recovery', 'lessons_learned'],
+                'automation': ['orchestration', 'playbook', 'workflow', 'script', 'api', 'webhook', 'trigger'],
+                'maintenance': ['patch', 'update', 'upgrade', 'configuration', 'deployment', 'rollback', 'backup'],
+                'compliance': ['audit', 'assessment', 'scan', 'validation', 'certification', 'attestation', 'evidence']
+            },
+            'infrastructure': {
+                'compute': ['server', 'vm', 'container', 'pod', 'node', 'cluster', 'hypervisor', 'docker', 'kubernetes'],
+                'storage': ['disk', 'volume', 'partition', 'filesystem', 'raid', 'san', 'nas', 'object_store'],
+                'network': ['switch', 'router', 'firewall', 'load_balancer', 'proxy', 'gateway', 'bridge', 'hub'],
+                'cloud': ['aws', 'azure', 'gcp', 'hybrid', 'multi_cloud', 'saas', 'paas', 'iaas', 'serverless'],
+                'platforms': ['windows', 'linux', 'unix', 'macos', 'android', 'ios', 'embedded', 'iot'],
+                'services': ['web', 'database', 'application', 'middleware', 'message_queue', 'cache', 'cdn']
             }
         }
         
-        self.data_fields = {
-            'IP (source, target)': ['source_ip', 'target_ip', 'src_ip', 'dst_ip', 'ip_address', 'client_ip', 'server_ip'],
-            'Protocol': ['protocol', 'ip_protocol', 'transport_protocol'],
-            'Detection Signature': ['signature', 'detection_signature', 'rule_signature', 'rule_id', 'signature_id'],
-            'Port': ['port', 'source_port', 'dest_port', 'src_port', 'dst_port', 'service_port'],
-            'Record/FQDN': ['fqdn', 'domain', 'record', 'dns_name', 'hostname'],
-            'HTTP Headers': ['http_headers', 'headers', 'http_header', 'request_headers', 'response_headers'],
-            'system name': ['system_name', 'hostname', 'host_name', 'computer_name', 'machine_name'],
-            'filename': ['filename', 'file_name', 'file_path', 'path', 'full_path']
+        self.semantic_embeddings = self._build_advanced_embeddings()
+        self.pattern_library = self._build_pattern_library()
+        self.abbreviation_engine = self._build_abbreviation_engine()
+        self.context_graphs = self._build_context_graphs()
+        self.linguistic_rules = self._build_linguistic_rules()
+        self.domain_vectors = self._build_domain_vectors()
+        self.similarity_cache = {}
+        
+    def _build_advanced_embeddings(self):
+        embeddings = {}
+        vector_dim = 128
+        
+        for domain, categories in self.security_taxonomy.items():
+            domain_base = hash(domain) % vector_dim
+            for category, terms in categories.items():
+                category_base = hash(category) % vector_dim
+                for i, term in enumerate(terms):
+                    vector = [0.0] * vector_dim
+                    vector[domain_base] = 1.0
+                    vector[category_base] = 0.8
+                    vector[(hash(term) + domain_base) % vector_dim] = 0.6
+                    vector[(hash(term) + category_base) % vector_dim] = 0.4
+                    
+                    for j, other_term in enumerate(terms):
+                        if i != j:
+                            vector[(hash(other_term) + hash(term)) % vector_dim] = 0.2
+                    
+                    embeddings[term] = vector
+                    
+                    variations = self._generate_variations(term)
+                    for variation in variations:
+                        if variation not in embeddings:
+                            var_vector = vector.copy()
+                            var_vector[(hash(variation)) % vector_dim] = 0.3
+                            embeddings[variation] = var_vector
+        
+        return embeddings
+    
+    def _generate_variations(self, term):
+        variations = set()
+        
+        parts = re.split(r'[_\-\s]+', term)
+        if len(parts) > 1:
+            variations.add(''.join(parts))
+            variations.add('_'.join(parts))
+            variations.add('-'.join(parts))
+            variations.add(' '.join(parts))
+            
+            for i in range(len(parts)):
+                if len(parts[i]) > 3:
+                    abbreviated = parts.copy()
+                    abbreviated[i] = parts[i][:3]
+                    variations.add('_'.join(abbreviated))
+        
+        if '_' in term:
+            variations.add(term.replace('_', ''))
+            variations.add(term.replace('_', '-'))
+            variations.add(term.replace('_', ' '))
+        
+        if len(term) > 6:
+            variations.add(term[:4])
+            variations.add(term[:5])
+        
+        return variations
+    
+    def _build_pattern_library(self):
+        return {
+            'ip_patterns': [
+                r'(?:ip|addr|address)(?:_?(?:src|source|dst|dest|destination|client|server|remote|local|public|private))?',
+                r'(?:src|source|dst|dest|destination|client|server|remote|local)(?:_?(?:ip|addr|address))',
+                r'(?:v4|v6|ipv4|ipv6)(?:_?(?:addr|address))?'
+            ],
+            'port_patterns': [
+                r'(?:port|prt)(?:_?(?:src|source|dst|dest|destination|local|remote|listen|bind))?',
+                r'(?:src|source|dst|dest|destination|local|remote)(?:_?(?:port|prt))'
+            ],
+            'time_patterns': [
+                r'(?:time|timestamp|date|datetime|epoch|utc|gmt|created|modified|updated|start|end|begin|finish|occurred|when)',
+                r'(?:create|mod|update|start|end|begin|finish|occur)(?:_?(?:time|date|timestamp))',
+                r'(?:year|month|day|hour|minute|second|millisecond|microsecond)(?:s)?'
+            ],
+            'user_patterns': [
+                r'(?:user|usr|account|identity|subject|principal|actor|person|individual)(?:_?(?:name|id|email|domain))?',
+                r'(?:login|logon|signin|username|userid|email|upn|dn|cn|sam)(?:_?(?:name|id))?'
+            ],
+            'action_patterns': [
+                r'(?:action|operation|activity|event|command|request|response|result|outcome|status|verdict)',
+                r'(?:allow|deny|block|drop|permit|reject|accept|forward|route|redirect|proxy)',
+                r'(?:success|fail|error|ok|pass|deny|grant|revoke|create|delete|modify|update)'
+            ],
+            'file_patterns': [
+                r'(?:file|filename|filepath|path|document|doc|binary|executable|exe|dll|script)',
+                r'(?:directory|folder|dir|location|parent|child|root|base|full)(?:_?(?:path|name))',
+                r'(?:extension|ext|type|format|mime|content)(?:_?(?:type))?'
+            ],
+            'process_patterns': [
+                r'(?:process|proc|program|application|app|service|daemon|task|job|thread)',
+                r'(?:pid|ppid|process_id|parent|child|executable|image|command|cmd)(?:_?(?:line|name|path))?'
+            ],
+            'network_patterns': [
+                r'(?:protocol|proto|transport|network|net|connection|conn|session|flow|stream)',
+                r'(?:tcp|udp|icmp|http|https|ftp|ssh|dns|dhcp|smtp|pop|imap|snmp)',
+                r'(?:packet|frame|segment|datagram|message|payload|header|body)'
+            ],
+            'security_patterns': [
+                r'(?:security|sec|threat|attack|malware|virus|signature|rule|policy|alert|alarm)',
+                r'(?:hash|checksum|digest|signature|certificate|key|token|credential|password)',
+                r'(?:encrypt|decrypt|cipher|crypto|ssl|tls|pki|x509|rsa|aes|sha|md5)'
+            ],
+            'size_patterns': [
+                r'(?:size|bytes|length|count|volume|amount|quantity|total|sum|max|min|avg)',
+                r'(?:kb|mb|gb|tb|kilobyte|megabyte|gigabyte|terabyte)(?:s)?'
+            ],
+            'geo_patterns': [
+                r'(?:country|region|city|state|province|location|geo|geographic|latitude|longitude|coordinates)',
+                r'(?:continent|timezone|locale|language|culture|iso|cc|country_code)'
+            ]
+        }
+    
+    def _build_abbreviation_engine(self):
+        base_abbrevs = {
+            'auth': 'authentication', 'authz': 'authorization', 'fw': 'firewall', 'gw': 'gateway',
+            'ids': 'intrusion_detection', 'ips': 'intrusion_prevention', 'waf': 'web_application_firewall',
+            'src': 'source', 'dst': 'destination', 'dest': 'destination', 'orig': 'origin',
+            'usr': 'user', 'usr_id': 'user_id', 'uid': 'user_id', 'gid': 'group_id',
+            'pwd': 'password', 'passwd': 'password', 'cred': 'credential', 'cert': 'certificate',
+            'conn': 'connection', 'sess': 'session', 'req': 'request', 'resp': 'response',
+            'msg': 'message', 'sig': 'signature', 'proc': 'process', 'svc': 'service',
+            'sys': 'system', 'os': 'operating_system', 'net': 'network', 'addr': 'address',
+            'proto': 'protocol', 'url': 'uniform_resource_locator', 'uri': 'uniform_resource_identifier',
+            'fqdn': 'fully_qualified_domain_name', 'dns': 'domain_name_system',
+            'http': 'hypertext_transfer_protocol', 'https': 'http_secure', 'ftp': 'file_transfer_protocol',
+            'ssh': 'secure_shell', 'ssl': 'secure_sockets_layer', 'tls': 'transport_layer_security',
+            'tcp': 'transmission_control_protocol', 'udp': 'user_datagram_protocol',
+            'icmp': 'internet_control_message_protocol', 'dhcp': 'dynamic_host_configuration_protocol',
+            'smtp': 'simple_mail_transfer_protocol', 'pop': 'post_office_protocol',
+            'imap': 'internet_message_access_protocol', 'snmp': 'simple_network_management_protocol',
+            'ldap': 'lightweight_directory_access_protocol', 'ad': 'active_directory',
+            'saml': 'security_assertion_markup_language', 'oauth': 'open_authorization',
+            'jwt': 'json_web_token', 'api': 'application_programming_interface',
+            'sql': 'structured_query_language', 'db': 'database', 'dbms': 'database_management_system',
+            'xss': 'cross_site_scripting', 'csrf': 'cross_site_request_forgery',
+            'sqli': 'sql_injection', 'lfi': 'local_file_inclusion', 'rfi': 'remote_file_inclusion',
+            'rce': 'remote_code_execution', 'dos': 'denial_of_service', 'ddos': 'distributed_denial_of_service',
+            'av': 'antivirus', 'edr': 'endpoint_detection_response', 'dlp': 'data_loss_prevention',
+            'siem': 'security_information_event_management', 'soar': 'security_orchestration_automated_response',
+            'soc': 'security_operations_center', 'noc': 'network_operations_center',
+            'iot': 'internet_of_things', 'scada': 'supervisory_control_data_acquisition',
+            'vpn': 'virtual_private_network', 'wan': 'wide_area_network', 'lan': 'local_area_network',
+            'vlan': 'virtual_local_area_network', 'nat': 'network_address_translation',
+            'pat': 'port_address_translation', 'acl': 'access_control_list',
+            'rbac': 'role_based_access_control', 'abac': 'attribute_based_access_control',
+            'mfa': 'multi_factor_authentication', '2fa': 'two_factor_authentication',
+            'sso': 'single_sign_on', 'pki': 'public_key_infrastructure',
+            'ca': 'certificate_authority', 'crl': 'certificate_revocation_list',
+            'ocsp': 'online_certificate_status_protocol', 'pem': 'privacy_enhanced_mail',
+            'der': 'distinguished_encoding_rules', 'pkcs': 'public_key_cryptography_standards',
+            'aes': 'advanced_encryption_standard', 'des': 'data_encryption_standard',
+            'rsa': 'rivest_shamir_adleman', 'dsa': 'digital_signature_algorithm',
+            'ecdsa': 'elliptic_curve_digital_signature_algorithm', 'sha': 'secure_hash_algorithm',
+            'md5': 'message_digest_5', 'hmac': 'hash_based_message_authentication_code',
+            'vm': 'virtual_machine', 'os': 'operating_system', 'cpu': 'central_processing_unit',
+            'gpu': 'graphics_processing_unit', 'ram': 'random_access_memory', 'rom': 'read_only_memory',
+            'hdd': 'hard_disk_drive', 'ssd': 'solid_state_drive', 'usb': 'universal_serial_bus',
+            'cd': 'compact_disc', 'dvd': 'digital_versatile_disc', 'blu': 'blu_ray',
+            'iso': 'international_organization_standardization', 'utf': 'unicode_transformation_format',
+            'ascii': 'american_standard_code_information_interchange', 'mime': 'multipurpose_internet_mail_extensions',
+            'json': 'javascript_object_notation', 'xml': 'extensible_markup_language',
+            'html': 'hypertext_markup_language', 'css': 'cascading_style_sheets',
+            'js': 'javascript', 'php': 'php_hypertext_preprocessor', 'asp': 'active_server_pages',
+            'jsp': 'java_server_pages'
         }
         
-        self.visibility_factors = {
-            'URL/FQDN coverage': ['url', 'fqdn', 'domain_coverage', 'web_coverage', 'site_coverage'],
-            'CMDB Asset Visibility': ['cmdb', 'asset_visibility', 'configuration_management', 'asset_inventory'],
-            'Network Zones/spans': ['network_zone', 'network_span', 'zone', 'network_segment', 'vlan', 'subnet'],
-            'IPAM Public IP Coverage': ['ipam', 'public_ip', 'ip_management', 'ip_address_management'],
-            'Geolocation': ['geolocation', 'geo_location', 'country', 'region', 'city', 'coordinates'],
-            'VPC': ['vpc', 'virtual_private_cloud', 'virtual_network', 'vnet'],
-            'Crowdstrike Agent Coverage': ['crowdstrike', 'cs_agent', 'falcon', 'falcon_sensor'],
-            '%log ingest volume': ['log_volume', 'ingest_volume', 'log_size', 'bytes_ingested', 'events_per_second']
+        extended_abbrevs = {}
+        for abbrev, full in base_abbrevs.items():
+            extended_abbrevs[abbrev] = full
+            extended_abbrevs[abbrev.upper()] = full
+            extended_abbrevs[abbrev.capitalize()] = full
+            
+            if '_' in full:
+                parts = full.split('_')
+                if len(parts) == 2:
+                    extended_abbrevs[abbrev + '_' + parts[1]] = full
+                    extended_abbrevs[parts[0] + '_' + abbrev] = full
+        
+        return extended_abbrevs
+    
+    def _build_context_graphs(self):
+        graphs = {}
+        
+        for domain, categories in self.security_taxonomy.items():
+            graph = defaultdict(set)
+            all_terms = []
+            
+            for category, terms in categories.items():
+                all_terms.extend(terms)
+                for term in terms:
+                    graph[term].add(category)
+                    graph[category].add(domain)
+                    for other_term in terms:
+                        if term != other_term:
+                            graph[term].add(other_term)
+            
+            for i, term1 in enumerate(all_terms):
+                for j, term2 in enumerate(all_terms[i+1:], i+1):
+                    similarity = SequenceMatcher(None, term1, term2).ratio()
+                    if similarity > 0.6:
+                        graph[term1].add(term2)
+                        graph[term2].add(term1)
+            
+            graphs[domain] = graph
+        
+        return graphs
+    
+    def _build_linguistic_rules(self):
+        return {
+            'prefix_rules': {
+                'un': 'negative',
+                'non': 'negative', 
+                'anti': 'opposite',
+                'pre': 'before',
+                'post': 'after',
+                'sub': 'under',
+                'super': 'above',
+                'multi': 'many',
+                'single': 'one',
+                'auto': 'automatic',
+                'semi': 'partial',
+                'pseudo': 'fake',
+                'meta': 'about'
+            },
+            'suffix_rules': {
+                'ing': 'action',
+                'ed': 'past',
+                'er': 'agent',
+                'or': 'agent',
+                'tion': 'process',
+                'sion': 'process',
+                'ment': 'result',
+                'ness': 'quality',
+                'ity': 'quality',
+                'able': 'capable',
+                'ible': 'capable',
+                'ful': 'full_of',
+                'less': 'without',
+                'ous': 'having',
+                'ive': 'tendency',
+                'al': 'relating_to',
+                'ic': 'relating_to',
+                'ly': 'manner'
+            },
+            'compound_rules': {
+                'source_destination': ['src', 'source', 'from', 'origin', 'sender'] + ['dst', 'dest', 'destination', 'to', 'target', 'recipient'],
+                'input_output': ['in', 'input', 'incoming', 'inbound', 'ingress'] + ['out', 'output', 'outgoing', 'outbound', 'egress'],
+                'start_end': ['start', 'begin', 'initial', 'first', 'open'] + ['end', 'finish', 'final', 'last', 'close'],
+                'success_failure': ['success', 'ok', 'pass', 'accept', 'allow', 'grant', 'yes'] + ['fail', 'error', 'deny', 'block', 'reject', 'no'],
+                'create_destroy': ['create', 'add', 'insert', 'new', 'make', 'build'] + ['delete', 'remove', 'destroy', 'kill', 'drop'],
+                'read_write': ['read', 'get', 'fetch', 'retrieve', 'select', 'view'] + ['write', 'set', 'put', 'update', 'modify', 'change'],
+                'public_private': ['public', 'external', 'internet', 'wan', 'outside'] + ['private', 'internal', 'intranet', 'lan', 'inside'],
+                'high_low': ['high', 'max', 'maximum', 'top', 'upper'] + ['low', 'min', 'minimum', 'bottom', 'lower']
+            }
+        }
+    
+    def _build_domain_vectors(self):
+        vectors = {}
+        vector_size = 64
+        
+        for domain, categories in self.security_taxonomy.items():
+            domain_vector = [0.0] * vector_size
+            domain_hash_base = hash(domain) % vector_size
+            domain_vector[domain_hash_base] = 1.0
+            
+            category_count = 0
+            for category, terms in categories.items():
+                category_hash = hash(category) % vector_size
+                domain_vector[category_hash] = 0.7
+                category_count += 1
+                
+                for term in terms:
+                    term_hash = hash(term) % vector_size
+                    domain_vector[term_hash] = max(domain_vector[term_hash], 0.3)
+            
+            if category_count > 0:
+                for i in range(vector_size):
+                    domain_vector[i] = domain_vector[i] / math.sqrt(category_count)
+            
+            vectors[domain] = domain_vector
+        
+        return vectors
+    
+    @lru_cache(maxsize=10000)
+    def advanced_normalize(self, text):
+        text = unicodedata.normalize('NFKD', text)
+        text = ''.join(c for c in text if not unicodedata.combining(c))
+        text = text.lower()
+        text = re.sub(r'[^\w\s]', '_', text)
+        text = re.sub(r'_+', '_', text)
+        text = text.strip('_')
+        return text
+    
+    def ultra_stem(self, word):
+        word = word.lower().strip()
+        
+        if word in self.abbreviation_engine:
+            return self.abbreviation_engine[word]
+        
+        original_word = word
+        
+        for prefix, meaning in self.linguistic_rules['prefix_rules'].items():
+            if word.startswith(prefix) and len(word) > len(prefix) + 2:
+                word = word[len(prefix):]
+                break
+        
+        for suffix, meaning in self.linguistic_rules['suffix_rules'].items():
+            if word.endswith(suffix) and len(word) > len(suffix) + 2:
+                stem = word[:-len(suffix)]
+                if len(stem) >= 3:
+                    word = stem
+                break
+        
+        if word != original_word:
+            return word
+        
+        vowels = 'aeiou'
+        if len(word) > 6:
+            compressed = ''.join(c for i, c in enumerate(word) if i == 0 or c not in vowels or word[i-1] in vowels)
+            if len(compressed) >= 4:
+                return compressed
+        
+        return word
+    
+    def extract_semantic_components(self, text):
+        components = {
+            'tokens': [],
+            'patterns': [],
+            'domains': [],
+            'embeddings': [],
+            'context': [],
+            'variations': []
+        }
+        
+        normalized = self.advanced_normalize(text)
+        tokens = re.split(r'[_\s]+', normalized)
+        components['tokens'] = [self.ultra_stem(token) for token in tokens if len(token) > 1]
+        
+        for pattern_type, patterns in self.pattern_library.items():
+            for pattern in patterns:
+                if re.search(pattern, text, re.IGNORECASE):
+                    components['patterns'].append(pattern_type)
+        
+        for domain in self.security_taxonomy:
+            if any(token in self.security_taxonomy[domain].get(cat, []) 
+                   for cat in self.security_taxonomy[domain] 
+                   for token in components['tokens']):
+                components['domains'].append(domain)
+        
+        for token in components['tokens']:
+            if token in self.semantic_embeddings:
+                components['embeddings'].append(self.semantic_embeddings[token])
+        
+        for rule_type, rule_groups in self.linguistic_rules['compound_rules'].items():
+            mid = len(rule_groups) // 2
+            group1, group2 = rule_groups[:mid], rule_groups[mid:]
+            if (any(g in components['tokens'] for g in group1) or 
+                any(g in components['tokens'] for g in group2)):
+                components['context'].append(rule_type)
+        
+        for token in components['tokens']:
+            components['variations'].extend(self._generate_variations(token))
+        
+        return components
+    
+    def calculate_multidimensional_similarity(self, text1, text2):
+        cache_key = hashlib.md5(f"{text1}|{text2}".encode()).hexdigest()
+        if cache_key in self.similarity_cache:
+            return self.similarity_cache[cache_key]
+        
+        comp1 = self.extract_semantic_components(text1)
+        comp2 = self.extract_semantic_components(text2)
+        
+        similarities = {}
+        
+        similarities['token_overlap'] = self._jaccard_similarity(set(comp1['tokens']), set(comp2['tokens']))
+        
+        similarities['pattern_match'] = self._jaccard_similarity(set(comp1['patterns']), set(comp2['patterns']))
+        
+        similarities['domain_alignment'] = self._jaccard_similarity(set(comp1['domains']), set(comp2['domains']))
+        
+        if comp1['embeddings'] and comp2['embeddings']:
+            similarities['embedding_cosine'] = self._cosine_similarity_multi(comp1['embeddings'], comp2['embeddings'])
+        else:
+            similarities['embedding_cosine'] = 0.0
+        
+        similarities['context_match'] = self._jaccard_similarity(set(comp1['context']), set(comp2['context']))
+        
+        similarities['variation_overlap'] = self._jaccard_similarity(set(comp1['variations']), set(comp2['variations']))
+        
+        similarities['edit_distance'] = SequenceMatcher(None, self.advanced_normalize(text1), self.advanced_normalize(text2)).ratio()
+        
+        similarities['abbreviation'] = self._abbreviation_similarity(text1, text2)
+        
+        similarities['phonetic'] = self._phonetic_similarity(text1, text2)
+        
+        similarities['structural'] = self._structural_similarity(text1, text2)
+        
+        similarities['semantic_graph'] = self._graph_similarity(comp1['tokens'], comp2['tokens'])
+        
+        weights = {
+            'token_overlap': 0.15,
+            'pattern_match': 0.12,
+            'domain_alignment': 0.18,
+            'embedding_cosine': 0.16,
+            'context_match': 0.10,
+            'variation_overlap': 0.08,
+            'edit_distance': 0.07,
+            'abbreviation': 0.06,
+            'phonetic': 0.03,
+            'structural': 0.03,
+            'semantic_graph': 0.02
+        }
+        
+        final_score = sum(similarities[key] * weights[key] for key in similarities if key in weights)
+        
+        result = {
+            'final_score': final_score,
+            'component_scores': similarities,
+            'match_evidence': self._generate_match_evidence(comp1, comp2, similarities)
+        }
+        
+        self.similarity_cache[cache_key] = result
+        return result
+    
+    def _jaccard_similarity(self, set1, set2):
+        if not set1 and not set2:
+            return 1.0
+        if not set1 or not set2:
+            return 0.0
+        return len(set1.intersection(set2)) / len(set1.union(set2))
+    
+    def _cosine_similarity_multi(self, embeddings1, embeddings2):
+        if not embeddings1 or not embeddings2:
+            return 0.0
+        
+        max_sim = 0.0
+        for emb1 in embeddings1:
+            for emb2 in embeddings2:
+                sim = self._cosine_similarity(emb1, emb2)
+                max_sim = max(max_sim, sim)
+        
+        return max_sim
+    
+    def _cosine_similarity(self, vec1, vec2):
+        dot_product = sum(a * b for a, b in zip(vec1, vec2))
+        magnitude1 = math.sqrt(sum(a * a for a in vec1))
+        magnitude2 = math.sqrt(sum(a * a for a in vec2))
+        
+        if magnitude1 == 0 or magnitude2 == 0:
+            return 0.0
+        
+        return dot_product / (magnitude1 * magnitude2)
+    
+    def _abbreviation_similarity(self, text1, text2):
+        expanded1 = text1
+        expanded2 = text2
+        
+        for abbrev, full in self.abbreviation_engine.items():
+            expanded1 = re.sub(r'\b' + re.escape(abbrev) + r'\b', full, expanded1, flags=re.IGNORECASE)
+            expanded2 = re.sub(r'\b' + re.escape(abbrev) + r'\b', full, expanded2, flags=re.IGNORECASE)
+        
+        return SequenceMatcher(None, expanded1.lower(), expanded2.lower()).ratio()
+    
+    def _phonetic_similarity(self, text1, text2):
+        def soundex(word):
+            if not word:
+                return ""
+            
+            word = word.upper()
+            soundex_code = word[0]
+            
+            mapping = {'BFPV': '1', 'CGJKQSXZ': '2', 'DT': '3', 'L': '4', 'MN': '5', 'R': '6'}
+            
+            for char in word[1:]:
+                for chars, code in mapping.items():
+                    if char in chars:
+                        if soundex_code[-1] != code:
+                            soundex_code += code
+                        break
+            
+            soundex_code = soundex_code.ljust(4, '0')[:4]
+            return soundex_code
+        
+        words1 = re.findall(r'\w+', text1)
+        words2 = re.findall(r'\w+', text2)
+        
+        if not words1 or not words2:
+            return 0.0
+        
+        matches = 0
+        for w1 in words1:
+            for w2 in words2:
+                if soundex(w1) == soundex(w2):
+                    matches += 1
+                    break
+        
+        return matches / max(len(words1), len(words2))
+    
+    def _structural_similarity(self, text1, text2):
+        def get_structure(text):
+            structure = []
+            for char in text:
+                if char.isalpha():
+                    structure.append('L')
+                elif char.isdigit():
+                    structure.append('D')
+                elif char in '_-':
+                    structure.append('S')
+                else:
+                    structure.append('O')
+            return ''.join(structure)
+        
+        struct1 = get_structure(text1)
+        struct2 = get_structure(text2)
+        
+        return SequenceMatcher(None, struct1, struct2).ratio()
+    
+    def _graph_similarity(self, tokens1, tokens2):
+        if not tokens1 or not tokens2:
+            return 0.0
+        
+        connected_pairs = 0
+        total_pairs = 0
+        
+        for token1 in tokens1:
+            for token2 in tokens2:
+                total_pairs += 1
+                for domain_graph in self.context_graphs.values():
+                    if token1 in domain_graph and token2 in domain_graph[token1]:
+                        connected_pairs += 1
+                        break
+        
+        return connected_pairs / total_pairs if total_pairs > 0 else 0.0
+    
+    def _generate_match_evidence(self, comp1, comp2, similarities):
+        evidence = []
+        
+        if similarities['token_overlap'] > 0.3:
+            common_tokens = set(comp1['tokens']).intersection(set(comp2['tokens']))
+            evidence.append(f"Common semantic tokens: {', '.join(list(common_tokens)[:3])}")
+        
+        if similarities['pattern_match'] > 0.5:
+            common_patterns = set(comp1['patterns']).intersection(set(comp2['patterns']))
+            evidence.append(f"Matching patterns: {', '.join(list(common_patterns)[:2])}")
+        
+        if similarities['domain_alignment'] > 0.4:
+            common_domains = set(comp1['domains']).intersection(set(comp2['domains']))
+            evidence.append(f"Same security domains: {', '.join(list(common_domains)[:2])}")
+        
+        if similarities['embedding_cosine'] > 0.6:
+            evidence.append("High semantic vector similarity")
+        
+        if similarities['abbreviation'] > 0.7:
+            evidence.append("Abbreviation expansion match")
+        
+        return evidence
+    
+    def ultra_intelligent_match(self, target, candidates, threshold=0.25):
+        results = []
+        
+        for candidate in candidates:
+            similarity_data = self.calculate_multidimensional_similarity(target, candidate)
+            
+            if similarity_data['final_score'] >= threshold:
+                results.append({
+                    'candidate': candidate,
+                    'confidence': similarity_data['final_score'],
+                    'evidence': similarity_data['match_evidence'],
+                    'breakdown': similarity_data['component_scores'],
+                    'match_type': 'ultra_semantic' if similarity_data['final_score'] > 0.6 else 'semantic'
+                })
+        
+        return sorted(results, key=lambda x: x['confidence'], reverse=True)
+
+class DataDrivenMetricsRecommender:
+    def __init__(self, mapping_results_file: str = "security_mapping_results.json", original_data_file: str = "new.json"):
+        self.mapping_results_file = mapping_results_file
+        self.original_data_file = original_data_file
+        self.mapping_data = None
+        self.original_data = None
+        self.nlp_matcher = UltraIntelligentNLPMatcher()
+        self.load_results()
+
+        self.metric_requirements = {
+            'Network': {
+                'Firewall Traffic': {
+                    'blocked_traffic_rate': {
+                        'required_columns': ['action', 'status', 'result', 'verdict', 'decision'],
+                        'optional_columns': ['source_ip', 'dest_ip', 'timestamp', 'rule_id', 'policy'],
+                        'description': 'Calculate percentage of blocked vs allowed traffic',
+                        'business_value': 'Measure firewall effectiveness and threat blocking capability'
+                    },
+                    'top_threat_sources': {
+                        'required_columns': ['source_ip', 'src_addr', 'client_ip', 'origin_ip'],
+                        'optional_columns': ['country', 'threat_score', 'timestamp', 'action', 'reputation'],
+                        'description': 'Identify most active malicious source IPs and geographic origins',
+                        'business_value': 'Focus threat intelligence and blocking efforts on highest risk sources'
+                    },
+                    'policy_rule_effectiveness': {
+                        'required_columns': ['rule_id', 'rule_name', 'policy_id'],
+                        'optional_columns': ['action', 'hit_count', 'timestamp', 'bytes', 'packets'],
+                        'description': 'Measure which firewall rules are most/least used and effective',
+                        'business_value': 'Optimize firewall rule sets and remove unused policies'
+                    },
+                    'attack_pattern_analysis': {
+                        'required_columns': ['dest_port', 'protocol', 'action'],
+                        'optional_columns': ['source_ip', 'dest_ip', 'timestamp', 'threat_type', 'signature'],
+                        'description': 'Analyze attack patterns by target ports and protocols',
+                        'business_value': 'Understand attack vectors and strengthen defenses'
+                    }
+                },
+                'IDS/IPS': {
+                    'alert_volume_trends': {
+                        'required_columns': ['timestamp', 'alert_id', 'event_id'],
+                        'optional_columns': ['severity', 'signature', 'source_ip', 'rule_id'],
+                        'description': 'Track security alert volume and trends over time',
+                        'business_value': 'Identify attack campaigns and security posture changes'
+                    },
+                    'critical_threat_detection': {
+                        'required_columns': ['severity', 'priority', 'criticality'],
+                        'optional_columns': ['signature', 'attack_type', 'dest_ip', 'threat_category'],
+                        'description': 'Count and categorize high-severity security alerts',
+                        'business_value': 'Prioritize response to most critical threats'
+                    },
+                    'false_positive_analysis': {
+                        'required_columns': ['alert_status', 'analyst_action', 'verification'],
+                        'optional_columns': ['signature', 'rule_id', 'confidence', 'timestamp'],
+                        'description': 'Calculate false positive rates and signature accuracy',
+                        'business_value': 'Tune detection rules and reduce alert fatigue'
+                    },
+                    'threat_actor_attribution': {
+                        'required_columns': ['threat_actor', 'campaign', 'attribution'],
+                        'optional_columns': ['ttp', 'ioc', 'malware_family', 'geo_location'],
+                        'description': 'Track threats by known actor groups and campaigns',
+                        'business_value': 'Understand adversary tactics and improve defense strategies'
+                    }
+                },
+                'DNS': {
+                    'malicious_domain_activity': {
+                        'required_columns': ['domain', 'query_name', 'fqdn'],
+                        'optional_columns': ['response_code', 'client_ip', 'threat_category', 'reputation'],
+                        'description': 'Detect queries to known malicious or suspicious domains',
+                        'business_value': 'Identify compromised systems and prevent C2 communication'
+                    },
+                    'dns_tunneling_detection': {
+                        'required_columns': ['query_length', 'domain', 'subdomain_count'],
+                        'optional_columns': ['entropy_score', 'query_type', 'response_size', 'frequency'],
+                        'description': 'Detect potential DNS tunneling and data exfiltration',
+                        'business_value': 'Prevent covert data exfiltration channels'
+                    },
+                    'dga_domain_detection': {
+                        'required_columns': ['domain', 'entropy', 'randomness_score'],
+                        'optional_columns': ['length', 'consonant_ratio', 'vowel_ratio', 'creation_date'],
+                        'description': 'Identify algorithmically generated domains',
+                        'business_value': 'Detect malware using domain generation algorithms'
+                    }
+                }
+            },
+            'Endpoint': {
+                'OS logs (WinEVT, Linux syslog)': {
+                    'failed_login_attempts': {
+                        'required_columns': ['event_id', 'logon_type', 'auth_result'],
+                        'optional_columns': ['username', 'source_ip', 'workstation', 'failure_reason'],
+                        'description': 'Count failed authentication attempts and patterns',
+                        'business_value': 'Detect brute force attacks and compromised accounts'
+                    },
+                    'privilege_escalation_events': {
+                        'required_columns': ['event_id', 'process_name', 'privilege_level'],
+                        'optional_columns': ['username', 'command_line', 'parent_process', 'token_elevation'],
+                        'description': 'Detect privilege escalation attempts and UAC bypasses',
+                        'business_value': 'Identify insider threats and advanced persistent threats'
+                    },
+                    'account_lifecycle_tracking': {
+                        'required_columns': ['event_id', 'account_name', 'action_type'],
+                        'optional_columns': ['target_user', 'group_membership', 'timestamp', 'initiator'],
+                        'description': 'Track user account creation, modification, and deletion',
+                        'business_value': 'Monitor identity lifecycle and detect unauthorized changes'
+                    }
+                },
+                'EDR': {
+                    'malware_detection_rate': {
+                        'required_columns': ['threat_type', 'detection_time', 'malware_family'],
+                        'optional_columns': ['severity', 'hostname', 'file_hash', 'confidence_score'],
+                        'description': 'Calculate malware detection effectiveness and response times',
+                        'business_value': 'Measure endpoint protection effectiveness and tune detection'
+                    },
+                    'process_anomaly_detection': {
+                        'required_columns': ['process_name', 'command_line', 'process_id'],
+                        'optional_columns': ['parent_process', 'user', 'network_connections', 'file_operations'],
+                        'description': 'Identify unusual process behavior and living-off-the-land attacks',
+                        'business_value': 'Detect advanced persistent threats and fileless attacks'
+                    },
+                    'lateral_movement_detection': {
+                        'required_columns': ['source_host', 'dest_host', 'connection_type'],
+                        'optional_columns': ['username', 'protocol', 'auth_method', 'timestamp'],
+                        'description': 'Detect lateral movement patterns across endpoints',
+                        'business_value': 'Identify compromised networks and contain breaches'
+                    }
+                }
+            },
+            'Identity_Authentication': {
+                'Authentication attempts': {
+                    'authentication_success_rate': {
+                        'required_columns': ['auth_result', 'auth_status', 'login_result'],
+                        'optional_columns': ['username', 'source_ip', 'application', 'auth_method'],
+                        'description': 'Calculate authentication success vs failure rates',
+                        'business_value': 'Monitor authentication system health and user experience'
+                    },
+                    'suspicious_login_patterns': {
+                        'required_columns': ['username', 'timestamp', 'source_ip'],
+                        'optional_columns': ['geolocation', 'user_agent', 'mfa_status', 'device_id'],
+                        'description': 'Detect unusual login patterns by time, location, and frequency',
+                        'business_value': 'Identify compromised accounts and insider threats'
+                    },
+                    'mfa_adoption_effectiveness': {
+                        'required_columns': ['mfa_status', 'mfa_enabled', 'second_factor'],
+                        'optional_columns': ['username', 'mfa_method', 'success_rate', 'bypass_reason'],
+                        'description': 'Track multi-factor authentication adoption and effectiveness',
+                        'business_value': 'Improve security posture and reduce account takeovers'
+                    }
+                }
+            },
+            'Application': {
+                'Web Logs (HTTP Access)': {
+                    'application_error_rate': {
+                        'required_columns': ['status_code', 'response_code', 'http_status'],
+                        'optional_columns': ['url', 'method', 'response_time', 'error_message'],
+                        'description': 'Calculate 4xx/5xx error rates and application health',
+                        'business_value': 'Monitor application availability and user experience'
+                    },
+                    'attack_attempt_detection': {
+                        'required_columns': ['url', 'user_agent', 'request_body'],
+                        'optional_columns': ['payload', 'source_ip', 'method', 'sql_injection_score'],
+                        'description': 'Detect web attacks like SQLi, XSS, and injection attempts',
+                        'business_value': 'Measure application security posture and attack frequency'
+                    },
+                    'bot_traffic_analysis': {
+                        'required_columns': ['user_agent', 'request_pattern', 'behavior_score'],
+                        'optional_columns': ['source_ip', 'frequency', 'javascript_execution', 'captcha_result'],
+                        'description': 'Identify and categorize bot traffic vs legitimate users',
+                        'business_value': 'Optimize performance and prevent automated attacks'
+                    }
+                }
+            },
+            'Cloud': {
+                'Cloud Event': {
+                    'unauthorized_access_attempts': {
+                        'required_columns': ['event_name', 'error_code', 'response_elements'],
+                        'optional_columns': ['user_identity', 'source_ip', 'user_agent', 'aws_region'],
+                        'description': 'Detect failed cloud resource access attempts',
+                        'business_value': 'Monitor cloud security posture and prevent breaches'
+                    },
+                    'privilege_changes': {
+                        'required_columns': ['event_name', 'user_identity', 'resource_arn'],
+                        'optional_columns': ['policy_document', 'timestamp', 'session_context', 'mfa_authenticated'],
+                        'description': 'Track privilege and permission changes in cloud environments',
+                        'business_value': 'Monitor for privilege escalation and insider threats'
+                    },
+                    'resource_configuration_drift': {
+                        'required_columns': ['resource_type', 'configuration_change', 'compliance_status'],
+                        'optional_columns': ['resource_id', 'change_initiator', 'previous_config', 'security_impact'],
+                        'description': 'Detect unauthorized configuration changes',
+                        'business_value': 'Maintain security baselines and compliance'
+                    }
+                }
+            }
         }
 
     def load_results(self):
-        import os
-        
-        current_dir = os.getcwd()
-        file_path = os.path.abspath(self.results_file)
-        file_exists = os.path.exists(self.results_file)
-        
-        print(f"Current directory: {current_dir}")
-        print(f"Looking for file: {self.results_file}")
-        print(f"Full path: {file_path}")
-        print(f"File exists: {file_exists}")
-        
-        files_in_dir = [f for f in os.listdir('.') if f.endswith('.json')]
-        print(f"JSON files in current directory: {files_in_dir}")
-        
         try:
-            with open(self.results_file, 'r') as f:
-                self.data = json.load(f)
-            logger.info(f"Successfully loaded results from {self.results_file}")
-        except FileNotFoundError as e:
-            logger.error(f"File not found: {self.results_file}")
-            logger.error(f"Available JSON files: {files_in_dir}")
-            raise
+            with open(self.mapping_results_file, 'r') as f:
+                self.mapping_data = json.load(f)
+            logger.info(f"Loaded mapping results from {self.mapping_results_file}")
+            
+            with open(self.original_data_file, 'r') as f:
+                self.original_data = json.load(f)
+            logger.info(f"Loaded original data from {self.original_data_file}")
+            
         except Exception as e:
             logger.error(f"Error loading results: {e}")
             raise
 
-    def extract_all_keys(self) -> Dict[str, List[Dict]]:
-        all_keys = {
-            'dataset_names': [],
-            'table_names': [],
-            'column_names': []
-        }
-        
-        if not self.data or 'datasets' not in self.data:
-            logger.warning("No datasets found in data structure")
-            return all_keys
-        
-        for dataset_id in self.data['datasets'].keys():
-            all_keys['dataset_names'].append({
-                'name': dataset_id,
-                'dataset_id': dataset_id,
-                'type': 'dataset'
-            })
-        
-        for dataset_id, dataset_info in self.data['datasets'].items():
-            if isinstance(dataset_info, dict) and 'tables' in dataset_info:
-                for table_id, table_info in dataset_info['tables'].items():
-                    all_keys['table_names'].append({
-                        'name': table_id,
-                        'dataset_id': dataset_id,
-                        'table_id': table_id,
-                        'type': 'table'
-                    })
-                    
-                    if isinstance(table_info, dict) and 'columns' in table_info:
-                        columns = table_info['columns']
-                        if isinstance(columns, list):
-                            for column in columns:
-                                if isinstance(column, dict) and 'name' in column:
-                                    all_keys['column_names'].append({
-                                        'name': column['name'],
-                                        'dataset_id': dataset_id,
-                                        'table_id': table_id,
-                                        'column_type': column.get('type', 'unknown'),
-                                        'column_mode': column.get('mode', 'unknown'),
-                                        'type': 'column'
-                                    })
-        
-        return all_keys
-
-    def find_matches(self, key_name: str, requirement_terms: List[str]) -> bool:
-        key_lower = key_name.lower()
-        
-        for term in requirement_terms:
-            term_lower = term.lower()
-            if term_lower == key_lower or term_lower in key_lower:
-                return True
-        return False
-
-    def map_keys_to_requirements(self) -> Dict[str, Any]:
-        all_keys = self.extract_all_keys()
-        
-        results = {
-            'matches': {
-                'log_types': {},
-                'data_fields': {},
-                'visibility_factors': {}
-            },
-            'unmapped': {
-                'dataset_names': [],
-                'table_names': [],
-                'column_names': []
-            },
-            'summary': {
-                'total_keys': {},
-                'mapped_keys': {},
-                'unmapped_keys': {},
-                'mapping_rate': {}
-            }
-        }
-        
-        all_mapped_keys = {
-            'dataset_names': set(),
-            'table_names': set(), 
-            'column_names': set()
-        }
-        
-        for role, requirements in self.security_requirements.items():
-            results['matches']['log_types'][role] = {}
+    def get_table_size_info(self, dataset_id: str, table_id: str) -> Dict[str, Any]:
+        if ('datasets' in self.original_data and 
+            dataset_id in self.original_data['datasets'] and
+            'tables' in self.original_data['datasets'][dataset_id] and
+            table_id in self.original_data['datasets'][dataset_id]['tables']):
             
-            for log_type, terms in requirements.items():
-                results['matches']['log_types'][role][log_type] = {
-                    'dataset_names': [],
-                    'table_names': [],
-                    'column_names': []
-                }
+            table_info = self.original_data['datasets'][dataset_id]['tables'][table_id]
+            
+            size_info = {
+                'row_count': 0,
+                'size_bytes': 0,
+                'size_category': 'unknown'
+            }
+            
+            if 'table_info' in table_info:
+                table_metadata = table_info['table_info']
                 
-                for key_type in ['dataset_names', 'table_names', 'column_names']:
-                    for key_info in all_keys[key_type]:
-                        if self.find_matches(key_info['name'], terms):
-                            results['matches']['log_types'][role][log_type][key_type].append(key_info)
-                            all_mapped_keys[key_type].add(key_info['name'])
-        
-        for field_name, terms in self.data_fields.items():
-            results['matches']['data_fields'][field_name] = {
-                'dataset_names': [],
-                'table_names': [],
-                'column_names': []
-            }
+                for field in ['num_rows', 'row_count', 'rows', 'numRows']:
+                    if field in table_metadata and table_metadata[field] is not None:
+                        try:
+                            size_info['row_count'] = int(table_metadata[field])
+                            break
+                        except (ValueError, TypeError):
+                            continue
+                
+                for field in ['num_bytes', 'size_bytes', 'bytes', 'numBytes']:
+                    if field in table_metadata and table_metadata[field] is not None:
+                        try:
+                            size_info['size_bytes'] = int(table_metadata[field])
+                            break
+                        except (ValueError, TypeError):
+                            continue
             
-            for key_type in ['dataset_names', 'table_names', 'column_names']:
-                for key_info in all_keys[key_type]:
-                    if self.find_matches(key_info['name'], terms):
-                        results['matches']['data_fields'][field_name][key_type].append(key_info)
-                        all_mapped_keys[key_type].add(key_info['name'])
-        
-        for factor_name, terms in self.visibility_factors.items():
-            results['matches']['visibility_factors'][factor_name] = {
-                'dataset_names': [],
-                'table_names': [],
-                'column_names': []
-            }
+            if size_info['row_count'] == 0 and 'sample_data' in table_info:
+                sample_count = len(table_info['sample_data']) if table_info['sample_data'] else 0
+                if sample_count > 0:
+                    size_info['row_count'] = sample_count * 1000
             
-            for key_type in ['dataset_names', 'table_names', 'column_names']:
-                for key_info in all_keys[key_type]:
-                    if self.find_matches(key_info['name'], terms):
-                        results['matches']['visibility_factors'][factor_name][key_type].append(key_info)
-                        all_mapped_keys[key_type].add(key_info['name'])
-        
-        for key_type in ['dataset_names', 'table_names', 'column_names']:
-            for key_info in all_keys[key_type]:
-                if key_info['name'] not in all_mapped_keys[key_type]:
-                    results['unmapped'][key_type].append(key_info)
-        
-        for key_type in ['dataset_names', 'table_names', 'column_names']:
-            total = len(all_keys[key_type])
-            unmapped = len(results['unmapped'][key_type])
-            mapped = total - unmapped
+            if size_info['row_count'] > 100000000:
+                size_info['size_category'] = 'ultra_large'
+                size_info['priority_score'] = 6
+            elif size_info['row_count'] > 10000000:
+                size_info['size_category'] = 'very_large'
+                size_info['priority_score'] = 5
+            elif size_info['row_count'] > 1000000:
+                size_info['size_category'] = 'large'
+                size_info['priority_score'] = 4
+            elif size_info['row_count'] > 100000:
+                size_info['size_category'] = 'medium'
+                size_info['priority_score'] = 3
+            elif size_info['row_count'] > 10000:
+                size_info['size_category'] = 'small'
+                size_info['priority_score'] = 2
+            elif size_info['row_count'] > 0:
+                size_info['size_category'] = 'very_small'
+                size_info['priority_score'] = 1
+            else:
+                size_info['size_category'] = 'empty'
+                size_info['priority_score'] = 0
             
-            results['summary']['total_keys'][key_type] = total
-            results['summary']['mapped_keys'][key_type] = mapped
-            results['summary']['unmapped_keys'][key_type] = unmapped
-            results['summary']['mapping_rate'][key_type] = (mapped / total * 100) if total > 0 else 0
+            return size_info
         
-        return results
+        return {'row_count': 0, 'size_bytes': 0, 'size_category': 'unknown', 'priority_score': 0}
 
-    def generate_report(self) -> str:
-        mapping_results = self.map_keys_to_requirements()
+    def get_available_data_sources(self) -> Dict[str, Dict[str, Any]]:
+        available_sources = {}
         
-        report = []
-        report.append("=" * 80)
-        report.append("CYBERSECURITY LOG VISIBILITY - COMPREHENSIVE KEY MAPPING REPORT")
-        report.append("=" * 80)
-        report.append("")
-        
-        report.append("EXECUTIVE SUMMARY:")
-        report.append("-" * 40)
-        total_all = sum(mapping_results['summary']['total_keys'].values())
-        mapped_all = sum(mapping_results['summary']['mapped_keys'].values())
-        overall_rate = (mapped_all / total_all * 100) if total_all > 0 else 0
-        
-        report.append(f"Overall Mapping Rate: {mapped_all}/{total_all} ({overall_rate:.1f}%)")
-        report.append("")
-        
-        for key_type in ['dataset_names', 'table_names', 'column_names']:
-            total = mapping_results['summary']['total_keys'][key_type]
-            mapped = mapping_results['summary']['mapped_keys'][key_type]
-            rate = mapping_results['summary']['mapping_rate'][key_type]
-            report.append(f"{key_type.replace('_', ' ').title()}: {mapped}/{total} ({rate:.1f}%)")
-        
-        report.append("")
-        
-        report.append("SECURITY ROLE COVERAGE:")
-        report.append("-" * 40)
-        
-        for role, requirements in mapping_results['matches']['log_types'].items():
-            report.append(f"\n{role.upper()}:")
+        for role, requirements in self.mapping_data['matches']['log_types'].items():
+            available_sources[role] = {}
             
             for log_type, matches in requirements.items():
-                total_matches = sum(len(matches[kt]) for kt in ['dataset_names', 'table_names', 'column_names'])
-                
-                if total_matches > 0:
-                    report.append(f"  ✓ {log_type}: {total_matches} matches")
+                if matches['table_names']:
+                    tables_info = []
                     
-                    for key_type in ['dataset_names', 'table_names', 'column_names']:
-                        if matches[key_type]:
-                            sample_names = [m['name'] for m in matches[key_type][:3]]
-                            if len(matches[key_type]) > 3:
-                                sample_names.append(f"...and {len(matches[key_type])-3} more")
-                            report.append(f"    {key_type}: {', '.join(sample_names)}")
-                else:
-                    report.append(f"  ✗ {log_type}: No matches found")
+                    for table_match in matches['table_names']:
+                        table_columns = []
+                        for column_match in matches['column_names']:
+                            if (column_match['dataset_id'] == table_match['dataset_id'] and 
+                                column_match['table_id'] == table_match['table_id']):
+                                table_columns.append(column_match['name'])
+                        
+                        size_info = self.get_table_size_info(table_match['dataset_id'], table_match['table_id'])
+                        
+                        tables_info.append({
+                            'table_name': table_match['name'],
+                            'dataset': table_match['dataset_id'],
+                            'columns': table_columns,
+                            'row_count': size_info['row_count'],
+                            'size_bytes': size_info['size_bytes'],
+                            'size_category': size_info['size_category'],
+                            'size_priority_score': size_info['priority_score']
+                        })
+                    
+                    tables_info.sort(key=lambda x: x['size_priority_score'], reverse=True)
+                    
+                    available_sources[role][log_type] = {
+                        'tables': tables_info,
+                        'total_columns': len(matches['column_names'])
+                    }
         
-        report.append("")
-        report.append("")
-        report.append("DATA FIELDS COVERAGE:")
-        report.append("-" * 40)
-        
-        for field_name, matches in mapping_results['matches']['data_fields'].items():
-            total_matches = sum(len(matches[kt]) for kt in ['dataset_names', 'table_names', 'column_names'])
-            
-            if total_matches > 0:
-                report.append(f"✓ {field_name}: {total_matches} matches")
-                for key_type in ['dataset_names', 'table_names', 'column_names']:
-                    if matches[key_type]:
-                        sample_names = [m['name'] for m in matches[key_type][:3]]
-                        if len(matches[key_type]) > 3:
-                            sample_names.append(f"...and {len(matches[key_type])-3} more")
-                        report.append(f"  {key_type}: {', '.join(sample_names)}")
-            else:
-                report.append(f"✗ {field_name}: No matches found")
-        
-        report.append("")
-        report.append("")
-        report.append("VISIBILITY FACTORS COVERAGE:")
-        report.append("-" * 40)
-        
-        for factor_name, matches in mapping_results['matches']['visibility_factors'].items():
-            total_matches = sum(len(matches[kt]) for kt in ['dataset_names', 'table_names', 'column_names'])
-            
-            if total_matches > 0:
-                report.append(f"✓ {factor_name}: {total_matches} matches")
-                for key_type in ['dataset_names', 'table_names', 'column_names']:
-                    if matches[key_type]:
-                        sample_names = [m['name'] for m in matches[key_type][:3]]
-                        if len(matches[key_type]) > 3:
-                            sample_names.append(f"...and {len(matches[key_type])-3} more")
-                        report.append(f"  {key_type}: {', '.join(sample_names)}")
-            else:
-                report.append(f"✗ {factor_name}: No matches found")
-        
-        report.append("")
-        report.append("")
-        report.append("GAP ANALYSIS - UNMAPPED KEYS:")
-        report.append("-" * 40)
-        
-        for key_type in ['dataset_names', 'table_names', 'column_names']:
-            unmapped = mapping_results['unmapped'][key_type]
-            if unmapped:
-                report.append("")
-                report.append(f"Unmapped {key_type}:")
-                for key_info in unmapped[:10]:
-                    location = f"{key_info.get('dataset_id', '')}"
-                    if key_info.get('table_id'):
-                        location += f".{key_info['table_id']}"
-                    report.append(f"  - {key_info['name']} ({location})")
-                
-                if len(unmapped) > 10:
-                    report.append(f"  ... and {len(unmapped)-10} more unmapped {key_type}")
-        
-        return "\n".join(report)
+        return available_sources
 
-    def save_detailed_results(self, output_file: str):
-        mapping_results = self.map_keys_to_requirements()
+    def map_metrics_to_data(self) -> Dict[str, List[Dict[str, Any]]]:
+        available_sources = self.get_available_data_sources()
+        metric_recommendations = {}
+        
+        for role, log_types in available_sources.items():
+            metric_recommendations[role] = []
+            
+            for log_type, data_info in log_types.items():
+                if role in self.metric_requirements and log_type in self.metric_requirements[role]:
+                    available_metrics = self.metric_requirements[role][log_type]
+                    
+                    for metric_name, metric_info in available_metrics.items():
+                        for table_info in data_info['tables']:
+                            table_columns = [col.lower() for col in table_info['columns']]
+                            
+                            required_matches = []
+                            for req_col in metric_info['required_columns']:
+                                ultra_results = self.nlp_matcher.ultra_intelligent_match(req_col, table_columns, threshold=0.2)
+                                
+                                all_matches = []
+                                match_details = {}
+                                
+                                for result in ultra_results:
+                                    candidate = result['candidate']
+                                    all_matches.append(candidate)
+                                    match_details[candidate] = {
+                                        'type': result['match_type'],
+                                        'confidence': result['confidence'],
+                                        'evidence': result['evidence'],
+                                        'breakdown': result['breakdown']
+                                    }
+                                
+                                if all_matches:
+                                    best_confidence = max(match_details[match]['confidence'] for match in all_matches)
+                                    primary_match_type = max(match_details.items(), key=lambda x: x[1]['confidence'])[1]['type']
+                                    
+                                    required_matches.append({
+                                        'required': req_col,
+                                        'available': all_matches,
+                                        'match_type': primary_match_type,
+                                        'confidence': best_confidence,
+                                        'details': match_details
+                                    })
+                            
+                            optional_matches = []
+                            for opt_col in metric_info['optional_columns']:
+                                ultra_results = self.nlp_matcher.ultra_intelligent_match(opt_col, table_columns, threshold=0.15)
+                                
+                                all_matches = []
+                                match_details = {}
+                                
+                                for result in ultra_results:
+                                    candidate = result['candidate']
+                                    all_matches.append(candidate)
+                                    match_details[candidate] = {
+                                        'type': result['match_type'],
+                                        'confidence': result['confidence'],
+                                        'evidence': result['evidence'],
+                                        'breakdown': result['breakdown']
+                                    }
+                                
+                                if all_matches:
+                                    best_confidence = max(match_details[match]['confidence'] for match in all_matches)
+                                    primary_match_type = max(match_details.items(), key=lambda x: x[1]['confidence'])[1]['type']
+                                    
+                                    optional_matches.append({
+                                        'optional': opt_col,
+                                        'available': all_matches,
+                                        'match_type': primary_match_type,
+                                        'confidence': best_confidence,
+                                        'details': match_details
+                                    })
+                            
+                            required_score = 0.0
+                            if metric_info['required_columns']:
+                                weighted_matches = sum(match['confidence'] for match in required_matches)
+                                required_score = weighted_matches / len(metric_info['required_columns'])
+                                
+                                ultra_semantic_boost = sum(0.15 for match in required_matches if match['match_type'] == 'ultra_semantic')
+                                required_score = min(required_score + ultra_semantic_boost, 1.0)
+                            else:
+                                required_score = 1.0
+                            
+                            optional_score = 0.0
+                            if metric_info['optional_columns']:
+                                weighted_matches = sum(match['confidence'] for match in optional_matches)
+                                optional_score = weighted_matches / len(metric_info['optional_columns'])
+                                
+                                ultra_semantic_boost = sum(0.1 for match in optional_matches if match['match_type'] == 'ultra_semantic')
+                                optional_score = min(optional_score + ultra_semantic_boost, 1.0)
+                            
+                            base_feasibility = (required_score * 0.85) + (optional_score * 0.15)
+                            
+                            size_multiplier = 1 + (table_info['size_priority_score'] * 0.12)
+                            
+                            nlp_sophistication_bonus = 0.0
+                            total_ultra_matches = len([m for m in required_matches + optional_matches if m['match_type'] == 'ultra_semantic'])
+                            if total_ultra_matches > 0:
+                                nlp_sophistication_bonus = min(total_ultra_matches * 0.08, 0.25)
+                            
+                            intelligence_multiplier = 1.0
+                            total_evidence = sum(len(m['details'][col]['evidence']) for m in required_matches + optional_matches for col in m['available'])
+                            if total_evidence > 5:
+                                intelligence_multiplier = 1.15
+                            
+                            feasibility_score = min((base_feasibility * size_multiplier * intelligence_multiplier) + nlp_sophistication_bonus, 1.0)
+                            
+                            if required_score >= 0.4:
+                                metric_recommendations[role].append({
+                                    'metric_name': metric_name,
+                                    'log_type': log_type,
+                                    'table_name': table_info['table_name'],
+                                    'dataset': table_info['dataset'],
+                                    'row_count': table_info['row_count'],
+                                    'size_category': table_info['size_category'],
+                                    'size_priority_score': table_info['size_priority_score'],
+                                    'feasibility_score': feasibility_score,
+                                    'base_feasibility': base_feasibility,
+                                    'intelligence_score': total_evidence,
+                                    'description': metric_info['description'],
+                                    'business_value': metric_info['business_value'],
+                                    'required_columns_matched': required_matches,
+                                    'optional_columns_matched': optional_matches,
+                                    'missing_required': [req for req in metric_info['required_columns'] 
+                                                       if not any(self.nlp_matcher.calculate_multidimensional_similarity(req, col)['final_score'] > 0.2 
+                                                                for col in table_columns)],
+                                    'implementation_difficulty': 'Trivial' if feasibility_score > 0.9 else 'Easy' if feasibility_score > 0.7 else 'Medium' if feasibility_score > 0.5 else 'Hard'
+                                })
+        
+        return metric_recommendations
+
+    def prioritize_recommendations(self, recommendations: Dict[str, List[Dict[str, Any]]]) -> List[Dict[str, Any]]:
+        all_recommendations = []
+        
+        for role, role_recommendations in recommendations.items():
+            for rec in role_recommendations:
+                rec['role'] = role
+                all_recommendations.append(rec)
+        
+        priority_order = ['Trivial', 'Easy', 'Medium', 'Hard']
+        
+        return sorted(all_recommendations, 
+                     key=lambda x: (-x['feasibility_score'], 
+                                   -x['size_priority_score'],
+                                   -x['intelligence_score'],
+                                   priority_order.index(x['implementation_difficulty'])))
+
+    def generate_implementation_guide(self, recommendations: List[Dict[str, Any]]) -> str:
+        guide = []
+        guide.append("=" * 90)
+        guide.append("ULTRA-INTELLIGENT SECURITY METRICS IMPLEMENTATION GUIDE")
+        guide.append("=" * 90)
+        guide.append("")
+        
+        guide.append("AI ANALYSIS SUMMARY:")
+        guide.append("-" * 50)
+        
+        trivial_count = len([r for r in recommendations if r['implementation_difficulty'] == 'Trivial'])
+        easy_count = len([r for r in recommendations if r['implementation_difficulty'] == 'Easy'])
+        medium_count = len([r for r in recommendations if r['implementation_difficulty'] == 'Medium'])
+        hard_count = len([r for r in recommendations if r['implementation_difficulty'] == 'Hard'])
+        
+        ultra_semantic_count = len([r for r in recommendations if any(m['match_type'] == 'ultra_semantic' for m in r['required_columns_matched'] + r['optional_columns_matched'])])
+        
+        guide.append(f"Total Metrics Discovered: {len(recommendations)}")
+        guide.append(f"Ultra-Semantic AI Matches: {ultra_semantic_count}")
+        guide.append(f"Trivial Implementation: {trivial_count}")
+        guide.append(f"Easy Implementation: {easy_count}")
+        guide.append(f"Medium Complexity: {medium_count}")
+        guide.append(f"High Complexity: {hard_count}")
+        guide.append("")
+        
+        avg_intelligence = sum(r['intelligence_score'] for r in recommendations) / len(recommendations) if recommendations else 0
+        guide.append(f"Average AI Intelligence Score: {avg_intelligence:.1f}")
+        guide.append("")
+        
+        for difficulty in ['Trivial', 'Easy', 'Medium', 'Hard']:
+            difficulty_recs = [r for r in recommendations if r['implementation_difficulty'] == difficulty]
+            if difficulty_recs:
+                guide.append(f"{difficulty.upper()} IMPLEMENTATION METRICS:")
+                guide.append("-" * 60)
+                
+                for i, rec in enumerate(difficulty_recs[:8], 1):
+                    guide.append(f"{i}. {rec['metric_name']} ({rec['role']} - {rec['log_type']})")
+                    guide.append(f"   Data Source: {rec['dataset']}.{rec['table_name']}")
+                    guide.append(f"   Table Size: {rec['row_count']:,} rows ({rec['size_category']})")
+                    guide.append(f"   Description: {rec['description']}")
+                    guide.append(f"   Business Value: {rec['business_value']}")
+                    guide.append(f"   AI Confidence: {rec['feasibility_score']:.3f} (base: {rec['base_feasibility']:.3f}, intelligence: {rec['intelligence_score']})")
+                    
+                    if rec['required_columns_matched']:
+                        guide.append("   🎯 Required Columns Matched:")
+                        for col_match in rec['required_columns_matched']:
+                            best_match = max(col_match['details'].items(), key=lambda x: x[1]['confidence'])
+                            match_name, match_info = best_match
+                            
+                            if match_info['type'] == 'ultra_semantic':
+                                indicator = "🧠🚀"
+                            elif match_info['type'] == 'semantic':
+                                indicator = "🧠"
+                            else:
+                                indicator = "🎯"
+                            
+                            confidence_pct = int(match_info['confidence'] * 100)
+                            evidence_str = ', '.join(match_info['evidence'][:2]) if match_info['evidence'] else 'direct_match'
+                            guide.append(f"     {indicator} {col_match['required']} → {match_name} ({confidence_pct}% | {evidence_str})")
+                    
+                    if rec['missing_required']:
+                        guide.append(f"   ❌ Missing: {', '.join(rec['missing_required'][:3])}")
+                    
+                    if rec['optional_columns_matched']:
+                        guide.append("   ➕ Optional Enhancements:")
+                        for col_match in rec['optional_columns_matched'][:2]:
+                            best_match = max(col_match['details'].items(), key=lambda x: x[1]['confidence'])
+                            match_name, match_info = best_match
+                            
+                            indicator = "🧠🚀" if match_info['type'] == 'ultra_semantic' else "🧠" if match_info['type'] == 'semantic' else "🎯"
+                            confidence_pct = int(match_info['confidence'] * 100)
+                            guide.append(f"     {indicator} {col_match['optional']} → {match_name} ({confidence_pct}%)")
+                    
+                    guide.append("")
+                
+                if len(difficulty_recs) > 8:
+                    guide.append(f"   ... and {len(difficulty_recs) - 8} more {difficulty.lower()} metrics available")
+                    guide.append("")
+        
+        return "\n".join(guide)
+
+    def generate_quick_start_recommendations(self) -> str:
+        recommendations = self.map_metrics_to_data()
+        prioritized = self.prioritize_recommendations(recommendations)
+        
+        quick_start = []
+        quick_start.append("🚀 ULTRA-INTELLIGENT QUICK START RECOMMENDATIONS")
+        quick_start.append("=" * 90)
+        quick_start.append("")
+        
+        trivial_wins = [r for r in prioritized if r['implementation_difficulty'] == 'Trivial'][:3]
+        easy_wins = [r for r in prioritized if r['implementation_difficulty'] == 'Easy'][:5]
+        
+        if trivial_wins:
+            quick_start.append("🎯 INSTANT IMPLEMENTATION - TRIVIAL DIFFICULTY:")
+            quick_start.append("-" * 50)
+            
+            for i, rec in enumerate(trivial_wins, 1):
+                quick_start.append(f"{i}. 🚀 IMPLEMENT: {rec['metric_name']}")
+                quick_start.append(f"   📊 USE TABLE: {rec['dataset']}.{rec['table_name']} ({rec['row_count']:,} rows - {rec['size_category']})")
+                quick_start.append(f"   📈 MEASURE: {rec['description']}")
+                quick_start.append(f"   💡 WHY: {rec['business_value']}")
+                quick_start.append(f"   🤖 AI CONFIDENCE: {rec['feasibility_score']:.3f} (Intelligence Score: {rec['intelligence_score']})")
+                
+                if rec['required_columns_matched']:
+                    quick_start.append("   🔑 KEY COLUMNS TO USE:")
+                    for col_match in rec['required_columns_matched']:
+                        best_match = max(col_match['details'].items(), key=lambda x: x[1]['confidence'])
+                        match_name, match_info = best_match
+                        
+                        match_type_desc = {
+                            'ultra_semantic': 'Ultra-AI semantic match',
+                            'semantic': 'AI semantic match', 
+                            'direct': 'Direct match'
+                        }.get(match_info['type'], 'Unknown match')
+                        
+                        confidence_pct = int(match_info['confidence'] * 100)
+                        evidence_summary = ', '.join(match_info['evidence'][:2]) if match_info['evidence'] else 'exact_match'
+                        quick_start.append(f"     • Use '{match_name}' for {col_match['required']} ({match_type_desc}, {confidence_pct}% confidence)")
+                        quick_start.append(f"       Evidence: {evidence_summary}")
+                
+                quick_start.append("")
+        
+        if easy_wins:
+            quick_start.append("⚡ EASY WINS - HIGH IMPACT, LOW EFFORT:")
+            quick_start.append("-" * 50)
+            
+            for i, rec in enumerate(easy_wins, 1):
+                quick_start.append(f"{i}. ⚡ IMPLEMENT: {rec['metric_name']}")
+                quick_start.append(f"   📊 USE TABLE: {rec['dataset']}.{rec['table_name']} ({rec['row_count']:,} rows - {rec['size_category']})")
+                quick_start.append(f"   📈 MEASURE: {rec['description']}")
+                quick_start.append(f"   💡 WHY: {rec['business_value']}")
+                quick_start.append(f"   🤖 AI CONFIDENCE: {rec['feasibility_score']:.3f} (Intelligence Score: {rec['intelligence_score']})")
+                
+                ultra_matches = [m for m in rec['required_columns_matched'] + rec['optional_columns_matched'] if m['match_type'] == 'ultra_semantic']
+                if ultra_matches:
+                    quick_start.append(f"   🧠🚀 ULTRA-SEMANTIC MATCHES: {len(ultra_matches)} detected")
+                
+                quick_start.append("")
+        
+        if not trivial_wins and not easy_wins:
+            quick_start.append("⚠️  NO TRIVIAL OR EASY IMPLEMENTATIONS FOUND")
+            quick_start.append("Consider data enrichment or additional log source integration.")
+            quick_start.append("")
+            
+            medium_recs = [r for r in prioritized if r['implementation_difficulty'] == 'Medium'][:3]
+            if medium_recs:
+                quick_start.append("🔧 BEST MEDIUM-COMPLEXITY OPTIONS:")
+                for i, rec in enumerate(medium_recs, 1):
+                    quick_start.append(f"{i}. {rec['metric_name']} (Confidence: {rec['feasibility_score']:.3f})")
+        
+        return "\n".join(quick_start)
+
+    def save_recommendations(self, output_file: str = "ultra_intelligent_metrics_recommendations.json"):
+        recommendations = self.map_metrics_to_data()
+        prioritized = self.prioritize_recommendations(recommendations)
+        
+        output_data = {
+            'timestamp': pd.Timestamp.now().isoformat(),
+            'ai_analysis_summary': {
+                'total_metrics_available': len(prioritized),
+                'ultra_semantic_matches': len([r for r in prioritized if any(m['match_type'] == 'ultra_semantic' for m in r['required_columns_matched'] + r['optional_columns_matched'])]),
+                'trivial_implementation': len([r for r in prioritized if r['implementation_difficulty'] == 'Trivial']),
+                'easy_implementation': len([r for r in prioritized if r['implementation_difficulty'] == 'Easy']),
+                'medium_implementation': len([r for r in prioritized if r['implementation_difficulty'] == 'Medium']),
+                'hard_implementation': len([r for r in prioritized if r['implementation_difficulty'] == 'Hard']),
+                'average_intelligence_score': sum(r['intelligence_score'] for r in prioritized) / len(prioritized) if prioritized else 0
+            },
+            'recommendations_by_role': recommendations,
+            'prioritized_recommendations': prioritized,
+            'nlp_engine_stats': {
+                'cache_size': len(self.nlp_matcher.similarity_cache),
+                'security_taxonomy_domains': len(self.nlp_matcher.security_taxonomy),
+                'semantic_embeddings': len(self.nlp_matcher.semantic_embeddings),
+                'abbreviation_mappings': len(self.nlp_matcher.abbreviation_engine)
+            }
+        }
         
         with open(output_file, 'w') as f:
-            json.dump(mapping_results, f, indent=2, default=str)
+            json.dump(output_data, f, indent=2, default=str)
         
-        logger.info(f"Detailed results saved to {output_file}")
+        logger.info(f"Ultra-intelligent recommendations saved to {output_file}")
 
 if __name__ == "__main__":
-    analyzer = ComprehensiveKeyMapper("new.json")
+    analyzer = DataDrivenMetricsRecommender()
     
-    report = analyzer.generate_report()
-    print(report)
+    quick_start = analyzer.generate_quick_start_recommendations()
+    print(quick_start)
+    print("\n" + "="*90 + "\n")
     
-    analyzer.save_detailed_results("security_mapping_results.json")
+    recommendations = analyzer.map_metrics_to_data()
+    prioritized = analyzer.prioritize_recommendations(recommendations)
+    full_guide = analyzer.generate_implementation_guide(prioritized)
+    print(full_guide)
+    
+    analyzer.save_recommendations()
