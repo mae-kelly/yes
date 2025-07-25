@@ -10,12 +10,10 @@ logger = logging.getLogger(__name__)
 
 class ComprehensiveKeyMapper:
     def __init__(self, results_file: str):
-        """Initialize with BigQuery exploration results matching exact output structure."""
         self.results_file = results_file
         self.data = None
         self.load_results()
         
-        # Massive comprehensive list of synonyms - all checked with partial matching
         self.security_requirements = {
             'Network': {
                 'Firewall Traffic': [
@@ -161,7 +159,6 @@ class ComprehensiveKeyMapper:
             }
         }
         
-        # Common Data Fields from the document  
         self.data_fields = {
             'IP (source, target)': ['source_ip', 'target_ip', 'src_ip', 'dst_ip', 'ip_address', 'client_ip', 'server_ip'],
             'Protocol': ['protocol', 'ip_protocol', 'transport_protocol'],
@@ -173,7 +170,6 @@ class ComprehensiveKeyMapper:
             'filename': ['filename', 'file_name', 'file_path', 'path', 'full_path']
         }
         
-        # Visibility Factors from the document
         self.visibility_factors = {
             'URL/FQDN coverage': ['url', 'fqdn', 'domain_coverage', 'web_coverage', 'site_coverage'],
             'CMDB Asset Visibility': ['cmdb', 'asset_visibility', 'configuration_management', 'asset_inventory'],
@@ -186,17 +182,33 @@ class ComprehensiveKeyMapper:
         }
 
     def load_results(self):
-        """Load BigQuery exploration results."""
+        import os
+        
+        current_dir = os.getcwd()
+        file_path = os.path.abspath(self.results_file)
+        file_exists = os.path.exists(self.results_file)
+        
+        print(f"Current directory: {current_dir}")
+        print(f"Looking for file: {self.results_file}")
+        print(f"Full path: {file_path}")
+        print(f"File exists: {file_exists}")
+        
+        files_in_dir = [f for f in os.listdir('.') if f.endswith('.json')]
+        print(f"JSON files in current directory: {files_in_dir}")
+        
         try:
             with open(self.results_file, 'r') as f:
                 self.data = json.load(f)
-            logger.info(f"Loaded results from {self.results_file}")
+            logger.info(f"Successfully loaded results from {self.results_file}")
+        except FileNotFoundError as e:
+            logger.error(f"File not found: {self.results_file}")
+            logger.error(f"Available JSON files: {files_in_dir}")
+            raise
         except Exception as e:
             logger.error(f"Error loading results: {e}")
             raise
 
     def extract_all_keys(self) -> Dict[str, List[Dict]]:
-        """Extract all keys exactly as they appear in the BigQuery results structure."""
         all_keys = {
             'dataset_names': [],
             'table_names': [],
@@ -207,7 +219,6 @@ class ComprehensiveKeyMapper:
             logger.warning("No datasets found in data structure")
             return all_keys
         
-        # Extract dataset names
         for dataset_id in self.data['datasets'].keys():
             all_keys['dataset_names'].append({
                 'name': dataset_id,
@@ -215,11 +226,9 @@ class ComprehensiveKeyMapper:
                 'type': 'dataset'
             })
         
-        # Extract table names and column names
         for dataset_id, dataset_info in self.data['datasets'].items():
             if isinstance(dataset_info, dict) and 'tables' in dataset_info:
                 for table_id, table_info in dataset_info['tables'].items():
-                    # Add table name
                     all_keys['table_names'].append({
                         'name': table_id,
                         'dataset_id': dataset_id,
@@ -227,7 +236,6 @@ class ComprehensiveKeyMapper:
                         'type': 'table'
                     })
                     
-                    # Extract column names from columns array
                     if isinstance(table_info, dict) and 'columns' in table_info:
                         columns = table_info['columns']
                         if isinstance(columns, list):
@@ -245,18 +253,15 @@ class ComprehensiveKeyMapper:
         return all_keys
 
     def find_matches(self, key_name: str, requirement_terms: List[str]) -> bool:
-        """Check if a key matches any of the requirement terms (partial matching)."""
         key_lower = key_name.lower()
         
         for term in requirement_terms:
             term_lower = term.lower()
-            # Check for exact match or partial match (term contained in key)
             if term_lower == key_lower or term_lower in key_lower:
                 return True
         return False
 
     def map_keys_to_requirements(self) -> Dict[str, Any]:
-        """Map all extracted keys to security requirements."""
         all_keys = self.extract_all_keys()
         
         results = {
@@ -278,14 +283,12 @@ class ComprehensiveKeyMapper:
             }
         }
         
-        # Track all mapped keys to find unmapped ones
         all_mapped_keys = {
             'dataset_names': set(),
             'table_names': set(), 
             'column_names': set()
         }
         
-        # Map to log types (security requirements)
         for role, requirements in self.security_requirements.items():
             results['matches']['log_types'][role] = {}
             
@@ -296,14 +299,12 @@ class ComprehensiveKeyMapper:
                     'column_names': []
                 }
                 
-                # Check each key type
                 for key_type in ['dataset_names', 'table_names', 'column_names']:
                     for key_info in all_keys[key_type]:
                         if self.find_matches(key_info['name'], terms):
                             results['matches']['log_types'][role][log_type][key_type].append(key_info)
                             all_mapped_keys[key_type].add(key_info['name'])
         
-        # Map to data fields
         for field_name, terms in self.data_fields.items():
             results['matches']['data_fields'][field_name] = {
                 'dataset_names': [],
@@ -317,7 +318,6 @@ class ComprehensiveKeyMapper:
                         results['matches']['data_fields'][field_name][key_type].append(key_info)
                         all_mapped_keys[key_type].add(key_info['name'])
         
-        # Map to visibility factors
         for factor_name, terms in self.visibility_factors.items():
             results['matches']['visibility_factors'][factor_name] = {
                 'dataset_names': [],
@@ -331,13 +331,11 @@ class ComprehensiveKeyMapper:
                         results['matches']['visibility_factors'][factor_name][key_type].append(key_info)
                         all_mapped_keys[key_type].add(key_info['name'])
         
-        # Find unmapped keys
         for key_type in ['dataset_names', 'table_names', 'column_names']:
             for key_info in all_keys[key_type]:
                 if key_info['name'] not in all_mapped_keys[key_type]:
                     results['unmapped'][key_type].append(key_info)
         
-        # Calculate summary statistics
         for key_type in ['dataset_names', 'table_names', 'column_names']:
             total = len(all_keys[key_type])
             unmapped = len(results['unmapped'][key_type])
@@ -351,16 +349,14 @@ class ComprehensiveKeyMapper:
         return results
 
     def generate_report(self) -> str:
-        """Generate comprehensive mapping report."""
         mapping_results = self.map_keys_to_requirements()
         
         report = []
         report.append("=" * 80)
         report.append("CYBERSECURITY LOG VISIBILITY - COMPREHENSIVE KEY MAPPING REPORT")
         report.append("=" * 80)
-        report.append()
+        report.append("")
         
-        # Executive Summary
         report.append("EXECUTIVE SUMMARY:")
         report.append("-" * 40)
         total_all = sum(mapping_results['summary']['total_keys'].values())
@@ -368,7 +364,7 @@ class ComprehensiveKeyMapper:
         overall_rate = (mapped_all / total_all * 100) if total_all > 0 else 0
         
         report.append(f"Overall Mapping Rate: {mapped_all}/{total_all} ({overall_rate:.1f}%)")
-        report.append()
+        report.append("")
         
         for key_type in ['dataset_names', 'table_names', 'column_names']:
             total = mapping_results['summary']['total_keys'][key_type]
@@ -376,9 +372,8 @@ class ComprehensiveKeyMapper:
             rate = mapping_results['summary']['mapping_rate'][key_type]
             report.append(f"{key_type.replace('_', ' ').title()}: {mapped}/{total} ({rate:.1f}%)")
         
-        report.append()
+        report.append("")
         
-        # Security Role Coverage
         report.append("SECURITY ROLE COVERAGE:")
         report.append("-" * 40)
         
@@ -391,7 +386,6 @@ class ComprehensiveKeyMapper:
                 if total_matches > 0:
                     report.append(f"  ✓ {log_type}: {total_matches} matches")
                     
-                    # Show sample matches
                     for key_type in ['dataset_names', 'table_names', 'column_names']:
                         if matches[key_type]:
                             sample_names = [m['name'] for m in matches[key_type][:3]]
@@ -401,8 +395,9 @@ class ComprehensiveKeyMapper:
                 else:
                     report.append(f"  ✗ {log_type}: No matches found")
         
-        # Data Fields Coverage
-        report.append("\n\nDATA FIELDS COVERAGE:")
+        report.append("")
+        report.append("")
+        report.append("DATA FIELDS COVERAGE:")
         report.append("-" * 40)
         
         for field_name, matches in mapping_results['matches']['data_fields'].items():
@@ -419,8 +414,9 @@ class ComprehensiveKeyMapper:
             else:
                 report.append(f"✗ {field_name}: No matches found")
         
-        # Visibility Factors Coverage
-        report.append("\n\nVISIBILITY FACTORS COVERAGE:")
+        report.append("")
+        report.append("")
+        report.append("VISIBILITY FACTORS COVERAGE:")
         report.append("-" * 40)
         
         for factor_name, matches in mapping_results['matches']['visibility_factors'].items():
@@ -437,15 +433,17 @@ class ComprehensiveKeyMapper:
             else:
                 report.append(f"✗ {factor_name}: No matches found")
         
-        # Unmapped Keys (Gap Analysis)
-        report.append("\n\nGAP ANALYSIS - UNMAPPED KEYS:")
+        report.append("")
+        report.append("")
+        report.append("GAP ANALYSIS - UNMAPPED KEYS:")
         report.append("-" * 40)
         
         for key_type in ['dataset_names', 'table_names', 'column_names']:
             unmapped = mapping_results['unmapped'][key_type]
             if unmapped:
-                report.append(f"\nUnmapped {key_type}:")
-                for key_info in unmapped[:10]:  # Show first 10
+                report.append("")
+                report.append(f"Unmapped {key_type}:")
+                for key_info in unmapped[:10]:
                     location = f"{key_info.get('dataset_id', '')}"
                     if key_info.get('table_id'):
                         location += f".{key_info['table_id']}"
@@ -457,7 +455,6 @@ class ComprehensiveKeyMapper:
         return "\n".join(report)
 
     def save_detailed_results(self, output_file: str):
-        """Save detailed mapping results to JSON file."""
         mapping_results = self.map_keys_to_requirements()
         
         with open(output_file, 'w') as f:
@@ -465,14 +462,10 @@ class ComprehensiveKeyMapper:
         
         logger.info(f"Detailed results saved to {output_file}")
 
-# Usage example:
 if __name__ == "__main__":
-    # Initialize analyzer with your BigQuery results file
-    analyzer = ComprehensiveKeyMapper("bigquery_exploration_results.json")
+    analyzer = ComprehensiveKeyMapper("new.json")
     
-    # Generate and print report
     report = analyzer.generate_report()
     print(report)
     
-    # Save detailed results  
     analyzer.save_detailed_results("security_mapping_results.json")
