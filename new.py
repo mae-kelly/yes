@@ -1,9 +1,8 @@
 #!/usr/bin/env python3
 """
-BigQuery Project Explorer - Robust Edition
-Discovers all datasets, tables, columns, and samples data from the project
-Uses identical authentication to the original script
-Handles all edge cases gracefully
+BigQuery Project Explorer - AO1 Metrics Mapper
+Discovers all datasets, tables, columns, and maps them to AO1 Log Visibility Measurement requirements
+Prioritizes larger tables and provides field recommendations for each metric
 """
 
 import os
@@ -16,10 +15,93 @@ import logging
 import time
 import sys
 from google.cloud.exceptions import NotFound, Forbidden, BadRequest, ServerError
+import re
 
 # EXACT SAME SETUP AS ORIGINAL SCRIPT
 file_path = os.path.join(os.path.dirname(__file__))
 settings = {}
+
+# AO1 Requirements Mapping
+AO1_METRICS_REQUIREMENTS = {
+    'network_metrics': {
+        'url_fqdn_coverage': {
+            'description': 'URL/FQDN coverage from web traffic logs',
+            'required_log_types': ['PROXY', 'DNS', 'WAF', 'FIREWALL_TRAFFIC'],
+            'key_fields': ['url', 'fqdn', 'domain', 'hostname', 'dns_query', 'http_host', 'request_url'],
+            'priority': 'HIGH'
+        },
+        'network_cmdb_visibility': {
+            'description': 'Network device visibility in CMDB',
+            'required_log_types': ['FIREWALL_TRAFFIC', 'IDS_IPS', 'NDR', 'PROXY', 'DNS', 'WAF'],
+            'key_fields': ['device_name', 'hostname', 'ip_address', 'network_device', 'asset_id'],
+            'priority': 'HIGH'
+        },
+        'network_zones_coverage': {
+            'description': 'Coverage across network zones/spans',
+            'required_log_types': ['FIREWALL_TRAFFIC', 'IDS_IPS', 'NDR'],
+            'key_fields': ['zone', 'location', 'region', 'network_segment', 'vlan', 'subnet'],
+            'priority': 'MEDIUM'
+        },
+        'ipam_coverage': {
+            'description': 'IPAM Public IP Coverage',
+            'required_log_types': ['FIREWALL_TRAFFIC', 'DNS', 'PROXY'],
+            'key_fields': ['public_ip', 'external_ip', 'source_ip', 'destination_ip', 'nat_ip'],
+            'priority': 'HIGH'
+        },
+        'geolocation_coverage': {
+            'description': 'Geographic distribution coverage',
+            'required_log_types': ['FIREWALL_TRAFFIC', 'PROXY', 'DNS'],
+            'key_fields': ['country', 'region', 'city', 'location', 'geo_location', 'geography'],
+            'priority': 'MEDIUM'
+        },
+        'vpc_coverage': {
+            'description': 'VPC network visibility',
+            'required_log_types': ['GCE_INSTANCE', 'AWS_CLOUDTRAIL', 'AZURE'],
+            'key_fields': ['vpc_id', 'vpc_name', 'network_id', 'virtual_network', 'cloud_network'],
+            'priority': 'MEDIUM'
+        },
+        'log_volume_percentage': {
+            'description': 'Network log ingest volume metrics',
+            'required_log_types': ['FIREWALL_TRAFFIC', 'IDS_IPS', 'NDR', 'PROXY', 'DNS', 'WAF'],
+            'key_fields': ['timestamp', 'log_time', 'event_time', 'collected_time', 'ingested_time'],
+            'priority': 'LOW'
+        }
+    },
+    'endpoint_metrics': {
+        'endpoint_cmdb_visibility': {
+            'description': 'Endpoint visibility in CMDB',
+            'required_log_types': ['WINEVT_XML', 'LINUX_SYSLOG', 'EDR', 'DLP', 'FIM'],
+            'key_fields': ['computer_name', 'hostname', 'device_name', 'endpoint_name', 'machine_name'],
+            'priority': 'HIGH'
+        },
+        'crowdstrike_coverage': {
+            'description': 'CrowdStrike agent coverage',
+            'required_log_types': ['EDR', 'CROWDSTRIKE'],
+            'key_fields': ['agent_id', 'sensor_id', 'device_id', 'crowdstrike_id', 'falcon_id'],
+            'priority': 'HIGH'
+        },
+        'endpoint_log_volume': {
+            'description': 'Endpoint log volume percentage',
+            'required_log_types': ['WINEVT_XML', 'LINUX_SYSLOG', 'EDR'],
+            'key_fields': ['timestamp', 'log_time', 'event_time', 'system_time'],
+            'priority': 'LOW'
+        }
+    },
+    'cloud_metrics': {
+        'vpc_coverage': {
+            'description': 'Cloud VPC coverage',
+            'required_log_types': ['GCE_INSTANCE', 'AWS_CLOUDTRAIL', 'AZURE'],
+            'key_fields': ['vpc_id', 'network_id', 'resource_id', 'instance_id'],
+            'priority': 'MEDIUM'
+        },
+        'cloud_asset_visibility': {
+            'description': 'Cloud asset visibility across platforms',
+            'required_log_types': ['GCE_INSTANCE', 'AWS_CLOUDTRAIL', 'AZURE'],
+            'key_fields': ['resource_name', 'instance_name', 'asset_name', 'cloud_resource'],
+            'priority': 'MEDIUM'
+        }
+    }
+}
 
 # Setup comprehensive logging
 logging.basicConfig(
@@ -32,7 +114,192 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-def authenticate_bigquery():
+def analyze_table_for_ao1_metrics(dataset_id, table_id, columns, table_info, sample_data):
+    """
+    Analyze a table to determine which AO1 metrics it can support
+    """
+    recommendations = {
+        'table_priority': 'LOW',
+        'suitable_metrics': [],
+        'field_mappings': {},
+        'confidence_scores': {},
+        'row_count': table_info.get('num_rows', 0)
+    }
+    
+    # Prioritize tables by size (more rows = higher priority)
+    row_count = table_info.get('num_rows', 0)
+    if row_count > 1000000:  # >1M rows
+        recommendations['table_priority'] = 'HIGH'
+    elif row_count > 100000:  # >100K rows
+        recommendations['table_priority'] = 'MEDIUM'
+    else:
+        recommendations['table_priority'] = 'LOW'
+    
+    # Get column names for analysis
+    column_names = [col['name'].lower() for col in columns]
+    column_types = {col['name'].lower(): col['type'] for col in columns}
+    
+    # Analyze against each AO1 metric
+    for category, metrics in AO1_METRICS_REQUIREMENTS.items():
+        for metric_name, metric_req in metrics.items():
+            confidence_score = 0
+            matched_fields = []
+            
+            # Check for key field matches
+            for required_field in metric_req['key_fields']:
+                for col_name in column_names:
+                    # Fuzzy matching for field names
+                    if (required_field.lower() in col_name or 
+                        col_name in required_field.lower() or
+                        any(word in col_name for word in required_field.lower().split('_'))):
+                        matched_fields.append({
+                            'required': required_field,
+                            'actual': col_name,
+                            'type': column_types[col_name]
+                        })
+                        confidence_score += 10
+            
+            # Bonus points for table/dataset naming patterns
+            table_name_lower = f"{dataset_id}.{table_id}".lower()
+            
+            # Network-related tables
+            if category == 'network_metrics':
+                if any(keyword in table_name_lower for keyword in ['firewall', 'network', 'dns', 'proxy', 'traffic', 'connection']):
+                    confidence_score += 20
+                if any(keyword in table_name_lower for keyword in ['security', 'log', 'event']):
+                    confidence_score += 10
+            
+            # Endpoint-related tables  
+            elif category == 'endpoint_metrics':
+                if any(keyword in table_name_lower for keyword in ['endpoint', 'device', 'computer', 'host', 'workstation']):
+                    confidence_score += 20
+                if any(keyword in table_name_lower for keyword in ['crowdstrike', 'edr', 'agent']):
+                    confidence_score += 25
+            
+            # Cloud-related tables
+            elif category == 'cloud_metrics':
+                if any(keyword in table_name_lower for keyword in ['cloud', 'gcp', 'aws', 'azure', 'instance']):
+                    confidence_score += 20
+                if any(keyword in table_name_lower for keyword in ['vpc', 'network', 'resource']):
+                    confidence_score += 15
+            
+            # Check sample data for patterns (if available)
+            if sample_data and not any('error' in str(row) for row in sample_data):
+                for row in sample_data[:3]:  # Check first 3 rows
+                    if isinstance(row, dict):
+                        for key, value in row.items():
+                            if key.startswith('_'):  # Skip metadata
+                                continue
+                            if value and str(value).strip():
+                                # Look for IP addresses
+                                if metric_name == 'ipam_coverage' and re.match(r'\d+\.\d+\.\d+\.\d+', str(value)):
+                                    confidence_score += 5
+                                # Look for URLs/domains
+                                if metric_name == 'url_fqdn_coverage' and ('.' in str(value) and len(str(value)) > 5):
+                                    confidence_score += 5
+                                # Look for timestamps
+                                if 'log_volume' in metric_name and ('timestamp' in key.lower() or 'time' in key.lower()):
+                                    confidence_score += 5
+            
+            # Only include metrics with reasonable confidence
+            if confidence_score >= 15 and matched_fields:
+                recommendations['suitable_metrics'].append({
+                    'category': category,
+                    'metric': metric_name,
+                    'description': metric_req['description'],
+                    'priority': metric_req['priority'],
+                    'confidence_score': confidence_score
+                })
+                recommendations['field_mappings'][metric_name] = matched_fields
+                recommendations['confidence_scores'][metric_name] = confidence_score
+    
+    return recommendations
+
+def generate_ao1_recommendations(project_structure):
+    """
+    Generate comprehensive AO1 implementation recommendations
+    """
+    recommendations = {
+        'summary': {
+            'total_tables_analyzed': 0,
+            'high_priority_tables': 0,
+            'metrics_coverage': {},
+            'top_recommendations': []
+        },
+        'by_metric': {},
+        'by_table': {},
+        'implementation_guide': {}
+    }
+    
+    all_table_recommendations = []
+    
+    # Analyze each table
+    for dataset_id, dataset_info in project_structure['datasets'].items():
+        for table_id, table_info in dataset_info['tables'].items():
+            if 'columns' in table_info and table_info['columns']:
+                recommendations['summary']['total_tables_analyzed'] += 1
+                
+                table_rec = analyze_table_for_ao1_metrics(
+                    dataset_id, table_id, 
+                    table_info['columns'], 
+                    table_info.get('table_info', {}),
+                    table_info.get('sample_data', [])
+                )
+                
+                if table_rec['table_priority'] == 'HIGH':
+                    recommendations['summary']['high_priority_tables'] += 1
+                
+                table_key = f"{dataset_id}.{table_id}"
+                recommendations['by_table'][table_key] = table_rec
+                all_table_recommendations.append((table_key, table_rec))
+    
+    # Sort tables by priority and row count
+    all_table_recommendations.sort(key=lambda x: (
+        x[1]['table_priority'] == 'HIGH',
+        x[1]['table_priority'] == 'MEDIUM',
+        x[1]['row_count']
+    ), reverse=True)
+    
+    # Generate metric-specific recommendations
+    for category, metrics in AO1_METRICS_REQUIREMENTS.items():
+        for metric_name, metric_req in metrics.items():
+            metric_recommendations = []
+            
+            for table_key, table_rec in all_table_recommendations:
+                for suitable_metric in table_rec['suitable_metrics']:
+                    if suitable_metric['metric'] == metric_name:
+                        metric_recommendations.append({
+                            'table': table_key,
+                            'confidence': suitable_metric['confidence_score'],
+                            'row_count': table_rec['row_count'],
+                            'priority': table_rec['table_priority'],
+                            'fields': table_rec['field_mappings'].get(metric_name, [])
+                        })
+            
+            # Sort by confidence and row count
+            metric_recommendations.sort(key=lambda x: (x['confidence'], x['row_count']), reverse=True)
+            
+            if metric_recommendations:
+                recommendations['by_metric'][metric_name] = {
+                    'description': metric_req['description'],
+                    'priority': metric_req['priority'],
+                    'recommended_tables': metric_recommendations[:5],  # Top 5 tables
+                    'total_candidates': len(metric_recommendations)
+                }
+    
+    # Generate top recommendations
+    for table_key, table_rec in all_table_recommendations[:10]:  # Top 10 tables
+        if table_rec['suitable_metrics']:
+            recommendations['summary']['top_recommendations'].append({
+                'table': table_key,
+                'row_count': table_rec['row_count'],
+                'priority': table_rec['table_priority'],
+                'metrics_supported': len(table_rec['suitable_metrics']),
+                'best_metrics': [m['metric'] for m in sorted(table_rec['suitable_metrics'], 
+                                                           key=lambda x: x['confidence_score'], reverse=True)[:3]]
+            })
+    
+    return recommendations
     """
     Authenticate with BigQuery using the exact same method as the original script
     """
@@ -137,9 +404,9 @@ def get_table_schema(client, dataset_id, table_id):
         logger.error(f"Error getting schema for table '{dataset_id}.{table_id}': {e}")
         return [], {'error': str(e)}
 
-def sample_table_data(client, dataset_id, table_id, limit=5, timeout_seconds=30):
+def sample_table_data(client, dataset_id, table_id, limit=5, timeout_seconds=60):
     """
-    Get sample data from a table with comprehensive error handling and edge cases
+    Get sample data from a table with strategies to ensure successful sampling
     """
     try:
         # First check if table exists and get basic info
@@ -151,42 +418,77 @@ def sample_table_data(client, dataset_id, table_id, limit=5, timeout_seconds=30)
             logger.info(f"Table {dataset_id}.{table_id} is empty (0 rows)")
             return [{"info": "Table is empty - no data to sample"}]
         
-        # Handle extremely large tables (>10B rows) - skip sampling
-        if table.num_rows and table.num_rows > 10000000000:
-            logger.warning(f"Skipping extremely large table {dataset_id}.{table_id} ({table.num_rows:,} rows)")
-            return [{"warning": f"Table too large ({table.num_rows:,} rows) - sampling skipped for performance"}]
-        
-        # Handle views differently than tables
-        if getattr(table, 'table_type', 'TABLE') == 'VIEW':
-            logger.info(f"Sampling view {dataset_id}.{table_id}")
-            # Views might be slow, reduce sample size
-            limit = min(limit, 3)
-        
         # Use the same project ID format as your original script
         full_table_id = f"chronicle-fisv.{dataset_id}.{table_id}"
         
-        # Build query with safety checks
-        query = f"""
-        SELECT *
-        FROM `{full_table_id}`
-        LIMIT {limit}
-        """
+        # Strategy 1: Try simple TABLESAMPLE for large tables
+        if table.num_rows and table.num_rows > 100000000:  # >100M rows
+            query = f"""
+            SELECT *
+            FROM `{full_table_id}` TABLESAMPLE SYSTEM (0.001 PERCENT)
+            LIMIT {limit}
+            """
+            strategy = "TABLESAMPLE"
+        # Strategy 2: Use column sampling for wide tables or when we know columns
+        elif len(table.schema) > 50:  # Very wide table
+            # Sample only first 10 columns to avoid byte limits
+            column_names = [field.name for field in table.schema[:10]]
+            columns_str = ', '.join([f'`{col}`' for col in column_names])
+            query = f"""
+            SELECT {columns_str}
+            FROM `{full_table_id}`
+            LIMIT {limit}
+            """
+            strategy = "COLUMN_SUBSET"
+        else:
+            # Strategy 3: Standard sampling
+            query = f"""
+            SELECT *
+            FROM `{full_table_id}`
+            LIMIT {limit}
+            """
+            strategy = "STANDARD"
         
-        # Set job config with timeout and other safety measures
+        # Configure job with more generous limits
         job_config = bigquery.QueryJobConfig()
         job_config.job_timeout_ms = timeout_seconds * 1000
-        job_config.maximum_bytes_billed = 100000000  # 100MB max query cost
+        job_config.maximum_bytes_billed = 1000000000  # 1GB max (increased from 100MB)
         job_config.use_query_cache = True
+        job_config.use_legacy_sql = False
         
-        logger.info(f"Sampling {limit} rows from {dataset_id}.{table_id}...")
+        logger.info(f"Sampling {limit} rows from {dataset_id}.{table_id} using {strategy} strategy...")
         
         query_job = client.query(query, job_config=job_config)
         results = query_job.result(timeout=timeout_seconds)
         
+        # If first strategy fails, try fallback strategies
+        if not results:
+            logger.info(f"First strategy failed, trying fallback for {dataset_id}.{table_id}")
+            
+            # Fallback 1: Just get a few key columns
+            key_columns = []
+            for field in table.schema[:5]:  # First 5 columns only
+                if field.field_type in ['STRING', 'INTEGER', 'FLOAT', 'TIMESTAMP', 'DATE']:
+                    key_columns.append(f'`{field.name}`')
+            
+            if key_columns:
+                query = f"""
+                SELECT {', '.join(key_columns)}
+                FROM `{full_table_id}`
+                WHERE RAND() < 0.01
+                LIMIT {limit}
+                """
+                job_config.maximum_bytes_billed = 50000000  # Reduce to 50MB
+                query_job = client.query(query, job_config=job_config)
+                results = query_job.result(timeout=30)
+        
         # Convert to list of dictionaries with data type handling
         sample_data = []
-        for row_num, row in enumerate(results):
-            row_dict = {"_row_number": row_num + 1}
+        row_count = 0
+        
+        for row in results:
+            row_count += 1
+            row_dict = {"_row_number": row_count, "_sampling_strategy": strategy}
             
             for key, value in row.items():
                 try:
@@ -198,61 +500,115 @@ def sample_table_data(client, dataset_id, table_id, limit=5, timeout_seconds=30)
                         row_dict[key] = value.isoformat()
                     # Handle bytes objects
                     elif isinstance(value, bytes):
-                        row_dict[key] = f"<BYTES: {len(value)} bytes>"
+                        try:
+                            # Try to decode as UTF-8 first
+                            row_dict[key] = value.decode('utf-8')[:200]
+                        except UnicodeDecodeError:
+                            row_dict[key] = f"<BYTES: {len(value)} bytes>"
                     # Handle complex nested data (arrays, structs)
                     elif isinstance(value, (list, dict)):
                         str_value = str(value)
-                        if len(str_value) > 500:
-                            row_dict[key] = str_value[:500] + "...[TRUNCATED]"
+                        if len(str_value) > 300:
+                            row_dict[key] = str_value[:300] + "...[TRUNCATED]"
                         else:
                             row_dict[key] = str_value
                     # Handle very long strings
-                    elif isinstance(value, str) and len(value) > 1000:
-                        row_dict[key] = value[:1000] + "...[TRUNCATED]"
+                    elif isinstance(value, str) and len(value) > 500:
+                        row_dict[key] = value[:500] + "...[TRUNCATED]"
                     # Handle numbers that might be too large for JSON
                     elif isinstance(value, (int, float)):
-                        if abs(value) > 1e15:  # Very large numbers
+                        if isinstance(value, float) and (value != value):  # NaN check
+                            row_dict[key] = "NaN"
+                        elif abs(value) > 1e15:  # Very large numbers
                             row_dict[key] = str(value)
                         else:
                             row_dict[key] = value
                     else:
-                        row_dict[key] = value
+                        row_dict[key] = str(value)[:500]  # Convert everything else to string, truncated
                         
                 except Exception as field_error:
                     logger.warning(f"Error processing field '{key}' in {dataset_id}.{table_id}: {field_error}")
-                    row_dict[key] = f"<ERROR: {str(field_error)}>"
+                    row_dict[key] = f"<ERROR: {str(field_error)[:100]}>"
             
             sample_data.append(row_dict)
+            
+            if row_count >= limit:
+                break
         
         # Add query statistics if available
-        if query_job.done():
+        if query_job.done() and sample_data:
             stats = {
                 "_query_stats": {
-                    "bytes_processed": query_job.total_bytes_processed,
-                    "bytes_billed": query_job.total_bytes_billed,
-                    "slot_ms": query_job.slot_millis,
-                    "creation_time": query_job.created.isoformat() if query_job.created else None
+                    "sampling_strategy": strategy,
+                    "bytes_processed": query_job.total_bytes_processed or 0,
+                    "bytes_billed": query_job.total_bytes_billed or 0,
+                    "slot_ms": query_job.slot_millis or 0,
+                    "rows_returned": len(sample_data)
                 }
             }
             sample_data.insert(0, stats)
         
-        logger.info(f"Retrieved {len(sample_data)-1} sample rows from '{dataset_id}.{table_id}'")
+        if sample_data:
+            logger.info(f"✅ Successfully retrieved {len(sample_data)-1} sample rows from '{dataset_id}.{table_id}' using {strategy}")
+        else:
+            logger.warning(f"⚠️  No data returned from '{dataset_id}.{table_id}' but query succeeded")
+            return [{"warning": "Query succeeded but returned no data"}]
+            
         return sample_data
         
     except Forbidden as e:
-        logger.warning(f"Permission denied sampling table '{dataset_id}.{table_id}': {e}")
+        logger.warning(f"❌ Permission denied sampling table '{dataset_id}.{table_id}': {e}")
         return [{"error": "Permission denied", "details": str(e)}]
     except NotFound as e:
-        logger.warning(f"Table '{dataset_id}.{table_id}' not found during sampling: {e}")
+        logger.warning(f"❌ Table '{dataset_id}.{table_id}' not found during sampling: {e}")
         return [{"error": "Table not found", "details": str(e)}]
     except BadRequest as e:
-        logger.warning(f"Bad request sampling table '{dataset_id}.{table_id}': {e}")
-        return [{"error": "Invalid query", "details": str(e)}]
+        # Try one more fallback for bad requests - just get first row of first few columns
+        logger.warning(f"⚠️  Bad request, trying minimal sampling for '{dataset_id}.{table_id}': {e}")
+        try:
+            table_ref = client.dataset(dataset_id).table(table_id)
+            table = client.get_table(table_ref)
+            
+            # Get just the first non-complex column
+            simple_columns = []
+            for field in table.schema[:3]:
+                if field.field_type in ['STRING', 'INTEGER', 'FLOAT', 'BOOLEAN']:
+                    simple_columns.append(f'`{field.name}`')
+                if len(simple_columns) >= 2:  # Just get 2 columns
+                    break
+            
+            if simple_columns:
+                full_table_id = f"chronicle-fisv.{dataset_id}.{table_id}"
+                query = f"SELECT {', '.join(simple_columns)} FROM `{full_table_id}` LIMIT 1"
+                
+                job_config = bigquery.QueryJobConfig()
+                job_config.maximum_bytes_billed = 10000000  # 10MB limit
+                job_config.job_timeout_ms = 15000  # 15 seconds
+                
+                query_job = client.query(query, job_config=job_config)
+                results = query_job.result(timeout=15)
+                
+                sample_data = []
+                for row in results:
+                    row_dict = {"_minimal_sample": True}
+                    for key, value in row.items():
+                        row_dict[key] = str(value)[:100] if value is not None else None
+                    sample_data.append(row_dict)
+                
+                if sample_data:
+                    logger.info(f"✅ Minimal sampling successful for '{dataset_id}.{table_id}'")
+                    return sample_data
+                    
+        except Exception as fallback_error:
+            logger.error(f"❌ All sampling strategies failed for '{dataset_id}.{table_id}': {fallback_error}")
+        
+        return [{"error": "All sampling strategies failed", "original_error": str(e)}]
+        
     except ServerError as e:
-        logger.warning(f"Server error sampling table '{dataset_id}.{table_id}': {e}")
-        return [{"error": "Server error", "details": str(e)}]
+        logger.warning(f"❌ Server error sampling table '{dataset_id}.{table_id}': {e}")
+        return [{"error": "Server error - table may be too large or complex", "details": str(e)}]
     except Exception as e:
-        logger.error(f"Unexpected error sampling table '{dataset_id}.{table_id}': {e}")
+        logger.error(f"❌ Unexpected error sampling table '{dataset_id}.{table_id}': {e}")
         return [{"error": "Unexpected error", "details": str(e)}]
 
 def explore_project_structure(client, max_tables_per_dataset=50, max_datasets=20):
@@ -445,6 +801,43 @@ def explore_project_structure(client, max_tables_per_dataset=50, max_datasets=20
                 logger.error(error_msg)
                 print(f"  ❌ Dataset Error: {str(dataset_error)}")
         
+        # Generate AO1 Recommendations
+        print(f"\n🎯 GENERATING AO1 METRICS RECOMMENDATIONS...")
+        print("="*60)
+        
+        ao1_recommendations = generate_ao1_recommendations(project_structure)
+        project_structure['ao1_recommendations'] = ao1_recommendations
+        
+        # Display key recommendations
+        print(f"📊 ANALYSIS SUMMARY:")
+        print(f"   • Tables Analyzed: {ao1_recommendations['summary']['total_tables_analyzed']}")
+        print(f"   • High Priority Tables: {ao1_recommendations['summary']['high_priority_tables']}")
+        print(f"   • Metrics with Coverage: {len(ao1_recommendations['by_metric'])}")
+        
+        print(f"\n🏆 TOP RECOMMENDED TABLES FOR AO1 METRICS:")
+        for i, rec in enumerate(ao1_recommendations['summary']['top_recommendations'][:5], 1):
+            print(f"   {i}. {rec['table']} ({rec['row_count']:,} rows)")
+            print(f"      Priority: {rec['priority']} | Supports {rec['metrics_supported']} metrics")
+            print(f"      Best for: {', '.join(rec['best_metrics'])}")
+            print()
+        
+        print(f"\n📋 KEY METRIC RECOMMENDATIONS:")
+        priority_metrics = ['url_fqdn_coverage', 'network_cmdb_visibility', 'endpoint_cmdb_visibility', 'crowdstrike_coverage', 'ipam_coverage']
+        
+        for metric in priority_metrics:
+            if metric in ao1_recommendations['by_metric']:
+                metric_info = ao1_recommendations['by_metric'][metric]
+                print(f"\n   🎯 {metric.upper().replace('_', ' ')}")
+                print(f"      Description: {metric_info['description']}")
+                if metric_info['recommended_tables']:
+                    best_table = metric_info['recommended_tables'][0]
+                    print(f"      ✅ Best Table: {best_table['table']} ({best_table['row_count']:,} rows)")
+                    print(f"      🔑 Recommended Fields:")
+                    for field in best_table['fields'][:3]:
+                        print(f"         • {field['actual']} ({field['type']}) -> {field['required']}")
+                else:
+                    print(f"      ❌ No suitable tables found")
+        
         # Calculate final statistics
         end_time = time.time()
         project_structure['statistics']['exploration_duration_seconds'] = round(end_time - start_time, 2)
@@ -578,44 +971,65 @@ def main():
         
         # Save results to file
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        filename = f"bigquery_exploration_results_{timestamp}.json"
+        filename = f"bigquery_ao1_analysis_{timestamp}.json"
         save_results_to_file(project_structure, filename)
         
         # Print comprehensive summary
         stats = project_structure['statistics']
+        ao1_stats = project_structure.get('ao1_recommendations', {}).get('summary', {})
+        
         print("\n" + "="*80)
-        print("📊 EXPLORATION SUMMARY")
+        print("📊 FINAL EXPLORATION & AO1 ANALYSIS SUMMARY")
         print("="*80)
         print(f"⏱️  Duration: {stats.get('exploration_duration_seconds', 0):.1f} seconds")
         print(f"📁 Datasets: {stats['total_datasets_processed']}/{stats['total_datasets_found']} processed")
         print(f"📊 Tables: {stats['total_tables_processed']}/{stats['total_tables_found']} processed")
         print(f"🔑 Total Columns: {stats['total_columns_found']:,}")
-        print(f"❌ Permission Errors: {stats['permission_errors']}")
-        print(f"⚠️  Sampling Errors: {stats['sampling_errors']}")
+        print(f"🎯 AO1 Analysis: {ao1_stats.get('total_tables_analyzed', 0)} tables analyzed")
+        print(f"🏆 High Priority Tables: {ao1_stats.get('high_priority_tables', 0)}")
+        print(f"📋 Metrics with Coverage: {len(project_structure.get('ao1_recommendations', {}).get('by_metric', {}))}")
         print(f"💾 Results saved to: {filename}")
+        
+        print(f"\n🎯 IMPLEMENTATION PRIORITIES:")
+        ao1_recs = project_structure.get('ao1_recommendations', {})
+        if 'by_metric' in ao1_recs:
+            priority_order = []
+            for metric, info in ao1_recs['by_metric'].items():
+                if info['recommended_tables']:
+                    best_table = info['recommended_tables'][0]
+                    priority_order.append((
+                        metric, 
+                        best_table['table'], 
+                        best_table['row_count'],
+                        best_table['confidence']
+                    ))
+            
+            # Sort by row count (prioritize larger tables)
+            priority_order.sort(key=lambda x: x[2], reverse=True)
+            
+            print(f"   START WITH THESE HIGH-VOLUME TABLES:")
+            for i, (metric, table, rows, confidence) in enumerate(priority_order[:5], 1):
+                print(f"   {i}. {table} ({rows:,} rows) -> {metric.replace('_', ' ').title()}")
         
         if project_structure.get('warnings'):
             print(f"\n⚠️  Warnings ({len(project_structure['warnings'])}):")
-            for warning in project_structure['warnings'][:5]:
+            for warning in project_structure['warnings'][:3]:
                 print(f"   • {warning}")
-            if len(project_structure['warnings']) > 5:
-                print(f"   • ... and {len(project_structure['warnings']) - 5} more warnings")
         
         if project_structure.get('errors'):
             print(f"\n❌ Errors ({len(project_structure['errors'])}):")
-            for error in project_structure['errors'][:3]:
+            for error in project_structure['errors'][:2]:
                 print(f"   • {error}")
-            if len(project_structure['errors']) > 3:
-                print(f"   • ... and {len(project_structure['errors']) - 3} more errors")
         
         print("="*80)
         
         # Final success message
         if stats['total_tables_processed'] > 0:
-            print("✅ Exploration completed successfully!")
-            print(f"📋 Check the JSON file for complete details of all {stats['total_tables_processed']} tables")
+            print("✅ AO1 Analysis completed successfully!")
+            print(f"📋 Check the JSON files for complete implementation guidance")
+            print(f"🚀 Prioritize tables with >1M rows for immediate AO1 metric implementation")
         else:
-            print("⚠️  Exploration completed but no tables were successfully processed")
+            print("⚠️  Analysis completed but no tables were successfully processed")
             print("🔍 Check the log file and error messages above for details")
         
         logger.info("Project exploration completed successfully")
