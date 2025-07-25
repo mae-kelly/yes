@@ -661,7 +661,103 @@ class DataDrivenMetricsRecommender:
         self.nlp_matcher = UltraIntelligentNLPMatcher()
         self.load_results()
 
-        self.metric_requirements = self.ao1_metric_requirements
+        self.ao1_visibility_requirements = {
+            'Network': {
+                'URL/FQDN coverage': {
+                    'synonyms': ['url', 'fqdn', 'domain', 'hostname', 'web_address', 'site', 'uri', 'web_url', 'dns_name', 'domain_name', 'host_name', 'server_name', 'website', 'web_site'],
+                    'partial_matches': ['url', 'domain', 'host', 'fqdn', 'dns', 'web', 'site', 'name', 'server'],
+                    'description': 'Measure coverage of URL/FQDN data across network logs',
+                    'visibility_query': 'What percentage of network events contain URL/domain information?'
+                },
+                'CMDB Asset Visibility': {
+                    'synonyms': ['cmdb', 'asset', 'inventory', 'configuration', 'device', 'endpoint', 'machine', 'computer', 'workstation', 'server', 'node', 'equipment', 'hardware'],
+                    'partial_matches': ['asset', 'inventory', 'config', 'device', 'endpoint', 'machine', 'computer', 'equipment', 'cmdb'],
+                    'description': 'Measure asset visibility through IP/hostname/device correlation',
+                    'visibility_query': 'What percentage of network traffic can be correlated to known assets?'
+                },
+                'Network Zones/spans': {
+                    'synonyms': ['zone', 'network_zone', 'span', 'network_span', 'segment', 'network_segment', 'vlan', 'subnet', 'network', 'lan', 'wan', 'dmz'],
+                    'partial_matches': ['zone', 'span', 'segment', 'vlan', 'subnet', 'network', 'lan', 'wan', 'dmz'],
+                    'description': 'Measure network zone and span visibility coverage',
+                    'visibility_query': 'What percentage of traffic is tagged with network zone information?'
+                },
+                'IPAM Public IP Coverage': {
+                    'synonyms': ['ipam', 'public_ip', 'ip_management', 'ip_address_management', 'external_ip', 'internet_ip', 'wan_ip', 'routable_ip'],
+                    'partial_matches': ['ipam', 'public_ip', 'external_ip', 'internet', 'wan', 'routable', 'ip_mgmt'],
+                    'description': 'Measure public IP address management and coverage',
+                    'visibility_query': 'What percentage of public IPs are tracked and managed?'
+                },
+                'Geolocation': {
+                    'synonyms': ['geo', 'geolocation', 'geo_location', 'location', 'country', 'region', 'city', 'latitude', 'longitude', 'coordinates', 'geographic', 'locale'],
+                    'partial_matches': ['geo', 'location', 'country', 'region', 'city', 'lat', 'lon', 'coord', 'geographic'],
+                    'description': 'Measure geographic location data coverage',
+                    'visibility_query': 'What percentage of traffic has geographic location data?'
+                },
+                'VPC': {
+                    'synonyms': ['vpc', 'virtual_private_cloud', 'virtual_network', 'vnet', 'cloud_network', 'private_cloud', 'virtual_lan'],
+                    'partial_matches': ['vpc', 'virtual', 'cloud', 'vnet', 'private'],
+                    'description': 'Measure VPC and virtual network visibility',
+                    'visibility_query': 'What percentage of cloud traffic is VPC-tagged?'
+                },
+                'Log Ingest Volume': {
+                    'synonyms': ['log_volume', 'ingest_volume', 'log_size', 'bytes_ingested', 'events_per_second', 'log_count', 'message_count', 'record_count'],
+                    'partial_matches': ['volume', 'ingest', 'size', 'bytes', 'count', 'records', 'messages', 'events'],
+                    'description': 'Measure log ingestion volume and coverage rates',
+                    'visibility_query': 'What is the log ingestion rate and volume coverage?'
+                }
+            },
+            'Endpoint': {
+                'CMDB Asset Visibility': {
+                    'synonyms': ['cmdb', 'asset', 'inventory', 'endpoint', 'device', 'computer', 'workstation', 'machine', 'host', 'system'],
+                    'partial_matches': ['asset', 'inventory', 'endpoint', 'device', 'computer', 'machine', 'host', 'cmdb'],
+                    'description': 'Measure endpoint asset inventory coverage',
+                    'visibility_query': 'What percentage of endpoints are tracked in asset inventory?'
+                },
+                'Crowdstrike Agent Coverage': {
+                    'synonyms': ['crowdstrike', 'cs_agent', 'falcon', 'falcon_sensor', 'edr_agent', 'endpoint_agent', 'security_agent'],
+                    'partial_matches': ['crowdstrike', 'falcon', 'cs_agent', 'edr', 'agent', 'sensor'],
+                    'description': 'Measure Crowdstrike agent deployment coverage',
+                    'visibility_query': 'What percentage of endpoints have Crowdstrike agents deployed?'
+                },
+                'Log Ingest Volume': {
+                    'synonyms': ['log_volume', 'event_volume', 'endpoint_logs', 'system_logs', 'security_logs', 'audit_logs'],
+                    'partial_matches': ['log', 'event', 'volume', 'audit', 'security', 'system'],
+                    'description': 'Measure endpoint log ingestion coverage',
+                    'visibility_query': 'What percentage of endpoints are generating log data?'
+                }
+            },
+            'Identity_Authentication': {
+                'Domain Coverage': {
+                    'synonyms': ['domain', 'ad_domain', 'authentication_domain', 'login_domain', 'user_domain', 'identity_domain'],
+                    'partial_matches': ['domain', 'ad', 'auth', 'login', 'identity', 'user'],
+                    'description': 'Measure authentication domain coverage (Internal/External/Controls)',
+                    'visibility_query': 'What percentage of authentication events include domain classification?'
+                }
+            },
+            'Application': {
+                'URL/FQDN coverage': {
+                    'synonyms': ['url', 'fqdn', 'domain', 'hostname', 'web_address', 'application_url', 'app_url', 'service_url'],
+                    'partial_matches': ['url', 'domain', 'host', 'fqdn', 'web', 'app', 'service'],
+                    'description': 'Measure application URL and domain coverage',
+                    'visibility_query': 'What percentage of application traffic includes URL/domain data?'
+                },
+                'Agent Coverage': {
+                    'synonyms': ['agent', 'application_agent', 'app_agent', 'monitoring_agent', 'apm_agent'],
+                    'partial_matches': ['agent', 'monitor', 'apm', 'app', 'application'],
+                    'description': 'Measure application monitoring agent coverage',
+                    'visibility_query': 'What percentage of applications have monitoring agents?'
+                }
+            },
+            'Cloud': {
+                'VPC coverage': {
+                    'synonyms': ['vpc', 'virtual_private_cloud', 'cloud_network', 'aws_vpc', 'azure_vnet', 'gcp_vpc'],
+                    'partial_matches': ['vpc', 'virtual', 'cloud', 'vnet', 'network'],
+                    'description': 'Measure cloud VPC visibility and coverage',
+                    'visibility_query': 'What percentage of cloud resources are VPC-tagged?'
+                }
+            }
+        }
+        # Remove the old generic metric_requirements and replace with AO1-specific matching logic
 
     def load_results(self):
         try:
@@ -781,134 +877,80 @@ class DataDrivenMetricsRecommender:
 
     def map_metrics_to_data(self) -> Dict[str, List[Dict[str, Any]]]:
         available_sources = self.get_available_data_sources()
-        metric_recommendations = {}
+        ao1_visibility_recommendations = {}
         
         for role, log_types in available_sources.items():
-            metric_recommendations[role] = []
+            ao1_visibility_recommendations[role] = []
             
-            for log_type, data_info in log_types.items():
-                if role in self.metric_requirements and log_type in self.metric_requirements[role]:
-                    available_metrics = self.metric_requirements[role][log_type]
-                    
-                    for metric_name, metric_info in available_metrics.items():
-                        for table_info in data_info['tables']:
-                            table_columns = [col.lower() for col in table_info['columns']]
+            # Map to AO1 visibility requirements instead of generic metrics
+            if role in self.ao1_visibility_requirements:
+                ao1_requirements = self.ao1_visibility_requirements[role]
+                
+                for log_type, data_info in log_types.items():
+                    for table_info in data_info['tables']:
+                        table_columns = [col.lower() for col in table_info['columns']]
+                        
+                        # Test each AO1 visibility requirement
+                        for visibility_factor, factor_info in ao1_requirements.items():
                             
-                            required_matches = []
-                            for req_col in metric_info['required_columns']:
-                                ultra_results = self.nlp_matcher.ultra_intelligent_match(req_col, table_columns, threshold=0.2)
-                                
-                                all_matches = []
-                                match_details = {}
-                                
-                                for result in ultra_results:
-                                    candidate = result['candidate']
-                                    all_matches.append(candidate)
-                                    match_details[candidate] = {
-                                        'type': result['match_type'],
+                            # Find columns that match AO1 visibility synonyms and partial matches
+                            visibility_matches = []
+                            
+                            # Check synonyms
+                            for synonym in factor_info['synonyms']:
+                                synonym_results = self.nlp_matcher.ultra_intelligent_match(synonym, table_columns, threshold=0.2)
+                                for result in synonym_results:
+                                    visibility_matches.append({
+                                        'matched_column': result['candidate'],
+                                        'ao1_requirement': visibility_factor,
+                                        'match_term': synonym,
+                                        'match_type': 'synonym',
                                         'confidence': result['confidence'],
-                                        'evidence': result['evidence'],
-                                        'breakdown': result['breakdown']
-                                    }
-                                
-                                if all_matches:
-                                    best_confidence = max(match_details[match]['confidence'] for match in all_matches)
-                                    primary_match_type = max(match_details.items(), key=lambda x: x[1]['confidence'])[1]['type']
-                                    
-                                    required_matches.append({
-                                        'required': req_col,
-                                        'available': all_matches,
-                                        'match_type': primary_match_type,
-                                        'confidence': best_confidence,
-                                        'details': match_details
+                                        'evidence': result['evidence']
                                     })
                             
-                            optional_matches = []
-                            for opt_col in metric_info['optional_columns']:
-                                ultra_results = self.nlp_matcher.ultra_intelligent_match(opt_col, table_columns, threshold=0.15)
+                            # Check partial matches
+                            for partial in factor_info['partial_matches']:
+                                for column in table_columns:
+                                    if partial.lower() in column.lower():
+                                        visibility_matches.append({
+                                            'matched_column': column,
+                                            'ao1_requirement': visibility_factor,
+                                            'match_term': partial,
+                                            'match_type': 'partial',
+                                            'confidence': 0.8,  # High confidence for partial matches
+                                            'evidence': ['partial_word_match']
+                                        })
+                            
+                            if visibility_matches:
+                                # Calculate AO1 visibility feasibility score
+                                avg_confidence = sum(match['confidence'] for match in visibility_matches) / len(visibility_matches)
                                 
-                                all_matches = []
-                                match_details = {}
+                                # Boost for table size (bigger tables = better visibility measurement)
+                                size_multiplier = 1 + (table_info['size_priority_score'] * 0.15)
                                 
-                                for result in ultra_results:
-                                    candidate = result['candidate']
-                                    all_matches.append(candidate)
-                                    match_details[candidate] = {
-                                        'type': result['match_type'],
-                                        'confidence': result['confidence'],
-                                        'evidence': result['evidence'],
-                                        'breakdown': result['breakdown']
-                                    }
+                                # Boost for multiple matching columns (better coverage)
+                                coverage_multiplier = 1 + (len(visibility_matches) * 0.1)
                                 
-                                if all_matches:
-                                    best_confidence = max(match_details[match]['confidence'] for match in all_matches)
-                                    primary_match_type = max(match_details.items(), key=lambda x: x[1]['confidence'])[1]['type']
-                                    
-                                    optional_matches.append({
-                                        'optional': opt_col,
-                                        'available': all_matches,
-                                        'match_type': primary_match_type,
-                                        'confidence': best_confidence,
-                                        'details': match_details
-                                    })
-                            
-                            required_score = 0.0
-                            if metric_info['required_columns']:
-                                weighted_matches = sum(match['confidence'] for match in required_matches)
-                                required_score = weighted_matches / len(metric_info['required_columns'])
+                                final_feasibility = min(avg_confidence * size_multiplier * coverage_multiplier, 1.0)
                                 
-                                ultra_semantic_boost = sum(0.15 for match in required_matches if match['match_type'] == 'ultra_semantic')
-                                required_score = min(required_score + ultra_semantic_boost, 1.0)
-                            else:
-                                required_score = 1.0
-                            
-                            optional_score = 0.0
-                            if metric_info['optional_columns']:
-                                weighted_matches = sum(match['confidence'] for match in optional_matches)
-                                optional_score = weighted_matches / len(metric_info['optional_columns'])
-                                
-                                ultra_semantic_boost = sum(0.1 for match in optional_matches if match['match_type'] == 'ultra_semantic')
-                                optional_score = min(optional_score + ultra_semantic_boost, 1.0)
-                            
-                            base_feasibility = (required_score * 0.85) + (optional_score * 0.15)
-                            
-                            size_multiplier = 1 + (table_info['size_priority_score'] * 0.12)
-                            
-                            nlp_sophistication_bonus = 0.0
-                            total_ultra_matches = len([m for m in required_matches + optional_matches if m['match_type'] == 'ultra_semantic'])
-                            if total_ultra_matches > 0:
-                                nlp_sophistication_bonus = min(total_ultra_matches * 0.08, 0.25)
-                            
-                            intelligence_multiplier = 1.0
-                            total_evidence = sum(len(m['details'][col]['evidence']) for m in required_matches + optional_matches for col in m['available'])
-                            if total_evidence > 5:
-                                intelligence_multiplier = 1.15
-                            
-                            feasibility_score = min((base_feasibility * size_multiplier * intelligence_multiplier) + nlp_sophistication_bonus, 1.0)
-                            
-                            if required_score >= 0.4:
-                                metric_recommendations[role].append({
-                                    'metric_name': metric_name,
+                                ao1_visibility_recommendations[role].append({
+                                    'ao1_visibility_factor': visibility_factor,
                                     'log_type': log_type,
                                     'table_name': table_info['table_name'],
                                     'dataset': table_info['dataset'],
                                     'row_count': table_info['row_count'],
                                     'size_category': table_info['size_category'],
                                     'size_priority_score': table_info['size_priority_score'],
-                                    'feasibility_score': feasibility_score,
-                                    'base_feasibility': base_feasibility,
-                                    'intelligence_score': total_evidence,
-                                    'description': metric_info['description'],
-                                    'business_value': metric_info['business_value'],
-                                    'required_columns_matched': required_matches,
-                                    'optional_columns_matched': optional_matches,
-                                    'missing_required': [req for req in metric_info['required_columns'] 
-                                                       if not any(self.nlp_matcher.calculate_multidimensional_similarity(req, col)['final_score'] > 0.2 
-                                                                for col in table_columns)],
-                                    'implementation_difficulty': 'Trivial' if feasibility_score > 0.9 else 'Easy' if feasibility_score > 0.7 else 'Medium' if feasibility_score > 0.5 else 'Hard'
+                                    'feasibility_score': final_feasibility,
+                                    'description': factor_info['description'],
+                                    'visibility_query': factor_info['visibility_query'],
+                                    'matched_columns': visibility_matches,
+                                    'column_count': len(visibility_matches),
+                                    'implementation_difficulty': 'AO1_Trivial' if final_feasibility > 0.8 else 'AO1_Easy' if final_feasibility > 0.6 else 'AO1_Medium'
                                 })
         
-        return metric_recommendations
+        return ao1_visibility_recommendations
 
     def prioritize_recommendations(self, recommendations: Dict[str, List[Dict[str, Any]]]) -> List[Dict[str, Any]]:
         all_recommendations = []
