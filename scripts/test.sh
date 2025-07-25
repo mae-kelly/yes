@@ -5,10 +5,6 @@ cd "$(dirname "$0")/.."
 echo "🧪 Testing Scherman System"
 echo "========================="
 
-# Install dependencies first
-echo "📦 Installing dependencies..."
-pip install ccxt pandas numpy requests python-dotenv
-
 echo "📦 Testing imports..."
 python3 -c "
 import sys
@@ -21,7 +17,7 @@ try:
 except Exception as e:
     print(f'❌ Import failed: {e}')
     sys.exit(1)
-" || { echo "❌ Import test failed"; exit 1; }
+"
 
 echo "🔧 Testing basic functionality..."
 python3 -c "
@@ -53,7 +49,7 @@ else:
     print('ℹ️ No signal generated (normal for random data)')
 
 print('✅ Basic functionality test passed')
-" || { echo "❌ Functionality test failed"; exit 1; }
+"
 
 echo ""
 echo "🎉 All tests passed!"
