@@ -50,11 +50,18 @@ logger = logging.getLogger(__name__)
 
 class UltraIntelligentNLPMatcher:
     def __init__(self):
-        from security_taxonomy import SECURITY_TAXONOMY
-        from abbreviation_engine import ABBREVIATION_ENGINE
+        try:
+            from security_taxonomy import SECURITY_TAXONOMY
+            from abbreviation_engine import ABBREVIATION_ENGINE
+            
+            self.security_taxonomy = SECURITY_TAXONOMY
+            self.abbreviation_engine = ABBREVIATION_ENGINE
+        except ImportError as e:
+            logger.warning(f"Could not import taxonomy/abbreviation modules: {e}")
+            # Provide minimal fallback data
+            self.security_taxonomy = self._get_default_taxonomy()
+            self.abbreviation_engine = self._get_default_abbreviations()
         
-        self.security_taxonomy = SECURITY_TAXONOMY
-        self.abbreviation_engine = ABBREVIATION_ENGINE
         self.semantic_embeddings = self._build_advanced_embeddings()
         self.pattern_library = self._build_pattern_library()
         self.context_graphs = self._build_context_graphs()
@@ -70,8 +77,45 @@ class UltraIntelligentNLPMatcher:
                 self.stemmer = PorterStemmer()
                 self.stop_words = set(stopwords.words('english'))
             except:
-                nltk.download('stopwords', quiet=True)
-                nltk.download('punkt', quiet=True)
+                try:
+                    nltk.download('stopwords', quiet=True)
+                    nltk.download('punkt', quiet=True)
+                    self.stemmer = PorterStemmer()
+                    self.stop_words = set(stopwords.words('english'))
+                except:
+                    logger.warning("Could not download NLTK data, using fallback")
+                    self.stemmer = None
+                    self.stop_words = set()
+
+    def _get_default_taxonomy(self):
+        """Fallback taxonomy if import fails"""
+        return {
+            'network': {
+                'basic': ['ip', 'port', 'protocol', 'tcp', 'udp', 'http', 'https', 'dns'],
+                'security': ['firewall', 'vpn', 'ssl', 'tls']
+            },
+            'identity': {
+                'auth': ['user', 'login', 'password', 'token', 'session'],
+                'access': ['permission', 'role', 'group', 'policy']
+            },
+            'data': {
+                'storage': ['file', 'database', 'backup', 'archive'],
+                'format': ['json', 'xml', 'csv', 'binary']
+            }
+        }
+
+    def _get_default_abbreviations(self):
+        """Fallback abbreviations if import fails"""
+        return {
+            'ip': 'internet_protocol',
+            'tcp': 'transmission_control_protocol',
+            'udp': 'user_datagram_protocol',
+            'http': 'hypertext_transfer_protocol',
+            'url': 'uniform_resource_locator',
+            'dns': 'domain_name_system',
+            'ssl': 'secure_sockets_layer',
+            'tls': 'transport_layer_security'
+        }
 
     def _build_advanced_embeddings(self):
         embeddings = {}
@@ -122,10 +166,13 @@ class UltraIntelligentNLPMatcher:
         if len(term) > 6:
             variations.update([term[:4], term[:5], term[:6]])
         
-        if NLTK_AVAILABLE and hasattr(self, 'stemmer'):
-            stemmed = self.stemmer.stem(term)
-            if stemmed != term:
-                variations.add(stemmed)
+        if NLTK_AVAILABLE and hasattr(self, 'stemmer') and self.stemmer:
+            try:
+                stemmed = self.stemmer.stem(term)
+                if stemmed != term:
+                    variations.add(stemmed)
+            except:
+                pass
         
         return variations
 
@@ -218,7 +265,7 @@ class UltraIntelligentNLPMatcher:
         text = re.sub(r'_+', '_', text)
         text = text.strip('_')
         
-        if NLTK_AVAILABLE and hasattr(self, 'stop_words'):
+        if NLTK_AVAILABLE and hasattr(self, 'stop_words') and self.stop_words:
             words = text.split('_')
             words = [w for w in words if w not in self.stop_words and len(w) > 2]
             text = '_'.join(words)
@@ -279,7 +326,10 @@ class UltraIntelligentNLPMatcher:
         similarities['edit_distance'] = SequenceMatcher(None, text1.lower(), text2.lower()).ratio()
         
         if FUZZYWUZZY_AVAILABLE:
-            similarities['fuzzy_ratio'] = fuzz.ratio(text1, text2) / 100.0
+            try:
+                similarities['fuzzy_ratio'] = fuzz.ratio(text1, text2) / 100.0
+            except:
+                similarities['fuzzy_ratio'] = 0.0
         else:
             similarities['fuzzy_ratio'] = 0.0
         
@@ -321,13 +371,16 @@ class UltraIntelligentNLPMatcher:
         max_sim = 0.0
         for emb1 in embeddings1:
             for emb2 in embeddings2:
-                dot_product = np.dot(emb1, emb2)
-                magnitude1 = np.linalg.norm(emb1)
-                magnitude2 = np.linalg.norm(emb2)
-                
-                if magnitude1 > 0 and magnitude2 > 0:
-                    sim = dot_product / (magnitude1 * magnitude2)
-                    max_sim = max(max_sim, sim)
+                try:
+                    dot_product = np.dot(emb1, emb2)
+                    magnitude1 = np.linalg.norm(emb1)
+                    magnitude2 = np.linalg.norm(emb2)
+                    
+                    if magnitude1 > 0 and magnitude2 > 0:
+                        sim = dot_product / (magnitude1 * magnitude2)
+                        max_sim = max(max_sim, sim)
+                except:
+                    continue
         
         return max_sim
 
@@ -358,17 +411,21 @@ class UltraIntelligentNLPMatcher:
         results = []
         
         for candidate in candidates:
-            similarity_data = self.calculate_multidimensional_similarity(target, candidate)
-            
-            if similarity_data['final_score'] >= threshold:
-                results.append({
-                    'candidate': candidate,
-                    'confidence': similarity_data['final_score'],
-                    'evidence': similarity_data['match_evidence'],
-                    'breakdown': similarity_data['component_scores'],
-                    'match_type': similarity_data['match_type'],
-                    'ml_confidence': similarity_data['final_score']
-                })
+            try:
+                similarity_data = self.calculate_multidimensional_similarity(target, candidate)
+                
+                if similarity_data['final_score'] >= threshold:
+                    results.append({
+                        'candidate': candidate,
+                        'confidence': similarity_data['final_score'],
+                        'evidence': similarity_data['match_evidence'],
+                        'breakdown': similarity_data['component_scores'],
+                        'match_type': similarity_data['match_type'],
+                        'ml_confidence': similarity_data['final_score']
+                    })
+            except Exception as e:
+                logger.warning(f"Error matching {target} to {candidate}: {e}")
+                continue
         
         results = sorted(results, key=lambda x: -x['confidence'])
         return results

@@ -16,7 +16,7 @@ class MetricsRecommender:
         self.mapping_file = mapping_file
         self.data_file = data_file
         self.nlp_matcher = UltraIntelligentNLPMatcher()
-        self.data_analyzer = DataAnalyzer()
+        self.data_analyzer = DataAnalyzer(mapping_file, data_file)
         self.ao1_requirements = AO1_VISIBILITY_REQUIREMENTS
         self.recommendation_stats = {'total': 0, 'high_confidence': 0, 'ultra_semantic': 0, 'ml_enhanced': 0}
         self.priority_matrix = {'CRITICAL': 1.0, 'HIGH': 0.8, 'MEDIUM': 0.6, 'LOW': 0.4}
@@ -24,12 +24,22 @@ class MetricsRecommender:
         self.load_data()
 
     def load_data(self):
-        with open(self.mapping_file, 'r') as f:
-            self.mapping_data = json.load(f)
-        with open(self.data_file, 'r') as f:
-            self.original_data = json.load(f)
+        try:
+            with open(self.mapping_file, 'r') as f:
+                self.mapping_data = json.load(f)
+            with open(self.data_file, 'r') as f:
+                self.original_data = json.load(f)
+        except FileNotFoundError as e:
+            logger.error(f"File not found: {e}")
+            # Create empty data structures if files don't exist
+            self.mapping_data = {'matches': {'log_types': {}}}
+            self.original_data = {'datasets': {}}
+        except Exception as e:
+            logger.error(f"Error loading data: {e}")
+            raise
 
     def map_metrics_to_data(self) -> Dict[str, List[Dict[str, Any]]]:
+        """Map AO1 visibility requirements to available data sources"""
         available_sources = self.data_analyzer.get_available_data_sources(
             self.mapping_data, self.original_data
         )
@@ -59,8 +69,10 @@ class MetricsRecommender:
         return recommendations
 
     def _find_column_matches(self, factor_info, table_columns, vis_factor):
+        """Find matching columns using NLP matcher"""
         matches = []
         
+        # Check for exact synonym matches
         for synonym in factor_info['synonyms']:
             results = self.nlp_matcher.ultra_intelligent_match(
                 synonym, table_columns, threshold=0.15
@@ -76,6 +88,7 @@ class MetricsRecommender:
                     'ml_confidence': result.get('ml_confidence', 0.0)
                 })
         
+        # Check for partial matches
         for partial in factor_info['partial_matches']:
             for column in table_columns:
                 if partial.lower() in column.lower():
@@ -94,6 +107,7 @@ class MetricsRecommender:
         return matches
 
     def _create_recommendation(self, vis_factor, factor_info, matches, table_info, log_type, role):
+        """Create a recommendation object with all required fields"""
         feasibility = self._calculate_feasibility(matches, table_info, factor_info)
         intelligence = self._calculate_intelligence(matches, table_info, factor_info)
         
@@ -108,7 +122,7 @@ class MetricsRecommender:
             'size_priority_score': table_info['size_priority_score'],
             'feasibility_score': feasibility['final_score'],
             'intelligence_score': intelligence,
-            'confidence_score': feasibility['confidence'],
+            'confidence_score': feasibility.get('confidence', 0.0),
             'description': factor_info['description'],
             'visibility_query': factor_info['visibility_query'],
             'business_impact': factor_info['business_impact'],
@@ -121,10 +135,15 @@ class MetricsRecommender:
             ),
             'recommendation_rank': self._calculate_rank(
                 feasibility, intelligence, table_info, factor_info
-            )
+            ),
+            # Additional fields for compatibility
+            'data_quality_score': table_info.get('data_quality_score', 0.0),
+            'freshness_score': table_info.get('freshness_score', 0.0),
+            'column_count': table_info.get('column_count', 0)
         }
 
     def _calculate_feasibility(self, matches, table_info, factor_info):
+        """Calculate feasibility score with breakdown components"""
         components = {
             'base_confidence': statistics.mean([m['confidence'] for m in matches]) if matches else 0,
             'size_factor': min(table_info['size_priority_score'] / 10, 1.0),
@@ -145,11 +164,12 @@ class MetricsRecommender:
         ) * multiplier
         
         components['final_score'] = min(weighted_score, 1.0)
-        components['confidence'] = statistics.mean([v for v in components.values() if v > 0])
+        components['confidence'] = statistics.mean([v for v in components.values() if v > 0 and v <= 1.0])
         
         return components
 
     def _calculate_intelligence(self, matches, table_info, factor_info):
+        """Calculate intelligence score based on match quality and data characteristics"""
         components = []
         
         if matches:
@@ -167,6 +187,7 @@ class MetricsRecommender:
         return round(statistics.mean(components) if components else 0.0, 3)
 
     def _determine_difficulty(self, feasibility, intelligence, factor_info):
+        """Determine implementation difficulty level"""
         complexity = factor_info.get('complexity', 'MEDIUM')
         combined = (feasibility + intelligence) / 2
         
@@ -182,6 +203,7 @@ class MetricsRecommender:
             return 'AO1_Very_Hard'
 
     def _calculate_rank(self, feasibility, intelligence, table_info, factor_info):
+        """Calculate overall recommendation ranking score"""
         factors = {
             'feasibility': feasibility['final_score'] * 0.25,
             'intelligence': intelligence * 0.20,
@@ -193,6 +215,7 @@ class MetricsRecommender:
         return round(sum(factors.values()), 3)
 
     def prioritize_recommendations(self, recommendations: Dict[str, List[Dict[str, Any]]]) -> List[Dict[str, Any]]:
+        """Prioritize and sort all recommendations"""
         all_recs = []
         for role, recs in recommendations.items():
             all_recs.extend(recs)
@@ -204,6 +227,7 @@ class MetricsRecommender:
             -x['size_priority_score']
         ))
         
+        # Update statistics
         self.recommendation_stats.update({
             'total': len(prioritized),
             'high_confidence': len([r for r in prioritized if r.get('confidence_score', 0) > 0.8]),
@@ -218,6 +242,7 @@ class MetricsRecommender:
         return prioritized
 
     def save_recommendations(self, recommendations, output_file: str = "ao1_recommendations.json"):
+        """Save recommendations to JSON file"""
         prioritized = self.prioritize_recommendations(recommendations)
         
         output_data = {

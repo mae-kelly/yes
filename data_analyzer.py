@@ -141,10 +141,21 @@ class DataAnalyzer:
         
         return freshness_score
 
-    def get_available_data_sources(self) -> Dict[str, Dict[str, Any]]:
+    def get_available_data_sources(self, mapping_data=None, original_data=None) -> Dict[str, Dict[str, Any]]:
+        """Updated method signature to accept parameters from MetricsRecommender"""
+        if mapping_data is None:
+            mapping_data = self.mapping_data
+        if original_data is None:
+            original_data = self.original_data
+            
         available_sources = {}
         
-        for role, requirements in self.mapping_data['matches']['log_types'].items():
+        # Check if mapping_data has the expected structure
+        if not mapping_data or 'matches' not in mapping_data or 'log_types' not in mapping_data['matches']:
+            logger.warning("Invalid mapping data structure")
+            return available_sources
+        
+        for role, requirements in mapping_data['matches']['log_types'].items():
             available_sources[role] = {}
             
             for log_type, matches in requirements.items():
