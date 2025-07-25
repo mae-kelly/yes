@@ -1,4 +1,4 @@
-BASE_ABBREVIATIONS = {
+ABBREVIATION_ENGINE = {
     'auth': 'authentication', 'authz': 'authorization', 'authn': 'authentication',
     'sso': 'single_sign_on', 'mfa': 'multi_factor_authentication', '2fa': 'two_factor_authentication',
     'saml': 'security_assertion_markup_language', 'oauth': 'open_authorization',
@@ -45,18 +45,5 @@ BASE_ABBREVIATIONS = {
     'mac': 'media_access_control', 'uuid': 'universally_unique_identifier',
     'guid': 'globally_unique_identifier', 'md5': 'message_digest_5',
     'sha': 'secure_hash_algorithm', 'aes': 'advanced_encryption_standard',
-    'rsa': 'rivest_shamir_adleman', 'pki': 'public_key_infrastructure',
-    'cmdb': 'configuration_management_database', 'ipam': 'ip_address_management'
+    'rsa': 'rivest_shamir_adleman', 'pki': 'public_key_infrastructure'
 }
-
-ABBREVIATION_ENGINE = {}
-for abbrev, full in BASE_ABBREVIATIONS.items():
-    ABBREVIATION_ENGINE[abbrev] = full
-    ABBREVIATION_ENGINE[abbrev.upper()] = full
-    ABBREVIATION_ENGINE[abbrev.capitalize()] = full
-    
-    if '_' in full:
-        parts = full.split('_')
-        if len(parts) == 2:
-            ABBREVIATION_ENGINE[abbrev + '_' + parts[1]] = full
-            ABBREVIATION_ENGINE[parts[0] + '_' + abbrev] = full

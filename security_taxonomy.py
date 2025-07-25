@@ -18,16 +18,15 @@ SECURITY_TAXONOMY = {
         'cryptography': ['encryption', 'decryption', 'hash', 'digest', 'signature', 'certificate', 'pki', 'ssl', 'tls'],
         'analysis': ['forensics', 'incident', 'investigation', 'attribution', 'indicators', 'ioc', 'ttp', 'mitre'],
         'intelligence': ['threat_intel', 'feeds', 'reputation', 'blacklist', 'whitelist', 'indicators', 'yara', 'sigma'],
-        'frameworks': ['nist', 'iso27001', 'cis', 'owasp', 'sans', 'mitre_attack', 'kill_chain'],
-        'governance': ['policy', 'compliance', 'audit', 'risk', 'assessment', 'framework', 'standard', 'regulation']
+        'frameworks': ['nist', 'iso27001', 'cis', 'owasp', 'sans', 'mitre_attack', 'kill_chain', 'diamond_model']
     },
     'identity': {
         'authentication': ['login', 'logon', 'signin', 'sso', 'mfa', '2fa', 'biometric', 'token', 'password', 'pin'],
         'authorization': ['permission', 'privilege', 'access', 'role', 'group', 'policy', 'acl', 'rbac', 'abac'],
         'provisioning': ['create', 'modify', 'delete', 'disable', 'enable', 'suspend', 'unlock', 'reset', 'lifecycle'],
-        'federation': ['saml', 'oauth', 'oidc', 'jwt', 'kerberos', 'ldap', 'ad', 'radius', 'tacacs'],
+        'federation': ['saml', 'oauth', 'oidc', 'jwt', 'kerberos', 'ldap', 'ad', 'radius', 'tacacs', 'cas'],
         'lifecycle': ['joiner', 'mover', 'leaver', 'onboard', 'offboard', 'transfer', 'promote', 'terminate'],
-        'attributes': ['username', 'email', 'domain', 'group', 'role', 'department', 'title', 'manager'],
+        'attributes': ['username', 'email', 'domain', 'group', 'role', 'department', 'title', 'manager', 'employee_id'],
         'directory': ['active_directory', 'ldap', 'azure_ad', 'okta', 'ping', 'forgerock', 'sailpoint'],
         'privileged': ['pam', 'privileged_access', 'admin', 'root', 'sudo', 'elevation', 'just_in_time']
     },
@@ -38,8 +37,7 @@ SECURITY_TAXONOMY = {
         'formats': ['json', 'xml', 'csv', 'pdf', 'doc', 'xls', 'txt', 'binary', 'compressed', 'archive'],
         'storage': ['database', 'file', 'object', 'block', 'cloud', 'on_premise', 'hybrid', 'backup', 'archive'],
         'governance': ['retention', 'disposal', 'archival', 'compliance', 'audit', 'lineage', 'catalog', 'quality'],
-        'privacy': ['gdpr', 'ccpa', 'hipaa', 'pci_dss', 'sox', 'ferpa', 'consent', 'right_to_be_forgotten'],
-        'lifecycle': ['creation', 'storage', 'usage', 'sharing', 'archival', 'destruction', 'retention']
+        'privacy': ['gdpr', 'ccpa', 'hipaa', 'pci_dss', 'sox', 'ferpa', 'consent', 'right_to_be_forgotten']
     },
     'operations': {
         'monitoring': ['log', 'event', 'alert', 'alarm', 'notification', 'dashboard', 'metric', 'kpi', 'sla'],
@@ -47,19 +45,15 @@ SECURITY_TAXONOMY = {
         'response': ['incident', 'investigation', 'containment', 'eradication', 'recovery', 'lessons_learned'],
         'automation': ['orchestration', 'playbook', 'workflow', 'script', 'api', 'webhook', 'trigger', 'soar'],
         'maintenance': ['patch', 'update', 'upgrade', 'configuration', 'deployment', 'rollback', 'backup'],
-        'compliance': ['audit', 'assessment', 'scan', 'validation', 'certification', 'attestation', 'evidence'],
-        'performance': ['capacity', 'utilization', 'throughput', 'response_time', 'availability', 'reliability'],
-        'integration': ['api', 'webhook', 'etl', 'connector', 'adapter', 'middleware', 'message_queue']
+        'compliance': ['audit', 'assessment', 'scan', 'validation', 'certification', 'attestation', 'evidence']
     },
     'infrastructure': {
         'compute': ['server', 'vm', 'container', 'pod', 'node', 'cluster', 'hypervisor', 'docker', 'kubernetes'],
         'storage': ['disk', 'volume', 'partition', 'filesystem', 'raid', 'san', 'nas', 'object_store'],
         'network': ['switch', 'router', 'firewall', 'load_balancer', 'proxy', 'gateway', 'bridge', 'hub'],
         'cloud': ['aws', 'azure', 'gcp', 'hybrid', 'multi_cloud', 'saas', 'paas', 'iaas', 'serverless'],
-        'platforms': ['windows', 'linux', 'unix', 'macos', 'android', 'ios', 'embedded', 'iot'],
-        'services': ['web', 'database', 'application', 'middleware', 'message_queue', 'cache', 'cdn'],
-        'orchestration': ['kubernetes', 'docker_swarm', 'nomad', 'mesos', 'openshift', 'rancher'],
-        'automation': ['ansible', 'puppet', 'chef', 'terraform', 'cloudformation', 'arm', 'pulumi']
+        'platforms': ['windows', 'linux', 'unix', 'macos', 'android', 'ios', 'embedded', 'iot', 'mainframe'],
+        'services': ['web', 'database', 'application', 'middleware', 'message_queue', 'cache', 'cdn']
     },
     'application': {
         'architecture': ['monolith', 'microservices', 'soa', 'event_driven', 'serverless', 'mesh', 'layered'],
