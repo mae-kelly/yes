@@ -70,6 +70,15 @@ class UltraIntelligentNLPMatcher:
             }
         }
         
+        # Add alias for backward compatibility
+        self.ao1_metric_requirements = self.ao1_visibility_requirements
+
+    def __getattr__(self, name):
+        """Handle missing attributes gracefully for backward compatibility"""
+        if name == 'ao1_metric_requirements':
+            return self.ao1_visibility_requirements
+        raise AttributeError(f"'{self.__class__.__name__}' object has no attribute '{name}'")
+        
         self.semantic_embeddings = self._build_advanced_embeddings()
         self.pattern_library = self._build_pattern_library()
         self.abbreviation_engine = self._build_abbreviation_engine()
@@ -661,103 +670,271 @@ class DataDrivenMetricsRecommender:
         self.nlp_matcher = UltraIntelligentNLPMatcher()
         self.load_results()
 
+        # BRILLIANT AO1 VISIBILITY METRICS - Comprehensive Security Intelligence Framework
         self.ao1_visibility_requirements = {
             'Network': {
-                'URL/FQDN coverage': {
-                    'synonyms': ['url', 'fqdn', 'domain', 'hostname', 'web_address', 'site', 'uri', 'web_url', 'dns_name', 'domain_name', 'host_name', 'server_name', 'website', 'web_site'],
-                    'partial_matches': ['url', 'domain', 'host', 'fqdn', 'dns', 'web', 'site', 'name', 'server'],
-                    'description': 'Measure coverage of URL/FQDN data across network logs',
-                    'visibility_query': 'What percentage of network events contain URL/domain information?'
+                'Digital Asset Discovery Coverage': {
+                    'synonyms': ['asset', 'device', 'endpoint', 'host', 'server', 'workstation', 'node', 'machine', 'computer', 'system', 'appliance', 'infrastructure', 'cmdb', 'inventory', 'discovery', 'enumeration'],
+                    'partial_matches': ['asset', 'device', 'host', 'server', 'endpoint', 'node', 'machine', 'system', 'cmdb', 'inventory', 'discovery'],
+                    'description': 'Measure comprehensive asset discovery and inventory coverage across all network segments',
+                    'visibility_query': 'What percentage of network-connected assets are discovered, classified, and continuously monitored?',
+                    'business_impact': 'Critical for attack surface management and zero-trust architecture',
+                    'threat_context': 'Unknown assets = blind spots for lateral movement detection'
                 },
-                'CMDB Asset Visibility': {
-                    'synonyms': ['cmdb', 'asset', 'inventory', 'configuration', 'device', 'endpoint', 'machine', 'computer', 'workstation', 'server', 'node', 'equipment', 'hardware'],
-                    'partial_matches': ['asset', 'inventory', 'config', 'device', 'endpoint', 'machine', 'computer', 'equipment', 'cmdb'],
-                    'description': 'Measure asset visibility through IP/hostname/device correlation',
-                    'visibility_query': 'What percentage of network traffic can be correlated to known assets?'
+                'DNS Intelligence & Domain Reputation': {
+                    'synonyms': ['dns', 'domain', 'fqdn', 'hostname', 'url', 'uri', 'web_address', 'site', 'subdomain', 'tld', 'dns_query', 'dns_response', 'nslookup', 'dig', 'resolver'],
+                    'partial_matches': ['dns', 'domain', 'host', 'fqdn', 'url', 'web', 'site', 'query', 'lookup', 'resolve'],
+                    'description': 'Measure DNS visibility for threat hunting, C2 detection, and domain reputation analysis',
+                    'visibility_query': 'What percentage of DNS queries are logged with full request/response context and threat intelligence correlation?',
+                    'business_impact': 'Essential for detecting DNS tunneling, C2 communications, and malicious domains',
+                    'threat_context': 'DNS is the most common exfiltration and C2 communication vector'
                 },
-                'Network Zones/spans': {
-                    'synonyms': ['zone', 'network_zone', 'span', 'network_span', 'segment', 'network_segment', 'vlan', 'subnet', 'network', 'lan', 'wan', 'dmz'],
-                    'partial_matches': ['zone', 'span', 'segment', 'vlan', 'subnet', 'network', 'lan', 'wan', 'dmz'],
-                    'description': 'Measure network zone and span visibility coverage',
-                    'visibility_query': 'What percentage of traffic is tagged with network zone information?'
+                'Network Segmentation & Zone Intelligence': {
+                    'synonyms': ['zone', 'segment', 'vlan', 'subnet', 'network_zone', 'security_zone', 'trust_zone', 'dmz', 'lan', 'wan', 'perimeter', 'boundary', 'enclave', 'microsegment'],
+                    'partial_matches': ['zone', 'segment', 'vlan', 'subnet', 'network', 'security', 'trust', 'dmz', 'perimeter', 'boundary'],
+                    'description': 'Measure network segmentation visibility and cross-zone traffic analysis for zero-trust validation',
+                    'visibility_query': 'What percentage of network traffic is tagged with source/destination security zones and trust levels?',
+                    'business_impact': 'Critical for zero-trust implementation and lateral movement prevention',
+                    'threat_context': 'Unmonitored cross-zone traffic enables privilege escalation and data exfiltration'
                 },
-                'IPAM Public IP Coverage': {
-                    'synonyms': ['ipam', 'public_ip', 'ip_management', 'ip_address_management', 'external_ip', 'internet_ip', 'wan_ip', 'routable_ip'],
-                    'partial_matches': ['ipam', 'public_ip', 'external_ip', 'internet', 'wan', 'routable', 'ip_mgmt'],
-                    'description': 'Measure public IP address management and coverage',
-                    'visibility_query': 'What percentage of public IPs are tracked and managed?'
+                'Geospatial Threat Intelligence': {
+                    'synonyms': ['geo', 'geolocation', 'location', 'country', 'region', 'city', 'coordinates', 'latitude', 'longitude', 'geoip', 'asn', 'isp', 'geographic', 'spatial', 'territorial'],
+                    'partial_matches': ['geo', 'location', 'country', 'region', 'city', 'coord', 'lat', 'lon', 'geographic', 'spatial'],
+                    'description': 'Measure geographic context enrichment for threat attribution and anomaly detection',
+                    'visibility_query': 'What percentage of network connections include high-fidelity geospatial context with threat intelligence overlay?',
+                    'business_impact': 'Enables geopolitical risk assessment and compliance monitoring',
+                    'threat_context': 'Geographic anomalies often indicate compromised accounts or insider threats'
                 },
-                'Geolocation': {
-                    'synonyms': ['geo', 'geolocation', 'geo_location', 'location', 'country', 'region', 'city', 'latitude', 'longitude', 'coordinates', 'geographic', 'locale'],
-                    'partial_matches': ['geo', 'location', 'country', 'region', 'city', 'lat', 'lon', 'coord', 'geographic'],
-                    'description': 'Measure geographic location data coverage',
-                    'visibility_query': 'What percentage of traffic has geographic location data?'
+                'Cloud Network Fabric Visibility': {
+                    'synonyms': ['vpc', 'vnet', 'virtual_network', 'cloud_network', 'aws_vpc', 'azure_vnet', 'gcp_vpc', 'subnet', 'security_group', 'nacl', 'route_table', 'internet_gateway', 'nat_gateway'],
+                    'partial_matches': ['vpc', 'vnet', 'virtual', 'cloud', 'aws', 'azure', 'gcp', 'security_group', 'route', 'gateway'],
+                    'description': 'Measure cloud network architecture visibility and east-west traffic monitoring',
+                    'visibility_query': 'What percentage of cloud network traffic includes VPC flow logs with security group and routing context?',
+                    'business_impact': 'Essential for cloud security posture management and compliance',
+                    'threat_context': 'Cloud misconfigurations are the leading cause of data breaches'
                 },
-                'VPC': {
-                    'synonyms': ['vpc', 'virtual_private_cloud', 'virtual_network', 'vnet', 'cloud_network', 'private_cloud', 'virtual_lan'],
-                    'partial_matches': ['vpc', 'virtual', 'cloud', 'vnet', 'private'],
-                    'description': 'Measure VPC and virtual network visibility',
-                    'visibility_query': 'What percentage of cloud traffic is VPC-tagged?'
+                'Protocol Intelligence & Deep Packet Inspection': {
+                    'synonyms': ['protocol', 'dpi', 'deep_packet_inspection', 'application_layer', 'l7', 'payload', 'content', 'signature', 'pattern', 'behavior', 'flow', 'session', 'stream'],
+                    'partial_matches': ['protocol', 'dpi', 'packet', 'payload', 'content', 'flow', 'session', 'l7', 'application'],
+                    'description': 'Measure deep protocol analysis coverage for advanced threat detection',
+                    'visibility_query': 'What percentage of network traffic undergoes deep packet inspection with behavioral analysis?',
+                    'business_impact': 'Critical for detecting encrypted threats and zero-day attacks',
+                    'threat_context': 'Encrypted malware and living-off-the-land techniques bypass signature-based detection'
                 },
-                'Log Ingest Volume': {
-                    'synonyms': ['log_volume', 'ingest_volume', 'log_size', 'bytes_ingested', 'events_per_second', 'log_count', 'message_count', 'record_count'],
-                    'partial_matches': ['volume', 'ingest', 'size', 'bytes', 'count', 'records', 'messages', 'events'],
-                    'description': 'Measure log ingestion volume and coverage rates',
-                    'visibility_query': 'What is the log ingestion rate and volume coverage?'
+                'Bandwidth & Performance Intelligence': {
+                    'synonyms': ['bandwidth', 'throughput', 'latency', 'jitter', 'packet_loss', 'performance', 'qos', 'utilization', 'capacity', 'congestion', 'bottleneck', 'saturation'],
+                    'partial_matches': ['bandwidth', 'throughput', 'latency', 'performance', 'utilization', 'capacity', 'qos'],
+                    'description': 'Measure network performance metrics for capacity planning and DDoS detection',
+                    'visibility_query': 'What percentage of network segments have real-time performance monitoring with anomaly detection?',
+                    'business_impact': 'Enables proactive capacity management and service level compliance',
+                    'threat_context': 'Performance anomalies often indicate DDoS attacks or data exfiltration'
                 }
             },
             'Endpoint': {
-                'CMDB Asset Visibility': {
-                    'synonyms': ['cmdb', 'asset', 'inventory', 'endpoint', 'device', 'computer', 'workstation', 'machine', 'host', 'system'],
-                    'partial_matches': ['asset', 'inventory', 'endpoint', 'device', 'computer', 'machine', 'host', 'cmdb'],
-                    'description': 'Measure endpoint asset inventory coverage',
-                    'visibility_query': 'What percentage of endpoints are tracked in asset inventory?'
+                'Endpoint Detection & Response Coverage': {
+                    'synonyms': ['edr', 'endpoint_detection', 'agent', 'sensor', 'crowdstrike', 'falcon', 'defender', 'sentinelone', 'carbon_black', 'cylance', 'endpoint_protection'],
+                    'partial_matches': ['edr', 'agent', 'sensor', 'crowdstrike', 'falcon', 'defender', 'endpoint', 'protection'],
+                    'description': 'Measure EDR agent deployment and telemetry coverage across all endpoint types',
+                    'visibility_query': 'What percentage of endpoints have active EDR agents with full behavioral monitoring enabled?',
+                    'business_impact': 'Critical for ransomware prevention and incident response',
+                    'threat_context': 'Unmonitored endpoints are prime targets for initial access and persistence'
                 },
-                'Crowdstrike Agent Coverage': {
-                    'synonyms': ['crowdstrike', 'cs_agent', 'falcon', 'falcon_sensor', 'edr_agent', 'endpoint_agent', 'security_agent'],
-                    'partial_matches': ['crowdstrike', 'falcon', 'cs_agent', 'edr', 'agent', 'sensor'],
-                    'description': 'Measure Crowdstrike agent deployment coverage',
-                    'visibility_query': 'What percentage of endpoints have Crowdstrike agents deployed?'
+                'Process Execution Intelligence': {
+                    'synonyms': ['process', 'execution', 'command', 'cmd', 'powershell', 'bash', 'shell', 'script', 'binary', 'executable', 'pid', 'ppid', 'process_tree', 'command_line'],
+                    'partial_matches': ['process', 'execution', 'command', 'cmd', 'shell', 'script', 'binary', 'executable'],
+                    'description': 'Measure process execution visibility with command-line arguments and parent-child relationships',
+                    'visibility_query': 'What percentage of process executions are logged with full command-line context and process ancestry?',
+                    'business_impact': 'Essential for detecting living-off-the-land attacks and advanced persistence',
+                    'threat_context': 'Fileless attacks rely on legitimate processes for malicious activities'
                 },
-                'Log Ingest Volume': {
-                    'synonyms': ['log_volume', 'event_volume', 'endpoint_logs', 'system_logs', 'security_logs', 'audit_logs'],
-                    'partial_matches': ['log', 'event', 'volume', 'audit', 'security', 'system'],
-                    'description': 'Measure endpoint log ingestion coverage',
-                    'visibility_query': 'What percentage of endpoints are generating log data?'
+                'File System Intelligence': {
+                    'synonyms': ['file', 'filesystem', 'registry', 'creation', 'modification', 'deletion', 'access', 'hash', 'checksum', 'signature', 'fim', 'file_integrity'],
+                    'partial_matches': ['file', 'registry', 'hash', 'checksum', 'signature', 'fim', 'integrity'],
+                    'description': 'Measure file system monitoring coverage with hash-based threat intelligence',
+                    'visibility_query': 'What percentage of file system changes are monitored with cryptographic hashing and threat intelligence correlation?',
+                    'business_impact': 'Critical for malware detection and data loss prevention',
+                    'threat_context': 'File system changes are key indicators of malware installation and data theft'
+                },
+                'Memory & Runtime Intelligence': {
+                    'synonyms': ['memory', 'ram', 'heap', 'stack', 'injection', 'dll', 'library', 'module', 'runtime', 'dynamic', 'loaded', 'mapped', 'allocated'],
+                    'partial_matches': ['memory', 'ram', 'injection', 'dll', 'library', 'module', 'runtime', 'dynamic'],
+                    'description': 'Measure memory analysis and runtime behavior monitoring for advanced threat detection',
+                    'visibility_query': 'What percentage of endpoints have memory protection and runtime analysis capabilities?',
+                    'business_impact': 'Essential for detecting fileless malware and advanced persistent threats',
+                    'threat_context': 'Memory-resident threats bypass traditional file-based detection'
+                },
+                'Network Connection Intelligence': {
+                    'synonyms': ['connection', 'socket', 'port', 'network', 'tcp', 'udp', 'listening', 'established', 'netstat', 'network_connection', 'remote_connection'],
+                    'partial_matches': ['connection', 'socket', 'port', 'network', 'tcp', 'udp', 'listening', 'remote'],
+                    'description': 'Measure endpoint network connection visibility for C2 and lateral movement detection',
+                    'visibility_query': 'What percentage of endpoint network connections are monitored with process correlation?',
+                    'business_impact': 'Critical for detecting command & control communications',
+                    'threat_context': 'Malicious network connections are primary indicators of compromise'
+                },
+                'Asset Configuration & Vulnerability Intelligence': {
+                    'synonyms': ['vulnerability', 'cve', 'patch', 'update', 'configuration', 'baseline', 'compliance', 'hardening', 'posture', 'assessment', 'scan'],
+                    'partial_matches': ['vulnerability', 'cve', 'patch', 'update', 'config', 'baseline', 'compliance', 'scan'],
+                    'description': 'Measure endpoint vulnerability and configuration management coverage',
+                    'visibility_query': 'What percentage of endpoints have real-time vulnerability assessment and configuration monitoring?',
+                    'business_impact': 'Essential for proactive risk management and compliance',
+                    'threat_context': 'Unpatched vulnerabilities are the most common initial access vectors'
                 }
             },
             'Identity_Authentication': {
-                'Domain Coverage': {
-                    'synonyms': ['domain', 'ad_domain', 'authentication_domain', 'login_domain', 'user_domain', 'identity_domain'],
-                    'partial_matches': ['domain', 'ad', 'auth', 'login', 'identity', 'user'],
-                    'description': 'Measure authentication domain coverage (Internal/External/Controls)',
-                    'visibility_query': 'What percentage of authentication events include domain classification?'
+                'Identity Lifecycle Intelligence': {
+                    'synonyms': ['identity', 'user', 'account', 'principal', 'subject', 'entity', 'lifecycle', 'provisioning', 'deprovisioning', 'creation', 'deletion', 'modification'],
+                    'partial_matches': ['identity', 'user', 'account', 'lifecycle', 'provisioning', 'creation', 'deletion'],
+                    'description': 'Measure identity lifecycle management and orphaned account detection',
+                    'visibility_query': 'What percentage of identity lifecycle events are monitored with automated risk assessment?',
+                    'business_impact': 'Critical for insider threat prevention and compliance',
+                    'threat_context': 'Orphaned and over-privileged accounts are common attack vectors'
+                },
+                'Authentication Behavior Intelligence': {
+                    'synonyms': ['authentication', 'login', 'logon', 'signin', 'sso', 'mfa', '2fa', 'biometric', 'token', 'credential', 'password', 'kerberos', 'saml', 'oauth'],
+                    'partial_matches': ['auth', 'login', 'logon', 'signin', 'sso', 'mfa', 'token', 'credential', 'password'],
+                    'description': 'Measure authentication event visibility with behavioral anomaly detection',
+                    'visibility_query': 'What percentage of authentication attempts include contextual risk scoring and behavioral analysis?',
+                    'business_impact': 'Essential for preventing credential-based attacks',
+                    'threat_context': 'Compromised credentials are involved in 80% of data breaches'
+                },
+                'Privileged Access Intelligence': {
+                    'synonyms': ['privilege', 'admin', 'administrator', 'root', 'sudo', 'elevation', 'escalation', 'pam', 'privileged_access', 'service_account', 'system_account'],
+                    'partial_matches': ['privilege', 'admin', 'root', 'sudo', 'elevation', 'escalation', 'pam', 'service'],
+                    'description': 'Measure privileged access monitoring and just-in-time access controls',
+                    'visibility_query': 'What percentage of privileged access events are monitored with session recording and approval workflows?',
+                    'business_impact': 'Critical for preventing insider threats and privilege escalation',
+                    'threat_context': 'Privileged account abuse is the fastest path to complete system compromise'
+                },
+                'Access Pattern Intelligence': {
+                    'synonyms': ['access', 'permission', 'authorization', 'resource', 'data', 'file', 'folder', 'share', 'database', 'application', 'system', 'entitlement'],
+                    'partial_matches': ['access', 'permission', 'authorization', 'resource', 'data', 'entitlement'],
+                    'description': 'Measure resource access patterns for anomaly detection and least privilege validation',
+                    'visibility_query': 'What percentage of resource access attempts are logged with user/resource context and anomaly scoring?',
+                    'business_impact': 'Essential for data loss prevention and zero-trust implementation',
+                    'threat_context': 'Abnormal access patterns indicate compromised accounts or insider threats'
+                },
+                'Federation & Trust Intelligence': {
+                    'synonyms': ['federation', 'trust', 'domain', 'forest', 'realm', 'directory', 'ldap', 'ad', 'active_directory', 'azure_ad', 'okta', 'ping'],
+                    'partial_matches': ['federation', 'trust', 'domain', 'directory', 'ldap', 'ad', 'azure', 'okta'],
+                    'description': 'Measure federated identity and trust relationship monitoring',
+                    'visibility_query': 'What percentage of federated authentication events include trust validation and cross-domain risk assessment?',
+                    'business_impact': 'Critical for hybrid cloud security and partner access management',
+                    'threat_context': 'Federated identity attacks can bypass traditional security controls'
                 }
             },
             'Application': {
-                'URL/FQDN coverage': {
-                    'synonyms': ['url', 'fqdn', 'domain', 'hostname', 'web_address', 'application_url', 'app_url', 'service_url'],
-                    'partial_matches': ['url', 'domain', 'host', 'fqdn', 'web', 'app', 'service'],
-                    'description': 'Measure application URL and domain coverage',
-                    'visibility_query': 'What percentage of application traffic includes URL/domain data?'
+                'Application Security Intelligence': {
+                    'synonyms': ['application', 'app', 'web', 'api', 'service', 'microservice', 'container', 'kubernetes', 'docker', 'runtime', 'rasp', 'waf'],
+                    'partial_matches': ['app', 'web', 'api', 'service', 'container', 'kubernetes', 'runtime', 'waf'],
+                    'description': 'Measure application security monitoring with runtime protection and API visibility',
+                    'visibility_query': 'What percentage of applications have runtime security monitoring with API traffic analysis?',
+                    'business_impact': 'Critical for preventing application-layer attacks and data breaches',
+                    'threat_context': 'Application vulnerabilities are the most common attack surface'
                 },
-                'Agent Coverage': {
-                    'synonyms': ['agent', 'application_agent', 'app_agent', 'monitoring_agent', 'apm_agent'],
-                    'partial_matches': ['agent', 'monitor', 'apm', 'app', 'application'],
-                    'description': 'Measure application monitoring agent coverage',
-                    'visibility_query': 'What percentage of applications have monitoring agents?'
+                'Database Activity Intelligence': {
+                    'synonyms': ['database', 'db', 'sql', 'query', 'transaction', 'table', 'schema', 'data', 'record', 'dam', 'database_activity_monitoring'],
+                    'partial_matches': ['database', 'db', 'sql', 'query', 'transaction', 'table', 'data', 'dam'],
+                    'description': 'Measure database activity monitoring with query analysis and data classification',
+                    'visibility_query': 'What percentage of database operations are monitored with query pattern analysis and data sensitivity tagging?',
+                    'business_impact': 'Essential for data loss prevention and regulatory compliance',
+                    'threat_context': 'Database breaches result in the highest cost per record lost'
+                },
+                'Cloud Application Intelligence': {
+                    'synonyms': ['saas', 'cloud_app', 'office365', 'salesforce', 'workday', 'slack', 'zoom', 'casb', 'cloud_access_security_broker'],
+                    'partial_matches': ['saas', 'cloud', 'office365', 'salesforce', 'slack', 'casb'],
+                    'description': 'Measure SaaS application visibility and shadow IT discovery',
+                    'visibility_query': 'What percentage of SaaS applications are monitored with CASB integration and risk assessment?',
+                    'business_impact': 'Critical for cloud security posture and data governance',
+                    'threat_context': 'Unmanaged SaaS applications create data leakage and compliance risks'
+                },
+                'DevOps & CI/CD Intelligence': {
+                    'synonyms': ['devops', 'cicd', 'pipeline', 'deployment', 'build', 'artifact', 'repository', 'git', 'jenkins', 'github', 'gitlab', 'container_registry'],
+                    'partial_matches': ['devops', 'cicd', 'pipeline', 'deployment', 'build', 'git', 'jenkins', 'container'],
+                    'description': 'Measure DevOps pipeline security and supply chain visibility',
+                    'visibility_query': 'What percentage of CI/CD pipelines have security scanning and artifact integrity verification?',
+                    'business_impact': 'Essential for supply chain security and secure software delivery',
+                    'threat_context': 'Supply chain attacks can compromise entire software ecosystems'
                 }
             },
             'Cloud': {
-                'VPC coverage': {
-                    'synonyms': ['vpc', 'virtual_private_cloud', 'cloud_network', 'aws_vpc', 'azure_vnet', 'gcp_vpc'],
-                    'partial_matches': ['vpc', 'virtual', 'cloud', 'vnet', 'network'],
-                    'description': 'Measure cloud VPC visibility and coverage',
-                    'visibility_query': 'What percentage of cloud resources are VPC-tagged?'
+                'Multi-Cloud Security Posture Intelligence': {
+                    'synonyms': ['cloud', 'aws', 'azure', 'gcp', 'multi_cloud', 'hybrid', 'cspm', 'cloud_security_posture', 'configuration', 'compliance', 'governance'],
+                    'partial_matches': ['cloud', 'aws', 'azure', 'gcp', 'multi', 'hybrid', 'cspm', 'posture', 'compliance'],
+                    'description': 'Measure cloud security posture across all cloud environments with configuration drift detection',
+                    'visibility_query': 'What percentage of cloud resources are monitored for security posture with real-time compliance validation?',
+                    'business_impact': 'Critical for cloud governance and regulatory compliance',
+                    'threat_context': 'Cloud misconfigurations expose sensitive data to public internet'
+                },
+                'Container & Kubernetes Intelligence': {
+                    'synonyms': ['container', 'docker', 'kubernetes', 'k8s', 'pod', 'namespace', 'cluster', 'orchestration', 'runtime_security', 'image_scanning'],
+                    'partial_matches': ['container', 'docker', 'kubernetes', 'k8s', 'pod', 'cluster', 'runtime', 'image'],
+                    'description': 'Measure container security with runtime protection and image vulnerability scanning',
+                    'visibility_query': 'What percentage of containers have runtime security monitoring with image vulnerability correlation?',
+                    'business_impact': 'Essential for cloud-native application security',
+                    'threat_context': 'Container escapes can compromise entire Kubernetes clusters'
+                },
+                'Serverless & Function Intelligence': {
+                    'synonyms': ['serverless', 'lambda', 'function', 'azure_functions', 'cloud_functions', 'faas', 'function_as_a_service', 'event_driven'],
+                    'partial_matches': ['serverless', 'lambda', 'function', 'faas', 'event'],
+                    'description': 'Measure serverless function security and event-driven architecture monitoring',
+                    'visibility_query': 'What percentage of serverless functions have security monitoring with execution tracing?',
+                    'business_impact': 'Critical for modern application security architecture',
+                    'threat_context': 'Serverless functions can be exploited for cryptomining and data exfiltration'
+                },
+                'Cloud Storage Intelligence': {
+                    'synonyms': ['storage', 's3', 'blob', 'bucket', 'object_storage', 'file_storage', 'block_storage', 'data_lake', 'backup', 'archive'],
+                    'partial_matches': ['storage', 's3', 'blob', 'bucket', 'object', 'file', 'block', 'data_lake'],
+                    'description': 'Measure cloud storage security with access monitoring and data classification',
+                    'visibility_query': 'What percentage of cloud storage has access logging with data sensitivity classification?',
+                    'business_impact': 'Essential for data protection and privacy compliance',
+                    'threat_context': 'Misconfigured cloud storage is the leading cause of data breaches'
+                }
+            },
+            'Data': {
+                'Data Discovery & Classification Intelligence': {
+                    'synonyms': ['data_discovery', 'classification', 'labeling', 'tagging', 'dlp', 'data_loss_prevention', 'sensitive_data', 'pii', 'phi', 'pci', 'gdpr'],
+                    'partial_matches': ['data', 'discovery', 'classification', 'dlp', 'sensitive', 'pii', 'phi', 'gdpr'],
+                    'description': 'Measure data discovery and classification coverage across all data stores',
+                    'visibility_query': 'What percentage of organizational data is discovered, classified, and continuously monitored for sensitive content?',
+                    'business_impact': 'Critical for regulatory compliance and data governance',
+                    'threat_context': 'Unclassified sensitive data cannot be properly protected'
+                },
+                'Data Flow & Lineage Intelligence': {
+                    'synonyms': ['data_flow', 'lineage', 'movement', 'transfer', 'migration', 'replication', 'synchronization', 'etl', 'pipeline', 'streaming'],
+                    'partial_matches': ['flow', 'lineage', 'movement', 'transfer', 'migration', 'etl', 'pipeline', 'streaming'],
+                    'description': 'Measure data flow visibility and lineage tracking for governance and security',
+                    'visibility_query': 'What percentage of data movements are tracked with full lineage and impact analysis?',
+                    'business_impact': 'Essential for data governance and breach impact assessment',
+                    'threat_context': 'Data exfiltration often follows legitimate data flow patterns'
+                },
+                'Encryption & Key Management Intelligence': {
+                    'synonyms': ['encryption', 'decryption', 'key_management', 'kms', 'hsm', 'certificate', 'pki', 'crypto', 'cipher', 'hash', 'signature'],
+                    'partial_matches': ['encryption', 'key', 'kms', 'hsm', 'certificate', 'pki', 'crypto', 'cipher'],
+                    'description': 'Measure encryption coverage and key management security across all data states',
+                    'visibility_query': 'What percentage of sensitive data is encrypted with centralized key management and rotation?',
+                    'business_impact': 'Critical for data protection and regulatory compliance',
+                    'threat_context': 'Unencrypted data is immediately valuable to attackers'
+                }
+            },
+            'Threat_Intelligence': {
+                'Indicator Correlation Intelligence': {
+                    'synonyms': ['ioc', 'indicator', 'threat_intelligence', 'ti', 'feed', 'reputation', 'blacklist', 'watchlist', 'signature', 'yara', 'sigma'],
+                    'partial_matches': ['ioc', 'indicator', 'threat', 'intelligence', 'feed', 'reputation', 'yara', 'sigma'],
+                    'description': 'Measure threat intelligence integration and IOC correlation across all security tools',
+                    'visibility_query': 'What percentage of security events are enriched with threat intelligence and IOC correlation?',
+                    'business_impact': 'Critical for threat hunting and incident prioritization',
+                    'threat_context': 'Contextual threat intelligence reduces false positives and improves response times'
+                },
+                'Attack Pattern Intelligence': {
+                    'synonyms': ['mitre', 'att&ck', 'ttp', 'tactics', 'techniques', 'procedures', 'kill_chain', 'attack_pattern', 'behavior', 'campaign'],
+                    'partial_matches': ['mitre', 'attack', 'ttp', 'tactics', 'techniques', 'kill_chain', 'behavior'],
+                    'description': 'Measure attack pattern detection and MITRE ATT&CK framework coverage',
+                    'visibility_query': 'What percentage of security events are mapped to MITRE ATT&CK techniques with threat actor attribution?',
+                    'business_impact': 'Essential for strategic threat assessment and defense planning',
+                    'threat_context': 'Understanding adversary TTPs enables proactive defense strategies'
                 }
             }
         }
-        # Remove the old generic metric_requirements and replace with AO1-specific matching logic
 
     def load_results(self):
         try:
@@ -934,6 +1111,9 @@ class DataDrivenMetricsRecommender:
                                 
                                 final_feasibility = min(avg_confidence * size_multiplier * coverage_multiplier, 1.0)
                                 
+                                # Calculate intelligence score based on match quality
+                                intelligence_score = self._calculate_intelligence_score(visibility_matches, table_info)
+                                
                                 ao1_visibility_recommendations[role].append({
                                     'ao1_visibility_factor': visibility_factor,
                                     'log_type': log_type,
@@ -943,6 +1123,7 @@ class DataDrivenMetricsRecommender:
                                     'size_category': table_info['size_category'],
                                     'size_priority_score': table_info['size_priority_score'],
                                     'feasibility_score': final_feasibility,
+                                    'intelligence_score': intelligence_score,  # ADD THIS LINE
                                     'description': factor_info['description'],
                                     'visibility_query': factor_info['visibility_query'],
                                     'matched_columns': visibility_matches,
@@ -952,6 +1133,27 @@ class DataDrivenMetricsRecommender:
         
         return ao1_visibility_recommendations
 
+    def _calculate_intelligence_score(self, visibility_matches, table_info):
+        """Calculate an intelligence score based on match quality and table characteristics"""
+        if not visibility_matches:
+            return 0.0
+        
+        # Base score from match confidences
+        avg_confidence = sum(match['confidence'] for match in visibility_matches) / len(visibility_matches)
+        
+        # Bonus for ultra_semantic matches
+        ultra_semantic_count = sum(1 for match in visibility_matches if match['match_type'] == 'ultra_semantic')
+        semantic_bonus = ultra_semantic_count * 0.2
+        
+        # Bonus for table size (larger tables = more intelligence value)
+        size_bonus = min(table_info['size_priority_score'] * 0.1, 0.3)
+        
+        # Bonus for multiple matches (better coverage)
+        coverage_bonus = min(len(visibility_matches) * 0.05, 0.2)
+        
+        final_score = min(avg_confidence + semantic_bonus + size_bonus + coverage_bonus, 1.0)
+        return round(final_score, 3)
+
     def prioritize_recommendations(self, recommendations: Dict[str, List[Dict[str, Any]]]) -> List[Dict[str, Any]]:
         all_recommendations = []
         
@@ -960,91 +1162,72 @@ class DataDrivenMetricsRecommender:
                 rec['role'] = role
                 all_recommendations.append(rec)
         
-        priority_order = ['Trivial', 'Easy', 'Medium', 'Hard']
-        
         return sorted(all_recommendations, 
                      key=lambda x: (-x['feasibility_score'], 
                                    -x['size_priority_score'],
-                                   -x['intelligence_score'],
-                                   priority_order.index(x['implementation_difficulty'])))
+                                   -x.get('intelligence_score', 0),  # Use .get() for safety
+                                   x['implementation_difficulty']))
 
     def generate_implementation_guide(self, recommendations: List[Dict[str, Any]]) -> str:
         guide = []
         guide.append("=" * 90)
-        guide.append("ULTRA-INTELLIGENT SECURITY METRICS IMPLEMENTATION GUIDE")
+        guide.append("AO1 VISIBILITY METRICS IMPLEMENTATION GUIDE")
         guide.append("=" * 90)
         guide.append("")
         
         guide.append("AI ANALYSIS SUMMARY:")
         guide.append("-" * 50)
         
-        trivial_count = len([r for r in recommendations if r['implementation_difficulty'] == 'Trivial'])
-        easy_count = len([r for r in recommendations if r['implementation_difficulty'] == 'Easy'])
-        medium_count = len([r for r in recommendations if r['implementation_difficulty'] == 'Medium'])
-        hard_count = len([r for r in recommendations if r['implementation_difficulty'] == 'Hard'])
+        trivial_count = len([r for r in recommendations if r['implementation_difficulty'] == 'AO1_Trivial'])
+        easy_count = len([r for r in recommendations if r['implementation_difficulty'] == 'AO1_Easy'])
+        medium_count = len([r for r in recommendations if r['implementation_difficulty'] == 'AO1_Medium'])
         
-        ultra_semantic_count = len([r for r in recommendations if any(m['match_type'] == 'ultra_semantic' for m in r['required_columns_matched'] + r['optional_columns_matched'])])
+        ultra_semantic_count = len([r for r in recommendations if any(m['match_type'] == 'ultra_semantic' for m in r['matched_columns'])])
         
-        guide.append(f"Total Metrics Discovered: {len(recommendations)}")
+        guide.append(f"Total AO1 Visibility Metrics Discovered: {len(recommendations)}")
         guide.append(f"Ultra-Semantic AI Matches: {ultra_semantic_count}")
         guide.append(f"Trivial Implementation: {trivial_count}")
         guide.append(f"Easy Implementation: {easy_count}")
         guide.append(f"Medium Complexity: {medium_count}")
-        guide.append(f"High Complexity: {hard_count}")
         guide.append("")
         
-        avg_intelligence = sum(r['intelligence_score'] for r in recommendations) / len(recommendations) if recommendations else 0
+        avg_intelligence = sum(r.get('intelligence_score', 0) for r in recommendations) / len(recommendations) if recommendations else 0
         guide.append(f"Average AI Intelligence Score: {avg_intelligence:.1f}")
         guide.append("")
         
-        for difficulty in ['Trivial', 'Easy', 'Medium', 'Hard']:
+        for difficulty in ['AO1_Trivial', 'AO1_Easy', 'AO1_Medium']:
             difficulty_recs = [r for r in recommendations if r['implementation_difficulty'] == difficulty]
             if difficulty_recs:
-                guide.append(f"{difficulty.upper()} IMPLEMENTATION METRICS:")
+                display_name = difficulty.replace('AO1_', '').upper()
+                guide.append(f"{display_name} IMPLEMENTATION METRICS:")
                 guide.append("-" * 60)
                 
                 for i, rec in enumerate(difficulty_recs[:8], 1):
-                    guide.append(f"{i}. {rec['metric_name']} ({rec['role']} - {rec['log_type']})")
+                    guide.append(f"{i}. {rec['ao1_visibility_factor']} ({rec['role']} - {rec['log_type']})")
                     guide.append(f"   Data Source: {rec['dataset']}.{rec['table_name']}")
                     guide.append(f"   Table Size: {rec['row_count']:,} rows ({rec['size_category']})")
                     guide.append(f"   Description: {rec['description']}")
-                    guide.append(f"   Business Value: {rec['business_value']}")
-                    guide.append(f"   AI Confidence: {rec['feasibility_score']:.3f} (base: {rec['base_feasibility']:.3f}, intelligence: {rec['intelligence_score']})")
+                    guide.append(f"   Visibility Query: {rec['visibility_query']}")
+                    guide.append(f"   AI Confidence: {rec['feasibility_score']:.3f} (Intelligence: {rec.get('intelligence_score', 0)})")
                     
-                    if rec['required_columns_matched']:
-                        guide.append("   🎯 Required Columns Matched:")
-                        for col_match in rec['required_columns_matched']:
-                            best_match = max(col_match['details'].items(), key=lambda x: x[1]['confidence'])
-                            match_name, match_info = best_match
-                            
-                            if match_info['type'] == 'ultra_semantic':
+                    if rec['matched_columns']:
+                        guide.append("   🎯 Matched Columns:")
+                        for col_match in rec['matched_columns'][:3]:  # Show top 3 matches
+                            if col_match['match_type'] == 'ultra_semantic':
                                 indicator = "🧠🚀"
-                            elif match_info['type'] == 'semantic':
-                                indicator = "🧠"
-                            else:
+                            elif col_match['match_type'] == 'synonym':
                                 indicator = "🎯"
+                            else:
+                                indicator = "📝"
                             
-                            confidence_pct = int(match_info['confidence'] * 100)
-                            evidence_str = ', '.join(match_info['evidence'][:2]) if match_info['evidence'] else 'direct_match'
-                            guide.append(f"     {indicator} {col_match['required']} → {match_name} ({confidence_pct}% | {evidence_str})")
-                    
-                    if rec['missing_required']:
-                        guide.append(f"   ❌ Missing: {', '.join(rec['missing_required'][:3])}")
-                    
-                    if rec['optional_columns_matched']:
-                        guide.append("   ➕ Optional Enhancements:")
-                        for col_match in rec['optional_columns_matched'][:2]:
-                            best_match = max(col_match['details'].items(), key=lambda x: x[1]['confidence'])
-                            match_name, match_info = best_match
-                            
-                            indicator = "🧠🚀" if match_info['type'] == 'ultra_semantic' else "🧠" if match_info['type'] == 'semantic' else "🎯"
-                            confidence_pct = int(match_info['confidence'] * 100)
-                            guide.append(f"     {indicator} {col_match['optional']} → {match_name} ({confidence_pct}%)")
+                            confidence_pct = int(col_match['confidence'] * 100)
+                            evidence_str = ', '.join(col_match['evidence'][:2]) if col_match['evidence'] else 'direct_match'
+                            guide.append(f"     {indicator} {col_match['matched_column']} ← {col_match['match_term']} ({confidence_pct}% | {evidence_str})")
                     
                     guide.append("")
                 
                 if len(difficulty_recs) > 8:
-                    guide.append(f"   ... and {len(difficulty_recs) - 8} more {difficulty.lower()} metrics available")
+                    guide.append(f"   ... and {len(difficulty_recs) - 8} more {display_name.lower()} metrics available")
                     guide.append("")
         
         return "\n".join(guide)
@@ -1054,39 +1237,36 @@ class DataDrivenMetricsRecommender:
         prioritized = self.prioritize_recommendations(recommendations)
         
         quick_start = []
-        quick_start.append("🚀 ULTRA-INTELLIGENT QUICK START RECOMMENDATIONS")
+        quick_start.append("🚀 AO1 VISIBILITY QUICK START RECOMMENDATIONS")
         quick_start.append("=" * 90)
         quick_start.append("")
         
-        trivial_wins = [r for r in prioritized if r['implementation_difficulty'] == 'Trivial'][:3]
-        easy_wins = [r for r in prioritized if r['implementation_difficulty'] == 'Easy'][:5]
+        trivial_wins = [r for r in prioritized if r['implementation_difficulty'] == 'AO1_Trivial'][:3]
+        easy_wins = [r for r in prioritized if r['implementation_difficulty'] == 'AO1_Easy'][:5]
         
         if trivial_wins:
             quick_start.append("🎯 INSTANT IMPLEMENTATION - TRIVIAL DIFFICULTY:")
             quick_start.append("-" * 50)
             
             for i, rec in enumerate(trivial_wins, 1):
-                quick_start.append(f"{i}. 🚀 IMPLEMENT: {rec['metric_name']}")
+                quick_start.append(f"{i}. 🚀 IMPLEMENT: {rec['ao1_visibility_factor']}")
                 quick_start.append(f"   📊 USE TABLE: {rec['dataset']}.{rec['table_name']} ({rec['row_count']:,} rows - {rec['size_category']})")
                 quick_start.append(f"   📈 MEASURE: {rec['description']}")
-                quick_start.append(f"   💡 WHY: {rec['business_value']}")
-                quick_start.append(f"   🤖 AI CONFIDENCE: {rec['feasibility_score']:.3f} (Intelligence Score: {rec['intelligence_score']})")
+                quick_start.append(f"   💡 VISIBILITY QUERY: {rec['visibility_query']}")
+                quick_start.append(f"   🤖 AI CONFIDENCE: {rec['feasibility_score']:.3f} (Intelligence Score: {rec.get('intelligence_score', 0)})")
                 
-                if rec['required_columns_matched']:
+                if rec['matched_columns']:
                     quick_start.append("   🔑 KEY COLUMNS TO USE:")
-                    for col_match in rec['required_columns_matched']:
-                        best_match = max(col_match['details'].items(), key=lambda x: x[1]['confidence'])
-                        match_name, match_info = best_match
-                        
+                    for col_match in rec['matched_columns'][:3]:  # Show top 3 matches
                         match_type_desc = {
                             'ultra_semantic': 'Ultra-AI semantic match',
-                            'semantic': 'AI semantic match', 
-                            'direct': 'Direct match'
-                        }.get(match_info['type'], 'Unknown match')
+                            'synonym': 'Synonym match', 
+                            'partial': 'Partial match'
+                        }.get(col_match['match_type'], 'Unknown match')
                         
-                        confidence_pct = int(match_info['confidence'] * 100)
-                        evidence_summary = ', '.join(match_info['evidence'][:2]) if match_info['evidence'] else 'exact_match'
-                        quick_start.append(f"     • Use '{match_name}' for {col_match['required']} ({match_type_desc}, {confidence_pct}% confidence)")
+                        confidence_pct = int(col_match['confidence'] * 100)
+                        evidence_summary = ', '.join(col_match['evidence'][:2]) if col_match['evidence'] else 'exact_match'
+                        quick_start.append(f"     • Use '{col_match['matched_column']}' for {col_match['ao1_requirement']} ({match_type_desc}, {confidence_pct}% confidence)")
                         quick_start.append(f"       Evidence: {evidence_summary}")
                 
                 quick_start.append("")
@@ -1096,13 +1276,13 @@ class DataDrivenMetricsRecommender:
             quick_start.append("-" * 50)
             
             for i, rec in enumerate(easy_wins, 1):
-                quick_start.append(f"{i}. ⚡ IMPLEMENT: {rec['metric_name']}")
+                quick_start.append(f"{i}. ⚡ IMPLEMENT: {rec['ao1_visibility_factor']}")
                 quick_start.append(f"   📊 USE TABLE: {rec['dataset']}.{rec['table_name']} ({rec['row_count']:,} rows - {rec['size_category']})")
                 quick_start.append(f"   📈 MEASURE: {rec['description']}")
-                quick_start.append(f"   💡 WHY: {rec['business_value']}")
-                quick_start.append(f"   🤖 AI CONFIDENCE: {rec['feasibility_score']:.3f} (Intelligence Score: {rec['intelligence_score']})")
+                quick_start.append(f"   💡 VISIBILITY QUERY: {rec['visibility_query']}")
+                quick_start.append(f"   🤖 AI CONFIDENCE: {rec['feasibility_score']:.3f} (Intelligence Score: {rec.get('intelligence_score', 0)})")
                 
-                ultra_matches = [m for m in rec['required_columns_matched'] + rec['optional_columns_matched'] if m['match_type'] == 'ultra_semantic']
+                ultra_matches = [m for m in rec['matched_columns'] if m['match_type'] == 'ultra_semantic']
                 if ultra_matches:
                     quick_start.append(f"   🧠🚀 ULTRA-SEMANTIC MATCHES: {len(ultra_matches)} detected")
                 
@@ -1113,15 +1293,15 @@ class DataDrivenMetricsRecommender:
             quick_start.append("Consider data enrichment or additional log source integration.")
             quick_start.append("")
             
-            medium_recs = [r for r in prioritized if r['implementation_difficulty'] == 'Medium'][:3]
+            medium_recs = [r for r in prioritized if r['implementation_difficulty'] == 'AO1_Medium'][:3]
             if medium_recs:
                 quick_start.append("🔧 BEST MEDIUM-COMPLEXITY OPTIONS:")
                 for i, rec in enumerate(medium_recs, 1):
-                    quick_start.append(f"{i}. {rec['metric_name']} (Confidence: {rec['feasibility_score']:.3f})")
+                    quick_start.append(f"{i}. {rec['ao1_visibility_factor']} (Confidence: {rec['feasibility_score']:.3f})")
         
         return "\n".join(quick_start)
 
-    def save_recommendations(self, output_file: str = "ultra_intelligent_metrics_recommendations.json"):
+    def save_recommendations(self, output_file: str = "ao1_visibility_metrics_recommendations.json"):
         recommendations = self.map_metrics_to_data()
         prioritized = self.prioritize_recommendations(recommendations)
         
@@ -1129,12 +1309,11 @@ class DataDrivenMetricsRecommender:
             'timestamp': pd.Timestamp.now().isoformat(),
             'ai_analysis_summary': {
                 'total_metrics_available': len(prioritized),
-                'ultra_semantic_matches': len([r for r in prioritized if any(m['match_type'] == 'ultra_semantic' for m in r['required_columns_matched'] + r['optional_columns_matched'])]),
-                'trivial_implementation': len([r for r in prioritized if r['implementation_difficulty'] == 'Trivial']),
-                'easy_implementation': len([r for r in prioritized if r['implementation_difficulty'] == 'Easy']),
-                'medium_implementation': len([r for r in prioritized if r['implementation_difficulty'] == 'Medium']),
-                'hard_implementation': len([r for r in prioritized if r['implementation_difficulty'] == 'Hard']),
-                'average_intelligence_score': sum(r['intelligence_score'] for r in prioritized) / len(prioritized) if prioritized else 0
+                'ultra_semantic_matches': len([r for r in prioritized if any(m['match_type'] == 'ultra_semantic' for m in r['matched_columns'])]),
+                'trivial_implementation': len([r for r in prioritized if r['implementation_difficulty'] == 'AO1_Trivial']),
+                'easy_implementation': len([r for r in prioritized if r['implementation_difficulty'] == 'AO1_Easy']),
+                'medium_implementation': len([r for r in prioritized if r['implementation_difficulty'] == 'AO1_Medium']),
+                'average_intelligence_score': sum(r.get('intelligence_score', 0) for r in prioritized) / len(prioritized) if prioritized else 0
             },
             'recommendations_by_role': recommendations,
             'prioritized_recommendations': prioritized,
@@ -1149,7 +1328,7 @@ class DataDrivenMetricsRecommender:
         with open(output_file, 'w') as f:
             json.dump(output_data, f, indent=2, default=str)
         
-        logger.info(f"Ultra-intelligent recommendations saved to {output_file}")
+        logger.info(f"AO1 visibility recommendations saved to {output_file}")
 
 if __name__ == "__main__":
     analyzer = DataDrivenMetricsRecommender()
