@@ -184,6 +184,35 @@ def categorize_ao1_field(field_name):
 
 def test_ao1_keyword_detection():
     """Test AO1 keyword detection with sample field names"""
+    print("Testing AO1 keyword detection...")
+    
+    # Test with some common field names that should match
+    test_fields = [
+        'hostname', 'host_name', 'computer_name', 'aid', 'business_unit', 
+        'aws_region', 'sourcetype', 'ip_address', 'domain_name', 'application',
+        'windows', 'linux', 'edr', 'crowdstrike', 'tanium', 'office365'
+    ]
+    
+    matches_found = 0
+    for field in test_fields:
+        is_relevant = is_ao1_relevant_field(field)
+        if is_relevant:
+            context = categorize_ao1_field(field)
+            print("  MATCH: '{}' -> {}".format(field, context['requirement']))
+            matches_found += 1
+        else:
+            print("  NO MATCH: '{}'".format(field))
+    
+    print("Test completed: {}/{} fields matched AO1 keywords".format(matches_found, len(test_fields)))
+    
+    if matches_found == 0:
+        print("WARNING: No test fields matched - there may be an issue with keyword detection")
+        return False
+    
+    return True
+
+def test_ao1_keyword_detection():
+    """Test AO1 keyword detection with sample field names"""
     print("\nTesting AO1 keyword detection...")
     
     # Test with some common field names that should match
