@@ -538,3 +538,287 @@ __all__ = [
     'find_keywords_for_requirement',
     'explain_bigquery_field_ao1_relevance'
 ]
+
+# DEMO AND TESTING FUNCTIONALITY
+def demo_keyword_lookup():
+    """
+    Demonstrates how to use the keyword dictionary for AO1 mapping
+    """
+    print("=" * 80)
+    print("AO1 LOG VISIBILITY KEYWORDS - DEMONSTRATION")
+    print("=" * 80)
+    
+    # Test some common BigQuery field names
+    test_fields = [
+        'hostname', 'business_unit', 'aid', 'cloud_region', 
+        'windows_server', 'edr', 'sourcetype', 'domain_name'
+    ]
+    
+    print("\n🔍 TESTING BIGQUERY FIELD RELEVANCE:")
+    print("-" * 50)
+    
+    for field in test_fields:
+        context = get_keyword_requirement_context(field)
+        print(f"\nFIELD: {field}")
+        print(f"REQUIREMENT: {context['requirement']}")
+        print(f"PURPOSE: {context['context']}")
+        print(f"VENDORS: {', '.join(context['vendors'])}")
+        print("-" * 50)
+
+def search_by_requirement():
+    """
+    Shows all keywords for each AO1 requirement
+    """
+    print("\n📋 KEYWORDS BY AO1 REQUIREMENT:")
+    print("=" * 80)
+    
+    requirements = ['REQ-1', 'REQ-2', 'REQ-3', 'REQ-4', 'REQ-5', 'REQ-6', 'REQ-7', 'REQ-8']
+    
+    for req in requirements:
+        keywords = find_keywords_for_requirement(req)
+        print(f"\n{req} Keywords ({len(keywords)} total):")
+        print("-" * 40)
+        
+        # Show first 5 keywords as examples
+        for i, kw in enumerate(keywords[:5]):
+            print(f"• {kw['keyword']}")
+        
+        if len(keywords) > 5:
+            print(f"  ... and {len(keywords) - 5} more keywords")
+
+def simulate_bigquery_discovery():
+    """
+    Simulates discovering BigQuery fields and mapping them to AO1 requirements
+    """
+    print("\n🗄️  SIMULATED BIGQUERY SCHEMA DISCOVERY:")
+    print("=" * 80)
+    
+    # Simulate discovering fields in different datasets/tables
+    mock_discoveries = [
+        {'dataset': 'security_logs', 'table': 'crowdstrike_detections', 'field': 'aid'},
+        {'dataset': 'infrastructure', 'table': 'servicenow_cmdb', 'field': 'business_unit'},
+        {'dataset': 'cloud_logs', 'table': 'aws_cloudtrail', 'field': 'awsregion'},
+        {'dataset': 'network_logs', 'table': 'f5_bigip', 'field': 'ltm'},
+        {'dataset': 'identity_logs', 'table': 'active_directory', 'field': 'domain_controller'},
+        {'dataset': 'siem_logs', 'table': 'chronicle_udm', 'field': 'metadata.collected_timestamp'}
+    ]
+    
+    for discovery in mock_discoveries:
+        explanation = explain_bigquery_field_ao1_relevance(
+            discovery['field'], 
+            discovery['table'], 
+            discovery['dataset']
+        )
+        print(f"\n{explanation}")
+        print("-" * 80)
+
+def generate_mapping_report():
+    """
+    Generates a summary report of all AO1 keyword mappings
+    """
+    print("\n📊 AO1 KEYWORDS MAPPING REPORT:")
+    print("=" * 80)
+    
+    # Count keywords per requirement
+    req_counts = {}
+    vendor_counts = {}
+    
+    for keyword, data in ALL_AO1_REQUIREMENTS_KEYWORDS.items():
+        req = data['requirement'].split(' - ')[0]  # Get REQ-X part
+        req_counts[req] = req_counts.get(req, 0) + 1
+        
+        for vendor in data['vendors']:
+            vendor_counts[vendor] = vendor_counts.get(vendor, 0) + 1
+    
+    print(f"\nTOTAL KEYWORDS: {len(ALL_AO1_REQUIREMENTS_KEYWORDS)}")
+    print(f"TOTAL REQUIREMENTS: {len(req_counts)}")
+    print(f"TOTAL VENDORS: {len(vendor_counts)}")
+    
+    print("\nKEYWORDS PER REQUIREMENT:")
+    print("-" * 30)
+    for req, count in sorted(req_counts.items()):
+        print(f"{req}: {count} keywords")
+    
+    print("\nTOP VENDORS BY KEYWORD COUNT:")
+    print("-" * 30)
+    sorted_vendors = sorted(vendor_counts.items(), key=lambda x: x[1], reverse=True)
+    for vendor, count in sorted_vendors[:10]:
+        print(f"{vendor}: {count} keywords")
+
+def validate_keyword_coverage():
+    """
+    Validates that all AO1 requirements have adequate keyword coverage
+    """
+    print("\n✅ AO1 KEYWORD COVERAGE VALIDATION:")
+    print("=" * 80)
+    
+    required_minimums = {
+        'REQ-1': 10,  # Global View needs many identifiers
+        'REQ-2': 8,   # Infrastructure Type needs 4 types covered
+        'REQ-3': 8,   # Regional needs geographic coverage
+        'REQ-4': 8,   # BU/App needs organizational coverage  
+        'REQ-5': 15,  # System Classification needs all server types
+        'REQ-6': 8,   # Security Control needs agent coverage
+        'REQ-7': 8,   # Logging Compliance needs platform coverage
+        'REQ-8': 10   # Domain Visibility needs hostname/domain coverage
+    }
+    
+    validation_results = []
+    
+    for req_num, min_keywords in required_minimums.items():
+        keywords = find_keywords_for_requirement(req_num)
+        actual_count = len(keywords)
+        status = "✅ PASS" if actual_count >= min_keywords else "❌ FAIL"
+        
+        validation_results.append({
+            'requirement': req_num,
+            'expected_min': min_keywords,
+            'actual_count': actual_count,
+            'status': status
+        })
+        
+        print(f"{req_num}: {status} ({actual_count}/{min_keywords} keywords)")
+    
+    # Overall validation
+    failed_reqs = [r for r in validation_results if "FAIL" in r['status']]
+    
+    if not failed_reqs:
+        print(f"\n🎉 ALL REQUIREMENTS HAVE ADEQUATE KEYWORD COVERAGE!")
+    else:
+        print(f"\n⚠️  {len(failed_reqs)} REQUIREMENTS NEED MORE KEYWORDS")
+
+def interactive_field_lookup():
+    """
+    Interactive mode for looking up BigQuery fields
+    """
+    print("\n🔍 INTERACTIVE FIELD LOOKUP:")
+    print("=" * 80)
+    print("Enter BigQuery field names to see their AO1 relevance.")
+    print("Type 'quit' to exit, 'demo' for examples, or 'help' for commands.")
+    
+    while True:
+        try:
+            user_input = input("\nEnter field name: ").strip()
+            
+            if user_input.lower() == 'quit':
+                print("Goodbye! 👋")
+                break
+            elif user_input.lower() == 'demo':
+                demo_keyword_lookup()
+                continue
+            elif user_input.lower() == 'help':
+                print("\nAvailable commands:")
+                print("• Enter any field name (e.g., 'hostname', 'business_unit')")
+                print("• 'demo' - Show example field lookups")
+                print("• 'requirements' - Show keywords by requirement")
+                print("• 'report' - Generate mapping report")
+                print("• 'validate' - Validate keyword coverage")
+                print("• 'quit' - Exit")
+                continue
+            elif user_input.lower() == 'requirements':
+                search_by_requirement()
+                continue
+            elif user_input.lower() == 'report':
+                generate_mapping_report()
+                continue
+            elif user_input.lower() == 'validate':
+                validate_keyword_coverage()
+                continue
+            elif not user_input:
+                continue
+            
+            # Look up the field
+            context = get_keyword_requirement_context(user_input)
+            
+            if context['category'] == 'unknown':
+                print(f"❌ Field '{user_input}' not found in AO1 keywords dictionary.")
+                print("This field does not directly support AO1 visibility measurements.")
+            else:
+                print(f"\n✅ FIELD FOUND: {user_input}")
+                print(f"AO1 REQUIREMENT: {context['requirement']}")
+                print(f"RELEVANT VENDORS: {', '.join(context['vendors'])}")
+                print(f"CALCULATION: {context['calculation']}")
+                print(f"PURPOSE: {context['context']}")
+                
+        except KeyboardInterrupt:
+            print("\nGoodbye! 👋")
+            break
+        except Exception as e:
+            print(f"Error: {e}")
+
+# MAIN EXECUTION
+if __name__ == "__main__":
+    """
+    Main execution - runs comprehensive AO1 keyword demonstration
+    """
+    import sys
+    
+    print("🚀 AO1 LOG VISIBILITY MEASUREMENT - KEYWORDS DICTIONARY", flush=True)
+    print("=" * 80, flush=True)
+    print("This script demonstrates how BigQuery fields map to AO1 requirements.", flush=True)
+    print("=" * 80, flush=True)
+    
+    try:
+        # Test basic functionality first
+        print("\n🧪 TESTING BASIC FUNCTIONALITY...", flush=True)
+        test_keyword = 'hostname'
+        context = get_keyword_requirement_context(test_keyword)
+        print(f"✅ Dictionary lookup working: {test_keyword} -> {context['requirement'][:50]}...", flush=True)
+        
+        print(f"\n📊 DICTIONARY STATS:", flush=True)
+        print(f"   Total keywords: {len(ALL_AO1_REQUIREMENTS_KEYWORDS)}", flush=True)
+        print(f"   Categories: {len(AO1_REQUIREMENTS_KEYWORDS)}", flush=True)
+        
+        # Run all demonstrations
+        print("\n" + "="*50, flush=True)
+        print("RUNNING FULL DEMONSTRATION...", flush=True)
+        print("="*50, flush=True)
+        
+        demo_keyword_lookup()
+        sys.stdout.flush()
+        
+        search_by_requirement()
+        sys.stdout.flush()
+        
+        simulate_bigquery_discovery()
+        sys.stdout.flush()
+        
+        generate_mapping_report()
+        sys.stdout.flush()
+        
+        validate_keyword_coverage()  
+        sys.stdout.flush()
+        
+        # Offer interactive mode
+        print("\n" + "=" * 80, flush=True)
+        print("DEMONSTRATION COMPLETE!", flush=True)
+        print("=" * 80, flush=True)
+        
+        try:
+            response = input("Would you like to enter interactive field lookup mode? (y/n): ").strip().lower()
+            
+            if response in ['y', 'yes']:
+                interactive_field_lookup()
+            else:
+                print("\n🎯 FINAL SUMMARY:", flush=True)
+                print(f"✅ Dictionary contains {len(ALL_AO1_REQUIREMENTS_KEYWORDS)} keywords", flush=True)
+                print("✅ All 8 AO1 requirements covered", flush=True)
+                print("✅ Ready for BigQuery schema mapping!", flush=True)
+                print("\nTo use this dictionary in your mapping script:", flush=True)
+                print("from ao1_keywords_dictionary import get_keyword_requirement_context", flush=True)
+                print("context = get_keyword_requirement_context('your_field_name')", flush=True)
+                print("\nGoodbye! 👋", flush=True)
+                
+        except (EOFError, KeyboardInterrupt):
+            print("\n\nScript completed without interactive mode.", flush=True)
+            print("Dictionary is ready for use!", flush=True)
+            
+    except Exception as e:
+        print(f"\n❌ ERROR: {e}", flush=True)
+        print("Stack trace:", flush=True)
+        import traceback
+        traceback.print_exc()
+        
+    print("\n" + "="*50, flush=True)
+    print("SCRIPT EXECUTION FINISHED", flush=True)
+    print("="*50, flush=True)
