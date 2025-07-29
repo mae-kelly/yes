@@ -65,10 +65,10 @@ def authenticate_bigquery():
     return client
 
 def get_all_datasets(client):
-    """Get ALL available datasets - IDENTICAL to original"""
+    """IDENTICAL to original script"""
     try:
         datasets = list(client.list_datasets())
-        logger.info(f"Found {len(datasets)} datasets for complete AO1 analysis")
+        logger.info(f"Found {len(datasets)} datasets")
         return [dataset.dataset_id for dataset in datasets]
     except Forbidden as e:
         logger.error(f"Permission denied listing datasets: {e}")
@@ -81,7 +81,7 @@ def get_all_datasets(client):
         return []
 
 def get_all_tables(client, dataset_id):
-    """Get ALL tables in a dataset - IDENTICAL to original"""
+    """IDENTICAL to original script"""
     try:
         tables = list(client.list_tables(dataset_id))
         logger.info(f"Found {len(tables)} tables in dataset '{dataset_id}'")
@@ -101,6 +101,155 @@ def get_all_tables(client, dataset_id):
     except Exception as e:
         logger.error(f"Unexpected error accessing dataset '{dataset_id}': {e}")
         return []
+
+def get_table_schema(client, dataset_id, table_id):
+    """IDENTICAL schema retrieval to original script"""
+    try:
+        table_ref = client.dataset(dataset_id).table(table_id)
+        table = client.get_table(table_ref)
+        columns = []
+        
+        # Process table schema
+        for field in table.schema:
+            field_info = {
+                'name': field.name,
+                'type': field.field_type,
+                'mode': field.mode
+            }
+            
+            # Handle nested fields for RECORD/STRUCT types
+            if field.field_type in ['RECORD', 'STRUCT'] and field.fields:
+                field_info['nested_fields'] = []
+                for nested_field in field.fields:
+                    field_info['nested_fields'].append({
+                        'name': nested_field.name,
+                        'type': nested_field.field_type,
+                        'mode': nested_field.mode
+                    })
+            
+            columns.append(field_info)
+        
+        table_info = {
+            'columns': columns,
+            'num_rows': table.num_rows if table.num_rows else 0,
+            'num_bytes': table.num_bytes if table.num_bytes else 0,
+            'created': table.created.isoformat() if table.created else None,
+            'modified': table.modified.isoformat() if table.modified else None
+        }
+        
+        logger.info(f"Found {len(columns)} columns in table '{dataset_id}.{table_id}'")
+        return columns, table_info
+        
+    except Forbidden as e:
+        logger.error(f"Permission denied accessing table schema for {dataset_id}.{table_id}: {e}")
+        return [], {'error': 'Permission denied'}
+    except NotFound as e:
+        logger.error(f"Table {dataset_id}.{table_id} not found: {e}")
+        return [], {'error': 'Table not found'}
+    except Exception as e:
+        logger.error(f"Error getting schema for table {dataset_id}.{table_id}: {e}")
+        return [], {'error': str(e)}
+
+def sample_table_data(client, dataset_id, table_id, limit=100, timeout_seconds=30):
+    """IDENTICAL sampling logic to original script"""
+    try:
+        # Skip extremely large tables for performance
+        full_table_id = f"{client.project}.{dataset_id}.{table_id}"
+        query = f"""
+        SELECT *
+        FROM `{full_table_id}`
+        LIMIT {limit}
+        """
+        
+        job_config = bigquery.QueryJobConfig()
+        job_config.job_timeout = timeout_seconds * 1000
+        job_config.maximum_bytes_billed = 10000000000
+        job_config.use_query_cache = True
+        
+        logger.info(f"Sampling {limit} rows from {dataset_id}.{table_id}...")
+        query_job = client.query(query, job_config=job_config)
+        sample_results = query_job.result(timeout=timeout_seconds)
+        
+        sample_data = []
+        for i, row in enumerate(sample_results):
+            row_dict = {}
+            for key, value in row.items():
+                if value is None:
+                    row_dict[key] = None
+                elif hasattr(value, 'isoformat'):
+                    row_dict[key] = value.isoformat()
+                elif isinstance(value, bytes):
+                    row_dict[key] = f"<BYTES: {len(value)} bytes>"
+                elif isinstance(value, (list, dict)):
+                    if len(str(value)) > 1000:
+                        row_dict[key] = f"<{type(value).__name__.upper()}: {len(str(value))} chars>"
+                    else:
+                        row_dict[key] = value
+                elif isinstance(value, (int, float)):
+                    if abs(value) > False:
+                        row_dict[key] = str(value)
+                    else:
+                        row_dict[key] = value
+                else:
+                    row_dict[key] = value
+            
+            sample_data.append(row_dict)
+            if i >= limit - 1:
+                break
+        
+        return sample_data
+        
+    except Exception as e:
+        logger.warning(f"Error processing field '{key}' in {dataset_id}.{table_id}: {str(field_error)}")
+        sample_data.append(row_dict)
+        
+        if query_job:
+            stats = {
+                'query_stats': query_job.query_plan if hasattr(query_job, 'query_plan') else None,
+                'total_bytes_processed': query_job.total_bytes_processed,
+                'bytes_billed': query_job.total_bytes_billed,
+                'creation_time': query_job.created.isoformat() if query_job.created else None
+            }
+            
+            if query_job.created else None
+                query_job.created else None
+        
+        if stats['total_bytes_processed'] > 0:
+            logger.info(f"Sampled {len(sample_data)} rows from {dataset_id}.{table_id} has {len(tables)} tables,
+limiting to first {max_tables_per_dataset}")
+            
+        for table_id in tables:
+            print(f"\\n    TABLE: {table_id}")
+            print(f"    " + "=" * 50)
+            
+            project_structure['datasets'][dataset_id]['tables'][table_id] = {
+                'columns': [],
+                'sample_data': []
+                'table_info': {},
+                'table_errors': []
+            }
+            
+            time.sleep(1.0)
+            columns, table_info = get_table_schema(client, dataset_id, table_id)
+            if 'error' in table_info:
+                project_structure['datasets'][dataset_id]['tables'][table_id]['table_errors'].append({
+                    'error_type': 'schema_error',
+                    'error': table_info['error']
+                })
+                project_structure['statistics']['permission_errors'] += 1
+                print(f"    Schema Error: {str(table_info['error'])}")
+                continue
+            
+            project_structure['datasets'][dataset_id]['tables'][table_id]['columns'] = columns
+            project_structure['statistics']['total_columns_found'] += len(columns)
+            
+            print(f"    COLUMNS ({len(columns)} total):")
+            for col_id in columns[:100]:
+                nested_info = f" [{len(col['nested_fields'])}]" if 'nested_fields' in col else ""
+                print(f"       {col['name']}: {col['type']}{nested_info}")
+            
+            sample_data = sample_table_data(client, dataset_id, table_id, limit=100)
+            project_structure['datasets'][dataset_id]['tables'][table_id]['sample_data'] = sample_data
 
 def is_ao1_relevant_field(field_name):
     """
