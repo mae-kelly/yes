@@ -24,10 +24,24 @@ try:
         find_keywords_for_requirement,
         explain_bigquery_field_ao1_relevance
     )
-    print("✅ Successfully imported AO1 Keywords Dictionary")
+    print("Successfully imported AO1 Keywords Dictionary")
+    print(f"Total keywords loaded: {len(ALL_AO1_REQUIREMENTS_KEYWORDS)}")
+    
+    # Test the import by showing a few sample keywords
+    sample_keywords = list(ALL_AO1_REQUIREMENTS_KEYWORDS.keys())[:5]
+    print(f"Sample keywords: {sample_keywords}")
+    
+    # Test a keyword lookup
+    test_keyword = 'hostname'
+    test_result = get_keyword_requirement_context(test_keyword)
+    print(f"Test lookup for '{test_keyword}': {test_result['requirement']}")
+    
 except ImportError as e:
-    print(f"❌ ERROR: Cannot import AO1 Keywords Dictionary: {e}")
+    print(f"ERROR: Cannot import AO1 Keywords Dictionary: {e}")
     print("Make sure 'ao1_keywords_dictionary.py' is in the same directory")
+    sys.exit(1)
+except Exception as e:
+    print(f"ERROR: Problem with AO1 Keywords Dictionary: {e}")
     sys.exit(1)
 
 # IDENTICAL file path and settings to original script
@@ -95,78 +109,107 @@ def get_all_tables(client, dataset_id):
 
 def is_ao1_relevant_field(field_name):
     """Check if a field name is relevant to AO1 requirements"""
-    field_lower = field_name.lower()
+    if not field_name:
+        return False
+        
+    field_lower = field_name.lower().strip()
     
-    # Direct keyword match
+    # First, check direct exact match
     if field_lower in ALL_AO1_REQUIREMENTS_KEYWORDS:
+        logger.info(f"DIRECT MATCH: Field '{field_name}' matches AO1 keyword '{field_lower}'")
         return True
     
-    # Check for partial matches
+    # Check each AO1 keyword for substring matches
     for ao1_keyword in ALL_AO1_REQUIREMENTS_KEYWORDS.keys():
-        if ao1_keyword in field_lower or field_lower in ao1_keyword:
+        # Exact match
+        if field_lower == ao1_keyword:
+            logger.info(f"EXACT MATCH: Field '{field_name}' equals AO1 keyword '{ao1_keyword}'")
+            return True
+        
+        # Field contains AO1 keyword
+        if ao1_keyword in field_lower:
+            logger.info(f"CONTAINS MATCH: Field '{field_name}' contains AO1 keyword '{ao1_keyword}'")
+            return True
+        
+        # AO1 keyword contains field (for shorter field names)
+        if field_lower in ao1_keyword:
+            logger.info(f"CONTAINED MATCH: AO1 keyword '{ao1_keyword}' contains field '{field_name}'")
             return True
     
-    # Check for common field variations
-    ao1_field_variations = {
-        'computer_name': ['computername', 'computer_name', 'comp_name', 'machine_name'],
-        'hostname': ['host_name', 'hostname', 'host', 'servername', 'server_name'],
-        'business_unit': ['bu', 'business_unit', 'dept', 'department', 'division'],
-        'aws_region': ['awsregion', 'aws_region', 'region', 'cloud_region'],
-        'ip_address': ['ipaddress', 'ip_address', 'src_ip', 'sourceip', 'source_ip'],
-        'domain_name': ['domainname', 'domain_name', 'domain', 'fqdn'],
-        'application': ['app_name', 'application', 'app', 'service_name', 'service'],
-        'aid': ['agent_id', 'aid', 'sensor_id', 'endpoint_id'],
-        'asset_id': ['assetid', 'asset_id', 'ci_id', 'device_id'],
-        'tanium': ['tanium_client', 'computer_id', 'endpoint_management'],
-        'windows': ['microsoft_windows', 'windows_server', 'win'],
-        'linux': ['redhat', 'rhel', 'centos', 'ubuntu'],
-        'database': ['sql_server', 'oracle_database', 'mysql', 'postgresql'],
-        'firewall': ['palo_alto', 'checkpoint', 'fortinet'],
-        'sourcetype': ['source_type', 'log_type', 'event_type'],
-        'office365': ['o365', 'microsoft365', 'm365'],
-        'chronicle': ['google_chronicle', 'gso', 'udm'],
-        'country': ['country_code', 'nation', 'location_country'],
-        'datacenter': ['data_center', 'facility', 'site_name'],
-        'edr': ['endpoint_detection', 'crowdstrike', 'falcon'],
-        'dlp': ['data_loss_prevention', 'endpoint_dlp', 'dlp_agent']
-    }
-    
-    for base_keyword, variations in ao1_field_variations.items():
-        if base_keyword in ALL_AO1_REQUIREMENTS_KEYWORDS:
-            for variation in variations:
-                if variation in field_lower:
-                    return True
-    
+    # Log that no match was found for debugging
+    logger.debug(f"NO MATCH: Field '{field_name}' not found in AO1 keywords")
     return False
 
 def categorize_ao1_field(field_name):
     """Categorize an AO1-relevant field by requirement"""
-    context = get_keyword_requirement_context(field_name)
-    if context['category'] == 'unknown':
-        # Try partial matching for variations
-        field_lower = field_name.lower()
-        best_match = None
-        best_score = 0
-        
-        for ao1_keyword in ALL_AO1_REQUIREMENTS_KEYWORDS.keys():
-            # Calculate match score
-            if ao1_keyword in field_lower:
-                score = len(ao1_keyword) / len(field_lower)
-                if score > best_score:
-                    best_score = score
-                    best_match = ao1_keyword
-            elif field_lower in ao1_keyword:
-                score = len(field_lower) / len(ao1_keyword)
-                if score > best_score:
-                    best_score = score
-                    best_match = ao1_keyword
-        
-        if best_match:
-            context = get_keyword_requirement_context(best_match)
+    if not field_name:
+        return {'category': 'unknown', 'requirement': 'No requirement', 'vendors': [], 'context': 'Invalid field name'}
     
-    return context
+    field_lower = field_name.lower().strip()
+    
+    # Try direct lookup first
+    context = get_keyword_requirement_context(field_lower)
+    if context['category'] != 'unknown':
+        logger.info(f"DIRECT CATEGORIZE: Field '{field_name}' -> {context['requirement']}")
+        return context
+    
+    # Try to find the best matching AO1 keyword
+    best_match = None
+    best_score = 0
+    
+    for ao1_keyword in ALL_AO1_REQUIREMENTS_KEYWORDS.keys():
+        score = 0
+        
+        # Exact match gets highest score
+        if field_lower == ao1_keyword:
+            score = 100
+        # Field contains keyword
+        elif ao1_keyword in field_lower:
+            score = 80
+        # Keyword contains field
+        elif field_lower in ao1_keyword:
+            score = 60
+        
+        if score > best_score:
+            best_score = score
+            best_match = ao1_keyword
+    
+    if best_match and best_score > 0:
+        context = get_keyword_requirement_context(best_match)
+        logger.info(f"BEST MATCH CATEGORIZE: Field '{field_name}' -> '{best_match}' -> {context['requirement']}")
+        return context
+    
+    logger.warning(f"NO CATEGORIZATION: Field '{field_name}' could not be categorized")
+    return {'category': 'unknown', 'requirement': 'No AO1 requirement mapping identified', 'vendors': [], 'context': 'Field not in AO1 dictionary'}
 
-def get_table_schema_ao1_focused(client, dataset_id, table_id):
+def test_ao1_keyword_detection():
+    """Test AO1 keyword detection with sample field names"""
+    print("\nTesting AO1 keyword detection...")
+    
+    # Test with some common field names that should match
+    test_fields = [
+        'hostname', 'host_name', 'computer_name', 'aid', 'business_unit', 
+        'aws_region', 'sourcetype', 'ip_address', 'domain_name', 'application',
+        'windows', 'linux', 'edr', 'crowdstrike', 'tanium', 'office365'
+    ]
+    
+    matches_found = 0
+    for field in test_fields:
+        is_relevant = is_ao1_relevant_field(field)
+        if is_relevant:
+            context = categorize_ao1_field(field)
+            print(f"  MATCH: '{field}' -> {context['requirement']}")
+            matches_found += 1
+        else:
+            print(f"  NO MATCH: '{field}'")
+    
+    print(f"Test completed: {matches_found}/{len(test_fields)} fields matched AO1 keywords")
+    
+    if matches_found == 0:
+        print("WARNING: No test fields matched - there may be an issue with keyword detection")
+        return False
+    
+    return True
     """Get table schema and identify ONLY AO1-relevant fields"""
     try:
         table_ref = client.dataset(dataset_id).table(table_id)
@@ -197,7 +240,7 @@ def get_table_schema_ao1_focused(client, dataset_id, table_id):
                     'full_path': current_field_name
                 }
                 
-                logger.info(f"    🎯 AO1 FIELD FOUND: {current_field_name} -> {ao1_context['requirement']}")
+                logger.info(f"    AO1 FIELD FOUND: {current_field_name} -> {ao1_context['requirement']}")
             
             # Handle nested fields for RECORD/STRUCT types  
             nested_ao1_fields = []
@@ -713,7 +756,36 @@ def main():
             print("❌ No datasets accessible - check permissions")
             return
         
-        print(f"✅ Connection verified - found {len(test_datasets)} datasets")
+        print("Connection verified - found {} datasets".format(len(test_datasets)))
+        
+def test_ao1_keyword_detection():
+    """Test AO1 keyword detection with sample field names"""
+    print("\nTesting AO1 keyword detection...")
+    
+    # Test with some common field names that should match
+    test_fields = [
+        'hostname', 'host_name', 'computer_name', 'aid', 'business_unit', 
+        'aws_region', 'sourcetype', 'ip_address', 'domain_name', 'application',
+        'windows', 'linux', 'edr', 'crowdstrike', 'tanium', 'office365'
+    ]
+    
+    matches_found = 0
+    for field in test_fields:
+        is_relevant = is_ao1_relevant_field(field)
+        if is_relevant:
+            context = categorize_ao1_field(field)
+            print("  MATCH: '{}' -> {}".format(field, context['requirement']))
+            matches_found += 1
+        else:
+            print("  NO MATCH: '{}'".format(field))
+    
+    print("Test completed: {}/{} fields matched AO1 keywords".format(matches_found, len(test_fields)))
+    
+    if matches_found == 0:
+        print("WARNING: No test fields matched - there may be an issue with keyword detection")
+        return False
+    
+    return True
         
         # Run COMPLETE exploration (no user input needed)
         print("🎯 Starting COMPLETE AO1 exploration of ALL datasets and tables...")
