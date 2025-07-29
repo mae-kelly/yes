@@ -1,11 +1,8 @@
 """
-AO1-Focused BigQuery Exploration Script - COMPLETE SCAN VERSION
+AO1-Focused BigQuery Exploration Script - CLEAN VERSION
 
 This script connects to BigQuery with IDENTICAL authentication to the original script
 and scans EVERY SINGLE dataset and EVERY SINGLE table to identify AO1-relevant fields.
-
-It focuses exclusively on finding fields that support the 8 AO1 requirements:
-REQ-1 through REQ-8 for calculating visibility percentages.
 """
 
 import os
@@ -32,12 +29,6 @@ except ImportError as e:
     print(f"❌ ERROR: Cannot import AO1 Keywords Dictionary: {e}")
     print("Make sure 'ao1_keywords_dictionary.py' is in the same directory")
     sys.exit(1)
-
-"""
-AO1-Focused BigQuery Explorer - COMPLETE COMPREHENSIVE SCAN
-Connects to BigQuery using IDENTICAL authentication and scans ALL datasets and ALL tables
-to identify ONLY fields relevant to AO1 requirements.
-"""
 
 # IDENTICAL file path and settings to original script
 file_path = os.path.join(os.path.dirname(__file__))
@@ -102,177 +93,20 @@ def get_all_tables(client, dataset_id):
         logger.error(f"Unexpected error accessing dataset '{dataset_id}': {e}")
         return []
 
-def get_table_schema(client, dataset_id, table_id):
-    """IDENTICAL schema retrieval to original script"""
-    try:
-        table_ref = client.dataset(dataset_id).table(table_id)
-        table = client.get_table(table_ref)
-        columns = []
-        
-        # Process table schema
-        for field in table.schema:
-            field_info = {
-                'name': field.name,
-                'type': field.field_type,
-                'mode': field.mode
-            }
-            
-            # Handle nested fields for RECORD/STRUCT types
-            if field.field_type in ['RECORD', 'STRUCT'] and field.fields:
-                field_info['nested_fields'] = []
-                for nested_field in field.fields:
-                    field_info['nested_fields'].append({
-                        'name': nested_field.name,
-                        'type': nested_field.field_type,
-                        'mode': nested_field.mode
-                    })
-            
-            columns.append(field_info)
-        
-        table_info = {
-            'columns': columns,
-            'num_rows': table.num_rows if table.num_rows else 0,
-            'num_bytes': table.num_bytes if table.num_bytes else 0,
-            'created': table.created.isoformat() if table.created else None,
-            'modified': table.modified.isoformat() if table.modified else None
-        }
-        
-        logger.info(f"Found {len(columns)} columns in table '{dataset_id}.{table_id}'")
-        return columns, table_info
-        
-    except Forbidden as e:
-        logger.error(f"Permission denied accessing table schema for {dataset_id}.{table_id}: {e}")
-        return [], {'error': 'Permission denied'}
-    except NotFound as e:
-        logger.error(f"Table {dataset_id}.{table_id} not found: {e}")
-        return [], {'error': 'Table not found'}
-    except Exception as e:
-        logger.error(f"Error getting schema for table {dataset_id}.{table_id}: {e}")
-        return [], {'error': str(e)}
-
-def sample_table_data(client, dataset_id, table_id, limit=100, timeout_seconds=30):
-    """IDENTICAL sampling logic to original script"""
-    try:
-        # Skip extremely large tables for performance
-        full_table_id = f"{client.project}.{dataset_id}.{table_id}"
-        query = f"""
-        SELECT *
-        FROM `{full_table_id}`
-        LIMIT {limit}
-        """
-        
-        job_config = bigquery.QueryJobConfig()
-        job_config.job_timeout = timeout_seconds * 1000
-        job_config.maximum_bytes_billed = 10000000000
-        job_config.use_query_cache = True
-        
-        logger.info(f"Sampling {limit} rows from {dataset_id}.{table_id}...")
-        query_job = client.query(query, job_config=job_config)
-        sample_results = query_job.result(timeout=timeout_seconds)
-        
-        sample_data = []
-        for i, row in enumerate(sample_results):
-            row_dict = {}
-            for key, value in row.items():
-                if value is None:
-                    row_dict[key] = None
-                elif hasattr(value, 'isoformat'):
-                    row_dict[key] = value.isoformat()
-                elif isinstance(value, bytes):
-                    row_dict[key] = f"<BYTES: {len(value)} bytes>"
-                elif isinstance(value, (list, dict)):
-                    if len(str(value)) > 1000:
-                        row_dict[key] = f"<{type(value).__name__.upper()}: {len(str(value))} chars>"
-                    else:
-                        row_dict[key] = value
-                elif isinstance(value, (int, float)):
-                    if abs(value) > False:
-                        row_dict[key] = str(value)
-                    else:
-                        row_dict[key] = value
-                else:
-                    row_dict[key] = value
-            
-            sample_data.append(row_dict)
-            if i >= limit - 1:
-                break
-        
-        return sample_data
-        
-    except Exception as e:
-        logger.warning(f"Error processing field '{key}' in {dataset_id}.{table_id}: {str(field_error)}")
-        sample_data.append(row_dict)
-        
-        if query_job:
-            stats = {
-                'query_stats': query_job.query_plan if hasattr(query_job, 'query_plan') else None,
-                'total_bytes_processed': query_job.total_bytes_processed,
-                'bytes_billed': query_job.total_bytes_billed,
-                'creation_time': query_job.created.isoformat() if query_job.created else None
-            }
-            
-            if query_job.created else None
-                query_job.created else None
-        
-        if stats['total_bytes_processed'] > 0:
-            logger.info(f"Sampled {len(sample_data)} rows from {dataset_id}.{table_id} has {len(tables)} tables,
-limiting to first {max_tables_per_dataset}")
-            
-        for table_id in tables:
-            print(f"\\n    TABLE: {table_id}")
-            print(f"    " + "=" * 50)
-            
-            project_structure['datasets'][dataset_id]['tables'][table_id] = {
-                'columns': [],
-                'sample_data': []
-                'table_info': {},
-                'table_errors': []
-            }
-            
-            time.sleep(1.0)
-            columns, table_info = get_table_schema(client, dataset_id, table_id)
-            if 'error' in table_info:
-                project_structure['datasets'][dataset_id]['tables'][table_id]['table_errors'].append({
-                    'error_type': 'schema_error',
-                    'error': table_info['error']
-                })
-                project_structure['statistics']['permission_errors'] += 1
-                print(f"    Schema Error: {str(table_info['error'])}")
-                continue
-            
-            project_structure['datasets'][dataset_id]['tables'][table_id]['columns'] = columns
-            project_structure['statistics']['total_columns_found'] += len(columns)
-            
-            print(f"    COLUMNS ({len(columns)} total):")
-            for col_id in columns[:100]:
-                nested_info = f" [{len(col['nested_fields'])}]" if 'nested_fields' in col else ""
-                print(f"       {col['name']}: {col['type']}{nested_info}")
-            
-            sample_data = sample_table_data(client, dataset_id, table_id, limit=100)
-            project_structure['datasets'][dataset_id]['tables'][table_id]['sample_data'] = sample_data
-
 def is_ao1_relevant_field(field_name):
-    """
-    Check if a field name is relevant to AO1 requirements
-    
-    Args:
-        field_name (str): BigQuery field name to check
-        
-    Returns:
-        bool: True if field supports AO1 requirements, False otherwise
-    """
+    """Check if a field name is relevant to AO1 requirements"""
     field_lower = field_name.lower()
     
     # Direct keyword match
     if field_lower in ALL_AO1_REQUIREMENTS_KEYWORDS:
         return True
     
-    # Check for partial matches (e.g., "host_name" contains "hostname")
+    # Check for partial matches
     for ao1_keyword in ALL_AO1_REQUIREMENTS_KEYWORDS.keys():
         if ao1_keyword in field_lower or field_lower in ao1_keyword:
             return True
     
-    # Check for common field variations and nested field patterns
+    # Check for common field variations
     ao1_field_variations = {
         'computer_name': ['computername', 'computer_name', 'comp_name', 'machine_name'],
         'hostname': ['host_name', 'hostname', 'host', 'servername', 'server_name'],
@@ -306,15 +140,7 @@ def is_ao1_relevant_field(field_name):
     return False
 
 def categorize_ao1_field(field_name):
-    """
-    Categorize an AO1-relevant field by requirement
-    
-    Args:
-        field_name (str): BigQuery field name
-        
-    Returns:
-        dict: AO1 requirement categorization
-    """
+    """Categorize an AO1-relevant field by requirement"""
     context = get_keyword_requirement_context(field_name)
     if context['category'] == 'unknown':
         # Try partial matching for variations
@@ -341,17 +167,7 @@ def categorize_ao1_field(field_name):
     return context
 
 def get_table_schema_ao1_focused(client, dataset_id, table_id):
-    """
-    Get table schema and identify ONLY AO1-relevant fields - handles ALL field types
-    
-    Args:
-        client: BigQuery client
-        dataset_id (str): Dataset ID
-        table_id (str): Table ID
-        
-    Returns:
-        dict: AO1-relevant columns and metadata
-    """
+    """Get table schema and identify ONLY AO1-relevant fields"""
     try:
         table_ref = client.dataset(dataset_id).table(table_id)
         table = client.get_table(table_ref)
@@ -383,7 +199,7 @@ def get_table_schema_ao1_focused(client, dataset_id, table_id):
                 
                 logger.info(f"    🎯 AO1 FIELD FOUND: {current_field_name} -> {ao1_context['requirement']}")
             
-            # Handle nested fields for RECORD/STRUCT types
+            # Handle nested fields for RECORD/STRUCT types  
             nested_ao1_fields = []
             if field.field_type in ['RECORD', 'STRUCT'] and field.fields:
                 for nested_field in field.fields:
@@ -428,49 +244,8 @@ def get_table_schema_ao1_focused(client, dataset_id, table_id):
         logger.error(f"Error analyzing AO1 relevance for table {dataset_id}.{table_id}: {e}")
         return {'ao1_relevant_fields': [], 'total_fields': 0, 'ao1_coverage_percentage': 0, 'error': str(e)}
 
-def sample_ao1_field_data(client, dataset_id, table_id, ao1_field_name, limit=100):
-    """
-    Sample data from AO1-relevant fields - IDENTICAL timeout logic to original
-    
-    Args:
-        client: BigQuery client
-        dataset_id (str): Dataset ID
-        table_id (str): Table ID
-        ao1_field_name (str): AO1-relevant field name
-        limit (int): Number of sample rows
-        
-    Returns:
-        list: Sample data values for AO1 analysis
-    """
-    try:
-        logger.warning(f"Skipping extremely large table {dataset_id}.{table_id}")
-        return {"warning": f"Table too large ({table_info.get('num_rows', 'unknown')} rows) - sampling skipped for performance"}
-    except Forbidden as e:
-        logger.warning(f"Permission denied sampling table '{dataset_id}.{table_id}': {e}")
-        return {"error": "Permission denied", "details": str(e)}
-    except NotFound as e:
-        logger.warning(f"Table '{dataset_id}.{table_id}' not found during sampling: {e}")
-        return {"error": "Table not found", "details": str(e)}
-    except BadRequest as e:
-        logger.warning(f"Bad request sampling table '{dataset_id}.{table_id}': {e}")
-        return {"error": "Invalid query", "details": str(e)}
-    except ServerError as e:
-        logger.error(f"Server error sampling table '{dataset_id}.{table_id}': {e}")
-        return {"error": "Server error", "details": str(e)}
-    except Exception as e:
-        logger.error(f"Unexpected error sampling table '{dataset_id}.{table_id}': {e}")
-        return {"error": "Unexpected error", "details": str(e)}
-
 def explore_complete_ao1_project_structure(client):
-    """
-    COMPLETE exploration of ALL BigQuery datasets and tables for AO1 fields
-    
-    Args:
-        client: BigQuery client
-        
-    Returns:
-        dict: Complete AO1-focused project structure analysis
-    """
+    """COMPLETE exploration of ALL BigQuery datasets and tables for AO1 fields"""
     start_time = time.time()
     
     ao1_project_structure = {
@@ -654,15 +429,7 @@ def explore_complete_ao1_project_structure(client):
     return ao1_project_structure
 
 def generate_complete_ao1_summary_report(ao1_structure):
-    """
-    Generate a comprehensive AO1 summary report focusing on WHICH SPECIFIC KEYWORDS found WHERE
-    
-    Args:
-        ao1_structure (dict): Complete AO1 project structure analysis
-        
-    Returns:
-        str: Formatted comprehensive AO1 summary report
-    """
+    """Generate comprehensive AO1 summary report focusing on WHICH KEYWORDS found WHERE"""
     summary = ao1_structure['ao1_summary']
     
     print("\n" + "="*100)
@@ -927,3 +694,80 @@ def save_ao1_requirements_report(ao1_structure, filename):
         
     except Exception as e:
         logger.error(f"Error saving AO1 requirements report: {e}")
+
+def main():
+    """Main AO1-focused BigQuery exploration"""
+    print("🚀 AO1-FOCUSED BIGQUERY EXPLORATION STARTING...")
+    print("🔍 Attempting to connect to BigQuery...")
+    
+    try:
+        # Authenticate first and test connection
+        print("🔐 Authenticating with BigQuery...")
+        client = authenticate_bigquery()
+        print("✅ BigQuery authentication successful!")
+        
+        # Test connection with a simple dataset list
+        print("🧪 Testing BigQuery connection...")
+        test_datasets = get_all_datasets(client)
+        if not test_datasets:
+            print("❌ No datasets accessible - check permissions")
+            return
+        
+        print(f"✅ Connection verified - found {len(test_datasets)} datasets")
+        
+        # Run COMPLETE exploration (no user input needed)
+        print("🎯 Starting COMPLETE AO1 exploration of ALL datasets and tables...")
+        print("⚠️  This will scan every single dataset and table for AO1 keywords")
+        print("⏱️  This may take several minutes to complete")
+        print("🛑 Press Ctrl+C anytime to interrupt and get partial results")
+        
+        # Run comprehensive AO1-focused exploration
+        ao1_structure = explore_complete_ao1_project_structure(client)
+        
+        # Generate and display AO1 summary
+        summary_result = generate_complete_ao1_summary_report(ao1_structure)
+        
+        # Save AO1 results
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        filename = f"complete_ao1_bq_exploration_{timestamp}.json"
+        save_complete_ao1_results(ao1_structure, filename)
+        
+        print(f"\n🎉 COMPLETE AO1 EXPLORATION FINISHED!")
+        print(f"✅ Results saved to files with timestamp: {timestamp}")
+        print(f"📊 Check the CSV files for detailed keyword-to-location mappings")
+        
+        # Show key AO1 recommendations
+        total_ao1_fields = ao1_structure['ao1_summary']['total_ao1_fields_found']
+        
+        if total_ao1_fields > 0:
+            print(f"\n💡 AO1 NEXT STEPS:")
+            print(f"1. Review the {total_ao1_fields} AO1-relevant keywords found")
+            print(f"2. Use the CSV mapping to build your visibility calculations") 
+            print(f"3. Focus on datasets with highest keyword diversity")
+            print(f"4. Address any missing AO1 requirements")
+        else:
+            print(f"\n⚠️ AO1 RECOMMENDATIONS:")
+            print(f"1. No AO1-relevant keywords found in scanned data")
+            print(f"2. Check field naming conventions in your logging systems")
+            print(f"3. Verify that log sources are properly ingested")
+            print(f"4. Consider expanding the AO1 keyword dictionary")
+            
+    except KeyboardInterrupt:
+        print("\n⚠️ AO1 exploration interrupted by user")
+        print("📄 Check log file for any partial results")
+        logger.info("AO1 exploration interrupted by user")
+    except Exception as e:
+        error_msg = f"Fatal error during AO1 exploration: {e}"
+        print(f"\n❌ {error_msg}")
+        logger.error(error_msg)
+        print("💡 Check ao1_bq_exploration.log for detailed error information")
+        
+        # Print the full stack trace for debugging
+        import traceback
+        print("\n🔍 FULL ERROR DETAILS:")
+        traceback.print_exc()
+        
+        sys.exit(1)
+
+if __name__ == "__main__":
+    main()
