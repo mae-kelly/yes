@@ -61,7 +61,7 @@ def authenticate_bigquery():
     settings['KATANA_PG'] = {'client_encoding': 'utf8'}
     project = "prj-fisv-p-gcss-sas-d19dd0f1df"
     client = bigquery.Client(project=project, credentials=credentials)
-    logger.info("Successfully authenticated with BigQuery for AO1 exploration")
+    logger.info("Successfully authenticated with BigQuery")
     return client
 
 def get_all_datasets(client):
