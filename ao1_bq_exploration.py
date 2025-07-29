@@ -1,8 +1,8 @@
 """
-AO1-Focused BigQuery Exploration Script - CLEAN VERSION
+AO1-Focused BigQuery Exploration Script
 
-This script connects to BigQuery with IDENTICAL authentication to the original script
-and scans EVERY SINGLE dataset and EVERY SINGLE table to identify AO1-relevant fields.
+This script connects to BigQuery with identical authentication to the original script
+and scans every dataset and table to identify AO1-relevant fields only.
 """
 
 import os
@@ -25,30 +25,30 @@ try:
         explain_bigquery_field_ao1_relevance
     )
     print("Successfully imported AO1 Keywords Dictionary")
-    print(f"Total keywords loaded: {len(ALL_AO1_REQUIREMENTS_KEYWORDS)}")
+    print("Total keywords loaded: {}".format(len(ALL_AO1_REQUIREMENTS_KEYWORDS)))
     
     # Test the import by showing a few sample keywords
     sample_keywords = list(ALL_AO1_REQUIREMENTS_KEYWORDS.keys())[:5]
-    print(f"Sample keywords: {sample_keywords}")
+    print("Sample keywords: {}".format(sample_keywords))
     
     # Test a keyword lookup
     test_keyword = 'hostname'
     test_result = get_keyword_requirement_context(test_keyword)
-    print(f"Test lookup for '{test_keyword}': {test_result['requirement']}")
+    print("Test lookup for '{}': {}".format(test_keyword, test_result['requirement']))
     
 except ImportError as e:
-    print(f"ERROR: Cannot import AO1 Keywords Dictionary: {e}")
+    print("ERROR: Cannot import AO1 Keywords Dictionary: {}".format(e))
     print("Make sure 'ao1_keywords_dictionary.py' is in the same directory")
     sys.exit(1)
 except Exception as e:
-    print(f"ERROR: Problem with AO1 Keywords Dictionary: {e}")
+    print("ERROR: Problem with AO1 Keywords Dictionary: {}".format(e))
     sys.exit(1)
 
-# IDENTICAL file path and settings to original script
+# File path and settings - identical to original script
 file_path = os.path.join(os.path.dirname(__file__))
 settings = {}
 
-# IDENTICAL logging setup to original script
+# Logging setup - identical to original script
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(message)s',
@@ -60,7 +60,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 def authenticate_bigquery():
-    """IDENTICAL authentication to original script"""
+    """Authentication identical to original script"""
     SERVICE_ACCOUNT_FILE = os.path.join(file_path, "gcp_prod_key.json")
     credentials = service_account.Credentials.from_service_account_file(SERVICE_ACCOUNT_FILE)
     settings['KATANA_PG'] = {'client_encoding': 'utf8'}
@@ -70,41 +70,41 @@ def authenticate_bigquery():
     return client
 
 def get_all_datasets(client):
-    """IDENTICAL to original script"""
+    """Get all datasets - identical to original script"""
     try:
         datasets = list(client.list_datasets())
-        logger.info(f"Found {len(datasets)} datasets")
+        logger.info("Found {} datasets".format(len(datasets)))
         return [dataset.dataset_id for dataset in datasets]
     except Forbidden as e:
-        logger.error(f"Permission denied listing datasets: {e}")
+        logger.error("Permission denied listing datasets: {}".format(e))
         return []
     except NotFound as e:
-        logger.error(f"Project not found: {e}")
+        logger.error("Project not found: {}".format(e))
         return []
     except Exception as e:
-        logger.error(f"Unexpected error listing datasets: {e}")
+        logger.error("Unexpected error listing datasets: {}".format(e))
         return []
 
 def get_all_tables(client, dataset_id):
-    """IDENTICAL to original script"""
+    """Get all tables in dataset - identical to original script"""
     try:
         tables = list(client.list_tables(dataset_id))
-        logger.info(f"Found {len(tables)} tables in dataset '{dataset_id}'")
+        logger.info("Found {} tables in dataset '{}'".format(len(tables), dataset_id))
         return [table.table_id for table in tables]
     except Forbidden as e:
-        logger.error(f"Permission denied accessing dataset '{dataset_id}': {e}")
+        logger.error("Permission denied accessing dataset '{}': {}".format(dataset_id, e))
         return []
     except NotFound as e:
-        logger.error(f"Dataset '{dataset_id}' not found: {e}")
+        logger.error("Dataset '{}' not found: {}".format(dataset_id, e))
         return []
     except BadRequest as e:
-        logger.warning(f"Bad request accessing dataset '{dataset_id}': {e}")
+        logger.warning("Bad request accessing dataset '{}': {}".format(dataset_id, e))
         return []
     except ServerError as e:
-        logger.error(f"Server error accessing dataset '{dataset_id}': {e}")
+        logger.error("Server error accessing dataset '{}': {}".format(dataset_id, e))
         return []
     except Exception as e:
-        logger.error(f"Unexpected error accessing dataset '{dataset_id}': {e}")
+        logger.error("Unexpected error accessing dataset '{}': {}".format(dataset_id, e))
         return []
 
 def is_ao1_relevant_field(field_name):
@@ -116,28 +116,28 @@ def is_ao1_relevant_field(field_name):
     
     # First, check direct exact match
     if field_lower in ALL_AO1_REQUIREMENTS_KEYWORDS:
-        logger.info(f"DIRECT MATCH: Field '{field_name}' matches AO1 keyword '{field_lower}'")
+        logger.info("DIRECT MATCH: Field '{}' matches AO1 keyword '{}'".format(field_name, field_lower))
         return True
     
     # Check each AO1 keyword for substring matches
     for ao1_keyword in ALL_AO1_REQUIREMENTS_KEYWORDS.keys():
         # Exact match
         if field_lower == ao1_keyword:
-            logger.info(f"EXACT MATCH: Field '{field_name}' equals AO1 keyword '{ao1_keyword}'")
+            logger.info("EXACT MATCH: Field '{}' equals AO1 keyword '{}'".format(field_name, ao1_keyword))
             return True
         
         # Field contains AO1 keyword
         if ao1_keyword in field_lower:
-            logger.info(f"CONTAINS MATCH: Field '{field_name}' contains AO1 keyword '{ao1_keyword}'")
+            logger.info("CONTAINS MATCH: Field '{}' contains AO1 keyword '{}'".format(field_name, ao1_keyword))
             return True
         
         # AO1 keyword contains field (for shorter field names)
         if field_lower in ao1_keyword:
-            logger.info(f"CONTAINED MATCH: AO1 keyword '{ao1_keyword}' contains field '{field_name}'")
+            logger.info("CONTAINED MATCH: AO1 keyword '{}' contains field '{}'".format(ao1_keyword, field_name))
             return True
     
     # Log that no match was found for debugging
-    logger.debug(f"NO MATCH: Field '{field_name}' not found in AO1 keywords")
+    logger.debug("NO MATCH: Field '{}' not found in AO1 keywords".format(field_name))
     return False
 
 def categorize_ao1_field(field_name):
@@ -150,7 +150,7 @@ def categorize_ao1_field(field_name):
     # Try direct lookup first
     context = get_keyword_requirement_context(field_lower)
     if context['category'] != 'unknown':
-        logger.info(f"DIRECT CATEGORIZE: Field '{field_name}' -> {context['requirement']}")
+        logger.info("DIRECT CATEGORIZE: Field '{}' -> {}".format(field_name, context['requirement']))
         return context
     
     # Try to find the best matching AO1 keyword
@@ -176,10 +176,10 @@ def categorize_ao1_field(field_name):
     
     if best_match and best_score > 0:
         context = get_keyword_requirement_context(best_match)
-        logger.info(f"BEST MATCH CATEGORIZE: Field '{field_name}' -> '{best_match}' -> {context['requirement']}")
+        logger.info("BEST MATCH CATEGORIZE: Field '{}' -> '{}' -> {}".format(field_name, best_match, context['requirement']))
         return context
     
-    logger.warning(f"NO CATEGORIZATION: Field '{field_name}' could not be categorized")
+    logger.warning("NO CATEGORIZATION: Field '{}' could not be categorized".format(field_name))
     return {'category': 'unknown', 'requirement': 'No AO1 requirement mapping identified', 'vendors': [], 'context': 'Field not in AO1 dictionary'}
 
 def test_ao1_keyword_detection():
@@ -211,34 +211,7 @@ def test_ao1_keyword_detection():
     
     return True
 
-def test_ao1_keyword_detection():
-    """Test AO1 keyword detection with sample field names"""
-    print("\nTesting AO1 keyword detection...")
-    
-    # Test with some common field names that should match
-    test_fields = [
-        'hostname', 'host_name', 'computer_name', 'aid', 'business_unit', 
-        'aws_region', 'sourcetype', 'ip_address', 'domain_name', 'application',
-        'windows', 'linux', 'edr', 'crowdstrike', 'tanium', 'office365'
-    ]
-    
-    matches_found = 0
-    for field in test_fields:
-        is_relevant = is_ao1_relevant_field(field)
-        if is_relevant:
-            context = categorize_ao1_field(field)
-            print(f"  MATCH: '{field}' -> {context['requirement']}")
-            matches_found += 1
-        else:
-            print(f"  NO MATCH: '{field}'")
-    
-    print(f"Test completed: {matches_found}/{len(test_fields)} fields matched AO1 keywords")
-    
-    if matches_found == 0:
-        print("WARNING: No test fields matched - there may be an issue with keyword detection")
-        return False
-    
-    return True
+def get_table_schema_ao1_focused(client, dataset_id, table_id):
     """Get table schema and identify ONLY AO1-relevant fields"""
     try:
         table_ref = client.dataset(dataset_id).table(table_id)
@@ -251,7 +224,7 @@ def test_ao1_keyword_detection():
             """Recursively analyze fields including nested structures"""
             nonlocal total_fields
             
-            current_field_name = f"{parent_name}.{field.name}" if parent_name else field.name
+            current_field_name = "{}.{}".format(parent_name, field.name) if parent_name else field.name
             total_fields += 1
             
             field_info = None
@@ -269,7 +242,7 @@ def test_ao1_keyword_detection():
                     'full_path': current_field_name
                 }
                 
-                logger.info(f"    AO1 FIELD FOUND: {current_field_name} -> {ao1_context['requirement']}")
+                logger.info("    AO1 FIELD FOUND: {} -> {}".format(current_field_name, ao1_context['requirement']))
             
             # Handle nested fields for RECORD/STRUCT types  
             nested_ao1_fields = []
@@ -291,7 +264,7 @@ def test_ao1_keyword_detection():
             field_results = analyze_field(field)
             ao1_relevant_fields.extend(field_results)
         
-        logger.info(f"  📊 Table {dataset_id}.{table_id}: {len(ao1_relevant_fields)} AO1 fields found out of {total_fields} total fields")
+        logger.info("  Table {}.{}: {} AO1 fields found out of {} total fields".format(dataset_id, table_id, len(ao1_relevant_fields), total_fields))
         
         return {
             'ao1_relevant_fields': ao1_relevant_fields,
@@ -307,17 +280,17 @@ def test_ao1_keyword_detection():
         }
         
     except Forbidden as e:
-        logger.warning(f"Permission denied accessing table schema for {dataset_id}.{table_id}: {e}")
+        logger.warning("Permission denied accessing table schema for {}.{}: {}".format(dataset_id, table_id, e))
         return {'ao1_relevant_fields': [], 'total_fields': 0, 'ao1_coverage_percentage': 0, 'error': 'Permission denied'}
     except NotFound as e:
-        logger.warning(f"Table {dataset_id}.{table_id} not found: {e}")
+        logger.warning("Table {}.{} not found: {}".format(dataset_id, table_id, e))
         return {'ao1_relevant_fields': [], 'total_fields': 0, 'ao1_coverage_percentage': 0, 'error': 'Table not found'}
     except Exception as e:
-        logger.error(f"Error analyzing AO1 relevance for table {dataset_id}.{table_id}: {e}")
+        logger.error("Error analyzing AO1 relevance for table {}.{}: {}".format(dataset_id, table_id, e))
         return {'ao1_relevant_fields': [], 'total_fields': 0, 'ao1_coverage_percentage': 0, 'error': str(e)}
 
 def explore_complete_ao1_project_structure(client):
-    """COMPLETE exploration of ALL BigQuery datasets and tables for AO1 fields"""
+    """Complete exploration of ALL BigQuery datasets and tables for AO1 fields"""
     start_time = time.time()
     
     ao1_project_structure = {
@@ -345,8 +318,8 @@ def explore_complete_ao1_project_structure(client):
         'datasets': {}
     }
     
-    logger.info("🎯 Starting COMPLETE AO1-focused BigQuery exploration...")
-    logger.info("⚠️  This will scan EVERY dataset and EVERY table for AO1 relevance")
+    logger.info("Starting COMPLETE AO1-focused BigQuery exploration...")
+    logger.info("This will scan EVERY dataset and EVERY table for AO1 relevance")
     
     try:
         # Get ALL datasets
@@ -357,12 +330,12 @@ def explore_complete_ao1_project_structure(client):
             return ao1_project_structure
         
         ao1_project_structure['ao1_summary']['total_datasets_found'] = len(datasets)
-        logger.info(f"📊 Found {len(datasets)} datasets to analyze completely")
+        logger.info("Found {} datasets to analyze completely".format(len(datasets)))
         
         dataset_count = 0
         for dataset_id in datasets:
             dataset_count += 1
-            logger.info(f"\n📁 Dataset {dataset_count}/{len(datasets)}: {dataset_id}")
+            logger.info("Dataset {}/{}: {}".format(dataset_count, len(datasets), dataset_id))
             
             dataset_ao1_info = {
                 'tables': {},
@@ -381,7 +354,7 @@ def explore_complete_ao1_project_structure(client):
             # Get ALL tables in this dataset
             tables = get_all_tables(client, dataset_id)
             if not tables:
-                warning_msg = f"No tables found in dataset {dataset_id} or permission denied"
+                warning_msg = "No tables found in dataset {} or permission denied".format(dataset_id)
                 logger.warning(warning_msg)
                 dataset_ao1_info['ao1_summary']['errors'].append(warning_msg)
                 ao1_project_structure['ao1_summary']['permission_errors'] += 1
@@ -393,7 +366,7 @@ def explore_complete_ao1_project_structure(client):
             table_count = 0
             for table_id in tables:
                 table_count += 1
-                logger.info(f"  🔍 Table {table_count}/{len(tables)}: {table_id}")
+                logger.info("  Table {}/{}: {}".format(table_count, len(tables), table_id))
                 
                 # Get AO1-relevant schema information for THIS table
                 table_ao1_analysis = get_table_schema_ao1_focused(client, dataset_id, table_id)
@@ -403,9 +376,9 @@ def explore_complete_ao1_project_structure(client):
                 if 'error' in table_ao1_analysis:
                     dataset_ao1_info['ao1_summary']['permission_errors'] += 1
                     ao1_project_structure['ao1_summary']['permission_errors'] += 1
-                    error_msg = f"{dataset_id}.{table_id}: {table_ao1_analysis['error']}"
+                    error_msg = "{}.{}: {}".format(dataset_id, table_id, table_ao1_analysis['error'])
                     dataset_ao1_info['ao1_summary']['errors'].append(error_msg)
-                    logger.error(f"    ❌ {error_msg}")
+                    logger.error("    {}".format(error_msg))
                 
                 if table_ao1_analysis['ao1_relevant_fields']:
                     dataset_ao1_info['ao1_summary']['tables_with_ao1_fields'] += 1
@@ -419,15 +392,15 @@ def explore_complete_ao1_project_structure(client):
                         dataset_ao1_info['ao1_summary']['ao1_requirements_found'].add(req)
                         dataset_ao1_info['ao1_summary']['ao1_vendors_found'].update(field['ao1_vendors'])
                     
-                    logger.info(f"    ✅ Found {len(table_ao1_analysis['ao1_relevant_fields'])} AO1 fields")
+                    logger.info("    Found {} AO1 fields".format(len(table_ao1_analysis['ao1_relevant_fields'])))
                 else:
-                    logger.info(f"    ⚪ No AO1 fields found")
+                    logger.info("    No AO1 fields found")
                 
                 dataset_ao1_info['tables'][table_id] = table_ao1_analysis
                 
                 # Progress indicator for large datasets
                 if table_count % 50 == 0:
-                    logger.info(f"    📊 Progress: {table_count}/{len(tables)} tables analyzed in {dataset_id}")
+                    logger.info("    Progress: {}/{} tables analyzed in {}".format(table_count, len(tables), dataset_id))
             
             # Convert sets to lists for JSON serialization
             dataset_ao1_info['ao1_summary']['ao1_requirements_found'] = list(dataset_ao1_info['ao1_summary']['ao1_requirements_found'])
@@ -438,22 +411,22 @@ def explore_complete_ao1_project_structure(client):
             ao1_project_structure['ao1_summary']['total_datasets_analyzed'] += 1
             
             if dataset_ao1_info['ao1_summary']['total_ao1_fields'] > 0:
-                logger.info(f"  ✅ Dataset {dataset_id}: {dataset_ao1_info['ao1_summary']['total_ao1_fields']} AO1 fields found across {dataset_ao1_info['ao1_summary']['tables_with_ao1_fields']} tables")
+                logger.info("  Dataset {}: {} AO1 fields found across {} tables".format(dataset_id, dataset_ao1_info['ao1_summary']['total_ao1_fields'], dataset_ao1_info['ao1_summary']['tables_with_ao1_fields']))
             else:
-                logger.info(f"  ❌ Dataset {dataset_id}: No AO1 fields found in {len(tables)} tables")
+                logger.info("  Dataset {}: No AO1 fields found in {} tables".format(dataset_id, len(tables)))
             
             # Progress indicator for many datasets
             if dataset_count % 10 == 0:
                 elapsed = time.time() - start_time
-                logger.info(f"\n📊 PROGRESS UPDATE: {dataset_count}/{len(datasets)} datasets completed ({elapsed:.1f}s elapsed)")
-                logger.info(f"   Current totals: {ao1_project_structure['ao1_summary']['total_ao1_fields_found']} AO1 fields found")
+                logger.info("PROGRESS UPDATE: {}/{} datasets completed ({:.1f}s elapsed)".format(dataset_count, len(datasets), elapsed))
+                logger.info("   Current totals: {} AO1 fields found".format(ao1_project_structure['ao1_summary']['total_ao1_fields_found']))
     
     except KeyboardInterrupt:
-        logger.info("\n⚠️ Complete AO1 exploration interrupted by user")
+        logger.info("Complete AO1 exploration interrupted by user")
         ao1_project_structure['ao1_summary']['warnings'].append("Exploration interrupted by user")
         raise
     except Exception as e:
-        error_msg = f"Fatal error during complete AO1 exploration: {e}"
+        error_msg = "Fatal error during complete AO1 exploration: {}".format(e)
         logger.error(error_msg)
         ao1_project_structure['ao1_summary']['errors'].append(error_msg)
     
@@ -505,14 +478,14 @@ def generate_complete_ao1_summary_report(ao1_structure):
     summary = ao1_structure['ao1_summary']
     
     print("\n" + "="*100)
-    print("🎯 AO1 LOG VISIBILITY MEASUREMENT - KEYWORD LOCATION MAPPING")
+    print("AO1 LOG VISIBILITY MEASUREMENT - KEYWORD LOCATION MAPPING")
     print("="*100)
     
-    print(f"\n📊 SCAN OVERVIEW:")
-    print(f"   Duration: {summary.get('exploration_duration_seconds', 0):.1f} seconds")
-    print(f"   Datasets analyzed: {summary['total_datasets_analyzed']}")
-    print(f"   Tables analyzed: {summary['total_tables_analyzed']}")
-    print(f"   AO1 keywords found: {summary['total_ao1_fields_found']}")
+    print("\nSCAN OVERVIEW:")
+    print("   Duration: {:.1f} seconds".format(summary.get('exploration_duration_seconds', 0)))
+    print("   Datasets analyzed: {}".format(summary['total_datasets_analyzed']))
+    print("   Tables analyzed: {}".format(summary['total_tables_analyzed']))
+    print("   AO1 keywords found: {}".format(summary['total_ao1_fields_found']))
     
     # BUILD COMPREHENSIVE KEYWORD-TO-LOCATION MAPPING
     keyword_locations = {}  # keyword -> [(dataset, table, field_path, requirement), ...]
@@ -539,18 +512,21 @@ def generate_complete_ao1_summary_report(ao1_structure):
                     requirement_keywords[requirement] = set()
                 requirement_keywords[requirement].add(keyword)
     
-    print(f"\n🎯 AO1 REQUIREMENTS COVERAGE:")
+    print("\nAO1 REQUIREMENTS COVERAGE:")
     coverage = summary['ao1_requirements_coverage']
-    print(f"   Requirements covered: {len(coverage['requirements_found'])}/8 ({coverage['coverage_percentage']:.1f}%)")
+    print("   Requirements covered: {}/8 ({:.1f}%)".format(len(coverage['requirements_found']), coverage['coverage_percentage']))
     
     for req in ['REQ-1', 'REQ-2', 'REQ-3', 'REQ-4', 'REQ-5', 'REQ-6', 'REQ-7', 'REQ-8']:
         if req in coverage['requirements_found']:
             keywords_for_req = sorted(requirement_keywords.get(req, []))
-            print(f"   ✅ {req}: {len(keywords_for_req)} keywords found: {', '.join(keywords_for_req[:5])}{'...' if len(keywords_for_req) > 5 else ''}")
+            keyword_display = ', '.join(keywords_for_req[:5])
+            if len(keywords_for_req) > 5:
+                keyword_display += '...'
+            print("   {} {}: {} keywords found: {}".format("FOUND", req, len(keywords_for_req), keyword_display))
         else:
-            print(f"   ❌ {req}: NO KEYWORDS FOUND")
+            print("   {} {}: NO KEYWORDS FOUND".format("MISSING", req))
     
-    print(f"\n🔑 TOP AO1 KEYWORDS BY LOCATION COUNT:")
+    print("\nTOP AO1 KEYWORDS BY LOCATION COUNT:")
     # Sort keywords by how many locations they appear in
     keyword_counts = [(kw, len(locs)) for kw, locs in keyword_locations.items()]
     keyword_counts.sort(key=lambda x: x[1], reverse=True)
@@ -559,109 +535,41 @@ def generate_complete_ao1_summary_report(ao1_structure):
         locations = keyword_locations[keyword]
         datasets = set(loc['dataset'] for loc in locations)
         requirements = set(loc['requirement'] for loc in locations)
-        print(f"   {i:2d}. '{keyword}': {count} locations, {len(datasets)} datasets, {', '.join(sorted(requirements))}")
+        print("   {:2d}. '{}': {} locations, {} datasets, {}".format(i, keyword, count, len(datasets), ', '.join(sorted(requirements))))
     
-    print(f"\n📍 DETAILED KEYWORD-TO-LOCATION MAPPING:")
+    print("\nDETAILED KEYWORD-TO-LOCATION MAPPING:")
     
     # Group by requirement for organized display
     for req in sorted(requirement_keywords.keys()):
         req_keywords = sorted(requirement_keywords[req])
-        print(f"\n   📋 {req} KEYWORDS ({len(req_keywords)} found):")
+        print("\n   {} KEYWORDS ({} found):".format(req, len(req_keywords)))
         
         for keyword in req_keywords[:10]:  # Show top 10 keywords per requirement
             locations = keyword_locations[keyword]
             req_locations = [loc for loc in locations if loc['requirement'] == req]
             
-            print(f"      🔑 '{keyword}':")
+            print("      KEYWORD '{}':".format(keyword))
             for loc in req_locations[:3]:  # Show first 3 locations
-                print(f"         📁 {loc['dataset']}.{loc['table']} → {loc['field_path']}")
+                print("         {}.{} -> {}".format(loc['dataset'], loc['table'], loc['field_path']))
             if len(req_locations) > 3:
-                print(f"         ... and {len(req_locations) - 3} more locations")
+                print("         ... and {} more locations".format(len(req_locations) - 3))
     
-    print(f"\n🏆 BEST DATASETS FOR AO1 VISIBILITY CALCULATIONS:")
-    # Identify datasets with the most diverse AO1 keyword coverage
-    dataset_analysis = {}
-    
-    for dataset_id, dataset_info in ao1_structure['datasets'].items():
-        if dataset_info['ao1_summary']['total_ao1_fields'] > 0:
-            keywords_in_dataset = set()
-            requirements_in_dataset = set()
-            tables_with_keywords = []
-            
-            for table_id, table_info in dataset_info['tables'].items():
-                table_keywords = []
-                for field in table_info.get('ao1_relevant_fields', []):
-                    keyword = field['name'].split('.')[-1].lower()
-                    requirement = field['ao1_requirement'].split(' - ')[0]
-                    keywords_in_dataset.add(keyword)
-                    requirements_in_dataset.add(requirement)
-                    table_keywords.append(keyword)
-                
-                if table_keywords:
-                    tables_with_keywords.append((table_id, table_keywords))
-            
-            dataset_analysis[dataset_id] = {
-                'unique_keywords': len(keywords_in_dataset),
-                'requirements_covered': len(requirements_in_dataset),
-                'tables_with_keywords': tables_with_keywords,
-                'keywords': sorted(keywords_in_dataset),
-                'requirements': sorted(requirements_in_dataset)
-            }
-    
-    # Sort by keyword diversity and requirement coverage
-    best_datasets = sorted(dataset_analysis.items(), 
-                          key=lambda x: (x[1]['requirements_covered'], x[1]['unique_keywords']), 
-                          reverse=True)
-    
-    for i, (dataset_id, analysis) in enumerate(best_datasets[:10], 1):
-        print(f"   {i:2d}. 📁 {dataset_id}:")
-        print(f"       Requirements: {', '.join(analysis['requirements'])} ({analysis['requirements_covered']}/8)")
-        print(f"       Keywords: {', '.join(analysis['keywords'][:8])}{'...' if len(analysis['keywords']) > 8 else ''} ({analysis['unique_keywords']} total)")
-        print(f"       Best tables: {', '.join([t[0] for t in analysis['tables_with_keywords'][:3]])}")
-    
-    if summary['total_ao1_fields_found'] > 0:
-        print(f"\n✅ AO1 KEYWORD DISCOVERY SUCCESS:")
-        print(f"   🎯 Found {len(keyword_locations)} unique AO1 keywords")
-        print(f"   📊 Covering {len(coverage['requirements_found'])}/8 AO1 requirements")
-        print(f"   📁 Distributed across {len([d for d in ao1_structure['datasets'].values() if d['ao1_summary']['total_ao1_fields'] > 0])} datasets")
-        
-        # Identify the most valuable keywords for each requirement
-        print(f"\n💎 MOST VALUABLE KEYWORDS BY REQUIREMENT:")
-        for req in sorted(requirement_keywords.keys()):
-            req_keywords = [(kw, len(keyword_locations[kw])) for kw in requirement_keywords[req]]
-            req_keywords.sort(key=lambda x: x[1], reverse=True)
-            top_keyword = req_keywords[0] if req_keywords else None
-            if top_keyword:
-                print(f"   {req}: '{top_keyword[0]}' ({top_keyword[1]} locations)")
-        
-    else:
-        print(f"\n❌ NO AO1 KEYWORDS FOUND:")
-        print(f"   No AO1-relevant field names found in {summary['total_tables_analyzed']} tables")
-        print(f"   Consider:")
-        print(f"   • Checking field naming conventions vs AO1 dictionary")
-        print(f"   • Expanding keyword variations in dictionary")
-        print(f"   • Verifying data source ingestion")
-    
-    return f"AO1 Keyword Mapping: {len(keyword_locations)} unique keywords found across {summary['total_datasets_analyzed']} datasets"
+    return "AO1 Keyword Mapping: {} unique keywords found across {} datasets".format(len(keyword_locations), summary['total_datasets_analyzed'])
 
 def save_complete_ao1_results(ao1_structure, filename="complete_ao1_bq_exploration.json"):
     """Save complete AO1-focused results to file"""
     try:
         with open(filename, 'w') as f:
             json.dump(ao1_structure, f, indent=2, default=str)
-        logger.info(f"\n💾 Complete AO1 results saved to: {filename}")
-        print(f"📁 Full complete AO1 analysis saved to: {filename}")
+        logger.info("Complete AO1 results saved to: {}".format(filename))
+        print("Full complete AO1 analysis saved to: {}".format(filename))
         
         # Also save a comprehensive summary CSV
         summary_filename = filename.replace('.json', '_complete_summary.csv')
         save_complete_ao1_summary_csv(ao1_structure, summary_filename)
         
-        # Save requirements coverage report
-        coverage_filename = filename.replace('.json', '_requirements_coverage.json')
-        save_ao1_requirements_report(ao1_structure, coverage_filename)
-        
     except Exception as e:
-        logger.error(f"Error saving complete AO1 results to file: {e}")
+        logger.error("Error saving complete AO1 results to file: {}".format(e))
 
 def save_complete_ao1_summary_csv(ao1_structure, filename):
     """Save complete AO1 keyword-to-location mapping as CSV"""
@@ -683,7 +591,7 @@ def save_complete_ao1_summary_csv(ao1_structure, filename):
                         'ao1_category': field['ao1_category'],
                         'ao1_vendors': ', '.join(field['ao1_vendors']),
                         'ao1_purpose': field['ao1_purpose'],
-                        'location_key': f"{dataset_id}.{table_id}.{field['name']}",
+                        'location_key': "{}.{}.{}".format(dataset_id, table_id, field['name']),
                         'table_rows': table_info.get('table_info', {}).get('num_rows', 0),
                         'table_size_bytes': table_info.get('table_info', {}).get('size_bytes', 0)
                     })
@@ -693,134 +601,45 @@ def save_complete_ao1_summary_csv(ao1_structure, filename):
             # Sort by requirement, then by keyword, then by dataset
             df = df.sort_values(['ao1_requirement', 'ao1_keyword', 'dataset', 'table'])
             df.to_csv(filename, index=False)
-            logger.info(f"📊 Complete AO1 keyword mapping CSV saved: {filename}")
-            print(f"📊 Complete AO1 keyword-to-location mapping saved to: {filename}")
-            
-            # Also create a summary by keyword
-            keyword_summary_filename = filename.replace('_complete_summary.csv', '_keyword_summary.csv')
-            keyword_summary = df.groupby(['ao1_keyword', 'ao1_requirement']).agg({
-                'dataset': 'count',
-                'location_key': lambda x: '; '.join(x.head(5).tolist()) + ('...' if len(x) > 5 else ''),
-                'ao1_purpose': 'first'
-            }).reset_index()
-            keyword_summary.columns = ['ao1_keyword', 'ao1_requirement', 'location_count', 'sample_locations', 'ao1_purpose']
-            keyword_summary = keyword_summary.sort_values(['ao1_requirement', 'location_count'], ascending=[True, False])
-            keyword_summary.to_csv(keyword_summary_filename, index=False)
-            print(f"📈 AO1 keyword frequency summary saved to: {keyword_summary_filename}")
+            logger.info("Complete AO1 keyword mapping CSV saved: {}".format(filename))
+            print("Complete AO1 keyword-to-location mapping saved to: {}".format(filename))
         
     except Exception as e:
-        logger.error(f"Error saving complete AO1 CSV summary: {e}")
-
-def save_ao1_requirements_report(ao1_structure, filename):
-    """Save detailed AO1 requirements coverage report"""
-    try:
-        # Build detailed requirements analysis
-        requirements_analysis = {}
-        
-        for req_id in ['REQ-1', 'REQ-2', 'REQ-3', 'REQ-4', 'REQ-5', 'REQ-6', 'REQ-7', 'REQ-8']:
-            requirements_analysis[req_id] = {
-                'keywords_found': [],
-                'total_locations': 0,
-                'datasets_with_data': [],
-                'best_tables': [],
-                'coverage_status': 'MISSING'
-            }
-        
-        # Analyze each dataset and table for requirement coverage
-        for dataset_id, dataset_info in ao1_structure['datasets'].items():
-            for table_id, table_info in dataset_info['tables'].items():
-                for field in table_info.get('ao1_relevant_fields', []):
-                    req_id = field['ao1_requirement'].split(' - ')[0]
-                    keyword = field['name'].split('.')[-1].lower()
-                    
-                    if req_id in requirements_analysis:
-                        requirements_analysis[req_id]['coverage_status'] = 'FOUND'
-                        requirements_analysis[req_id]['total_locations'] += 1
-                        
-                        if keyword not in requirements_analysis[req_id]['keywords_found']:
-                            requirements_analysis[req_id]['keywords_found'].append(keyword)
-                        
-                        if dataset_id not in requirements_analysis[req_id]['datasets_with_data']:
-                            requirements_analysis[req_id]['datasets_with_data'].append(dataset_id)
-                        
-                        table_key = f"{dataset_id}.{table_id}"
-                        if table_key not in [t['table'] for t in requirements_analysis[req_id]['best_tables']]:
-                            requirements_analysis[req_id]['best_tables'].append({
-                                'table': table_key,
-                                'keywords': [keyword],
-                                'field_path': field['full_path']
-                            })
-                        else:
-                            # Add keyword to existing table entry
-                            for table_entry in requirements_analysis[req_id]['best_tables']:
-                                if table_entry['table'] == table_key:
-                                    if keyword not in table_entry['keywords']:
-                                        table_entry['keywords'].append(keyword)
-        
-        # Save detailed analysis
-        with open(filename, 'w') as f:
-            json.dump(requirements_analysis, f, indent=2, default=str)
-        
-        logger.info(f"📋 AO1 requirements coverage report saved: {filename}")
-        print(f"📋 Detailed AO1 requirements analysis saved to: {filename}")
-        
-    except Exception as e:
-        logger.error(f"Error saving AO1 requirements report: {e}")
+        logger.error("Error saving complete AO1 CSV summary: {}".format(e))
 
 def main():
     """Main AO1-focused BigQuery exploration"""
-    print("🚀 AO1-FOCUSED BIGQUERY EXPLORATION STARTING...")
-    print("🔍 Attempting to connect to BigQuery...")
+    print("AO1-FOCUSED BIGQUERY EXPLORATION STARTING...")
+    print("Attempting to connect to BigQuery...")
     
     try:
         # Authenticate first and test connection
-        print("🔐 Authenticating with BigQuery...")
+        print("Authenticating with BigQuery...")
         client = authenticate_bigquery()
-        print("✅ BigQuery authentication successful!")
+        print("BigQuery authentication successful!")
         
         # Test connection with a simple dataset list
-        print("🧪 Testing BigQuery connection...")
+        print("Testing BigQuery connection...")
         test_datasets = get_all_datasets(client)
         if not test_datasets:
-            print("❌ No datasets accessible - check permissions")
+            print("No datasets accessible - check permissions")
             return
         
         print("Connection verified - found {} datasets".format(len(test_datasets)))
         
-def test_ao1_keyword_detection():
-    """Test AO1 keyword detection with sample field names"""
-    print("\nTesting AO1 keyword detection...")
-    
-    # Test with some common field names that should match
-    test_fields = [
-        'hostname', 'host_name', 'computer_name', 'aid', 'business_unit', 
-        'aws_region', 'sourcetype', 'ip_address', 'domain_name', 'application',
-        'windows', 'linux', 'edr', 'crowdstrike', 'tanium', 'office365'
-    ]
-    
-    matches_found = 0
-    for field in test_fields:
-        is_relevant = is_ao1_relevant_field(field)
-        if is_relevant:
-            context = categorize_ao1_field(field)
-            print("  MATCH: '{}' -> {}".format(field, context['requirement']))
-            matches_found += 1
-        else:
-            print("  NO MATCH: '{}'".format(field))
-    
-    print("Test completed: {}/{} fields matched AO1 keywords".format(matches_found, len(test_fields)))
-    
-    if matches_found == 0:
-        print("WARNING: No test fields matched - there may be an issue with keyword detection")
-        return False
-    
-    return True
+        # Test AO1 keyword detection before running full scan
+        print("Testing AO1 keyword detection...")
+        if not test_ao1_keyword_detection():
+            print("ERROR: AO1 keyword detection test failed")
+            return
+        
+        print("AO1 keyword detection test passed - proceeding with full scan")
         
         # Run COMPLETE exploration (no user input needed)
-        print("🎯 Starting COMPLETE AO1 exploration of ALL datasets and tables...")
-        print("⚠️  This will scan every single dataset and table for AO1 keywords")
-        print("⏱️  This may take several minutes to complete")
-        print("🛑 Press Ctrl+C anytime to interrupt and get partial results")
+        print("Starting COMPLETE AO1 exploration of ALL datasets and tables...")
+        print("This will scan every single dataset and table for AO1 keywords")
+        print("This may take several minutes to complete")
+        print("Press Ctrl+C anytime to interrupt and get partial results")
         
         # Run comprehensive AO1-focused exploration
         ao1_structure = explore_complete_ao1_project_structure(client)
@@ -830,42 +649,42 @@ def test_ao1_keyword_detection():
         
         # Save AO1 results
         timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-        filename = f"complete_ao1_bq_exploration_{timestamp}.json"
+        filename = "complete_ao1_bq_exploration_{}.json".format(timestamp)
         save_complete_ao1_results(ao1_structure, filename)
         
-        print(f"\n🎉 COMPLETE AO1 EXPLORATION FINISHED!")
-        print(f"✅ Results saved to files with timestamp: {timestamp}")
-        print(f"📊 Check the CSV files for detailed keyword-to-location mappings")
+        print("\nCOMPLETE AO1 EXPLORATION FINISHED!")
+        print("Results saved to files with timestamp: {}".format(timestamp))
+        print("Check the CSV files for detailed keyword-to-location mappings")
         
         # Show key AO1 recommendations
         total_ao1_fields = ao1_structure['ao1_summary']['total_ao1_fields_found']
         
         if total_ao1_fields > 0:
-            print(f"\n💡 AO1 NEXT STEPS:")
-            print(f"1. Review the {total_ao1_fields} AO1-relevant keywords found")
-            print(f"2. Use the CSV mapping to build your visibility calculations") 
-            print(f"3. Focus on datasets with highest keyword diversity")
-            print(f"4. Address any missing AO1 requirements")
+            print("\nAO1 NEXT STEPS:")
+            print("1. Review the {} AO1-relevant keywords found".format(total_ao1_fields))
+            print("2. Use the CSV mapping to build your visibility calculations") 
+            print("3. Focus on datasets with highest keyword diversity")
+            print("4. Address any missing AO1 requirements")
         else:
-            print(f"\n⚠️ AO1 RECOMMENDATIONS:")
-            print(f"1. No AO1-relevant keywords found in scanned data")
-            print(f"2. Check field naming conventions in your logging systems")
-            print(f"3. Verify that log sources are properly ingested")
-            print(f"4. Consider expanding the AO1 keyword dictionary")
+            print("\nAO1 RECOMMENDATIONS:")
+            print("1. No AO1-relevant keywords found in scanned data")
+            print("2. Check field naming conventions in your logging systems")
+            print("3. Verify that log sources are properly ingested")
+            print("4. Consider expanding the AO1 keyword dictionary")
             
     except KeyboardInterrupt:
-        print("\n⚠️ AO1 exploration interrupted by user")
-        print("📄 Check log file for any partial results")
+        print("\nAO1 exploration interrupted by user")
+        print("Check log file for any partial results")
         logger.info("AO1 exploration interrupted by user")
     except Exception as e:
-        error_msg = f"Fatal error during AO1 exploration: {e}"
-        print(f"\n❌ {error_msg}")
+        error_msg = "Fatal error during AO1 exploration: {}".format(e)
+        print("\n{}".format(error_msg))
         logger.error(error_msg)
-        print("💡 Check ao1_bq_exploration.log for detailed error information")
+        print("Check ao1_bq_exploration.log for detailed error information")
         
         # Print the full stack trace for debugging
         import traceback
-        print("\n🔍 FULL ERROR DETAILS:")
+        print("\nFULL ERROR DETAILS:")
         traceback.print_exc()
         
         sys.exit(1)
