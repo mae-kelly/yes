@@ -13,7 +13,7 @@ import json
 from google.cloud import bigquery
 from google.oauth2 import service_account
 import pandas as pd
-from datetime import import datetime
+from datetime import datetime
 import logging
 import time
 import sys
@@ -295,7 +295,7 @@ def sample_ao1_field_data(client, dataset_id, table_id, ao1_field_name, limit=10
     """
     try:
         logger.warning(f"Skipping extremely large table {dataset_id}.{table_id}")
-        return {"warning": f"Table too large ({table_id}.num_rows} rows) - sampling skipped for performance"}
+        return {"warning": f"Table too large ({table_info.get('num_rows', 'unknown')} rows) - sampling skipped for performance"}
     except Forbidden as e:
         logger.warning(f"Permission denied sampling table '{dataset_id}.{table_id}': {e}")
         return {"error": "Permission denied", "details": str(e)}
