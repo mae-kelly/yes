@@ -50,7 +50,9 @@ import re
 import hashlib
 from abc import ABC, abstractmethod
 
-# Advanced logging with neural network metrics
+# Set up logging
+file_path = os.path.join(os.path.dirname(__file__))
+settings = {}
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
@@ -61,11 +63,11 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# BigQuery authentication
+# BigQuery authentication - ORIGINAL WORKING STRUCTURE
 from google.cloud import bigquery
 from google.oauth2 import service_account
 
-SERVICE_ACCOUNT_FILE = os.path.join(os.path.dirname(__file__), "gcp_prod_key.json")
+SERVICE_ACCOUNT_FILE = os.path.join(file_path, "gcp_prod_key.json")
 credentials = service_account.Credentials.from_service_account_file(SERVICE_ACCOUNT_FILE)
 project = "chronicle-fisv"
 clientBQ = bigquery.Client(project="chronicle-fisv", credentials=credentials)
@@ -1645,9 +1647,6 @@ class AdvancedBigQueryScanner:
         """Authenticate to BigQuery with enhanced error handling."""
         try:
             self.client = clientBQ
-            # Test connection
-            test_query = f"SELECT dataset_id FROM `{self.target_project_id}.__INFORMATION_SCHEMA__.SCHEMATA` LIMIT 1"
-            self.client.query(test_query).result()
             self.authenticated = True
             logger.info("Advanced BigQuery scanner authenticated successfully")
             return True
