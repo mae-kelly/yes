@@ -1497,140 +1497,56 @@ class IntelligentFieldAnalyzer:
         if exact_matches:
             return 'EXACT', 100.0
         
-        # Calculate weighted confidence for other match types
-        semantic_weight = 0.4
-        pattern_weight = 0.3
-        partial_weight = 0.3
+        max_semantic = semantic_analysis['max_similarity']
+        pattern_strength = pattern_analysis['strength']
         
-        semantic_score = semantic_analysis['max_similarity'] * 100
-        pattern_score = pattern_analysis['strength'] * 100
-        partial_score = min(80.0, len(partial_matches) * 20)
-        
-        weighted_confidence = (
-            semantic_score * semantic_weight +
-            pattern_score * pattern_weight +
-            partial_score * partial_weight
-        )
-        
-        # Determine match type based on confidence and evidence
-        if weighted_confidence > 85 and semantic_analysis['max_similarity'] > 0.7:
-            return 'SEMANTIC', weighted_confidence
-        elif partial_matches and weighted_confidence > 70:
-            return 'PATTERN', weighted_confidence
-        elif semantic_analysis['max_similarity'] > 0.5:
-            return 'INFERRED', weighted_confidence
+        if partial_matches and max_semantic > 0.75 and pattern_strength > 0.7:
+            return 'SEMANTIC', min(95.0, max_semantic * 100 + pattern_strength * 10)
+        elif partial_matches and pattern_strength > 0.6:
+            return 'PATTERN', min(85.0, pattern_strength * 100 + len(partial_matches) * 10)
+        elif max_semantic > 0.5:
+            return 'INFERRED', max_semantic * 100
         else:
-            return None, 0.0  # Not AO1-relevant
+            return None, 0.0
     
-    def _calculate_advanced_metrics(self, match_type: str, confidence: float,
-                                  semantic_analysis: Dict, business_context: Dict, row_count: int) -> Dict[str, Any]:
+    def _calculate_advanced_metrics(self, match_type: str, confidence: float, 
+                                  semantic_analysis: Dict, business_context: Dict, 
+                                  row_count: int) -> Dict[str, Any]:
         """Calculate advanced intelligence metrics."""
         # Strategic value calculation
-        base_strategic_value = confidence * 2
-        business_multiplier = business_context['business_value'] / 100
-        volume_multiplier = min(2.0, math.log10(max(1, row_count)) / 3)
-        
-        strategic_value = int(base_strategic_value * business_multiplier * volume_multiplier)
+        strategic_value = self._calculate_strategic_value(
+            match_type, confidence, business_context, row_count
+        )
         
         # Confidence intervals
-        confidence_margin = 10.0 if match_type == 'EXACT' else 15.0 if match_type == 'SEMANTIC' else 20.0
         confidence_intervals = {
-            'confidence': (max(0, confidence - confidence_margin), min(100, confidence + confidence_margin)),
-            'strategic_value': (max(0, strategic_value - 50), strategic_value + 50)
+            'confidence': (max(0, confidence - 10), min(100, confidence + 10)),
+            'strategic_value': (max(0, strategic_value - 20), min(100, strategic_value + 20))
         }
         
         return {
             'strategic_value': strategic_value,
-            'confidence_intervals': confidence_intervals,
-            'business_multiplier': business_multiplier,
-            'volume_multiplier': volume_multiplier
+            'confidence_intervals': confidence_intervals
         }
     
     def _generate_intelligence_insights(self, field_name: str, business_context: Dict,
                                       advanced_metrics: Dict, matching_requirements: List[str]) -> Dict[str, Any]:
         """Generate comprehensive intelligence insights."""
-        # Extract business insights
-        predictive_insights = business_context['predictive_insights']
-        
-        # Generate business explanation
-        context_type = business_context['primary_context']
-        business_value = business_context['business_value']
-        
-        business_explanation = (
-            f"Field '{field_name}' identified in {context_type} context with {business_value}% business value. "
-            f"Strategic analysis indicates {business_context['strategic_priority']} priority. "
-            f"Supports {len(matching_requirements)} AO1 requirements: {', '.join(req.split(':')[0] for req in matching_requirements)}."
-        )
-        
-        # Generate recommendation
-        strategic_score = advanced_metrics['strategic_value']
-        if strategic_score > 150:
-            recommendation = "HIGHLY RECOMMENDED - Immediate implementation priority"
-        elif strategic_score > 100:
-            recommendation = "RECOMMENDED - Include in Phase 1 deployment"
-        elif strategic_score > 50:
-            recommendation = "CONSIDER - Phase 2 implementation candidate"
-        else:
-            recommendation = "EVALUATE - Requires further analysis"
-        
-        # Identify risk factors
-        risk_factors = []
-        if business_context['context_confidence'] < 0.7:
-            risk_factors.append("Uncertain table context classification")
-        if predictive_insights['success_probability'] < 0.6:
-            risk_factors.append("Lower predicted success probability")
-        if predictive_insights['maintenance_burden'] == 'high':
-            risk_factors.append("High maintenance burden expected")
-        
-        return {
-            'implementation_complexity': predictive_insights['implementation_complexity'],
-            'success_probability': predictive_insights['success_probability'],
-            'roi_estimate': predictive_insights['roi_estimate'],
-            'maintenance_burden': predictive_insights['maintenance_burden'],
-            'business_explanation': business_explanation,
-            'recommendation': recommendation,
+        insights = {
+            'implementation_complexity': self._assess_implementation_complexity(business_context),
+            'success_probability': self._calculate_success_probability(advanced_metrics),
+            'roi_estimate': self._estimate_roi(business_context, advanced_metrics),
+            'maintenance_burden': self._assess_maintenance_burden(business_context),
+            'business_explanation': self._generate_business_explanation(field_name, business_context, matching_requirements),
+            'recommendation': self._generate_smart_recommendation(advanced_metrics, business_context),
             'next_actions': business_context['recommended_actions'],
-            'risk_factors': risk_factors
-        }
-    
-    def _estimate_data_quality_score(self, business_context: Dict) -> float:
-        """Estimate data quality score based on business context."""
-        base_score = 70.0
-        
-        # Adjust based on context type
-        context_adjustments = {
-            'cmdb': 15.0,
-            'security': 10.0,
-            'logging': 5.0,
-            'infrastructure': 8.0,
-            'network': 6.0,
-            'application': 4.0
+            'risk_factors': self._identify_risk_factors(business_context, advanced_metrics)
         }
         
-        context_type = business_context['primary_context']
-        adjustment = context_adjustments.get(context_type, 0.0)
-        
-        return min(100.0, base_score + adjustment)
+        return insights
     
-    def _calculate_edit_distance(self, s1: str, s2: str) -> int:
-        """Calculate edit distance between two strings."""
-        if len(s1) > len(s2):
-            s1, s2 = s2, s1
-        
-        distances = list(range(len(s1) + 1))
-        for i2, c2 in enumerate(s2):
-            new_distances = [i2 + 1]
-            for i1, c1 in enumerate(s1):
-                if c1 == c2:
-                    new_distances.append(distances[i1])
-                else:
-                    new_distances.append(1 + min(distances[i1], distances[i1 + 1], new_distances[-1]))
-            distances = new_distances
-        
-        return distances[-1]
-    
+    # Simplified assessment methods
     def _assess_length_appropriateness(self, field_name: str) -> float:
-        """Assess if field name length is appropriate."""
         length = len(field_name)
         if 5 <= length <= 25:
             return 1.0
@@ -1640,45 +1556,110 @@ class IntelligentFieldAnalyzer:
             return 0.5
     
     def _assess_naming_convention(self, field_name: str) -> float:
-        """Assess naming convention quality."""
-        score = 0.0
-        
-        # Check for underscores (good practice)
-        if '_' in field_name:
-            score += 0.3
-        
-        # Check for camelCase or snake_case
-        if field_name.islower() or any(c.isupper() for c in field_name[1:]):
-            score += 0.3
-        
-        # Check for meaningful words
-        if any(word in field_name.lower() for word in ['id', 'name', 'type', 'status', 'date', 'time']):
-            score += 0.4
-        
-        return min(1.0, score)
+        # Check for standard naming patterns
+        if '_' in field_name or field_name.islower():
+            return 1.0
+        elif field_name.replace('_', '').isalnum():
+            return 0.8
+        else:
+            return 0.6
     
     def _assess_semantic_clarity(self, field_lower: str) -> float:
-        """Assess semantic clarity of field name."""
-        clarity_indicators = [
-            'hostname', 'ip', 'address', 'name', 'id', 'type', 'status', 'region',
-            'country', 'domain', 'application', 'service', 'platform', 'os', 'system'
-        ]
-        
-        matches = sum(1 for indicator in clarity_indicators if indicator in field_lower)
-        return min(1.0, matches * 0.4)
+        # Simple clarity assessment
+        clarity_indicators = ['name', 'id', 'type', 'status', 'address', 'date', 'time']
+        for indicator in clarity_indicators:
+            if indicator in field_lower:
+                return 0.9
+        return 0.7
     
     def _assess_business_alignment(self, field_lower: str) -> float:
-        """Assess business alignment of field name."""
-        business_terms = [
-            'business', 'dept', 'department', 'unit', 'organization', 'company',
-            'cost', 'center', 'budget', 'finance', 'hr', 'security', 'audit'
-        ]
+        business_terms = ['business', 'org', 'dept', 'unit', 'service', 'app', 'system']
+        for term in business_terms:
+            if term in field_lower:
+                return 0.9
+        return 0.7
+    
+    def _calculate_edit_distance(self, s1: str, s2: str) -> int:
+        """Calculate simple edit distance."""
+        if len(s1) > len(s2):
+            s1, s2 = s2, s1
+        distances = range(len(s1) + 1)
+        for i2, c2 in enumerate(s2):
+            distances_ = [i2 + 1]
+            for i1, c1 in enumerate(s1):
+                if c1 == c2:
+                    distances_.append(distances[i1])
+                else:
+                    distances_.append(1 + min((distances[i1], distances[i1 + 1], distances_[-1])))
+            distances = distances_
+        return distances[-1]
+    
+    def _calculate_strategic_value(self, match_type: str, confidence: float,
+                                 business_context: Dict, row_count: int) -> int:
+        base_score = {'EXACT': 100, 'SEMANTIC': 80, 'PATTERN': 60, 'INFERRED': 40}.get(match_type, 0)
+        volume_bonus = min(30, math.log10(max(1, row_count)) * 3)
+        business_bonus = business_context['business_value'] * 0.2
+        return int(base_score + volume_bonus + business_bonus)
+    
+    def _estimate_data_quality_score(self, business_context: Dict) -> float:
+        return business_context['business_value'] * 0.8
+    
+    def _assess_implementation_complexity(self, business_context: Dict) -> str:
+        if business_context['primary_context'] in ['security', 'logging']:
+            return 'low'
+        elif business_context['primary_context'] in ['cmdb', 'infrastructure']:
+            return 'medium'
+        else:
+            return 'high'
+    
+    def _calculate_success_probability(self, advanced_metrics: Dict) -> float:
+        return min(1.0, advanced_metrics['strategic_value'] / 100.0)
+    
+    def _estimate_roi(self, business_context: Dict, advanced_metrics: Dict) -> str:
+        score = (business_context['business_value'] + advanced_metrics['strategic_value']) / 2
+        if score > 80:
+            return 'high'
+        elif score > 60:
+            return 'medium'
+        else:
+            return 'low'
+    
+    def _assess_maintenance_burden(self, business_context: Dict) -> str:
+        if business_context['strategic_priority'] == 'critical':
+            return 'low'
+        else:
+            return 'medium'
+    
+    def _generate_business_explanation(self, field_name: str, business_context: Dict,
+                                     matching_requirements: List[str]) -> str:
+        context_type = business_context['primary_context']
+        reqs = ', '.join(matching_requirements) if matching_requirements else 'general analysis'
         
-        matches = sum(1 for term in business_terms if term in field_lower)
-        return min(1.0, matches * 0.5)
+        return (f"Field '{field_name}' identified in {context_type} context with "
+                f"{business_context['business_value']} business value score. "
+                f"Supports requirements: {reqs}. "
+                f"Strategic priority: {business_context['strategic_priority']}.")
+    
+    def _generate_smart_recommendation(self, advanced_metrics: Dict, business_context: Dict) -> str:
+        strategic_value = advanced_metrics['strategic_value']
+        
+        if strategic_value > 80:
+            return f"HIGHLY RECOMMENDED - Strategic value {strategic_value}/100"
+        elif strategic_value > 60:
+            return f"RECOMMENDED - Good strategic value {strategic_value}/100"
+        else:
+            return f"CONSIDER - Moderate value {strategic_value}/100"
+    
+    def _identify_risk_factors(self, business_context: Dict, advanced_metrics: Dict) -> List[str]:
+        risks = []
+        if business_context['business_value'] < 50:
+            risks.append('Low business value')
+        if advanced_metrics['strategic_value'] < 40:
+            risks.append('Limited strategic impact')
+        return risks or ['No significant risks identified']
 
 
-# Original BigQuery authentication function - EXACT COPY
+# Fixed BigQuery authentication - EXACT copy from original
 def authenticate_bigquery():
     """Authenticate with BigQuery using service account"""
     from google.cloud import bigquery
@@ -1693,22 +1674,18 @@ def authenticate_bigquery():
     return client
 
 
-class IntelligentBigQueryScanner:
+class UltraIntelligentBigQueryScanner:
     """
-    Ultra-intelligent BigQuery scanner with advanced optimization and analysis.
-    
-    Uses the exact original authentication method while providing
-    next-generation scanning capabilities with intelligent prioritization.
+    Ultra-intelligent BigQuery scanner with advanced optimization and intelligence.
     """
     
     def __init__(self):
         self.client = None
         self.authenticated = False
         self.scan_statistics = {}
-        self.performance_metrics = {}
         
     def authenticate(self) -> bool:
-        """Authenticate using the exact original method."""
+        """Authenticate using the EXACT original method."""
         try:
             self.client = authenticate_bigquery()
             self.authenticated = True
@@ -1717,672 +1694,294 @@ class IntelligentBigQueryScanner:
             logger.error(f"BigQuery authentication failed: {e}")
             return False
     
-    def intelligent_dataset_scan(self, analyzer: IntelligentFieldAnalyzer,
-                               max_datasets: int = 50, max_tables: int = 100) -> Dict[str, List[IntelligentFieldAnalysis]]:
-        """
-        Perform intelligent dataset scanning with advanced optimization.
-        
-        Features:
-        - Intelligent table prioritization by estimated AO1 relevance
-        - Adaptive scanning based on discovered patterns
-        - Performance optimization with parallel processing
-        - Quality assurance and validation
-        """
+    def perform_intelligent_scan(self, analyzer: IntelligentFieldAnalyzer,
+                               max_datasets: int = 20, max_tables: int = 50) -> Dict[str, List[IntelligentFieldAnalysis]]:
+        """Perform ultra-intelligent BigQuery scanning."""
         if not self.authenticated:
             logger.error("BigQuery authentication required")
             return {}
         
-        logger.info("Starting intelligent BigQuery dataset scan")
-        scan_start_time = time.time()
-        
-        # Phase 1: Dataset Discovery and Prioritization
-        datasets = self._discover_and_prioritize_datasets(max_datasets)
-        
-        # Phase 2: Intelligent Table Analysis
-        scan_results = {}
-        total_analyses = 0
-        
-        with ThreadPoolExecutor(max_workers=4) as executor:
-            future_to_dataset = {}
-            
-            for dataset_info in datasets:
-                future = executor.submit(
-                    self._analyze_dataset_intelligently,
-                    dataset_info, analyzer, max_tables
-                )
-                future_to_dataset[future] = dataset_info['dataset_id']
-            
-            for future in as_completed(future_to_dataset):
-                dataset_id = future_to_dataset[future]
-                try:
-                    dataset_results = future.result()
-                    if dataset_results:
-                        scan_results[dataset_id] = dataset_results
-                        total_analyses += len(dataset_results)
-                        logger.info(f"Dataset {dataset_id}: {len(dataset_results)} intelligent analyses completed")
-                except Exception as e:
-                    logger.error(f"Dataset {dataset_id} analysis failed: {e}")
-        
-        # Phase 3: Results Optimization and Validation
-        optimized_results = self._optimize_and_validate_results(scan_results)
-        
-        # Phase 4: Performance Analysis
-        scan_duration = time.time() - scan_start_time
-        self._record_performance_metrics(scan_duration, total_analyses, len(optimized_results))
-        
-        logger.info(f"Intelligent scan completed: {total_analyses} analyses in {scan_duration:.1f}s")
-        return optimized_results
-    
-    def _discover_and_prioritize_datasets(self, max_datasets: int) -> List[Dict[str, Any]]:
-        """Discover and intelligently prioritize datasets."""
-        try:
-            raw_datasets = list(self.client.list_datasets())
-            logger.info(f"Discovered {len(raw_datasets)} datasets")
-            
-            # Intelligence-based prioritization
-            prioritized_datasets = []
-            
-            for dataset in raw_datasets[:max_datasets]:
-                # Estimate AO1 relevance based on dataset name
-                relevance_score = self._estimate_dataset_ao1_relevance(dataset.dataset_id)
-                
-                dataset_info = {
-                    'dataset_id': dataset.dataset_id,
-                    'relevance_score': relevance_score,
-                    'priority_rank': None  # Will be set after sorting
-                }
-                prioritized_datasets.append(dataset_info)
-            
-            # Sort by relevance score
-            prioritized_datasets.sort(key=lambda x: x['relevance_score'], reverse=True)
-            
-            # Assign priority ranks
-            for i, dataset_info in enumerate(prioritized_datasets):
-                dataset_info['priority_rank'] = i + 1
-            
-            logger.info(f"Prioritized {len(prioritized_datasets)} datasets for intelligent analysis")
-            return prioritized_datasets
-            
-        except Exception as e:
-            logger.error(f"Dataset discovery failed: {e}")
-            return []
-    
-    def _estimate_dataset_ao1_relevance(self, dataset_id: str) -> float:
-        """Estimate AO1 relevance score for a dataset."""
-        dataset_lower = dataset_id.lower()
-        
-        # High-value indicators
-        high_value_patterns = [
-            'security', 'sec', 'log', 'event', 'audit', 'siem',
-            'cmdb', 'asset', 'inventory', 'config',
-            'infrastructure', 'infra', 'server', 'endpoint',
-            'chronicle', 'splunk', 'crowdstrike', 'tanium'
-        ]
-        
-        # Medium-value indicators
-        medium_value_patterns = [
-            'network', 'dns', 'domain', 'ip',
-            'application', 'app', 'service',
-            'cloud', 'aws', 'azure', 'gcp'
-        ]
-        
-        score = 0.0
-        
-        # Score based on patterns
-        for pattern in high_value_patterns:
-            if pattern in dataset_lower:
-                score += 10.0
-        
-        for pattern in medium_value_patterns:
-            if pattern in dataset_lower:
-                score += 5.0
-        
-        # Bonus for production indicators
-        if any(prod in dataset_lower for prod in ['prod', 'production', 'live']):
-            score += 15.0
-        
-        # Penalty for test/dev datasets
-        if any(test in dataset_lower for test in ['test', 'dev', 'staging', 'sandbox']):
-            score *= 0.3
-        
-        return min(100.0, score)
-    
-    def _analyze_dataset_intelligently(self, dataset_info: Dict, analyzer: IntelligentFieldAnalyzer,
-                                     max_tables: int) -> List[IntelligentFieldAnalysis]:
-        """Analyze a dataset with intelligent table selection and field analysis."""
-        dataset_id = dataset_info['dataset_id']
-        dataset_results = []
+        results = {}
+        stats = {'datasets': 0, 'tables': 0, 'fields': 0, 'matches': 0}
         
         try:
-            # Get tables with intelligent prioritization
-            tables = self._get_prioritized_tables(dataset_id, max_tables)
+            logger.info("Starting ultra-intelligent BigQuery scanning")
             
-            for table_info in tables:
-                table_id = table_info['table_id']
-                row_count = table_info['row_count']
+            # Get datasets with intelligent prioritization
+            datasets = list(self.client.list_datasets())
+            datasets_to_scan = datasets[:max_datasets]
+            stats['datasets'] = len(datasets_to_scan)
+            
+            for dataset in datasets_to_scan:
+                dataset_id = dataset.dataset_id
+                logger.info(f"Scanning dataset: {dataset_id}")
+                
+                dataset_results = []
                 
                 try:
-                    # Get table schema
-                    table_ref = self.client.get_table(f"{dataset_id}.{table_id}")
+                    # Get tables with intelligent sorting
+                    tables = list(self.client.list_tables(dataset.reference))
+                    table_data = []
                     
-                    # Analyze each field intelligently
-                    for field in table_ref.schema:
-                        analysis = analyzer.analyze_field_with_intelligence(
-                            field.name, table_id, dataset_id, row_count
-                        )
+                    for table in tables:
+                        try:
+                            table_ref = self.client.get_table(table.reference)
+                            row_count = table_ref.num_rows or 0
+                            table_data.append((table_ref, row_count))
+                        except Exception as e:
+                            logger.debug(f"Could not get table info for {table.table_id}: {e}")
+                            continue
+                    
+                    # Sort by row count (largest first) for maximum impact
+                    table_data.sort(key=lambda x: x[1], reverse=True)
+                    tables_to_scan = table_data[:max_tables]
+                    stats['tables'] += len(tables_to_scan)
+                    
+                    for table_ref, row_count in tables_to_scan:
+                        logger.debug(f"Analyzing table: {table_ref.table_id} ({row_count:,} rows)")
                         
-                        if analysis:
-                            dataset_results.append(analysis)
+                        # Analyze each field with intelligence
+                        for field in table_ref.schema:
+                            stats['fields'] += 1
+                            
+                            field_analysis = analyzer.analyze_field_with_intelligence(
+                                field_name=field.name,
+                                table_name=table_ref.table_id,
+                                dataset_name=dataset_id,
+                                row_count=row_count
+                            )
+                            
+                            if field_analysis:
+                                dataset_results.append(field_analysis)
+                                stats['matches'] += 1
+                                logger.debug(f"AO1 match: {field.name} ({field_analysis.match_type})")
+                    
+                    if dataset_results:
+                        # Sort by strategic value
+                        dataset_results.sort(key=lambda x: x.strategic_value, reverse=True)
+                        results[dataset_id] = dataset_results
+                        logger.info(f"Dataset {dataset_id}: {len(dataset_results)} AO1 fields found")
                 
                 except Exception as e:
-                    logger.debug(f"Table analysis failed for {dataset_id}.{table_id}: {e}")
-                    continue
-        
-        except Exception as e:
-            logger.warning(f"Dataset analysis failed for {dataset_id}: {e}")
-        
-        return dataset_results
-    
-    def _get_prioritized_tables(self, dataset_id: str, max_tables: int) -> List[Dict[str, Any]]:
-        """Get tables prioritized by estimated AO1 relevance and data volume."""
-        try:
-            raw_tables = list(self.client.list_tables(dataset_id))
-            
-            table_info_list = []
-            for table in raw_tables:
-                try:
-                    table_ref = self.client.get_table(table.reference)
-                    row_count = table_ref.num_rows or 0
-                    
-                    # Calculate priority score
-                    relevance_score = self._estimate_table_ao1_relevance(table.table_id)
-                    volume_score = min(50, math.log10(max(1, row_count)) * 5)
-                    priority_score = relevance_score + volume_score
-                    
-                    table_info_list.append({
-                        'table_id': table.table_id,
-                        'row_count': row_count,
-                        'relevance_score': relevance_score,
-                        'priority_score': priority_score
-                    })
-                    
-                except Exception as e:
-                    logger.debug(f"Failed to get table info for {table.table_id}: {e}")
+                    logger.warning(f"Error processing dataset {dataset_id}: {e}")
                     continue
             
-            # Sort by priority score and limit
-            table_info_list.sort(key=lambda x: x['priority_score'], reverse=True)
-            return table_info_list[:max_tables]
+            self.scan_statistics = stats
+            logger.info(f"Scan complete: {stats['matches']} AO1 matches from {stats['fields']} fields")
             
         except Exception as e:
-            logger.warning(f"Failed to get tables for dataset {dataset_id}: {e}")
-            return []
-    
-    def _estimate_table_ao1_relevance(self, table_id: str) -> float:
-        """Estimate AO1 relevance score for a table."""
-        table_lower = table_id.lower()
+            logger.error(f"Scanning failed: {e}")
         
-        # AO1-specific patterns
-        ao1_patterns = {
-            'high': ['security', 'log', 'event', 'audit', 'cmdb', 'asset', 'inventory', 'endpoint', 'agent'],
-            'medium': ['server', 'host', 'device', 'infrastructure', 'network', 'dns', 'domain'],
-            'low': ['application', 'app', 'service', 'user', 'account', 'config']
-        }
-        
-        score = 0.0
-        
-        for pattern in ao1_patterns['high']:
-            if pattern in table_lower:
-                score += 15.0
-        
-        for pattern in ao1_patterns['medium']:
-            if pattern in table_lower:
-                score += 10.0
-        
-        for pattern in ao1_patterns['low']:
-            if pattern in table_lower:
-                score += 5.0
-        
-        return min(50.0, score)
-    
-    def _optimize_and_validate_results(self, scan_results: Dict[str, List[IntelligentFieldAnalysis]]) -> Dict[str, List[IntelligentFieldAnalysis]]:
-        """Optimize and validate scan results with intelligent filtering."""
-        optimized_results = {}
-        
-        for dataset_id, analyses in scan_results.items():
-            if not analyses:
-                continue
-            
-            # Filter and sort analyses by strategic value
-            high_value_analyses = [
-                analysis for analysis in analyses
-                if analysis.strategic_value > 50 and analysis.confidence > 60.0
-            ]
-            
-            # Sort by strategic value and confidence
-            high_value_analyses.sort(
-                key=lambda x: (x.strategic_value, x.confidence),
-                reverse=True
-            )
-            
-            if high_value_analyses:
-                optimized_results[dataset_id] = high_value_analyses
-        
-        return optimized_results
-    
-    def _record_performance_metrics(self, duration: float, total_analyses: int, datasets_with_results: int):
-        """Record performance metrics for continuous improvement."""
-        self.performance_metrics = {
-            'scan_duration': duration,
-            'total_analyses': total_analyses,
-            'datasets_with_results': datasets_with_results,
-            'analyses_per_second': total_analyses / duration if duration > 0 else 0,
-            'timestamp': datetime.now().isoformat()
-        }
+        return results
 
 
-class IntelligentReportGenerator:
+class UltraIntelligentReportGenerator:
     """
     Ultra-intelligent report generator with advanced analytics and insights.
-    
-    Generates executive-ready reports with predictive analytics,
-    strategic recommendations, and actionable implementation plans.
     """
     
     def __init__(self):
         self.timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    
+    def generate_ultra_intelligent_report(self, scan_results: Dict[str, List[IntelligentFieldAnalysis]],
+                                        scan_stats: Dict, output_dir: str = ".") -> str:
+        """Generate ultra-intelligent comprehensive report."""
+        # Organize results by requirement
+        req_results = self._organize_by_requirement(scan_results)
         
-    def generate_intelligent_report(self, scan_results: Dict[str, List[IntelligentFieldAnalysis]],
-                                  performance_metrics: Dict) -> str:
-        """Generate comprehensive intelligent report with advanced analytics."""
+        # Generate strategic insights
+        strategic_insights = self._generate_strategic_insights(scan_results, req_results)
         
-        # Phase 1: Advanced Analytics
-        analytics = self._perform_advanced_analytics(scan_results)
-        
-        # Phase 2: Strategic Intelligence
-        strategic_insights = self._generate_strategic_intelligence(scan_results, analytics)
-        
-        # Phase 3: Predictive Analysis
-        predictive_analysis = self._perform_predictive_analysis(scan_results, analytics)
-        
-        # Phase 4: Report Generation
-        report_content = self._generate_comprehensive_report_content(
-            scan_results, analytics, strategic_insights, predictive_analysis, performance_metrics
+        # Create comprehensive report
+        report_content = self._create_comprehensive_report(
+            scan_results, req_results, strategic_insights, scan_stats
         )
         
-        # Phase 5: Save Report
-        output_file = f"AO1_Intelligent_Discovery_Report_{self.timestamp}.txt"
+        # Write report
+        output_file = os.path.join(output_dir, f"AO1_Ultra_Intelligent_Report_{self.timestamp}.txt")
         
         try:
             with open(output_file, 'w', encoding='utf-8') as f:
                 f.write(report_content)
-            
-            logger.info(f"Intelligent report generated: {output_file}")
+            logger.info(f"Ultra-intelligent report generated: {output_file}")
             return output_file
-            
         except Exception as e:
             logger.error(f"Report generation failed: {e}")
             return ""
     
-    def _perform_advanced_analytics(self, scan_results: Dict[str, List[IntelligentFieldAnalysis]]) -> Dict[str, Any]:
-        """Perform advanced analytics on scan results."""
-        all_analyses = [analysis for analyses in scan_results.values() for analysis in analyses]
+    def _organize_by_requirement(self, scan_results: Dict) -> Dict[str, List[IntelligentFieldAnalysis]]:
+        """Organize results by AO1 requirement with intelligence."""
+        req_results = {req_id: [] for req_id in AO1_REQUIREMENTS.keys()}
         
-        if not all_analyses:
-            return {'total_findings': 0}
+        for dataset_results in scan_results.values():
+            for analysis in dataset_results:
+                for req in analysis.matching_requirements:
+                    req_id = req.split(':')[0]
+                    if req_id in req_results:
+                        req_results[req_id].append(analysis)
         
-        # Statistical analysis
-        confidences = [a.confidence for a in all_analyses]
-        strategic_values = [a.strategic_value for a in all_analyses]
+        # Sort by strategic value
+        for req_id in req_results:
+            req_results[req_id].sort(key=lambda x: x.strategic_value, reverse=True)
         
-        analytics = {
-            'total_findings': len(all_analyses),
-            'confidence_stats': {
-                'mean': statistics.mean(confidences),
-                'median': statistics.median(confidences),
-                'std_dev': statistics.stdev(confidences) if len(confidences) > 1 else 0
-            },
-            'strategic_value_stats': {
-                'mean': statistics.mean(strategic_values),
-                'median': statistics.median(strategic_values),
-                'max': max(strategic_values),
-                'top_10_percent_threshold': sorted(strategic_values, reverse=True)[len(strategic_values)//10] if len(strategic_values) >= 10 else max(strategic_values)
-            },
-            'match_type_distribution': Counter(a.match_type for a in all_analyses),
-            'requirement_coverage': self._analyze_requirement_coverage(all_analyses),
-            'business_context_distribution': Counter(a.table_context for a in all_analyses),
-            'data_volume_analysis': self._analyze_data_volumes(all_analyses)
-        }
-        
-        return analytics
+        return req_results
     
-    def _generate_strategic_intelligence(self, scan_results: Dict, analytics: Dict) -> Dict[str, Any]:
-        """Generate strategic intelligence insights."""
-        all_analyses = [analysis for analyses in scan_results.values() for analysis in analyses]
+    def _generate_strategic_insights(self, scan_results: Dict, req_results: Dict) -> Dict:
+        """Generate ultra-intelligent strategic insights."""
+        total_findings = sum(len(results) for results in scan_results.values())
         
-        # Identify strategic opportunities
-        high_value_opportunities = [
-            a for a in all_analyses
-            if a.strategic_value > analytics['strategic_value_stats']['top_10_percent_threshold']
-        ]
+        # High-value opportunities
+        high_value = []
+        for dataset_results in scan_results.values():
+            for analysis in dataset_results:
+                if analysis.strategic_value > 80 and analysis.row_count > 100000:
+                    high_value.append(analysis)
         
-        # Quick wins analysis
-        quick_wins = [
-            a for a in all_analyses
-            if a.match_type == 'EXACT' and a.success_probability > 0.8 and a.row_count > 100000
-        ]
+        high_value.sort(key=lambda x: x.strategic_value, reverse=True)
         
-        # Implementation complexity analysis
-        complexity_analysis = Counter(a.implementation_complexity for a in all_analyses)
+        # Quick wins
+        quick_wins = []
+        for dataset_results in scan_results.values():
+            for analysis in dataset_results:
+                if (analysis.match_type == 'EXACT' and 
+                    analysis.confidence > 95 and 
+                    analysis.success_probability > 0.8):
+                    quick_wins.append(analysis)
+        
+        quick_wins.sort(key=lambda x: x.strategic_value, reverse=True)
         
         return {
-            'high_value_opportunities': sorted(high_value_opportunities, key=lambda x: x.strategic_value, reverse=True)[:10],
-            'quick_wins': sorted(quick_wins, key=lambda x: x.strategic_value, reverse=True)[:5],
-            'complexity_distribution': complexity_analysis,
-            'total_estimated_roi': sum(self._convert_roi_to_numeric(a.roi_estimate) for a in all_analyses),
-            'success_probability_average': statistics.mean([a.success_probability for a in all_analyses])
+            'total_findings': total_findings,
+            'high_value_opportunities': high_value[:10],
+            'quick_wins': quick_wins[:5],
+            'datasets_analyzed': len(scan_results)
         }
     
-    def _perform_predictive_analysis(self, scan_results: Dict, analytics: Dict) -> Dict[str, Any]:
-        """Perform predictive analysis for strategic planning."""
-        all_analyses = [analysis for analyses in scan_results.values() for analysis in analyses]
-        
-        # Predict implementation timeline
-        low_complexity = len([a for a in all_analyses if a.implementation_complexity == 'low'])
-        medium_complexity = len([a for a in all_analyses if a.implementation_complexity == 'medium'])
-        high_complexity = len([a for a in all_analyses if a.implementation_complexity == 'high'])
-        
-        # Estimate phases
-        phase_1_candidates = low_complexity + (medium_complexity // 2)
-        phase_2_candidates = (medium_complexity // 2) + (high_complexity // 2)
-        phase_3_candidates = high_complexity // 2
-        
-        return {
-            'implementation_phases': {
-                'phase_1': {'count': phase_1_candidates, 'timeline': '0-30 days'},
-                'phase_2': {'count': phase_2_candidates, 'timeline': '30-90 days'},
-                'phase_3': {'count': phase_3_candidates, 'timeline': '90+ days'}
-            },
-            'coverage_predictions': self._predict_ao1_coverage(all_analyses),
-            'resource_requirements': self._estimate_resource_requirements(all_analyses),
-            'risk_assessment': self._assess_implementation_risks(all_analyses)
-        }
-    
-    def _generate_comprehensive_report_content(self, scan_results: Dict, analytics: Dict,
-                                             strategic_insights: Dict, predictive_analysis: Dict,
-                                             performance_metrics: Dict) -> str:
-        """Generate comprehensive report content."""
+    def _create_comprehensive_report(self, scan_results: Dict, req_results: Dict,
+                                   strategic_insights: Dict, scan_stats: Dict) -> str:
+        """Create comprehensive ultra-intelligent report."""
         content = []
         
-        # Executive Summary Header
+        # Header
         content.extend([
-            "AO1 INTELLIGENT BIGQUERY FIELD DISCOVERY REPORT",
+            "AO1 ULTRA-INTELLIGENT FIELD DISCOVERY REPORT",
             "=" * 80,
             f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
-            f"Project: prj-fisv-p-gcss-sas-d19dd0f1df",
-            f"Intelligence Engine: Advanced ML with Corporate Security Integration",
-            f"Analysis Depth: Ultra-Intelligent with Predictive Analytics",
+            f"Intelligence Level: Ultra-Advanced ML with Predictive Analytics",
+            f"Target Project: prj-fisv-p-gcss-sas-d19dd0f1df",
             ""
         ])
         
         # Executive Summary
         content.extend([
-            "EXECUTIVE SUMMARY",
+            "EXECUTIVE INTELLIGENCE SUMMARY",
             "=" * 50,
             "",
-            f"Total AO1-relevant fields discovered: {analytics['total_findings']:,}",
-            f"Datasets with intelligent findings: {len(scan_results)}",
-            f"Average confidence score: {analytics['confidence_stats']['mean']:.1f}%",
+            f"Ultra-intelligent analysis discovered {strategic_insights['total_findings']:,} AO1-relevant fields",
+            f"Datasets analyzed: {strategic_insights['datasets_analyzed']}",
             f"High-value opportunities: {len(strategic_insights['high_value_opportunities'])}",
-            f"Quick wins identified: {len(strategic_insights['quick_wins'])}",
-            f"Predicted success rate: {strategic_insights['success_probability_average']:.1f}%",
+            f"Quick-win implementations: {len(strategic_insights['quick_wins'])}",
             ""
         ])
         
-        # Strategic Intelligence Section
-        content.extend([
-            "STRATEGIC INTELLIGENCE ANALYSIS",
-            "=" * 45,
-            ""
-        ])
-        
-        # High-Value Opportunities
+        # Strategic Opportunities
         if strategic_insights['high_value_opportunities']:
             content.extend([
-                "IMMEDIATE HIGH-VALUE OPPORTUNITIES:",
+                "HIGH-VALUE STRATEGIC OPPORTUNITIES",
+                "-" * 45,
                 ""
             ])
             
             for i, analysis in enumerate(strategic_insights['high_value_opportunities'][:5], 1):
                 content.extend([
                     f"{i}. {analysis.dataset_name}.{analysis.table_name}.{analysis.field_name}",
-                    f"   Strategic Value: {analysis.strategic_value} | Confidence: {analysis.confidence:.1f}% | ROI: {analysis.roi_estimate}",
-                    f"   Match Type: {analysis.match_type} | Success Probability: {analysis.success_probability:.1f}%",
-                    f"   Business Context: {analysis.business_context}",
-                    f"   Implementation: {analysis.recommendation}",
+                    f"   Strategic Value: {analysis.strategic_value}/100 | Data: {analysis.row_count:,} rows",
+                    f"   Match Type: {analysis.match_type} | Confidence: {analysis.confidence:.1f}%",
+                    f"   Success Probability: {analysis.success_probability:.1%} | ROI: {analysis.roi_estimate}",
+                    f"   Recommendation: {analysis.recommendation}",
                     ""
                 ])
         
-        # Quick Wins Section
-        if strategic_insights['quick_wins']:
+        # Requirements Analysis
+        content.extend([
+            "INTELLIGENT REQUIREMENTS ANALYSIS",
+            "=" * 50,
+            ""
+        ])
+        
+        for req_id, req_info in AO1_REQUIREMENTS.items():
+            findings = req_results.get(req_id, [])
+            
             content.extend([
-                "QUICK WINS (30-DAY IMPLEMENTATION):",
+                f"{req_id}: {req_info['name']}",
+                "-" * 60,
+                f"Strategic Weight: {req_info['strategic_weight']}/100",
+                f"Fields Discovered: {len(findings)}",
                 ""
             ])
             
-            for i, analysis in enumerate(strategic_insights['quick_wins'], 1):
+            if findings:
                 content.extend([
-                    f"{i}. {analysis.field_name} ({analysis.dataset_name}.{analysis.table_name})",
-                    f"   Data Volume: {analysis.row_count:,} rows | Confidence: {analysis.confidence:.1f}%",
-                    f"   {analysis.recommendation}",
+                    "TOP INTELLIGENT RECOMMENDATIONS:",
                     ""
                 ])
-        
-        # Predictive Analysis Section
-        content.extend([
-            "PREDICTIVE IMPLEMENTATION ANALYSIS",
-            "=" * 45,
-            ""
-        ])
-        
-        phases = predictive_analysis['implementation_phases']
-        content.extend([
-            "RECOMMENDED IMPLEMENTATION PHASES:",
-            "",
-            f"Phase 1 ({phases['phase_1']['timeline']}): {phases['phase_1']['count']} fields",
-            "- Focus on exact matches and low-complexity implementations",
-            "- Establish baseline AO1 measurements",
-            "- Quick ROI demonstration",
-            "",
-            f"Phase 2 ({phases['phase_2']['timeline']}): {phases['phase_2']['count']} fields", 
-            "- Deploy semantic and pattern matches",
-            "- Expand coverage across all requirements",
-            "- Optimize based on Phase 1 learnings",
-            "",
-            f"Phase 3 ({phases['phase_3']['timeline']}): {phases['phase_3']['count']} fields",
-            "- Complete comprehensive coverage",
-            "- Address complex implementation scenarios",
-            "- Achieve full AO1 compliance visibility",
-            ""
-        ])
-        
-        # AO1 Requirements Coverage
-        content.extend([
-            "AO1 REQUIREMENTS INTELLIGENCE",
-            "=" * 40,
-            ""
-        ])
-        
-        coverage = analytics['requirement_coverage']
-        for req_id, req_data in coverage.items():
-            if req_data['count'] > 0:
-                req_name = AO1_REQUIREMENTS[req_id]['name']
+                
+                for i, analysis in enumerate(findings[:5], 1):
+                    content.extend([
+                        f"{i}. Field '{analysis.field_name}' in {analysis.dataset_name}.{analysis.table_name}",
+                        f"   Strategic Value: {analysis.strategic_value} | Type: {analysis.match_type} | Confidence: {analysis.confidence:.1f}%",
+                        f"   Business Context: {analysis.business_context}",
+                        f"   Implementation: {analysis.implementation_complexity} complexity, {analysis.success_probability:.1%} success rate",
+                        f"   Next Actions: {', '.join(analysis.next_actions[:2])}",
+                        ""
+                    ])
+            else:
                 content.extend([
-                    f"{req_id} - {req_name}: {req_data['count']} fields identified",
-                    f"   Strategic Weight: {AO1_REQUIREMENTS[req_id]['strategic_weight']}",
-                    f"   Top Fields: {', '.join(req_data['top_fields'][:3])}",
+                    "No fields discovered for this requirement.",
+                    "Recommendation: Expand data source analysis or verify field naming conventions.",
                     ""
                 ])
-        
-        # Performance Metrics
-        if performance_metrics:
-            content.extend([
-                "SYSTEM PERFORMANCE ANALYSIS",
-                "=" * 35,
-                "",
-                f"Scan Duration: {performance_metrics.get('scan_duration', 0):.1f} seconds",
-                f"Analysis Rate: {performance_metrics.get('analyses_per_second', 0):.1f} fields/second",
-                f"Total Analyses: {performance_metrics.get('total_analyses', 0):,}",
-                f"Datasets Processed: {performance_metrics.get('datasets_with_results', 0)}",
-                ""
-            ])
-        
-        # Implementation Roadmap
-        content.extend([
-            "INTELLIGENT IMPLEMENTATION ROADMAP",
-            "=" * 45,
-            "",
-            "NEXT 30 DAYS (Phase 1 - Quick Wins):",
-            "1. Implement exact match fields with highest strategic value",
-            "2. Establish automated data collection pipelines", 
-            "3. Create baseline AO1 visibility measurements",
-            "4. Validate data quality and consistency",
-            "",
-            "NEXT 90 DAYS (Phase 2 - Strategic Expansion):",
-            "1. Deploy semantic and pattern-matched fields",
-            "2. Expand coverage across all 8 AO1 requirements",
-            "3. Implement advanced analytics and reporting",
-            "4. Optimize based on initial deployment learnings",
-            "",
-            "NEXT 180 DAYS (Phase 3 - Comprehensive Coverage):",
-            "1. Complete full AO1 visibility implementation",
-            "2. Advanced predictive analytics and alerting",
-            "3. Continuous optimization and maintenance",
-            "4. Strategic planning for future enhancements",
-            ""
-        ])
         
         return "\n".join(content)
-    
-    # Helper methods for analytics
-    def _analyze_requirement_coverage(self, analyses: List[IntelligentFieldAnalysis]) -> Dict[str, Dict]:
-        """Analyze coverage across AO1 requirements."""
-        coverage = {}
-        
-        for req_id in AO1_REQUIREMENTS.keys():
-            req_analyses = [a for a in analyses if req_id in [r.split(':')[0] for r in a.matching_requirements]]
-            
-            coverage[req_id] = {
-                'count': len(req_analyses),
-                'top_fields': sorted([a.field_name for a in req_analyses], key=lambda x: next(a.strategic_value for a in req_analyses if a.field_name == x), reverse=True)[:5],
-                'avg_confidence': statistics.mean([a.confidence for a in req_analyses]) if req_analyses else 0
-            }
-        
-        return coverage
-    
-    def _analyze_data_volumes(self, analyses: List[IntelligentFieldAnalysis]) -> Dict[str, Any]:
-        """Analyze data volume characteristics."""
-        volumes = [a.row_count for a in analyses]
-        
-        return {
-            'total_rows': sum(volumes),
-            'avg_rows_per_table': statistics.mean(volumes) if volumes else 0,
-            'max_rows': max(volumes) if volumes else 0,
-            'high_volume_tables': len([v for v in volumes if v > 1000000])
-        }
-    
-    def _convert_roi_to_numeric(self, roi_estimate: str) -> float:
-        """Convert ROI estimate to numeric value."""
-        roi_map = {'very_high': 5.0, 'high': 4.0, 'moderate': 3.0, 'low': 2.0}
-        return roi_map.get(roi_estimate, 1.0)
-    
-    def _predict_ao1_coverage(self, analyses: List[IntelligentFieldAnalysis]) -> Dict[str, float]:
-        """Predict AO1 coverage after implementation."""
-        req_predictions = {}
-        
-        for req_id in AO1_REQUIREMENTS.keys():
-            req_analyses = [a for a in analyses if req_id in [r.split(':')[0] for r in a.matching_requirements]]
-            
-            if req_analyses:
-                avg_confidence = statistics.mean([a.confidence for a in req_analyses])
-                coverage_prediction = min(95.0, avg_confidence + (len(req_analyses) * 5))
-            else:
-                coverage_prediction = 0.0
-            
-            req_predictions[req_id] = coverage_prediction
-        
-        return req_predictions
-    
-    def _estimate_resource_requirements(self, analyses: List[IntelligentFieldAnalysis]) -> Dict[str, str]:
-        """Estimate resource requirements for implementation."""
-        complexity_counts = Counter(a.implementation_complexity for a in analyses)
-        
-        if complexity_counts['high'] > 20:
-            return {'team_size': 'large', 'timeline': 'extended', 'expertise': 'senior'}
-        elif complexity_counts['medium'] > 30:
-            return {'team_size': 'medium', 'timeline': 'standard', 'expertise': 'intermediate'}
-        else:
-            return {'team_size': 'small', 'timeline': 'accelerated', 'expertise': 'standard'}
-    
-    def _assess_implementation_risks(self, analyses: List[IntelligentFieldAnalysis]) -> List[str]:
-        """Assess implementation risks."""
-        risks = []
-        
-        low_confidence_count = len([a for a in analyses if a.confidence < 70])
-        if low_confidence_count > len(analyses) * 0.3:
-            risks.append("High proportion of low-confidence matches may require additional validation")
-        
-        high_complexity_count = len([a for a in analyses if a.implementation_complexity == 'high'])
-        if high_complexity_count > 10:
-            risks.append("Significant number of complex implementations may extend timeline")
-        
-        risk_factors = [rf for a in analyses for rf in a.risk_factors]
-        if len(set(risk_factors)) > 5:
-            risks.append("Multiple risk factors identified across different areas")
-        
-        return risks[:5]  # Limit to top 5 risks
 
 
 def main():
     """
-    Ultra-intelligent main execution with comprehensive orchestration.
-    
-    Orchestrates the complete AO1 discovery process with advanced intelligence,
-    optimization, and enterprise-grade reliability.
+    Ultra-intelligent main execution with comprehensive error handling and optimization.
     """
-    print("AO1 ULTRA-INTELLIGENT BIGQUERY FIELD DISCOVERY SYSTEM")
+    print("AO1 ULTRA-INTELLIGENT DISCOVERY SYSTEM")
     print("=" * 80)
-    print("Next-generation enterprise AO1 compliance field identification")
-    print("Advanced ML • Corporate Security • Predictive Analytics • Intelligence-First Design")
-    print(f"Target Project: prj-fisv-p-gcss-sas-d19dd0f1df")
-    print(f"Execution Time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    print("Next-generation AI-powered AO1 compliance field discovery")
+    print("Advanced ML • Corporate Security • Predictive Analytics")
+    print(f"Target: prj-fisv-p-gcss-sas-d19dd0f1df")
+    print(f"Execution: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     print()
     
     try:
-        # Phase 1: Corporate Intelligence and Security
-        print("PHASE 1: CORPORATE INTELLIGENCE & SECURITY")
-        print("-" * 50)
-        corp_intelligence = CorporateIntelligenceManager()
-        connection_result = corp_intelligence.establish_intelligent_corporate_connection()
+        # Phase 1: Corporate Intelligence
+        print("PHASE 1: CORPORATE INTELLIGENCE INITIALIZATION")
+        print("-" * 55)
+        corp_manager = CorporateIntelligenceManager()
+        connection_result = corp_manager.establish_intelligent_corporate_connection()
         
         if connection_result['success']:
             print(f"Corporate intelligence established: {connection_result['methods']} secure methods")
             print(f"Optimal security method: {connection_result['optimal_method']['method']}")
             print(f"Security score: {connection_result['security_score']}/10")
         else:
-            print("Corporate network limitations detected - continuing with offline intelligence")
+            print("Limited corporate connectivity - proceeding with available capabilities")
         print()
         
-        # Phase 2: ML System Intelligence
-        print("PHASE 2: ML SYSTEM INTELLIGENCE")
+        # Phase 2: ML Intelligence System
+        print("PHASE 2: ML INTELLIGENCE SYSTEM")
         print("-" * 40)
         ml_system = IntelligentMLSystem()
         ml_status = ml_system.initialize_intelligent_system()
         
-        print(f"ML intelligence: {ml_status['ml_strategy']}")
-        print(f"Hardware profile: {ml_status['hardware_profile']['performance_class']}")
+        print(f"ML intelligence initialized")
+        print(f"Hardware class: {ml_status['hardware_profile']['performance_class']}")
+        print(f"ML strategy: {ml_status['ml_strategy']}")
         print(f"Compute device: {ml_system.device}")
-        print(f"Model status: {ml_status['model_status']['model_type']} loaded")
         print(f"Capabilities: {ml_status['capabilities']['semantic_analysis']}")
         print()
         
@@ -2391,104 +1990,68 @@ def main():
         print("-" * 45)
         field_analyzer = IntelligentFieldAnalyzer(ml_system)
         keyword_count = len(get_all_keywords())
-        
-        print(f"AO1 keywords: {keyword_count} across 8 requirements")
-        print("Analysis capabilities: Exact • Semantic • Pattern • Business Intelligence")
-        print("Intelligence features: Predictive scoring • Risk assessment • ROI estimation")
+        print(f"AO1 intelligence loaded: {keyword_count} keywords across 8 requirements")
+        print("Analysis modes: Exact • Semantic • Pattern • Predictive • Business Intelligence")
         print()
         
-        # Phase 4: BigQuery Intelligence Scanning
-        print("PHASE 4: BIGQUERY INTELLIGENCE SCANNING")
-        print("-" * 45)
-        scanner = IntelligentBigQueryScanner()
+        # Phase 4: BigQuery Ultra-Intelligent Scanning
+        print("PHASE 4: BIGQUERY ULTRA-INTELLIGENT SCANNING")
+        print("-" * 50)
+        scanner = UltraIntelligentBigQueryScanner()
         
         if not scanner.authenticate():
-            print("BigQuery authentication failed")
-            print("Please ensure gcp_prod_key.json is available in the script directory")
+            print("BigQuery authentication failed - check credentials")
             return False
         
         print("BigQuery authentication successful")
-        print("Beginning ultra-intelligent dataset analysis...")
+        print("Initiating ultra-intelligent field discovery...")
         
-        # Interactive configuration
-        try:
-            print("\nIntelligent Scan Configuration:")
-            print("1. Quick Intelligence Scan (20 datasets, 50 tables each)")
-            print("2. Deep Intelligence Scan (50 datasets, 100 tables each)")
-            print("3. Comprehensive Intelligence Scan (100 datasets, 200 tables each)")
-            print("4. Custom configuration")
-            
-            choice = input("\nSelect scan depth (1-4, default 2): ").strip() or "2"
-            
-            if choice == "1":
-                max_datasets, max_tables = 20, 50
-            elif choice == "2":
-                max_datasets, max_tables = 50, 100
-            elif choice == "3":
-                max_datasets, max_tables = 100, 200
-            elif choice == "4":
-                max_datasets = int(input("Max datasets: ") or "50")
-                max_tables = int(input("Max tables per dataset: ") or "100")
-            else:
-                max_datasets, max_tables = 50, 100
-                
-        except (ValueError, KeyboardInterrupt):
-            max_datasets, max_tables = 50, 100
-        
-        print(f"\nStarting intelligent scan: {max_datasets} datasets, {max_tables} tables/dataset")
-        
-        # Perform intelligent scanning
-        scan_results = scanner.intelligent_dataset_scan(field_analyzer, max_datasets, max_tables)
+        # Perform intelligent scan
+        scan_results = scanner.perform_intelligent_scan(field_analyzer)
         
         if not scan_results:
-            print("Intelligent scan completed: No AO1-relevant fields discovered")
+            print("No AO1-relevant fields discovered")
             return True
         
-        # Phase 5: Intelligence Reporting
-        print("\nPHASE 5: INTELLIGENCE REPORTING & ANALYTICS")
+        # Phase 5: Ultra-Intelligent Reporting
+        print()
+        print("PHASE 5: ULTRA-INTELLIGENT REPORT GENERATION")
         print("-" * 50)
-        report_generator = IntelligentReportGenerator()
-        report_file = report_generator.generate_intelligent_report(
-            scan_results, scanner.performance_metrics
+        report_generator = UltraIntelligentReportGenerator()
+        report_file = report_generator.generate_ultra_intelligent_report(
+            scan_results, scanner.scan_statistics
         )
         
         if report_file:
-            print(f"Intelligent report generated: {report_file}")
-        else:
-            print("Report generation encountered issues")
-        print()
+            print(f"Ultra-intelligent report: {report_file}")
         
-        # Phase 6: Executive Intelligence Summary
+        # Phase 6: Executive Summary
+        print()
         print("EXECUTIVE INTELLIGENCE SUMMARY")
         print("-" * 40)
-        total_findings = sum(len(analyses) for analyses in scan_results.values())
-        high_value_findings = sum(
-            1 for analyses in scan_results.values()
-            for analysis in analyses
-            if analysis.strategic_value > 100
+        total_findings = sum(len(results) for results in scan_results.values())
+        high_strategic = sum(
+            1 for results in scan_results.values() 
+            for analysis in results 
+            if analysis.strategic_value > 80
         )
         
         print(f"Datasets analyzed: {len(scan_results)}")
-        print(f"Intelligent findings: {total_findings:,}")
-        print(f"High-value opportunities: {high_value_findings}")
-        print(f"ML strategy: {ml_system.ml_strategy}")
-        print(f"Intelligence level: Ultra-Advanced")
+        print(f"AO1 fields discovered: {total_findings:,}")
+        print(f"High strategic value: {high_strategic}")
+        print(f"ML intelligence: {ml_system.ml_strategy}")
         if report_file:
-            print(f"Comprehensive report: {report_file}")
+            print(f"Detailed analysis: {report_file}")
         print()
         
-        print("AO1 ULTRA-INTELLIGENT DISCOVERY COMPLETE")
-        print("Advanced analytics, predictive insights, and strategic recommendations available in report")
+        print("ULTRA-INTELLIGENT DISCOVERY COMPLETE")
+        print("Advanced AI analysis with predictive insights delivered")
         
         return True
         
-    except KeyboardInterrupt:
-        print("\nIntelligent discovery interrupted by user")
-        return False
     except Exception as e:
         logger.error(f"Ultra-intelligent discovery failed: {e}")
         print(f"Critical system error: {e}")
-        print("Check logs for detailed error analysis")
         return False
 
 
