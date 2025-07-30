@@ -823,33 +823,60 @@ class EnterpriseAO1Analyzer:
         # Step 2: Detect and configure GPU
         gpu_info = self.gpu_detector.comprehensive_gpu_detection()
         
-        # Step 3: Initialize ML components based on what's available
+        # Step 3: Re-check ML libraries (in case they were just installed)
+        print("\nRE-CHECKING ML LIBRARIES:")
+        global ML_STATUS, TORCH_AVAILABLE, HF_AVAILABLE, SKLEARN_AVAILABLE, ML_LIBRARIES_AVAILABLE
+        ML_STATUS = check_ml_libraries()
+        TORCH_AVAILABLE = ML_STATUS['TORCH_AVAILABLE']
+        HF_AVAILABLE = ML_STATUS['HF_AVAILABLE'] 
+        SKLEARN_AVAILABLE = ML_STATUS['SKLEARN_AVAILABLE']
+        ML_LIBRARIES_AVAILABLE = ML_STATUS['ML_LIBRARIES_AVAILABLE']
+        
+        # Step 4: Initialize ML components based on what's available
         print("\nML SYSTEM INITIALIZATION:")
         
         if ML_LIBRARIES_AVAILABLE:
-            print("✓ All ML libraries available - Initializing advanced features")
-            self.hf_manager = EnterpriseHuggingFaceManager(self.proxy_manager)
-            connectivity = self.hf_manager.comprehensive_connectivity_test()
-            
-            if self.hf_manager.successful_connections:
-                self.ml_model, self.ml_strategy = self.hf_manager.load_optimal_model(self.gpu_detector)
-                if self.ml_model:
-                    self._compute_requirement_embeddings()
-                    print("✓ ML COMPONENTS: Fully operational with {} strategy".format(self.ml_strategy))
+            print("✓ All ML libraries detected - Initializing full ML pipeline")
+            try:
+                self.hf_manager = EnterpriseHuggingFaceManager(self.proxy_manager)
+                connectivity = self.hf_manager.comprehensive_connectivity_test()
+                
+                if self.hf_manager.successful_connections:
+                    print("✓ Hugging Face connectivity established")
+                    self.ml_model, self.ml_strategy = self.hf_manager.load_optimal_model(self.gpu_detector)
+                    if self.ml_model:
+                        self._compute_requirement_embeddings()
+                        print("✓ ML COMPONENTS: Fully operational with {} strategy".format(self.ml_strategy))
+                    else:
+                        print("⚠ ML COMPONENTS: Libraries available but model loading failed")
+                        print("  Will fall back to pattern matching and TF-IDF")
                 else:
-                    print("⚠ ML COMPONENTS: Libraries available but model loading failed")
-            else:
-                print("⚠ ML COMPONENTS: Libraries available but no connectivity")
+                    print("⚠ ML COMPONENTS: Libraries available but no network connectivity")
+                    print("  Will attempt cached/offline models or fall back to TF-IDF")
+                    
+            except Exception as e:
+                print("⚠ ML INITIALIZATION ERROR: {}".format(str(e)[:100]))
+                print("  Falling back to available methods")
+                
         elif HF_AVAILABLE and SKLEARN_AVAILABLE:
             print("⚠ Partial ML available - PyTorch missing, using basic transformers")
-            self.hf_manager = EnterpriseHuggingFaceManager(self.proxy_manager)
-            connectivity = self.hf_manager.comprehensive_connectivity_test()
-            if self.hf_manager.successful_connections:
-                # Try to load basic transformer models without PyTorch neural networks
-                self.ml_model, self.ml_strategy = self.hf_manager.load_optimal_model(self.gpu_detector)
-                if self.ml_model:
-                    self._compute_requirement_embeddings()
-                    print("✓ ML COMPONENTS: Partial functionality (no neural networks)")
+            try:
+                self.hf_manager = EnterpriseHuggingFaceManager(self.proxy_manager)
+                connectivity = self.hf_manager.comprehensive_connectivity_test()
+                if self.hf_manager.successful_connections:
+                    # Try to load basic transformer models without PyTorch neural networks
+                    self.ml_model, self.ml_strategy = self.hf_manager.load_optimal_model(self.gpu_detector)
+                    if self.ml_model:
+                        self._compute_requirement_embeddings()
+                        print("✓ ML COMPONENTS: Partial functionality (transformers + TF-IDF)")
+                    else:
+                        print("⚠ Using TF-IDF similarity only")
+                else:
+                    print("⚠ No connectivity - using TF-IDF similarity only")
+            except Exception as e:
+                print("⚠ Transformer initialization failed: {}".format(str(e)[:80]))
+                print("  Using TF-IDF similarity only")
+                
         elif SKLEARN_AVAILABLE:
             print("⚠ Basic ML available - Only scikit-learn features")
             print("✓ ML COMPONENTS: TF-IDF and similarity scoring available")
