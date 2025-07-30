@@ -273,8 +273,8 @@ class EnterpriseProxyManager:
         return True  # No proxy needed
     
     def test_proxy_configuration(self) -> bool:
-        """Test if proxy configuration works with enterprise settings"""
-        print("TESTING: Proxy configuration with enterprise settings...")
+        """Test proxy configuration with comprehensive debugging"""
+        print("TESTING: Proxy configuration with comprehensive diagnostics...")
         
         # Import required modules for proxy testing
         try:
@@ -285,100 +285,179 @@ class EnterpriseProxyManager:
             print("WARNING: Advanced proxy testing not available - using basic testing")
             return self._basic_proxy_test()
         
-        # Configure requests session with enterprise-friendly settings
-        session = requests.Session()
+        # First, let's verify what proxy settings we actually have
+        print("\nPROXY DIAGNOSTICS:")
+        print("Environment Variables:")
+        for var in ['HTTP_PROXY', 'HTTPS_PROXY', 'http_proxy', 'https_proxy']:
+            value = os.environ.get(var, 'Not set')
+            if value != 'Not set' and '@' in value:
+                # Mask password
+                parts = value.split('@')
+                if ':' in parts[0]:
+                    auth_part = parts[0].split('://')[-1]
+                    if ':' in auth_part:
+                        user = auth_part.split(':')[0]
+                        value = value.replace(auth_part, "{}:****".format(user))
+            print("  {}: {}".format(var, value))
         
-        # Apply proxy configuration
-        if self.proxy_config:
-            session.proxies.update(self.proxy_config)
-            print("  PROXY SETTINGS APPLIED:")
-            for key, value in self.proxy_config.items():
-                # Mask password in output
-                masked_value = value
-                if '@' in value:
-                    parts = value.split('@')
-                    if ':' in parts[0]:
-                        auth_part = parts[0].split('://')[-1]
-                        if ':' in auth_part:
-                            user, _ = auth_part.split(':', 1)
-                            masked_value = value.replace(auth_part, "{}:****".format(user))
-                print("    {}: {}".format(key, masked_value))
+        print("\nInternal proxy config:")
+        for key, value in self.proxy_config.items():
+            masked_value = value
+            if '@' in value:
+                parts = value.split('@')
+                if ':' in parts[0]:
+                    auth_part = parts[0].split('://')[-1]
+                    if ':' in auth_part:
+                        user = auth_part.split(':')[0]
+                        masked_value = value.replace(auth_part, "{}:****".format(user))
+            print("  {}: {}".format(key, masked_value))
         
-        # Enterprise-friendly session configuration
-        session.headers.update({
-            'User-Agent': 'AO1-Discovery-Tool/1.0 (Enterprise)',
-            'Accept': 'application/json, text/plain, */*',
-            'Accept-Encoding': 'gzip, deflate',
-            'Connection': 'keep-alive'
-        })
-        
-        # Disable SSL verification for corporate environments if needed
-        session.verify = False
-        urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
-        
-        # Configure retries with enterprise-friendly settings
-        retry_strategy = Retry(
-            total=3,
-            backoff_factor=2,
-            status_forcelist=[429, 500, 502, 503, 504],
-            allowed_methods=["HEAD", "GET", "OPTIONS"]
-        )
-        
-        adapter = HTTPAdapter(max_retries=retry_strategy)
-        session.mount("http://", adapter)
-        session.mount("https://", adapter)
-        
-        test_urls = [
-            ('http://httpbin.org/get', 'HTTP connectivity test'),
-            ('https://httpbin.org/get', 'HTTPS connectivity test'),
-            ('https://pypi.org/simple/', 'Python package index'),
-            ('https://huggingface.co', 'Hugging Face main site'),
-            ('https://github.com', 'GitHub connectivity')
+        # Test with multiple strategies
+        strategies = [
+            ('basic_requests', 'Basic requests with proxy'),
+            ('urllib3_direct', 'Direct urllib3 with proxy'),
+            ('no_ssl_verify', 'Requests without SSL verification'),
+            ('session_based', 'Session-based with custom headers'),
+            ('system_proxy', 'System proxy detection')
         ]
         
-        successful_tests = 0
+        successful_strategies = []
         
-        for url, description in test_urls:
+        for strategy_name, strategy_desc in strategies:
+            print("\n--- TESTING STRATEGY: {} ---".format(strategy_desc))
+            
             try:
-                print("  TESTING: {} - {}".format(description, url))
-                response = session.get(url, timeout=15)
-                if response.status_code == 200:
-                    successful_tests += 1
-                    print("    SUCCESS: Status {} - {} bytes".format(response.status_code, len(response.content)))
+                if strategy_name == 'basic_requests':
+                    success = self._test_basic_requests()
+                elif strategy_name == 'urllib3_direct':
+                    success = self._test_urllib3_direct()
+                elif strategy_name == 'no_ssl_verify':
+                    success = self._test_no_ssl_verify()
+                elif strategy_name == 'session_based':
+                    success = self._test_session_based()
+                elif strategy_name == 'system_proxy':
+                    success = self._test_system_proxy()
                 else:
-                    print("    PARTIAL: Status {} (non-200 but connected)".format(response.status_code))
-                    successful_tests += 0.5  # Partial credit for connection
-            except requests.exceptions.ProxyError as e:
-                print("    PROXY ERROR: {}".format(str(e)[:80]))
-            except requests.exceptions.SSLError as e:
-                print("    SSL ERROR: {} (common in corporate environments)".format(str(e)[:60]))
-            except requests.exceptions.ConnectTimeout as e:
-                print("    TIMEOUT: {}".format(str(e)[:60]))
-            except requests.exceptions.ConnectionError as e:
-                print("    CONNECTION ERROR: {}".format(str(e)[:80]))
+                    success = False
+                
+                if success:
+                    successful_strategies.append(strategy_name)
+                    print("  STRATEGY SUCCESS: {}".format(strategy_desc))
+                else:
+                    print("  STRATEGY FAILED: {}".format(strategy_desc))
+                    
             except Exception as e:
-                print("    ERROR: {}".format(str(e)[:80]))
+                print("  STRATEGY ERROR: {} - {}".format(strategy_desc, str(e)[:100]))
         
-        self.proxy_working = successful_tests >= len(test_urls) / 3  # More lenient threshold
+        self.proxy_working = len(successful_strategies) > 0
         
         if self.proxy_working:
-            print("PROXY: Configuration successful ({:.1f}/{} tests passed)".format(successful_tests, len(test_urls)))
-            print("Network connectivity established for ML model downloads")
+            print("\nPROXY DIAGNOSIS: SUCCESS")
+            print("Working strategies: {}".format(', '.join(successful_strategies)))
+            print("Network connectivity established for ML downloads")
         else:
-            print("PROXY: Limited connectivity ({:.1f}/{} tests passed)".format(successful_tests, len(test_urls)))
-            print("Will attempt to use cached models and offline mode")
-            print("Consider contacting IT support if full connectivity is needed")
+            print("\nPROXY DIAGNOSIS: ALL STRATEGIES FAILED")
+            print("This suggests a proxy configuration or network issue")
+            print("Recommendations:")
+            print("1. Verify proxy URL format: http://proxy.company.com:8080")
+            print("2. Check if proxy requires authentication")
+            print("3. Test proxy with: curl -x <proxy> http://httpbin.org/get")
+            print("4. Contact IT support for network troubleshooting")
+            print("5. Will attempt offline/cached model usage")
         
         return self.proxy_working
     
+    def _test_basic_requests(self) -> bool:
+        """Test basic requests with proxy"""
+        try:
+            response = requests.get('http://httpbin.org/get', 
+                                  proxies=self.proxy_config, 
+                                  timeout=10)
+            print("    Basic HTTP: Status {} ({} bytes)".format(response.status_code, len(response.content)))
+            return response.status_code == 200
+        except Exception as e:
+            print("    Basic HTTP failed: {}".format(str(e)[:80]))
+            return False
+    
+    def _test_urllib3_direct(self) -> bool:
+        """Test direct urllib3 with proxy"""
+        try:
+            import urllib3
+            
+            # Extract proxy info
+            proxy_url = self.proxy_config.get('http_proxy', self.proxy_config.get('HTTP_PROXY', ''))
+            if not proxy_url:
+                return False
+            
+            # Parse proxy URL
+            from urllib.parse import urlparse
+            parsed = urlparse(proxy_url)
+            
+            http = urllib3.ProxyManager(proxy_url)
+            resp = http.request('GET', 'http://httpbin.org/get', timeout=10)
+            print("    urllib3 direct: Status {} ({} bytes)".format(resp.status, len(resp.data)))
+            return resp.status == 200
+        except Exception as e:
+            print("    urllib3 direct failed: {}".format(str(e)[:80]))
+            return False
+    
+    def _test_no_ssl_verify(self) -> bool:
+        """Test requests without SSL verification"""
+        try:
+            import urllib3
+            urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+            
+            response = requests.get('https://httpbin.org/get', 
+                                  proxies=self.proxy_config,
+                                  verify=False,
+                                  timeout=10)
+            print("    No SSL verify: Status {} ({} bytes)".format(response.status_code, len(response.content)))
+            return response.status_code == 200
+        except Exception as e:
+            print("    No SSL verify failed: {}".format(str(e)[:80]))
+            return False
+    
+    def _test_session_based(self) -> bool:
+        """Test session-based approach with custom headers"""
+        try:
+            session = requests.Session()
+            session.proxies.update(self.proxy_config)
+            session.headers.update({
+                'User-Agent': 'Mozilla/5.0 (Enterprise AO1 Tool)',
+                'Accept': '*/*',
+                'Connection': 'keep-alive'
+            })
+            session.verify = False
+            
+            response = session.get('http://httpbin.org/get', timeout=10)
+            print("    Session-based: Status {} ({} bytes)".format(response.status_code, len(response.content)))
+            return response.status_code == 200
+        except Exception as e:
+            print("    Session-based failed: {}".format(str(e)[:80]))
+            return False
+    
+    def _test_system_proxy(self) -> bool:
+        """Test using system proxy detection"""
+        try:
+            # Test if system can resolve proxy automatically
+            response = requests.get('http://httpbin.org/get', timeout=10)
+            print("    System proxy: Status {} ({} bytes)".format(response.status_code, len(response.content)))
+            return response.status_code == 200
+        except Exception as e:
+            print("    System proxy failed: {}".format(str(e)[:80]))
+            return False
+    
     def _basic_proxy_test(self) -> bool:
         """Basic proxy test without advanced features"""
-        test_urls = ['https://httpbin.org/get', 'https://pypi.org/simple/']
+        test_urls = ['http://httpbin.org/get', 'https://httpbin.org/get']
         successful_tests = 0
         
         for url in test_urls:
             try:
-                response = requests.get(url, timeout=10, verify=False)
+                response = requests.get(url, 
+                                      proxies=self.proxy_config,
+                                      timeout=10, 
+                                      verify=False)
                 if response.status_code == 200:
                     successful_tests += 1
                     print("  SUCCESS: {}".format(url))
