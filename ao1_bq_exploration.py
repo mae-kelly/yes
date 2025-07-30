@@ -2053,7 +2053,7 @@ class BigQueryScanner:
     Authenticates to chronicle-fisv but scans the target project.
     """
     
-    def __init__(self, target_project_id: str = "prj-fisv-p-gcss-sas-d19dd0f1df"):
+    def __init__(self, target_project_id: str = "prj-fisv-p-gcss-sas-dl9dd0f1df"):
         self.target_project_id = target_project_id
         self.client = None
         self.authenticated = False
@@ -2305,7 +2305,7 @@ class AO1ReportGenerator:
             "=" * 80,
             f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
             f"Authentication Project: chronicle-fisv",
-            f"Target Scanning Project: prj-fisv-p-gcss-sas-d19dd0f1df",
+            f"Target Scanning Project: prj-fisv-p-gcss-sas-dl9dd0f1df",
             f"Analysis Engine: Advanced ML with Corporate Security Integration",
             ""
         ])
@@ -2480,7 +2480,7 @@ def main():
     print("Enterprise-grade AO1 compliance field identification")
     print("Advanced ML analysis with corporate security integration")
     print(f"Authentication Project: chronicle-fisv")
-    print(f"Target Scanning Project: prj-fisv-p-gcss-sas-d19dd0f1df")
+    print(f"Target Scanning Project: prj-fisv-p-gcss-sas-dl9dd0f1df")
     print(f"Execution Time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     print()
     
