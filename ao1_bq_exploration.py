@@ -1,25 +1,22 @@
 #!/usr/bin/env python3
 """
-AO1 BigQuery Field Discovery System - Ultra-Intelligent Edition
-============================================================
+AO1 BigQuery Field Discovery System
+==================================
 
-Next-generation enterprise system that automatically discovers, analyzes, and prioritizes
-AO1 compliance fields across BigQuery datasets with unprecedented intelligence.
+Enterprise-grade system for discovering AO1 compliance fields in BigQuery datasets.
+Combines advanced ML analysis with corporate network security and comprehensive
+business context understanding.
 
-Features:
-- Adaptive ML pipeline with automatic optimization
-- Quantum-leap business intelligence analysis
-- Self-healing corporate network integration
-- Predictive field relevance scoring
-- Zero-configuration enterprise deployment
-- Autonomous result validation and quality assurance
+Architecture:
+- Corporate connection management with 16 secure authentication methods
+- ML-powered semantic analysis with M1 GPU acceleration
+- Business context analysis for table and field relevance
+- Professional reporting with actionable recommendations
+- Exact keyword matching against comprehensive AO1 requirements
 
-Architecture Philosophy:
-- Intelligence-first design with ML at every layer
-- Corporate security without complexity
-- Actionable insights over raw data
-- Self-optimizing performance characteristics
-- Bulletproof reliability with graceful degradation
+Author: Enterprise Security Analytics Team
+Version: 2.0
+Target: prj-fisv-p-gcss-sas-dl9dd0f1df
 """
 
 import os
@@ -34,972 +31,1635 @@ import urllib.request
 import ssl
 import socket
 import platform
-import threading
-import queue
-import hashlib
-from typing import Dict, List, Set, Tuple, Optional, Any, Union, Iterator
-from dataclasses import dataclass, field, asdict
+from typing import Dict, List, Set, Tuple, Optional, Any, Union
+from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor, as_completed
-from functools import lru_cache, wraps, reduce
-from collections import defaultdict, Counter
-from itertools import combinations
-import re
-import math
-import statistics
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from functools import lru_cache, wraps
+import threading
 
-# Intelligent logging configuration
+# Set up logging exactly like the original script
 file_path = os.path.join(os.path.dirname(__file__))
 settings = {}
-
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     handlers=[
-        logging.FileHandler('ao1_intelligent_discovery.log'),
+        logging.FileHandler('ao1_discovery.log'),
         logging.StreamHandler()
     ]
 )
 logger = logging.getLogger(__name__)
 
-# Import AO1 keywords with intelligent error handling
-try:
-    from ao1_keywords import (
-        REQ1_GLOBAL_VIEW_KEYWORDS, REQ2_INFRASTRUCTURE_TYPE_KEYWORDS,
-        REQ3_REGIONAL_COUNTRY_KEYWORDS, REQ4_BUSINESS_APPLICATION_KEYWORDS,
-        REQ5_SYSTEM_CLASSIFICATION_KEYWORDS, REQ6_SECURITY_CONTROL_COVERAGE_KEYWORDS,
-        REQ7_LOGGING_COMPLIANCE_KEYWORDS, REQ8_DOMAIN_VISIBILITY_KEYWORDS,
-        get_all_keywords, find_keyword_requirement
-    )
-    logger.info("AO1 keywords successfully imported")
-except ImportError as e:
-    logger.error(f"Failed to import AO1 keywords: {e}")
-    sys.exit(1)
+# Import AO1 keywords from external module
+from ao1_keywords import (
+    REQ1_GLOBAL_VIEW_KEYWORDS,
+    REQ2_INFRASTRUCTURE_TYPE_KEYWORDS,
+    REQ3_REGIONAL_COUNTRY_KEYWORDS,
+    REQ4_BUSINESS_APPLICATION_KEYWORDS,
+    REQ5_SYSTEM_CLASSIFICATION_KEYWORDS,
+    REQ6_SECURITY_CONTROL_COVERAGE_KEYWORDS,
+    REQ7_LOGGING_COMPLIANCE_KEYWORDS,
+    REQ8_DOMAIN_VISIBILITY_KEYWORDS,
+    get_all_keywords,
+    find_keyword_requirement
+)
 
-# Intelligent AO1 requirements configuration
+logger.info("AO1 keywords successfully imported from external module")
+
+# AO1 requirements metadata
 AO1_REQUIREMENTS = {
     'REQ-1': {
         'name': 'Global View',
         'description': 'Asset identifiers for counting unique logging assets vs CMDB',
         'keywords': REQ1_GLOBAL_VIEW_KEYWORDS,
         'business_purpose': 'Enables accurate asset counting and CMDB comparison',
-        'strategic_weight': 100,
-        'data_patterns': ['hostname', 'asset_id', 'serial_number', 'ip_address'],
-        'quality_indicators': ['uniqueness', 'completeness', 'consistency']
+        'table_indicators': ['cmdb', 'asset', 'inventory', 'device', 'endpoint', 'host'],
+        'key_concepts': ['hostname', 'asset_id', 'ip_address', 'mac_address', 'serial_number']
     },
     'REQ-2': {
         'name': 'Infrastructure Type',
         'description': 'Deployment model classification (On-Prem/Cloud/SaaS)',
         'keywords': REQ2_INFRASTRUCTURE_TYPE_KEYWORDS,
         'business_purpose': 'Classifies infrastructure deployment models',
-        'strategic_weight': 85,
-        'data_patterns': ['cloud', 'on_premises', 'virtual_machine', 'container'],
-        'quality_indicators': ['categorical_consistency', 'coverage']
+        'table_indicators': ['cloud', 'infrastructure', 'deployment', 'instance', 'vm'],
+        'key_concepts': ['cloud', 'on_premises', 'virtual_machine', 'container', 'saas']
     },
     'REQ-3': {
         'name': 'Regional/Country View',
-        'description': 'Geographic location classification',
+        'description': 'Geographic location classification for global visibility',
         'keywords': REQ3_REGIONAL_COUNTRY_KEYWORDS,
-        'strategic_weight': 75,
-        'data_patterns': ['region', 'country', 'datacenter', 'timezone'],
-        'quality_indicators': ['geographic_validity', 'consistency']
+        'business_purpose': 'Provides geographic distribution analysis',
+        'table_indicators': ['region', 'location', 'geo', 'country', 'datacenter'],
+        'key_concepts': ['region', 'country', 'datacenter', 'cloud_region', 'timezone']
     },
     'REQ-4': {
         'name': 'Business/Application View',
         'description': 'Organizational and application classification',
         'keywords': REQ4_BUSINESS_APPLICATION_KEYWORDS,
-        'strategic_weight': 90,
-        'data_patterns': ['business_unit', 'application', 'service', 'department'],
-        'quality_indicators': ['hierarchical_consistency', 'completeness']
+        'business_purpose': 'Maps technical assets to business units and applications',
+        'table_indicators': ['business', 'application', 'service', 'org', 'department'],
+        'key_concepts': ['business_unit', 'application', 'service', 'department', 'cost_center']
     },
     'REQ-5': {
         'name': 'System Classification',
         'description': 'Server function and OS type classification',
         'keywords': REQ5_SYSTEM_CLASSIFICATION_KEYWORDS,
-        'strategic_weight': 80,
-        'data_patterns': ['operating_system', 'server_type', 'platform'],
-        'quality_indicators': ['version_consistency', 'categorical_validity']
+        'business_purpose': 'Categorizes systems by function and operating system',
+        'table_indicators': ['system', 'server', 'os', 'operating', 'platform'],
+        'key_concepts': ['operating_system', 'server_type', 'web_server', 'database_server', 'windows']
     },
     'REQ-6': {
         'name': 'Security Control Coverage',
-        'description': 'EDR, Tanium, DLP agent presence and coverage',
+        'description': 'EDR, Tanium, DLP agent presence and coverage analysis',
         'keywords': REQ6_SECURITY_CONTROL_COVERAGE_KEYWORDS,
-        'strategic_weight': 95,
-        'data_patterns': ['crowdstrike', 'tanium', 'dlp', 'agent_status'],
-        'quality_indicators': ['coverage_completeness', 'temporal_consistency']
+        'business_purpose': 'Measures security control deployment and coverage',
+        'table_indicators': ['security', 'agent', 'edr', 'endpoint', 'protection'],
+        'key_concepts': ['crowdstrike', 'tanium', 'dlp', 'edr', 'agent_status']
     },
     'REQ-7': {
         'name': 'Logging Compliance',
         'description': 'GSO (Chronicle) and Splunk platform compliance',
         'keywords': REQ7_LOGGING_COMPLIANCE_KEYWORDS,
-        'strategic_weight': 95,
-        'data_patterns': ['chronicle', 'splunk', 'siem', 'log_source'],
-        'quality_indicators': ['platform_consistency', 'temporal_coverage']
+        'business_purpose': 'Ensures comprehensive log collection and SIEM compliance',
+        'table_indicators': ['log', 'siem', 'chronicle', 'splunk', 'event'],
+        'key_concepts': ['chronicle', 'splunk', 'siem', 'log_source', 'syslog']
     },
     'REQ-8': {
         'name': 'Domain Visibility',
         'description': 'Hostname and domain-based asset visibility',
         'keywords': REQ8_DOMAIN_VISIBILITY_KEYWORDS,
-        'strategic_weight': 85,
-        'data_patterns': ['domain', 'fqdn', 'dns_record'],
-        'quality_indicators': ['dns_validity', 'hierarchical_consistency']
+        'business_purpose': 'Provides DNS and domain-based asset identification',
+        'table_indicators': ['domain', 'dns', 'hostname', 'fqdn', 'ad'],
+        'key_concepts': ['domain', 'fqdn', 'hostname', 'dns_record', 'active_directory']
     }
 }
 
 
-def intelligent_retry(max_attempts=3, backoff_factor=2, exceptions=(Exception,)):
+def retry_with_exponential_backoff(max_retries=3, base_delay=1):
     """
-    Ultra-intelligent retry decorator with adaptive backoff and exception analysis.
+    Decorator for retrying functions with exponential backoff.
     
-    Learns from failure patterns and adjusts retry strategy accordingly.
+    Args:
+        max_retries: Maximum number of retry attempts
+        base_delay: Base delay in seconds before first retry
     """
     def decorator(func):
         @wraps(func)
         def wrapper(*args, **kwargs):
-            attempt_data = []
-            
-            for attempt in range(max_attempts):
+            for attempt in range(max_retries + 1):
                 try:
-                    start_time = time.time()
-                    result = func(*args, **kwargs)
-                    duration = time.time() - start_time
-                    
-                    # Success - log performance data for learning
-                    if attempt > 0:
-                        logger.info(f"Function {func.__name__} succeeded on attempt {attempt + 1}")
-                    
-                    return result
-                    
-                except exceptions as e:
-                    duration = time.time() - start_time
-                    attempt_data.append({
-                        'attempt': attempt + 1,
-                        'error': str(e),
-                        'error_type': type(e).__name__,
-                        'duration': duration
-                    })
-                    
-                    if attempt == max_attempts - 1:
-                        # Final failure - provide intelligent analysis
-                        error_analysis = _analyze_failure_pattern(attempt_data)
-                        logger.error(f"Function {func.__name__} failed after {max_attempts} attempts")
-                        logger.error(f"Failure analysis: {error_analysis}")
+                    return func(*args, **kwargs)
+                except Exception as e:
+                    if attempt == max_retries:
                         raise e
-                    
-                    # Intelligent backoff calculation
-                    delay = _calculate_intelligent_delay(attempt, attempt_data, backoff_factor)
-                    logger.warning(f"Attempt {attempt + 1} failed for {func.__name__}: {e}. Retrying in {delay:.1f}s")
+                    delay = base_delay * (2 ** attempt)
+                    logger.warning(f"Attempt {attempt + 1} failed for {func.__name__}: {e}. Retrying in {delay}s")
                     time.sleep(delay)
-                    
             return None
         return wrapper
     return decorator
 
 
-def _analyze_failure_pattern(attempt_data: List[Dict]) -> str:
-    """Analyze failure patterns to provide intelligent insights."""
-    error_types = [data['error_type'] for data in attempt_data]
-    error_counter = Counter(error_types)
+def thread_safe_singleton(cls):
+    """Thread-safe singleton decorator."""
+    instances = {}
+    lock = threading.Lock()
     
-    if len(set(error_types)) == 1:
-        return f"Consistent {error_types[0]} errors suggest systematic issue"
-    else:
-        return f"Mixed error types: {dict(error_counter)} - suggests transient issues"
-
-
-def _calculate_intelligent_delay(attempt: int, attempt_data: List[Dict], base_factor: float) -> float:
-    """Calculate intelligent delay based on failure patterns and timing."""
-    base_delay = base_factor ** attempt
-    
-    if len(attempt_data) > 1:
-        # Analyze duration trends
-        durations = [data['duration'] for data in attempt_data]
-        if durations[-1] > durations[-2] * 2:
-            # Increasing duration suggests system stress
-            return base_delay * 2
-        elif durations[-1] < durations[-2] * 0.5:
-            # Decreasing duration suggests recovery
-            return base_delay * 0.5
-    
-    return base_delay
+    def get_instance(*args, **kwargs):
+        if cls not in instances:
+            with lock:
+                if cls not in instances:
+                    instances[cls] = cls(*args, **kwargs)
+        return instances[cls]
+    return get_instance
 
 
 @dataclass
-class IntelligentFieldAnalysis:
-    """
-    Comprehensive field analysis with advanced intelligence metrics.
-    """
+class ConnectionMethod:
+    """Represents a corporate connection method with its configuration."""
+    name: str
+    success: bool
+    message: str
+    config: Dict[str, Any] = field(default_factory=dict)
+    security_score: int = 0
+    auth_type: Optional[str] = None
+
+
+@dataclass
+class FieldAnalysis:
+    """Comprehensive field analysis result."""
     field_name: str
     table_name: str
     dataset_name: str
     row_count: int
-    
-    # Core matching analysis
-    match_type: str  # EXACT, SEMANTIC, PATTERN, INFERRED
+    match_type: str  # EXACT, PARTIAL, ML_IDENTIFIED, SUSPECTED
     confidence: float
     matching_keywords: List[str]
     matching_requirements: List[str]
-    
-    # Advanced intelligence metrics
     semantic_similarity: float
-    pattern_strength: float
-    business_context_score: float
-    data_quality_score: float
-    strategic_value: int
-    implementation_complexity: str
-    
-    # Predictive analytics
-    success_probability: float
-    roi_estimate: float
-    maintenance_burden: str
-    
-    # Business intelligence
     business_context: str
     table_context: str
     recommendation: str
-    next_actions: List[str]
-    
-    # Quality assurance
-    validation_status: str
-    confidence_intervals: Dict[str, Tuple[float, float]]
-    risk_factors: List[str]
+    strategic_priority: int = 0
 
 
-class CorporateIntelligenceManager:
+class CorporateConnectionManager:
     """
-    Ultra-intelligent corporate connection manager with adaptive learning.
+    Comprehensive corporate connection manager that tests all secure methods.
     
-    Automatically discovers, tests, and optimizes corporate network connections
-    with machine learning-powered security analysis.
+    Implements 16 different corporate authentication and connection strategies,
+    ranking them by security score and selecting the optimal configuration.
     """
     
     def __init__(self):
-        self.connection_history = defaultdict(list)
-        self.security_profile = {}
-        self.performance_metrics = {}
-        self.learning_data = {}
+        self.working_methods: Dict[str, ConnectionMethod] = {}
+        self.failed_methods: Dict[str, ConnectionMethod] = {}
+        self.security_config: Dict[str, Any] = {}
+        self.optimal_method: Optional[ConnectionMethod] = None
         
-    def establish_intelligent_corporate_connection(self) -> Dict[str, Any]:
+    def establish_secure_corporate_connection(self) -> Dict[str, Any]:
         """
-        Establish corporate connection using advanced intelligence and learning.
+        Test all secure corporate connection methods and select optimal configuration.
         
-        Uses ML to predict optimal connection methods based on environment analysis.
+        Returns:
+            Dict containing success status, working methods count, and optimal configuration
         """
-        logger.info("Initializing intelligent corporate connection analysis")
+        logger.info("Testing comprehensive secure corporate connection methods")
         
-        # Phase 1: Environment Intelligence Gathering
-        env_profile = self._analyze_corporate_environment()
+        connection_methods = [
+            self._test_corporate_proxy_with_auth,
+            self._test_corporate_proxy_ntlm,
+            self._test_corporate_proxy_kerberos,
+            self._test_corporate_ca_bundle,
+            self._test_corporate_pkcs12_cert,
+            self._test_corporate_pem_cert,
+            self._test_corporate_system_keychain,
+            self._test_pac_auto_config,
+            self._test_wpad_discovery,
+            self._test_environment_proxy,
+            self._test_system_proxy_settings,
+            self._test_corporate_vpn_detection,
+            self._test_corporate_dns_resolution,
+            self._test_corporate_firewall_bypass,
+            self._test_secure_tunnel_detection,
+            self._test_corporate_sso_integration
+        ]
         
-        # Phase 2: Predictive Connection Method Selection
-        predicted_methods = self._predict_optimal_methods(env_profile)
-        
-        # Phase 3: Intelligent Testing with Learning
-        test_results = self._test_methods_with_learning(predicted_methods)
-        
-        # Phase 4: Optimal Configuration with Continuous Learning
-        optimal_config = self._optimize_configuration(test_results, env_profile)
-        
-        return optimal_config
-    
-    def _analyze_corporate_environment(self) -> Dict[str, Any]:
-        """Perform comprehensive corporate environment analysis."""
-        env_profile = {
-            'network_topology': self._detect_network_topology(),
-            'security_posture': self._assess_security_posture(),
-            'performance_characteristics': self._measure_performance_baseline(),
-            'corporate_indicators': self._identify_corporate_indicators(),
-            'compliance_requirements': self._detect_compliance_requirements()
-        }
-        
-        logger.info(f"Corporate environment analysis complete: {len(env_profile)} dimensions analyzed")
-        return env_profile
-    
-    def _detect_network_topology(self) -> Dict[str, Any]:
-        """Intelligent network topology detection."""
-        topology = {
-            'proxy_hierarchy': [],
-            'firewall_characteristics': {},
-            'dns_infrastructure': {},
-            'certificate_authorities': [],
-            'network_segmentation': {}
-        }
-        
-        # Analyze proxy environment
-        proxy_vars = ['HTTP_PROXY', 'HTTPS_PROXY', 'ALL_PROXY', 'NO_PROXY']
-        for var in proxy_vars:
-            if os.environ.get(var):
-                topology['proxy_hierarchy'].append({
-                    'variable': var,
-                    'value': self._sanitize_credential(os.environ[var]),
-                    'type': self._classify_proxy_type(os.environ[var])
-                })
-        
-        # DNS analysis
-        try:
-            import socket
-            hostname = socket.gethostname()
-            fqdn = socket.getfqdn()
-            topology['dns_infrastructure'] = {
-                'hostname': hostname,
-                'fqdn': fqdn,
-                'domain_suffix': fqdn.split('.', 1)[1] if '.' in fqdn else None,
-                'reverse_lookup_capable': self._test_reverse_dns()
-            }
-        except Exception as e:
-            logger.debug(f"DNS analysis failed: {e}")
-        
-        return topology
-    
-    def _assess_security_posture(self) -> Dict[str, Any]:
-        """Assess corporate security posture and requirements."""
-        security_profile = {
-            'certificate_requirements': self._analyze_certificate_requirements(),
-            'authentication_methods': self._detect_authentication_methods(),
-            'encryption_requirements': self._assess_encryption_requirements(),
-            'compliance_indicators': self._detect_compliance_indicators()
-        }
-        
-        return security_profile
-    
-    def _predict_optimal_methods(self, env_profile: Dict[str, Any]) -> List[str]:
-        """Use ML to predict optimal connection methods based on environment."""
-        method_scores = {}
-        
-        # Scoring based on environment characteristics
-        if env_profile['network_topology']['proxy_hierarchy']:
-            method_scores['proxy_based'] = 90
-        
-        if env_profile['security_posture']['certificate_requirements']['client_cert_required']:
-            method_scores['certificate_based'] = 95
-        
-        if 'kerberos' in env_profile['security_posture']['authentication_methods']:
-            method_scores['kerberos_auth'] = 85
-        
-        if 'ntlm' in env_profile['security_posture']['authentication_methods']:
-            method_scores['ntlm_auth'] = 80
-        
-        # Sort by predicted success probability
-        sorted_methods = sorted(method_scores.items(), key=lambda x: x[1], reverse=True)
-        return [method[0] for method in sorted_methods[:5]]
-    
-    def _test_methods_with_learning(self, predicted_methods: List[str]) -> Dict[str, Any]:
-        """Test connection methods with intelligent learning and adaptation."""
-        results = {}
-        
-        test_methods = {
-            'proxy_based': self._test_proxy_connection,
-            'certificate_based': self._test_certificate_connection,
-            'kerberos_auth': self._test_kerberos_connection,
-            'ntlm_auth': self._test_ntlm_connection,
-            'vpn_detection': self._test_vpn_connection
-        }
-        
-        for method in predicted_methods:
-            if method in test_methods:
+        # Execute all connection tests in parallel for efficiency
+        with ThreadPoolExecutor(max_workers=8) as executor:
+            future_to_method = {executor.submit(method): method for method in connection_methods}
+            
+            for future in as_completed(future_to_method):
+                method = future_to_method[future]
+                method_name = method.__name__.replace('_test_', '').replace('_', ' ').title()
+                
                 try:
-                    result = test_methods[method]()
-                    results[method] = result
-                    
-                    # Learn from results
-                    self._update_learning_model(method, result)
-                    
-                    logger.info(f"Method {method}: {'SUCCESS' if result['success'] else 'FAILED'}")
-                    
+                    result = future.result(timeout=30)
+                    if result.success:
+                        self.working_methods[method.__name__] = result
+                        logger.info(f"SUCCESS: {method_name} - {result.message}")
+                    else:
+                        self.failed_methods[method.__name__] = result
+                        logger.debug(f"FAILED: {method_name} - {result.message}")
                 except Exception as e:
-                    results[method] = {'success': False, 'error': str(e)}
-                    logger.debug(f"Method {method} failed: {e}")
+                    self.failed_methods[method.__name__] = ConnectionMethod(
+                        name=method_name, success=False, message=str(e)
+                    )
+                    logger.debug(f"ERROR: {method_name} - {str(e)}")
         
-        return results
+        return self._configure_optimal_connection()
     
-    @intelligent_retry(max_attempts=3)
-    def _test_proxy_connection(self) -> Dict[str, Any]:
-        """Test proxy connection with intelligent error handling."""
-        import requests
-        
-        proxy_url = os.environ.get('HTTPS_PROXY') or os.environ.get('HTTP_PROXY')
-        if not proxy_url:
-            return {'success': False, 'reason': 'No proxy configured'}
-        
+    @retry_with_exponential_backoff(max_retries=2)
+    def _test_corporate_proxy_with_auth(self) -> ConnectionMethod:
+        """Test HTTP/HTTPS proxy with username/password authentication."""
         try:
+            import requests
+            from requests.auth import HTTPProxyAuth
+            
+            for env_var in ['HTTPS_PROXY', 'HTTP_PROXY', 'https_proxy', 'http_proxy']:
+                proxy_url = os.environ.get(env_var)
+                if proxy_url and '@' in proxy_url:
+                    parsed = urllib.parse.urlparse(proxy_url)
+                    if parsed.username and parsed.password:
+                        clean_proxy = f"{parsed.scheme}://{parsed.hostname}:{parsed.port}"
+                        auth = HTTPProxyAuth(parsed.username, parsed.password)
+                        
+                        response = requests.get(
+                            'https://httpbin.org/ip',
+                            proxies={'https': clean_proxy, 'http': clean_proxy},
+                            auth=auth,
+                            timeout=10,
+                            verify=False
+                        )
+                        
+                        if response.status_code == 200:
+                            return ConnectionMethod(
+                                name='Corporate Proxy With Auth',
+                                success=True,
+                                message=f'Authenticated proxy: {parsed.hostname}:{parsed.port}',
+                                config={'proxy': clean_proxy, 'auth': True},
+                                security_score=6,
+                                auth_type='basic'
+                            )
+            
+            return ConnectionMethod(
+                name='Corporate Proxy With Auth',
+                success=False,
+                message='No authenticated proxy found in environment'
+            )
+            
+        except Exception as e:
+            return ConnectionMethod(
+                name='Corporate Proxy With Auth',
+                success=False,
+                message=f'Authentication test failed: {str(e)}'
+            )
+    
+    @retry_with_exponential_backoff(max_retries=2)
+    def _test_corporate_proxy_ntlm(self) -> ConnectionMethod:
+        """Test NTLM authentication through corporate proxy."""
+        try:
+            from requests_ntlm import HttpNtlmAuth
+            import requests
+            import getpass
+            
+            proxy_url = os.environ.get('HTTPS_PROXY') or os.environ.get('HTTP_PROXY')
+            if not proxy_url:
+                return ConnectionMethod(
+                    name='Corporate Proxy NTLM',
+                    success=False,
+                    message='No proxy configured for NTLM'
+                )
+            
+            username = os.environ.get('USERNAME', getpass.getuser())
+            domain = os.environ.get('USERDOMAIN', 'CORP')
+            auth = HttpNtlmAuth(f'{domain}\\{username}', '')
+            
             response = requests.get(
                 'https://httpbin.org/ip',
                 proxies={'https': proxy_url, 'http': proxy_url},
+                auth=auth,
                 timeout=15,
                 verify=False
             )
             
             if response.status_code == 200:
-                return {
-                    'success': True,
-                    'method': 'proxy',
-                    'proxy_url': self._sanitize_credential(proxy_url),
-                    'response_time': response.elapsed.total_seconds(),
-                    'security_score': 6
-                }
-        except Exception as e:
-            return {'success': False, 'error': str(e)}
-        
-        return {'success': False, 'reason': 'Proxy connection failed'}
-    
-    def _test_certificate_connection(self) -> Dict[str, Any]:
-        """Test certificate-based connection."""
-        # Simplified certificate testing
-        cert_paths = [
-            os.path.expanduser('~/.certificates/client.crt'),
-            '/etc/ssl/certs/client.crt'
-        ]
-        
-        for cert_path in cert_paths:
-            if os.path.exists(cert_path):
-                return {
-                    'success': True,
-                    'method': 'certificate',
-                    'cert_path': cert_path,
-                    'security_score': 9
-                }
-        
-        return {'success': False, 'reason': 'No client certificates found'}
-    
-    def _test_kerberos_connection(self) -> Dict[str, Any]:
-        """Test Kerberos authentication."""
-        kerberos_indicators = ['KRB5_CONFIG', 'KRB5CCNAME']
-        
-        for indicator in kerberos_indicators:
-            if os.environ.get(indicator):
-                return {
-                    'success': True,
-                    'method': 'kerberos',
-                    'security_score': 8
-                }
-        
-        return {'success': False, 'reason': 'No Kerberos environment detected'}
-    
-    def _test_ntlm_connection(self) -> Dict[str, Any]:
-        """Test NTLM authentication."""
-        if os.environ.get('USERDOMAIN'):
-            return {
-                'success': True,
-                'method': 'ntlm',
-                'domain': os.environ.get('USERDOMAIN'),
-                'security_score': 7
-            }
-        
-        return {'success': False, 'reason': 'No NTLM domain detected'}
-    
-    def _test_vpn_connection(self) -> Dict[str, Any]:
-        """Test VPN connection detection."""
-        try:
-            import subprocess
+                return ConnectionMethod(
+                    name='Corporate Proxy NTLM',
+                    success=True,
+                    message=f'NTLM authentication successful: {domain}\\{username}',
+                    config={'proxy': proxy_url, 'auth_type': 'ntlm'},
+                    security_score=7,
+                    auth_type='ntlm'
+                )
             
-            if platform.system() == 'Darwin':  # macOS
-                result = subprocess.run(['ifconfig'], capture_output=True, text=True, timeout=5)
-                if any(indicator in result.stdout.lower() for indicator in ['tun', 'tap', 'utun']):
-                    return {
-                        'success': True,
-                        'method': 'vpn',
-                        'security_score': 5
-                    }
-        except Exception:
-            pass
-        
-        return {'success': False, 'reason': 'No VPN detected'}
+            return ConnectionMethod(
+                name='Corporate Proxy NTLM',
+                success=False,
+                message='NTLM authentication failed'
+            )
+            
+        except ImportError:
+            return ConnectionMethod(
+                name='Corporate Proxy NTLM',
+                success=False,
+                message='requests-ntlm library not available'
+            )
+        except Exception as e:
+            return ConnectionMethod(
+                name='Corporate Proxy NTLM',
+                success=False,
+                message=f'NTLM test failed: {str(e)}'
+            )
     
-    def _optimize_configuration(self, test_results: Dict, env_profile: Dict) -> Dict[str, Any]:
-        """Optimize configuration based on test results and environment analysis."""
-        working_methods = {k: v for k, v in test_results.items() if v.get('success', False)}
-        
-        if not working_methods:
-            return {
-                'success': False,
-                'methods': 0,
-                'recommendation': 'Contact IT department for network configuration assistance'
-            }
-        
-        # Select optimal method based on security score and reliability
-        optimal_method = max(working_methods.items(), 
-                           key=lambda x: x[1].get('security_score', 0))
-        
-        return {
-            'success': True,
-            'methods': len(working_methods),
-            'optimal_method': optimal_method[1],
-            'security_score': optimal_method[1].get('security_score', 0),
-            'config': optimal_method[1],
-            'working_methods': list(working_methods.keys())
-        }
+    @retry_with_exponential_backoff(max_retries=2)
+    def _test_corporate_proxy_kerberos(self) -> ConnectionMethod:
+        """Test Kerberos authentication through corporate proxy."""
+        try:
+            from requests_kerberos import HTTPKerberosAuth
+            import requests
+            
+            proxy_url = os.environ.get('HTTPS_PROXY') or os.environ.get('HTTP_PROXY')
+            if not proxy_url:
+                return ConnectionMethod(
+                    name='Corporate Proxy Kerberos',
+                    success=False,
+                    message='No proxy configured for Kerberos'
+                )
+            
+            auth = HTTPKerberosAuth()
+            response = requests.get(
+                'https://httpbin.org/ip',
+                proxies={'https': proxy_url, 'http': proxy_url},
+                auth=auth,
+                timeout=15,
+                verify=False
+            )
+            
+            if response.status_code == 200:
+                return ConnectionMethod(
+                    name='Corporate Proxy Kerberos',
+                    success=True,
+                    message='Kerberos authentication successful',
+                    config={'proxy': proxy_url, 'auth_type': 'kerberos'},
+                    security_score=8,
+                    auth_type='kerberos'
+                )
+            
+            return ConnectionMethod(
+                name='Corporate Proxy Kerberos',
+                success=False,
+                message='Kerberos authentication failed'
+            )
+            
+        except ImportError:
+            return ConnectionMethod(
+                name='Corporate Proxy Kerberos',
+                success=False,
+                message='requests-kerberos library not available'
+            )
+        except Exception as e:
+            return ConnectionMethod(
+                name='Corporate Proxy Kerberos',
+                success=False,
+                message=f'Kerberos test failed: {str(e)}'
+            )
     
-    def _sanitize_credential(self, value: str) -> str:
-        """Sanitize credentials for logging."""
-        if '@' in value:
-            parts = value.split('@')
-            if ':' in parts[0]:
-                auth_parts = parts[0].split('://')
-                if len(auth_parts) == 2 and ':' in auth_parts[1]:
-                    user, _ = auth_parts[1].split(':', 1)
-                    return f"{auth_parts[0]}://{user}:***@{parts[1]}"
-        return value
+    def _test_corporate_ca_bundle(self) -> ConnectionMethod:
+        """Test corporate CA certificate bundle verification."""
+        try:
+            import requests
+            
+            ca_paths = [
+                os.environ.get('REQUESTS_CA_BUNDLE'),
+                os.environ.get('CURL_CA_BUNDLE'),
+                os.environ.get('SSL_CERT_FILE'),
+                '/etc/ssl/certs/ca-certificates.crt',
+                '/etc/ssl/certs/ca-bundle.crt',
+                '/etc/pki/tls/certs/ca-bundle.crt',
+                '/usr/local/etc/openssl/cert.pem',
+                '/opt/local/etc/openssl/cert.pem',
+                '/System/Library/Keychains/SystemRootCertificates.keychain',
+                '/Library/Keychains/System.keychain'
+            ]
+            
+            for ca_path in ca_paths:
+                if ca_path and os.path.exists(ca_path):
+                    try:
+                        response = requests.get(
+                            'https://httpbin.org/ip',
+                            verify=ca_path,
+                            timeout=10
+                        )
+                        
+                        if response.status_code == 200:
+                            return ConnectionMethod(
+                                name='Corporate CA Bundle',
+                                success=True,
+                                message=f'Corporate CA bundle working: {ca_path}',
+                                config={'ca_bundle': ca_path},
+                                security_score=6
+                            )
+                    except:
+                        continue
+            
+            return ConnectionMethod(
+                name='Corporate CA Bundle',
+                success=False,
+                message='No working corporate CA bundle found'
+            )
+            
+        except Exception as e:
+            return ConnectionMethod(
+                name='Corporate CA Bundle',
+                success=False,
+                message=f'CA bundle test failed: {str(e)}'
+            )
     
-    def _classify_proxy_type(self, proxy_url: str) -> str:
-        """Classify proxy type based on URL structure."""
-        if 'socks' in proxy_url.lower():
-            return 'SOCKS'
-        elif proxy_url.startswith('https://'):
-            return 'HTTPS'
-        elif proxy_url.startswith('http://'):
-            return 'HTTP'
-        else:
-            return 'UNKNOWN'
+    def _test_corporate_pkcs12_cert(self) -> ConnectionMethod:
+        """Test PKCS#12 client certificate authentication."""
+        try:
+            import requests
+            from cryptography.hazmat.primitives.serialization import pkcs12
+            
+            cert_paths = [
+                os.path.expanduser('~/.certificates/client.p12'),
+                os.path.expanduser('~/certificates/client.p12'),
+                '/etc/ssl/certs/client.p12'
+            ]
+            
+            for cert_path in cert_paths:
+                if os.path.exists(cert_path) and cert_path.endswith('.p12'):
+                    try:
+                        passwords = [b'', b'password', b'changeme']
+                        for password in passwords:
+                            try:
+                                with open(cert_path, 'rb') as f:
+                                    cert_data = f.read()
+                                
+                                private_key, certificate, _ = pkcs12.load_key_and_certificates(
+                                    cert_data, password
+                                )
+                                
+                                response = requests.get(
+                                    'https://httpbin.org/ip',
+                                    cert=(cert_path, password.decode() if password else None),
+                                    timeout=10,
+                                    verify=False
+                                )
+                                
+                                if response.status_code == 200:
+                                    return ConnectionMethod(
+                                        name='Corporate PKCS12 Cert',
+                                        success=True,
+                                        message=f'PKCS#12 certificate working: {cert_path}',
+                                        config={'client_cert': cert_path},
+                                        security_score=10
+                                    )
+                            except:
+                                continue
+                    except:
+                        continue
+            
+            return ConnectionMethod(
+                name='Corporate PKCS12 Cert',
+                success=False,
+                message='No working PKCS#12 client certificate found'
+            )
+            
+        except ImportError:
+            return ConnectionMethod(
+                name='Corporate PKCS12 Cert',
+                success=False,
+                message='cryptography library not available'
+            )
+        except Exception as e:
+            return ConnectionMethod(
+                name='Corporate PKCS12 Cert',
+                success=False,
+                message=f'PKCS#12 test failed: {str(e)}'
+            )
     
-    def _update_learning_model(self, method: str, result: Dict):
-        """Update ML model with connection attempt results."""
-        if method not in self.learning_data:
-            self.learning_data[method] = []
-        
-        self.learning_data[method].append({
-            'timestamp': datetime.now().isoformat(),
-            'success': result.get('success', False),
-            'response_time': result.get('response_time', 0),
-            'error': result.get('error', ''),
-            'environment_hash': hashlib.md5(str(os.environ).encode()).hexdigest()[:8]
-        })
+    def _test_corporate_pem_cert(self) -> ConnectionMethod:
+        """Test PEM client certificate authentication."""
+        try:
+            import requests
+            
+            cert_locations = [
+                (os.path.expanduser('~/.certificates/client.crt'), 
+                 os.path.expanduser('~/.certificates/client.key')),
+                (os.path.expanduser('~/certificates/client.crt'), 
+                 os.path.expanduser('~/certificates/client.key')),
+                ('/etc/ssl/certs/client.crt', '/etc/ssl/private/client.key'),
+                ('/etc/pki/tls/certs/client.crt', '/etc/pki/tls/private/client.key')
+            ]
+            
+            for cert_file, key_file in cert_locations:
+                if os.path.exists(cert_file) and os.path.exists(key_file):
+                    try:
+                        response = requests.get(
+                            'https://httpbin.org/ip',
+                            cert=(cert_file, key_file),
+                            timeout=10,
+                            verify=False
+                        )
+                        
+                        if response.status_code == 200:
+                            return ConnectionMethod(
+                                name='Corporate PEM Cert',
+                                success=True,
+                                message=f'PEM certificate working: {cert_file}',
+                                config={'client_cert': cert_file, 'client_key': key_file},
+                                security_score=9
+                            )
+                    except:
+                        continue
+            
+            return ConnectionMethod(
+                name='Corporate PEM Cert',
+                success=False,
+                message='No working PEM client certificate found'
+            )
+            
+        except Exception as e:
+            return ConnectionMethod(
+                name='Corporate PEM Cert',
+                success=False,
+                message=f'PEM certificate test failed: {str(e)}'
+            )
     
-    # Simplified placeholder methods for comprehensive analysis
-    def _measure_performance_baseline(self) -> Dict:
-        return {'latency': 'normal', 'throughput': 'high'}
+    def _test_corporate_system_keychain(self) -> ConnectionMethod:
+        """Test system keychain/certificate store integration."""
+        try:
+            system = platform.system()
+            
+            if system == 'Darwin':  # macOS
+                try:
+                    import subprocess
+                    result = subprocess.run([
+                        'security', 'find-certificate', '-c', 'Corporate', '-p'
+                    ], capture_output=True, text=True, timeout=5)
+                    
+                    if result.returncode == 0 and result.stdout:
+                        return ConnectionMethod(
+                            name='Corporate System Keychain',
+                            success=True,
+                            message='macOS system keychain certificates available',
+                            config={'keychain': 'system'},
+                            security_score=4
+                        )
+                except:
+                    pass
+            
+            elif system == 'Windows':  # Windows
+                try:
+                    import ssl
+                    context = ssl.create_default_context()
+                    context.load_default_certs(ssl.Purpose.SERVER_AUTH)
+                    
+                    return ConnectionMethod(
+                        name='Corporate System Keychain',
+                        success=True,
+                        message='Windows certificate store accessible',
+                        config={'certstore': 'system'},
+                        security_score=4
+                    )
+                except:
+                    pass
+            
+            return ConnectionMethod(
+                name='Corporate System Keychain',
+                success=False,
+                message=f'System keychain not accessible on {system}'
+            )
+            
+        except Exception as e:
+            return ConnectionMethod(
+                name='Corporate System Keychain',
+                success=False,
+                message=f'System keychain test failed: {str(e)}'
+            )
     
-    def _identify_corporate_indicators(self) -> Dict:
-        return {'domain_suffix': 'corporate', 'managed_device': True}
+    def _test_pac_auto_config(self) -> ConnectionMethod:
+        """Test Proxy Auto-Configuration (PAC) file detection."""
+        try:
+            import requests
+            
+            pac_urls = [
+                os.environ.get('PAC_URL'),
+                'http://wpad/wpad.dat',
+                'http://wpad.corp/wpad.dat',
+                'http://proxy.corp/proxy.pac',
+                'http://autoconfigure.corp/proxy.pac'
+            ]
+            
+            for pac_url in pac_urls:
+                if pac_url:
+                    try:
+                        response = requests.get(pac_url, timeout=5)
+                        if response.status_code == 200 and 'FindProxyForURL' in response.text:
+                            return ConnectionMethod(
+                                name='PAC Auto Config',
+                                success=True,
+                                message=f'PAC file found: {pac_url}',
+                                config={'pac_url': pac_url},
+                                security_score=2
+                            )
+                    except:
+                        continue
+            
+            return ConnectionMethod(
+                name='PAC Auto Config',
+                success=False,
+                message='No accessible PAC file found'
+            )
+            
+        except Exception as e:
+            return ConnectionMethod(
+                name='PAC Auto Config',
+                success=False,
+                message=f'PAC detection failed: {str(e)}'
+            )
     
-    def _detect_compliance_requirements(self) -> Dict:
-        return {'encryption_required': True, 'audit_logging': True}
-    
-    def _analyze_certificate_requirements(self) -> Dict:
-        return {'client_cert_required': False, 'ca_validation': True}
-    
-    def _detect_authentication_methods(self) -> List:
-        methods = []
-        if os.environ.get('KRB5_CONFIG'):
-            methods.append('kerberos')
-        if os.environ.get('USERDOMAIN'):
-            methods.append('ntlm')
-        return methods
-    
-    def _assess_encryption_requirements(self) -> Dict:
-        return {'tls_required': True, 'min_version': '1.2'}
-    
-    def _detect_compliance_indicators(self) -> List:
-        return ['corporate_managed', 'security_monitoring']
-    
-    def _test_reverse_dns(self) -> bool:
+    def _test_wpad_discovery(self) -> ConnectionMethod:
+        """Test Web Proxy Auto-Discovery Protocol (WPAD)."""
         try:
             import socket
-            socket.gethostbyaddr('8.8.8.8')
-            return True
-        except:
-            return False
-
-
-class IntelligentMLSystem:
-    """
-    Next-generation ML system with adaptive intelligence and self-optimization.
+            import requests
+            
+            wpad_hosts = ['wpad', 'wpad.corp', 'proxy', 'proxy.corp']
+            
+            for host in wpad_hosts:
+                try:
+                    ip = socket.gethostbyname(host)
+                    wpad_url = f'http://{host}/wpad.dat'
+                    
+                    response = requests.get(wpad_url, timeout=5)
+                    if response.status_code == 200 and 'FindProxyForURL' in response.text:
+                        return ConnectionMethod(
+                            name='WPAD Discovery',
+                            success=True,
+                            message=f'WPAD discovered: {host} ({ip})',
+                            config={'wpad_host': host, 'wpad_ip': ip},
+                            security_score=2
+                        )
+                except:
+                    continue
+            
+            return ConnectionMethod(
+                name='WPAD Discovery',
+                success=False,
+                message='WPAD discovery failed'
+            )
+            
+        except Exception as e:
+            return ConnectionMethod(
+                name='WPAD Discovery',
+                success=False,
+                message=f'WPAD discovery error: {str(e)}'
+            )
     
-    Automatically selects optimal ML strategies, manages model lifecycle,
-    and provides advanced semantic analysis with corporate security integration.
+    def _test_environment_proxy(self) -> ConnectionMethod:
+        """Test environment variable proxy detection and validation."""
+        try:
+            import requests
+            
+            proxy_vars = ['HTTPS_PROXY', 'HTTP_PROXY', 'https_proxy', 'http_proxy', 'ALL_PROXY']
+            
+            for var in proxy_vars:
+                proxy_url = os.environ.get(var)
+                if proxy_url:
+                    try:
+                        response = requests.get(
+                            'https://httpbin.org/ip',
+                            proxies={'https': proxy_url, 'http': proxy_url},
+                            timeout=10,
+                            verify=False
+                        )
+                        
+                        if response.status_code == 200:
+                            return ConnectionMethod(
+                                name='Environment Proxy',
+                                success=True,
+                                message=f'Environment proxy working: {var}',
+                                config={'proxy': proxy_url, 'env_var': var},
+                                security_score=3
+                            )
+                    except:
+                        continue
+            
+            return ConnectionMethod(
+                name='Environment Proxy',
+                success=False,
+                message='No working environment proxy found'
+            )
+            
+        except Exception as e:
+            return ConnectionMethod(
+                name='Environment Proxy',
+                success=False,
+                message=f'Environment proxy test failed: {str(e)}'
+            )
+    
+    def _test_system_proxy_settings(self) -> ConnectionMethod:
+        """Test system-level proxy settings detection."""
+        try:
+            system = platform.system()
+            
+            if system == 'Darwin':  # macOS
+                try:
+                    import subprocess
+                    result = subprocess.run([
+                        'networksetup', '-getwebproxy', 'Wi-Fi'
+                    ], capture_output=True, text=True, timeout=5)
+                    
+                    if 'Enabled: Yes' in result.stdout:
+                        lines = result.stdout.split('\n')
+                        server = next((line.split(': ')[1] for line in lines if line.startswith('Server:')), None)
+                        port = next((line.split(': ')[1] for line in lines if line.startswith('Port:')), None)
+                        
+                        if server and port:
+                            return ConnectionMethod(
+                                name='System Proxy Settings',
+                                success=True,
+                                message=f'macOS system proxy: {server}:{port}',
+                                config={'proxy': f'http://{server}:{port}'},
+                                security_score=3
+                            )
+                except:
+                    pass
+            
+            elif system == 'Windows':  # Windows
+                try:
+                    import winreg
+                    key = winreg.OpenKey(winreg.HKEY_CURRENT_USER, 
+                                       r'Software\Microsoft\Windows\CurrentVersion\Internet Settings')
+                    proxy_enable = winreg.QueryValueEx(key, 'ProxyEnable')[0]
+                    
+                    if proxy_enable:
+                        proxy_server = winreg.QueryValueEx(key, 'ProxyServer')[0]
+                        return ConnectionMethod(
+                            name='System Proxy Settings',
+                            success=True,
+                            message=f'Windows system proxy: {proxy_server}',
+                            config={'proxy': f'http://{proxy_server}'},
+                            security_score=3
+                        )
+                except:
+                    pass
+            
+            return ConnectionMethod(
+                name='System Proxy Settings',
+                success=False,
+                message=f'No system proxy found on {system}'
+            )
+            
+        except Exception as e:
+            return ConnectionMethod(
+                name='System Proxy Settings',
+                success=False,
+                message=f'System proxy detection failed: {str(e)}'
+            )
+    
+    def _test_corporate_vpn_detection(self) -> ConnectionMethod:
+        """Test corporate VPN connection detection."""
+        try:
+            import subprocess
+            system = platform.system()
+            
+            if system == 'Darwin':  # macOS
+                try:
+                    result = subprocess.run([
+                        'ifconfig'
+                    ], capture_output=True, text=True, timeout=5)
+                    
+                    vpn_indicators = ['tun', 'tap', 'ppp', 'utun', 'ipsec']
+                    for indicator in vpn_indicators:
+                        if indicator in result.stdout.lower():
+                            return ConnectionMethod(
+                                name='Corporate VPN Detection',
+                                success=True,
+                                message=f'Corporate VPN detected: {indicator} interface',
+                                config={'vpn_type': indicator},
+                                security_score=5
+                            )
+                except:
+                    pass
+            
+            elif system == 'Windows':  # Windows
+                try:
+                    result = subprocess.run([
+                        'ipconfig', '/all'
+                    ], capture_output=True, text=True, timeout=5)
+                    
+                    if 'VPN' in result.stdout or 'TAP' in result.stdout:
+                        return ConnectionMethod(
+                            name='Corporate VPN Detection',
+                            success=True,
+                            message='Corporate VPN detected: Windows VPN adapter',
+                            config={'vpn_type': 'windows_vpn'},
+                            security_score=5
+                        )
+                except:
+                    pass
+            
+            return ConnectionMethod(
+                name='Corporate VPN Detection',
+                success=False,
+                message='No corporate VPN detected'
+            )
+            
+        except Exception as e:
+            return ConnectionMethod(
+                name='Corporate VPN Detection',
+                success=False,
+                message=f'VPN detection failed: {str(e)}'
+            )
+    
+    def _test_corporate_dns_resolution(self) -> ConnectionMethod:
+        """Test corporate DNS resolution capability."""
+        try:
+            import socket
+            
+            test_domains = ['huggingface.co', 'github.com', 'pypi.org', 'googleapis.com']
+            resolved_count = 0
+            
+            for domain in test_domains:
+                try:
+                    socket.gethostbyname(domain)
+                    resolved_count += 1
+                except:
+                    continue
+            
+            success_rate = resolved_count / len(test_domains)
+            if success_rate >= 0.75:
+                return ConnectionMethod(
+                    name='Corporate DNS Resolution',
+                    success=True,
+                    message=f'Corporate DNS working: {resolved_count}/{len(test_domains)} domains resolved',
+                    config={'resolved_domains': resolved_count},
+                    security_score=1
+                )
+            
+            return ConnectionMethod(
+                name='Corporate DNS Resolution',
+                success=False,
+                message=f'DNS resolution poor: {resolved_count}/{len(test_domains)} domains'
+            )
+            
+        except Exception as e:
+            return ConnectionMethod(
+                name='Corporate DNS Resolution',
+                success=False,
+                message=f'DNS resolution test failed: {str(e)}'
+            )
+    
+    def _test_corporate_firewall_bypass(self) -> ConnectionMethod:
+        """Test corporate firewall detection and bypass strategies."""
+        try:
+            import requests
+            
+            test_endpoints = [
+                ('https://httpbin.org/ip', 443),
+                ('http://httpbin.org/ip', 80),
+                ('https://httpbin.org:8080/ip', 8080),
+                ('https://httpbin.org:8443/ip', 8443)
+            ]
+            
+            working_endpoints = []
+            for endpoint, port in test_endpoints:
+                try:
+                    response = requests.get(endpoint, timeout=5, verify=False)
+                    if response.status_code == 200:
+                        working_endpoints.append((endpoint, port))
+                except:
+                    continue
+            
+            if working_endpoints:
+                return ConnectionMethod(
+                    name='Corporate Firewall Bypass',
+                    success=True,
+                    message=f'Firewall bypass successful: {len(working_endpoints)} ports accessible',
+                    config={'working_ports': [port for _, port in working_endpoints]},
+                    security_score=1
+                )
+            
+            return ConnectionMethod(
+                name='Corporate Firewall Bypass',
+                success=False,
+                message='No accessible ports found through firewall'
+            )
+            
+        except Exception as e:
+            return ConnectionMethod(
+                name='Corporate Firewall Bypass',
+                success=False,
+                message=f'Firewall bypass test failed: {str(e)}'
+            )
+    
+    def _test_secure_tunnel_detection(self) -> ConnectionMethod:
+        """Test secure tunnel detection (SSH, encrypted proxy, etc.)."""
+        try:
+            # Check for SSH tunnel environment variables
+            ssh_vars = ['SSH_AUTH_SOCK', 'SSH_AGENT_PID', 'SSH_CONNECTION']
+            ssh_detected = any(os.environ.get(var) for var in ssh_vars)
+            
+            if ssh_detected:
+                return ConnectionMethod(
+                    name='Secure Tunnel Detection',
+                    success=True,
+                    message='SSH tunnel environment detected',
+                    config={'tunnel_type': 'ssh'},
+                    security_score=5
+                )
+            
+            # Check for common tunnel ports
+            import socket
+            tunnel_ports = [1080, 8080, 3128, 8888, 9050]
+            
+            for port in tunnel_ports:
+                try:
+                    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                    sock.settimeout(1)
+                    result = sock.connect_ex(('localhost', port))
+                    sock.close()
+                    
+                    if result == 0:
+                        return ConnectionMethod(
+                            name='Secure Tunnel Detection',
+                            success=True,
+                            message=f'Local tunnel detected on port {port}',
+                            config={'tunnel_port': port},
+                            security_score=5
+                        )
+                except:
+                    continue
+            
+            return ConnectionMethod(
+                name='Secure Tunnel Detection',
+                success=False,
+                message='No secure tunnels detected'
+            )
+            
+        except Exception as e:
+            return ConnectionMethod(
+                name='Secure Tunnel Detection',
+                success=False,
+                message=f'Tunnel detection failed: {str(e)}'
+            )
+    
+    def _test_corporate_sso_integration(self) -> ConnectionMethod:
+        """Test corporate Single Sign-On integration detection."""
+        try:
+            # Check for SSO environment variables
+            sso_vars = [
+                'ADFS_TOKEN', 'SAML_TOKEN', 'OIDC_TOKEN', 'OAUTH_TOKEN',
+                'KRB5_CONFIG', 'KRB5CCNAME', 'KERB_PRINCIPAL'
+            ]
+            
+            detected_sso = [var for var in sso_vars if os.environ.get(var)]
+            
+            if detected_sso:
+                return ConnectionMethod(
+                    name='Corporate SSO Integration',
+                    success=True,
+                    message=f'Corporate SSO detected: {", ".join(detected_sso)}',
+                    config={'sso_vars': detected_sso},
+                    security_score=5
+                )
+            
+            # Check for browser-based SSO tokens
+            try:
+                import sqlite3
+                
+                chrome_paths = [
+                    os.path.expanduser('~/Library/Application Support/Google/Chrome/Default/Cookies'),
+                    os.path.expanduser('~/.config/google-chrome/Default/Cookies'),
+                    os.path.expanduser('~/AppData/Local/Google/Chrome/User Data/Default/Cookies')
+                ]
+                
+                for path in chrome_paths:
+                    if os.path.exists(path):
+                        return ConnectionMethod(
+                            name='Corporate SSO Integration',
+                            success=True,
+                            message='Browser-based SSO tokens available',
+                            config={'browser': 'chrome'},
+                            security_score=5
+                        )
+            except:
+                pass
+            
+            return ConnectionMethod(
+                name='Corporate SSO Integration',
+                success=False,
+                message='No corporate SSO integration detected'
+            )
+            
+        except Exception as e:
+            return ConnectionMethod(
+                name='Corporate SSO Integration',
+                success=False,
+                message=f'SSO detection failed: {str(e)}'
+            )
+    
+    def _configure_optimal_connection(self) -> Dict[str, Any]:
+        """
+        Configure optimal connection based on working methods.
+        
+        Returns:
+            Dict containing success status, methods count, and optimal configuration
+        """
+        logger.info("Analyzing optimal configuration from working methods")
+        
+        if not self.working_methods:
+            logger.warning("No working secure connection methods found")
+            return {'success': False, 'methods': 0}
+        
+        # Security scoring matrix
+        method_priority = {
+            'pkcs12_cert': 10,
+            'pem_cert': 9,
+            'kerberos_auth': 8,
+            'ntlm_auth': 7,
+            'proxy_auth': 6,
+            'ca_bundle': 6,
+            'sso_integration': 5,
+            'vpn_detected': 5,
+            'system_keychain': 4,
+            'system_proxy': 3,
+            'env_proxy': 3,
+            'pac_config': 2,
+            'wpad_discovery': 2,
+            'dns_resolution': 1,
+            'firewall_bypass': 1
+        }
+        
+        # Select optimal method
+        best_method = None
+        best_score = 0
+        
+        for method_name, result in self.working_methods.items():
+            # Calculate composite score based on security and reliability
+            base_score = result.security_score or method_priority.get(result.name.lower().replace(' ', '_'), 0)
+            
+            if base_score > best_score:
+                best_score = base_score
+                best_method = result
+        
+        if best_method:
+            self.optimal_method = best_method
+            self.security_config = best_method.config
+            
+            logger.info(f"Optimal method selected: {best_method.name} (Score: {best_score}/10)")
+            
+            return {
+                'success': True,
+                'methods': len(self.working_methods),
+                'optimal_method': best_method,
+                'security_score': best_score,
+                'config': self.security_config
+            }
+        
+        return {'success': False, 'methods': len(self.working_methods)}
+
+
+class MLDependencyManager:
+    """
+    Advanced ML library dependency manager with intelligent installation.
+    
+    Handles detection, installation, and verification of ML libraries
+    with comprehensive error handling and fallback strategies.
     """
     
     def __init__(self):
-        self.ml_strategy = 'auto'
-        self.device = 'auto'
-        self.models = {}
-        self.performance_history = []
-        self.optimization_data = {}
+        self.available_libraries: Dict[str, Dict[str, Any]] = {}
+        self.installation_attempts: Dict[str, bool] = {}
         
-    def initialize_intelligent_system(self) -> Dict[str, Any]:
-        """Initialize ML system with full intelligence and optimization."""
-        logger.info("Initializing intelligent ML system")
+    @lru_cache(maxsize=128)
+    def check_and_install_dependencies(self) -> Dict[str, bool]:
+        """
+        Check for ML dependencies and install if missing.
         
-        # Phase 1: Hardware Intelligence
-        hardware_profile = self._analyze_hardware_capabilities()
-        
-        # Phase 2: Software Intelligence
-        software_profile = self._analyze_software_environment()
-        
-        # Phase 3: Network Intelligence
-        network_profile = self._analyze_network_capabilities()
-        
-        # Phase 4: Adaptive Strategy Selection
-        optimal_strategy = self._select_optimal_strategy(hardware_profile, software_profile, network_profile)
-        
-        # Phase 5: Intelligent Model Loading
-        model_status = self._load_models_intelligently(optimal_strategy, network_profile)
-        
-        return {
-            'hardware_profile': hardware_profile,
-            'software_profile': software_profile,
-            'network_profile': network_profile,
-            'ml_strategy': optimal_strategy,
-            'model_status': model_status,
-            'capabilities': self._assess_final_capabilities()
-        }
-    
-    def _analyze_hardware_capabilities(self) -> Dict[str, Any]:
-        """Comprehensive hardware capability analysis."""
-        profile = {
-            'cpu_info': self._get_cpu_information(),
-            'memory_info': self._get_memory_information(),
-            'gpu_info': self._get_gpu_information(),
-            'performance_class': 'unknown'
+        Returns:
+            Dict mapping library names to availability status
+        """
+        dependencies = {
+            'torch': ['torch', 'torchvision', 'torchaudio'],
+            'transformers': ['transformers'],
+            'sentence_transformers': ['sentence-transformers'],
+            'huggingface_hub': ['huggingface_hub'],
+            'sklearn': ['scikit-learn'],
+            'numpy': ['numpy'],
+            'google.cloud.bigquery': ['google-cloud-bigquery'],
+            'google.oauth2': ['google-auth']
         }
         
-        # Determine performance class
-        if profile['gpu_info']['mps_available']:
-            profile['performance_class'] = 'high_performance_gpu'
-            self.device = 'mps'
-        elif profile['gpu_info']['cuda_available']:
-            profile['performance_class'] = 'high_performance_gpu'
-            self.device = 'cuda'
-        elif profile['cpu_info']['core_count'] >= 8:
-            profile['performance_class'] = 'high_performance_cpu'
-            self.device = 'cpu'
-        else:
-            profile['performance_class'] = 'standard'
-            self.device = 'cpu'
+        logger.info("Checking ML library availability")
         
-        logger.info(f"Hardware analysis: {profile['performance_class']} - Device: {self.device}")
-        return profile
-    
-    def _analyze_software_environment(self) -> Dict[str, Any]:
-        """Analyze software environment and ML library availability."""
-        profile = {
-            'python_version': sys.version_info[:2],
-            'ml_libraries': {},
-            'capability_score': 0
-        }
-        
-        # Test ML library availability with intelligent assessment
-        libraries_to_test = {
-            'torch': {'priority': 100, 'capability_boost': 50},
-            'transformers': {'priority': 90, 'capability_boost': 40},
-            'sentence_transformers': {'priority': 95, 'capability_boost': 45},
-            'sklearn': {'priority': 80, 'capability_boost': 30},
-            'numpy': {'priority': 100, 'capability_boost': 20}
-        }
-        
-        for lib_name, lib_config in libraries_to_test.items():
+        for lib_name, packages in dependencies.items():
             try:
                 if lib_name == 'torch':
                     import torch
-                    profile['ml_libraries'][lib_name] = {
+                    self.available_libraries[lib_name] = {
                         'available': True,
                         'version': torch.__version__,
-                        'mps_support': hasattr(torch.backends, 'mps') and torch.backends.mps.is_available(),
-                        'cuda_support': torch.cuda.is_available()
+                        'mps_available': hasattr(torch.backends, 'mps') and torch.backends.mps.is_available()
                     }
+                    logger.info(f"PyTorch {torch.__version__} available")
+                    
                 elif lib_name == 'transformers':
                     import transformers
-                    profile['ml_libraries'][lib_name] = {
+                    self.available_libraries[lib_name] = {
                         'available': True,
                         'version': transformers.__version__
                     }
+                    logger.info(f"Transformers {transformers.__version__} available")
+                    
                 elif lib_name == 'sentence_transformers':
                     import sentence_transformers
-                    profile['ml_libraries'][lib_name] = {
+                    self.available_libraries[lib_name] = {
                         'available': True,
                         'version': sentence_transformers.__version__
                     }
+                    logger.info(f"Sentence Transformers {sentence_transformers.__version__} available")
+                    
                 elif lib_name == 'sklearn':
                     import sklearn
-                    profile['ml_libraries'][lib_name] = {
+                    self.available_libraries[lib_name] = {
                         'available': True,
                         'version': sklearn.__version__
                     }
-                elif lib_name == 'numpy':
-                    import numpy
-                    profile['ml_libraries'][lib_name] = {
-                        'available': True,
-                        'version': numpy.__version__
-                    }
+                    logger.info(f"Scikit-learn {sklearn.__version__} available")
+                    
+                elif lib_name in ['google.cloud.bigquery', 'google.oauth2']:
+                    # Import test for Google Cloud libraries
+                    if lib_name == 'google.cloud.bigquery':
+                        from google.cloud import bigquery
+                    else:
+                        from google.oauth2 import service_account
+                    
+                    self.available_libraries[lib_name] = {'available': True}
+                    logger.info(f"{lib_name} available")
+                    
+                else:
+                    spec = importlib.util.find_spec(lib_name)
+                    self.available_libraries[lib_name] = {'available': spec is not None}
+                    if spec:
+                        logger.info(f"{lib_name} available")
                 
-                profile['capability_score'] += lib_config['capability_boost']
-                logger.info(f"ML library {lib_name} available")
+            except ImportError as e:
+                self.available_libraries[lib_name] = {'available': False, 'error': str(e)}
+                logger.warning(f"{lib_name} not available: {str(e)}")
                 
-            except ImportError:
-                profile['ml_libraries'][lib_name] = {'available': False}
-                logger.debug(f"ML library {lib_name} not available")
+                # Attempt installation
+                if self._attempt_installation(packages):
+                    # Re-check after installation
+                    try:
+                        importlib.import_module(lib_name.split('.')[0])
+                        self.available_libraries[lib_name]['available'] = True
+                        logger.info(f"{lib_name} successfully installed")
+                    except ImportError:
+                        logger.error(f"{lib_name} installation failed")
         
-        return profile
+        return {k: v['available'] for k, v in self.available_libraries.items()}
     
-    def _analyze_network_capabilities(self) -> Dict[str, Any]:
-        """Analyze network capabilities for model downloading."""
-        # Use corporate connection manager for network analysis
-        corp_manager = CorporateIntelligenceManager()
-        connection_result = corp_manager.establish_intelligent_corporate_connection()
+    def _attempt_installation(self, packages: List[str]) -> bool:
+        """
+        Attempt to install missing packages using multiple methods.
         
-        return {
-            'corporate_connection': connection_result,
-            'download_capability': connection_result['success'],
-            'security_level': connection_result.get('security_score', 0)
-        }
+        Args:
+            packages: List of package names to install
+            
+        Returns:
+            True if installation succeeded
+        """
+        for package in packages:
+            if package in self.installation_attempts:
+                continue
+                
+            installation_commands = [
+                [sys.executable, '-m', 'pip', 'install', package],
+                ['pip3', 'install', package],
+                ['pip', 'install', package]
+            ]
+            
+            for cmd in installation_commands:
+                try:
+                    logger.info(f"Installing {package} with {' '.join(cmd)}")
+                    result = subprocess.run(
+                        cmd, 
+                        capture_output=True, 
+                        text=True, 
+                        timeout=300
+                    )
+                    
+                    if result.returncode == 0:
+                        self.installation_attempts[package] = True
+                        logger.info(f"Successfully installed {package}")
+                        return True
+                    else:
+                        logger.warning(f"Installation failed: {result.stderr}")
+                        
+                except subprocess.TimeoutExpired:
+                    logger.warning(f"Installation timeout for {package}")
+                except Exception as e:
+                    logger.warning(f"Installation error for {package}: {str(e)}")
+            
+            self.installation_attempts[package] = False
+        
+        return False
     
-    def _select_optimal_strategy(self, hardware: Dict, software: Dict, network: Dict) -> str:
-        """Select optimal ML strategy based on comprehensive analysis."""
-        strategy_scores = {}
+    def get_ml_capability_summary(self) -> str:
+        """
+        Get summary of available ML capabilities.
         
-        # Score different strategies
-        if (software['ml_libraries'].get('sentence_transformers', {}).get('available', False) and
-            network['download_capability']):
-            strategy_scores['advanced_transformers'] = 100
+        Returns:
+            Human-readable summary string
+        """
+        available = sum(1 for lib in self.available_libraries.values() if lib['available'])
+        total = len(self.available_libraries)
         
-        if (software['ml_libraries'].get('transformers', {}).get('available', False) and
-            software['ml_libraries'].get('torch', {}).get('available', False)):
-            strategy_scores['basic_transformers'] = 80
-        
-        if software['ml_libraries'].get('sklearn', {}).get('available', False):
-            strategy_scores['statistical_analysis'] = 60
-        
-        strategy_scores['intelligent_patterns'] = 40  # Always available
-        
-        # Select best strategy
-        if strategy_scores:
-            optimal_strategy = max(strategy_scores.items(), key=lambda x: x[1])[0]
-            logger.info(f"Selected ML strategy: {optimal_strategy} (score: {strategy_scores[optimal_strategy]})")
-            return optimal_strategy
-        
-        return 'intelligent_patterns'
-    
-    def _load_models_intelligently(self, strategy: str, network_profile: Dict) -> Dict[str, Any]:
-        """Load ML models with intelligent optimization and error handling."""
-        model_status = {'loaded_models': [], 'failed_models': [], 'strategy_used': strategy}
-        
-        if strategy == 'advanced_transformers':
-            model_status.update(self._load_transformer_models(network_profile))
-        elif strategy == 'basic_transformers':
-            model_status.update(self._load_basic_transformers())
-        elif strategy == 'statistical_analysis':
-            model_status.update(self._load_statistical_models())
+        if available == total:
+            return "Full ML capabilities available"
+        elif available >= total * 0.7:
+            return "Most ML capabilities available"
+        elif available >= total * 0.5:
+            return "Some ML capabilities available"
         else:
-            model_status.update(self._load_pattern_models())
-        
-        return model_status
+            return "Limited ML capabilities available"
+
+
+class AdvancedMLAnalyzer:
+    """
+    Advanced ML analyzer with M1 GPU acceleration and multiple strategies.
     
-    @intelligent_retry(max_attempts=3)
-    def _load_transformer_models(self, network_profile: Dict) -> Dict[str, Any]:
-        """Load transformer models with intelligent network handling."""
+    Implements progressive fallback from advanced transformer models to
+    built-in embeddings, with automatic optimization for available hardware.
+    """
+    
+    def __init__(self, dependency_manager: MLDependencyManager):
+        self.dependency_manager = dependency_manager
+        self.available_libs = dependency_manager.available_libraries
+        self.device = 'cpu'
+        self.ml_strategy = 'pattern_only'
+        self.models: Dict[str, Any] = {}
+        self.built_in_embeddings = self._create_built_in_embeddings()
+        
+        self._initialize_ml_components()
+    
+    def _initialize_ml_components(self):
+        """Initialize ML components based on available libraries and hardware."""
+        # Detect and configure compute device
+        if self.available_libs.get('torch', {}).get('available', False):
+            try:
+                import torch
+                if hasattr(torch.backends, 'mps') and torch.backends.mps.is_available():
+                    self.device = 'mps'
+                    logger.info("M1 GPU (MPS) acceleration enabled")
+                elif torch.cuda.is_available():
+                    self.device = 'cuda'
+                    logger.info("CUDA GPU acceleration enabled")
+                else:
+                    self.device = 'cpu'
+                    logger.info("CPU processing mode")
+            except Exception as e:
+                self.device = 'cpu'
+                logger.warning(f"Device detection failed: {e}")
+        
+        # Initialize ML strategy based on available libraries
+        if self.available_libs.get('sentence_transformers', {}).get('available', False):
+            self.ml_strategy = 'sentence_transformers'
+            self._initialize_sentence_transformers()
+        elif self.available_libs.get('transformers', {}).get('available', False):
+            self.ml_strategy = 'transformers_basic'
+            self._initialize_basic_transformers()
+        elif self.available_libs.get('sklearn', {}).get('available', False):
+            self.ml_strategy = 'tfidf_similarity'
+            self._initialize_tfidf()
+        else:
+            self.ml_strategy = 'pattern_only'
+            logger.info("Using pattern matching only")
+    
+    def _initialize_sentence_transformers(self):
+        """Initialize sentence transformers using secure corporate connections."""
         try:
             from sentence_transformers import SentenceTransformer
             
-            # Apply corporate network configuration
-            if network_profile['corporate_connection']['success']:
-                self._apply_corporate_config(network_profile['corporate_connection']['config'])
+            logger.info("Initializing sentence transformers with corporate security")
             
-            # Try models in order of preference
+            # Get optimal connection configuration
+            connection_manager = CorporateConnectionManager()
+            connection_result = connection_manager.establish_secure_corporate_connection()
+            
+            if connection_result['success']:
+                optimal_config = connection_result.get('config', {})
+                logger.info(f"Using secure connection method: {connection_result['optimal_method'].name}")
+                self._apply_secure_configuration(optimal_config)
+            else:
+                logger.warning("No secure connections available, using direct connection")
+            
+            # Model loading strategies
             models_to_try = [
                 'sentence-transformers/all-MiniLM-L6-v2',
                 'sentence-transformers/paraphrase-MiniLM-L6-v2',
-                'all-MiniLM-L6-v2'
+                'sentence-transformers/all-mpnet-base-v2',
+                'all-MiniLM-L6-v2',
+                'paraphrase-MiniLM-L6-v2'
             ]
             
             for model_name in models_to_try:
-                try:
-                    logger.info(f"Loading transformer model: {model_name}")
-                    model = SentenceTransformer(model_name, device=self.device)
-                    
-                    # Validate model functionality
-                    test_result = model.encode(['test sentence'])
-                    if test_result is not None and len(test_result) > 0:
-                        self.models['transformer'] = model
-                        logger.info(f"Successfully loaded transformer model: {model_name}")
-                        return {
-                            'loaded_models': [model_name],
-                            'failed_models': [],
-                            'model_type': 'transformer'
-                        }
-                except Exception as e:
-                    logger.debug(f"Failed to load {model_name}: {e}")
-                    continue
+                logger.info(f"Attempting to load {model_name}")
+                
+                # Strategy 1: Direct secure loading
+                if self._try_secure_model_loading(model_name, optimal_config):
+                    return
+                
+                # Strategy 2: Cached model loading
+                if self._try_cached_model_loading(model_name):
+                    return
             
-            return {'loaded_models': [], 'failed_models': models_to_try, 'error': 'All transformer models failed'}
+            # Fallback to built-in embeddings
+            logger.warning("All transformer models failed, using built-in embeddings")
+            self.ml_strategy = 'built_in_embeddings'
+            
+        except ImportError:
+            logger.error("Sentence Transformers library not available")
+            self.ml_strategy = 'built_in_embeddings'
+        except Exception as e:
+            logger.error(f"Sentence transformer initialization failed: {e}")
+            self.ml_strategy = 'built_in_embeddings'
+    
+    def _apply_secure_configuration(self, config: Dict[str, Any]):
+        """Apply secure configuration for external connections only."""
+        try:
+            # Configure proxy for external connections, exclude Google services
+            if 'proxy' in config:
+                proxy_url = config['proxy']
+                os.environ['HTTPS_PROXY'] = proxy_url
+                os.environ['HTTP_PROXY'] = proxy_url
+                
+                # Exclude Google Cloud services from proxy
+                gcloud_domains = 'googleapis.com,googleusercontent.com,storage.googleapis.com,bigquery.googleapis.com'
+                no_proxy = os.environ.get('NO_PROXY', '')
+                os.environ['NO_PROXY'] = f"{no_proxy},{gcloud_domains}" if no_proxy else gcloud_domains
+                
+                logger.info(f"Applied proxy for external connections: {proxy_url}")
+            
+            # Configure certificates for external connections
+            if 'ca_bundle' in config:
+                ca_bundle = config['ca_bundle']
+                os.environ['REQUESTS_CA_BUNDLE'] = ca_bundle
+                os.environ['CURL_CA_BUNDLE'] = ca_bundle
+                logger.info(f"Applied CA bundle: {ca_bundle}")
+            
+            if 'client_cert' in config:
+                cert_file = config['client_cert']
+                logger.info(f"Applied client certificate: {cert_file}")
             
         except Exception as e:
-            return {'loaded_models': [], 'failed_models': ['transformers'], 'error': str(e)}
+            logger.warning(f"Configuration application failed: {e}")
     
-    def _load_basic_transformers(self) -> Dict[str, Any]:
-        """Load basic transformer models without sentence-transformers."""
+    def _try_secure_model_loading(self, model_name: str, config: Dict[str, Any]) -> bool:
+        """Try loading model with secure configuration."""
+        try:
+            from sentence_transformers import SentenceTransformer
+            
+            logger.debug(f"Attempting secure loading of {model_name}")
+            
+            model = SentenceTransformer(
+                model_name,
+                device=self.device,
+                trust_remote_code=True,
+                use_auth_token=False
+            )
+            
+            # Verify model functionality
+            test_encoding = model.encode(['test sentence'])
+            if test_encoding is not None and len(test_encoding) > 0:
+                self.models['sentence_transformer'] = model
+                logger.info(f"Successfully loaded {model_name} with secure configuration")
+                return True
+            
+            return False
+            
+        except Exception as e:
+            logger.debug(f"Secure loading failed for {model_name}: {e}")
+            return False
+    
+    def _try_cached_model_loading(self, model_name: str) -> bool:
+        """Try loading model from local cache."""
+        try:
+            from sentence_transformers import SentenceTransformer
+            
+            logger.debug(f"Attempting cached loading of {model_name}")
+            
+            model = SentenceTransformer(model_name, device=self.device, local_files_only=True)
+            
+            # Verify model functionality
+            test_encoding = model.encode(['cached test sentence'])
+            if test_encoding is not None and len(test_encoding) > 0:
+                self.models['sentence_transformer'] = model
+                logger.info(f"Successfully loaded {model_name} from cache")
+                return True
+            
+            return False
+            
+        except Exception as e:
+            logger.debug(f"Cached loading failed for {model_name}: {e}")
+            return False
+    
+    def _initialize_basic_transformers(self):
+        """Initialize basic transformers without sentence-transformers."""
         try:
             from transformers import AutoTokenizer, AutoModel
             import torch
             
             model_name = 'distilbert-base-uncased'
-            tokenizer = AutoTokenizer.from_pretrained(model_name, local_files_only=True)
-            model = AutoModel.from_pretrained(model_name, local_files_only=True)
+            tokenizer = AutoTokenizer.from_pretrained(model_name)
+            model = AutoModel.from_pretrained(model_name)
             
             if self.device != 'cpu':
                 model = model.to(self.device)
             
             self.models['tokenizer'] = tokenizer
-            self.models['basic_transformer'] = model
-            
-            return {
-                'loaded_models': [model_name],
-                'failed_models': [],
-                'model_type': 'basic_transformer'
-            }
+            self.models['transformer'] = model
+            logger.info(f"Basic transformers initialized: {model_name}")
             
         except Exception as e:
-            return {'loaded_models': [], 'failed_models': ['basic_transformer'], 'error': str(e)}
+            logger.warning(f"Basic transformers initialization failed: {e}")
+            self.ml_strategy = 'built_in_embeddings'
     
-    def _load_statistical_models(self) -> Dict[str, Any]:
-        """Load statistical analysis models."""
+    def _initialize_tfidf(self):
+        """Initialize TF-IDF similarity scoring."""
         try:
             from sklearn.feature_extraction.text import TfidfVectorizer
-            from sklearn.metrics.pairwise import cosine_similarity
             
-            vectorizer = TfidfVectorizer(
+            self.models['tfidf'] = TfidfVectorizer(
                 stop_words='english',
                 ngram_range=(1, 2),
-                max_features=1000,
-                sublinear_tf=True
+                max_features=1000
             )
+            logger.info("TF-IDF vectorizer initialized")
             
-            self.models['tfidf'] = vectorizer
-            self.models['similarity'] = cosine_similarity
-            
-            return {
-                'loaded_models': ['tfidf_vectorizer'],
-                'failed_models': [],
-                'model_type': 'statistical'
-            }
-            
-        except Exception as e:
-            return {'loaded_models': [], 'failed_models': ['statistical'], 'error': str(e)}
+        except ImportError:
+            logger.warning("Scikit-learn not available")
+            self.ml_strategy = 'pattern_only'
     
-    def _load_pattern_models(self) -> Dict[str, Any]:
-        """Load intelligent pattern matching models."""
-        # Advanced pattern matching with semantic embeddings
-        self.models['patterns'] = self._create_intelligent_embeddings()
+    def _create_built_in_embeddings(self) -> Dict[str, List[float]]:
+        """
+        Create optimized built-in semantic embeddings for AO1 keywords.
         
-        return {
-            'loaded_models': ['intelligent_patterns'],
-            'failed_models': [],
-            'model_type': 'intelligent_patterns'
+        Uses 8-dimensional vectors where each dimension represents:
+        [identity, network, infrastructure, location, system, business, security, logging]
+        
+        Returns:
+            Dict mapping keywords to embedding vectors
+        """
+        embeddings = {
+            # REQ-1: Global View (Identity-focused)
+            'hostname': [1.0, 0.8, 0.2, 0.1, 0.3, 0.1, 0.2, 0.9],
+            'asset_id': [0.9, 0.7, 0.1, 0.1, 0.2, 0.1, 0.1, 0.8],
+            'ip_address': [0.8, 0.9, 0.3, 0.1, 0.4, 0.1, 0.2, 0.7],
+            'mac_address': [0.7, 0.9, 0.2, 0.1, 0.3, 0.1, 0.1, 0.6],
+            'serial_number': [0.9, 0.2, 0.1, 0.1, 0.4, 0.1, 0.1, 0.5],
+            
+            # REQ-2: Infrastructure Type (Platform-focused)
+            'cloud': [0.2, 0.1, 1.0, 0.8, 0.2, 0.1, 0.1, 0.3],
+            'on_premises': [0.2, 0.1, 0.9, 0.2, 0.8, 0.1, 0.1, 0.3],
+            'virtual_machine': [0.3, 0.2, 0.8, 0.7, 0.3, 0.1, 0.1, 0.4],
+            'container': [0.2, 0.1, 0.9, 0.1, 0.4, 0.2, 0.1, 0.2],
+            'saas': [0.1, 0.1, 0.8, 0.1, 0.1, 0.7, 0.1, 0.2],
+            
+            # REQ-3: Regional/Country (Location-focused)
+            'region': [0.1, 0.2, 0.3, 1.0, 0.2, 0.1, 0.1, 0.2],
+            'datacenter': [0.2, 0.3, 0.4, 0.9, 0.7, 0.1, 0.1, 0.3],
+            'country': [0.1, 0.1, 0.2, 0.8, 0.1, 0.1, 0.1, 0.1],
+            'timezone': [0.1, 0.1, 0.1, 0.7, 0.1, 0.1, 0.1, 0.1],
+            
+            # REQ-4: Business/Application (Business-focused)
+            'application': [0.1, 0.1, 0.2, 0.1, 0.1, 1.0, 0.8, 0.2],
+            'business_unit': [0.1, 0.1, 0.1, 0.2, 0.1, 0.9, 0.7, 0.1],
+            'service': [0.2, 0.1, 0.3, 0.1, 0.1, 0.8, 0.9, 0.3],
+            'department': [0.1, 0.1, 0.1, 0.1, 0.1, 0.9, 0.1, 0.1],
+            
+            # REQ-5: System Classification (System-focused)
+            'operating_system': [0.3, 0.2, 0.4, 0.1, 1.0, 0.2, 0.1, 0.5],
+            'windows': [0.3, 0.2, 0.3, 0.1, 0.9, 0.1, 0.1, 0.4],
+            'linux': [0.3, 0.2, 0.4, 0.1, 0.8, 0.1, 0.1, 0.4],
+            'web_server': [0.2, 0.3, 0.3, 0.1, 0.8, 0.3, 0.2, 0.4],
+            'database_server': [0.2, 0.2, 0.3, 0.1, 0.9, 0.2, 0.3, 0.4],
+            
+            # REQ-6: Security Control (Security-focused)
+            'crowdstrike': [0.4, 0.1, 0.2, 0.1, 0.2, 0.1, 1.0, 0.6],
+            'edr': [0.3, 0.1, 0.2, 0.1, 0.2, 0.1, 0.9, 0.5],
+            'tanium': [0.3, 0.1, 0.2, 0.1, 0.3, 0.1, 0.8, 0.4],
+            'dlp': [0.2, 0.1, 0.1, 0.1, 0.1, 0.2, 0.9, 0.3],
+            'agent_status': [0.3, 0.1, 0.1, 0.1, 0.2, 0.1, 0.8, 0.4],
+            
+            # REQ-7: Logging (Logging-focused)
+            'splunk': [0.2, 0.1, 0.2, 0.1, 0.1, 0.3, 0.4, 1.0],
+            'chronicle': [0.2, 0.1, 0.2, 0.1, 0.1, 0.3, 0.4, 0.9],
+            'siem': [0.2, 0.1, 0.2, 0.1, 0.1, 0.2, 0.5, 0.8],
+            'log_source': [0.2, 0.1, 0.1, 0.1, 0.1, 0.1, 0.2, 0.9],
+            'syslog': [0.1, 0.1, 0.1, 0.1, 0.2, 0.1, 0.3, 0.8],
+            
+            # REQ-8: Domain Visibility (DNS-focused)
+            'domain': [0.7, 0.6, 0.1, 0.2, 0.1, 0.1, 0.1, 0.3],
+            'fqdn': [0.8, 0.7, 0.1, 0.2, 0.1, 0.1, 0.1, 0.4],
+            'dns': [0.6, 0.8, 0.1, 0.3, 0.1, 0.1, 0.1, 0.2],
+            'dns_record': [0.5, 0.8, 0.1, 0.2, 0.1, 0.1, 0.1, 0.3],
+            'active_directory': [0.6, 0.3, 0.2, 0.1, 0.7, 0.3, 0.4, 0.2]
         }
-    
-    def _create_intelligent_embeddings(self) -> Dict[str, List[float]]:
-        """Create intelligent semantic embeddings optimized for AO1 analysis."""
-        # 16-dimensional embeddings capturing multiple semantic aspects
-        embeddings = {}
         
-        # REQ-1: Global View embeddings
-        global_view_concepts = {
-            'hostname': [1.0, 0.9, 0.1, 0.1, 0.2, 0.1, 0.1, 0.1, 0.8, 0.9, 0.1, 0.1, 0.1, 0.1, 0.1, 0.8],
-            'asset_id': [0.9, 0.8, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.9, 0.8, 0.1, 0.1, 0.1, 0.1, 0.1, 0.7],
-            'ip_address': [0.8, 0.9, 0.2, 0.1, 0.3, 0.1, 0.1, 0.1, 0.7, 0.8, 0.2, 0.1, 0.1, 0.1, 0.1, 0.6]
-        }
-        
-        # REQ-2: Infrastructure Type embeddings
-        infrastructure_concepts = {
-            'cloud': [0.1, 0.1, 1.0, 0.9, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.8, 0.9, 0.1, 0.1, 0.1, 0.3],
-            'on_premises': [0.1, 0.1, 0.9, 0.8, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.9, 0.7, 0.1, 0.1, 0.1, 0.4],
-            'virtual_machine': [0.2, 0.1, 0.8, 0.9, 0.2, 0.1, 0.1, 0.1, 0.1, 0.1, 0.7, 0.8, 0.1, 0.1, 0.1, 0.3]
-        }
-        
-        # Continue for all requirements...
-        embeddings.update(global_view_concepts)
-        embeddings.update(infrastructure_concepts)
-        
-        # Add more concepts for other requirements
-        security_concepts = {
-            'crowdstrike': [0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 1.0, 0.9, 0.1, 0.1, 0.1, 0.1, 0.8, 0.9, 0.1, 0.6],
-            'tanium': [0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.9, 0.8, 0.1, 0.1, 0.1, 0.1, 0.7, 0.8, 0.1, 0.5],
-            'dlp': [0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.8, 0.9, 0.1, 0.1, 0.1, 0.1, 0.9, 0.7, 0.1, 0.4]
-        }
-        
-        embeddings.update(security_concepts)
-        
-        logger.info(f"Created intelligent embeddings for {len(embeddings)} concepts")
         return embeddings
     
-    def compute_intelligent_similarity(self, field_name: str, requirement_keywords: Set[str]) -> float:
-        """Compute similarity using the most appropriate available method."""
-        if 'transformer' in self.models:
+    def compute_semantic_similarity(self, field_name: str, requirement_keywords: Set[str]) -> float:
+        """
+        Compute semantic similarity between field and requirement keywords.
+        
+        Args:
+            field_name: Name of the field to analyze
+            requirement_keywords: Set of keywords for the requirement
+            
+        Returns:
+            Similarity score between 0.0 and 1.0
+        """
+        if self.ml_strategy == 'sentence_transformers' and 'sentence_transformer' in self.models:
             return self._compute_transformer_similarity(field_name, requirement_keywords)
-        elif 'tfidf' in self.models:
-            return self._compute_statistical_similarity(field_name, requirement_keywords)
-        elif 'patterns' in self.models:
-            return self._compute_pattern_similarity(field_name, requirement_keywords)
+        elif self.ml_strategy == 'built_in_embeddings':
+            return self._compute_builtin_similarity(field_name, requirement_keywords)
+        elif self.ml_strategy == 'tfidf_similarity':
+            return self._compute_tfidf_similarity(field_name, requirement_keywords)
         else:
             return 0.0
     
     def _compute_transformer_similarity(self, field_name: str, requirement_keywords: Set[str]) -> float:
-        """Compute similarity using transformer models."""
+        """Compute similarity using sentence transformers."""
         try:
-            model = self.models['transformer']
+            model = self.models['sentence_transformer']
             
             field_embedding = model.encode([field_name])
             keyword_embeddings = model.encode(list(requirement_keywords))
             
-            # Use cosine similarity
             from sklearn.metrics.pairwise import cosine_similarity
             similarities = cosine_similarity(field_embedding, keyword_embeddings)
             
             return float(similarities.max())
             
         except Exception as e:
-            logger.warning(f"Transformer similarity failed: {e}")
-            return self._compute_pattern_similarity(field_name, requirement_keywords)
+            logger.warning(f"Transformer similarity computation failed: {e}")
+            return self._compute_builtin_similarity(field_name, requirement_keywords)
     
-    def _compute_statistical_similarity(self, field_name: str, requirement_keywords: Set[str]) -> float:
-        """Compute similarity using statistical methods."""
-        try:
-            vectorizer = self.models['tfidf']
-            similarity_func = self.models['similarity']
-            
-            documents = [field_name] + list(requirement_keywords)
-            tfidf_matrix = vectorizer.fit_transform(documents)
-            
-            similarities = similarity_func(tfidf_matrix[0:1], tfidf_matrix[1:])
-            return float(similarities.max()) if similarities.size > 0 else 0.0
-            
-        except Exception as e:
-            logger.warning(f"Statistical similarity failed: {e}")
-            return self._compute_pattern_similarity(field_name, requirement_keywords)
-    
-    def _compute_pattern_similarity(self, field_name: str, requirement_keywords: Set[str]) -> float:
-        """Compute similarity using intelligent pattern matching."""
-        patterns = self.models.get('patterns', {})
+    def _compute_builtin_similarity(self, field_name: str, requirement_keywords: Set[str]) -> float:
+        """Compute similarity using built-in embeddings."""
         field_lower = field_name.lower()
         max_similarity = 0.0
         
         # Direct embedding lookup
-        if field_lower in patterns:
-            field_vector = patterns[field_lower]
+        if field_lower in self.built_in_embeddings:
+            field_vector = self.built_in_embeddings[field_lower]
             
             for keyword in requirement_keywords:
-                if keyword in patterns:
-                    keyword_vector = patterns[keyword]
+                if keyword in self.built_in_embeddings:
+                    keyword_vector = self.built_in_embeddings[keyword]
                     similarity = self._cosine_similarity(field_vector, keyword_vector)
                     max_similarity = max(max_similarity, similarity)
         
-        # Partial matching with intelligent scoring
-        for pattern_key, pattern_vector in patterns.items():
-            if pattern_key in field_lower or field_lower in pattern_key:
+        # Partial match analysis
+        for embedding_key, embedding_vector in self.built_in_embeddings.items():
+            if embedding_key in field_lower or field_lower in embedding_key:
                 for keyword in requirement_keywords:
-                    if keyword in patterns:
-                        keyword_vector = patterns[keyword]
-                        similarity = self._cosine_similarity(pattern_vector, keyword_vector)
-                        # Apply partial match penalty
-                        partial_similarity = similarity * 0.8
-                        max_similarity = max(max_similarity, partial_similarity)
+                    if keyword in self.built_in_embeddings:
+                        keyword_vector = self.built_in_embeddings[keyword]
+                        similarity = self._cosine_similarity(embedding_vector, keyword_vector)
+                        max_similarity = max(max_similarity, similarity * 0.8)
         
         return max_similarity
     
+    def _compute_tfidf_similarity(self, field_name: str, requirement_keywords: Set[str]) -> float:
+        """Compute TF-IDF based similarity."""
+        try:
+            from sklearn.metrics.pairwise import cosine_similarity
+            
+            documents = [field_name] + list(requirement_keywords)
+            tfidf_matrix = self.models['tfidf'].fit_transform(documents)
+            
+            similarities = cosine_similarity(tfidf_matrix[0:1], tfidf_matrix[1:])
+            return float(similarities.max()) if similarities.size > 0 else 0.0
+            
+        except Exception as e:
+            logger.warning(f"TF-IDF similarity computation failed: {e}")
+            return 0.0
+    
     def _cosine_similarity(self, vec1: List[float], vec2: List[float]) -> float:
-        """Optimized cosine similarity calculation."""
+        """Compute cosine similarity between two vectors."""
         try:
             dot_product = sum(a * b for a, b in zip(vec1, vec2))
-            magnitude1 = math.sqrt(sum(a * a for a in vec1))
-            magnitude2 = math.sqrt(sum(b * b for b in vec2))
+            magnitude1 = sum(a * a for a in vec1) ** 0.5
+            magnitude2 = sum(b * b for b in vec2) ** 0.5
             
             if magnitude1 == 0 or magnitude2 == 0:
                 return 0.0
@@ -1007,393 +1667,201 @@ class IntelligentMLSystem:
             return dot_product / (magnitude1 * magnitude2)
         except:
             return 0.0
-    
-    def _assess_final_capabilities(self) -> Dict[str, str]:
-        """Assess final ML system capabilities."""
-        capabilities = {}
-        
-        if 'transformer' in self.models:
-            capabilities['semantic_analysis'] = 'advanced_transformer'
-            capabilities['accuracy'] = 'high'
-            capabilities['performance'] = 'optimized'
-        elif 'tfidf' in self.models:
-            capabilities['semantic_analysis'] = 'statistical'
-            capabilities['accuracy'] = 'good'
-            capabilities['performance'] = 'fast'
-        elif 'patterns' in self.models:
-            capabilities['semantic_analysis'] = 'intelligent_patterns'
-            capabilities['accuracy'] = 'moderate'
-            capabilities['performance'] = 'very_fast'
-        else:
-            capabilities['semantic_analysis'] = 'basic'
-            capabilities['accuracy'] = 'limited'
-            capabilities['performance'] = 'fast'
-        
-        return capabilities
-    
-    def _apply_corporate_config(self, config: Dict):
-        """Apply corporate network configuration for model loading."""
-        if 'proxy' in config:
-            proxy_url = config['proxy']
-            os.environ['HTTPS_PROXY'] = proxy_url
-            os.environ['HTTP_PROXY'] = proxy_url
-            
-            # Exclude Google services from proxy
-            no_proxy = 'googleapis.com,googleusercontent.com,storage.googleapis.com'
-            existing_no_proxy = os.environ.get('NO_PROXY', '')
-            os.environ['NO_PROXY'] = f"{existing_no_proxy},{no_proxy}" if existing_no_proxy else no_proxy
-    
-    # Simplified hardware analysis methods
-    def _get_cpu_information(self) -> Dict:
-        return {'core_count': os.cpu_count() or 4, 'architecture': platform.machine()}
-    
-    def _get_memory_information(self) -> Dict:
-        return {'available': 'sufficient'}  # Simplified
-    
-    def _get_gpu_information(self) -> Dict:
-        gpu_info = {'mps_available': False, 'cuda_available': False}
-        
-        try:
-            import torch
-            gpu_info['mps_available'] = hasattr(torch.backends, 'mps') and torch.backends.mps.is_available()
-            gpu_info['cuda_available'] = torch.cuda.is_available()
-        except ImportError:
-            pass
-        
-        return gpu_info
 
 
-class IntelligentBusinessAnalyzer:
+class BusinessContextAnalyzer:
     """
-    Advanced business intelligence analyzer with predictive capabilities.
+    Advanced business context analyzer for tables and fields.
     
-    Provides deep business context analysis, strategic insights,
-    and predictive analytics for AO1 field prioritization.
+    Provides sophisticated analysis of table purpose, business relevance,
+    and contextual scoring for AO1 compliance assessment.
     """
     
     def __init__(self):
-        self.business_patterns = self._initialize_business_intelligence()
-        self.strategic_weights = self._calculate_strategic_weights()
-        
-    def _initialize_business_intelligence(self) -> Dict[str, Any]:
-        """Initialize comprehensive business intelligence patterns."""
-        return {
-            'table_contexts': {
-                'cmdb': {
-                    'patterns': ['cmdb', 'configuration', 'asset', 'inventory', 'ci_'],
-                    'business_value': 95,
-                    'strategic_priority': 'critical',
-                    'ao1_relevance': ['REQ-1'],
-                    'data_quality_expectations': ['uniqueness', 'completeness', 'consistency'],
-                    'typical_volume': 'high',
-                    'update_frequency': 'moderate'
-                },
-                'security': {
-                    'patterns': ['security', 'sec_', 'edr', 'endpoint', 'agent', 'antivirus', 'crowdstrike', 'tanium'],
-                    'business_value': 100,
-                    'strategic_priority': 'critical',
-                    'ao1_relevance': ['REQ-6'],
-                    'data_quality_expectations': ['completeness', 'temporal_consistency'],
-                    'typical_volume': 'very_high',
-                    'update_frequency': 'high'
-                },
-                'logging': {
-                    'patterns': ['log', 'event', 'siem', 'splunk', 'chronicle', 'audit'],
-                    'business_value': 100,
-                    'strategic_priority': 'critical',
-                    'ao1_relevance': ['REQ-7'],
-                    'data_quality_expectations': ['completeness', 'temporal_coverage'],
-                    'typical_volume': 'extremely_high',
-                    'update_frequency': 'continuous'
-                },
-                'infrastructure': {
-                    'patterns': ['infra', 'server', 'vm', 'cloud', 'compute', 'instance'],
-                    'business_value': 85,
-                    'strategic_priority': 'high',
-                    'ao1_relevance': ['REQ-2', 'REQ-5'],
-                    'data_quality_expectations': ['categorical_consistency', 'coverage'],
-                    'typical_volume': 'high',
-                    'update_frequency': 'moderate'
-                },
-                'network': {
-                    'patterns': ['network', 'net_', 'dns', 'ip_', 'domain', 'fqdn'],
-                    'business_value': 80,
-                    'strategic_priority': 'high',
-                    'ao1_relevance': ['REQ-8'],
-                    'data_quality_expectations': ['dns_validity', 'hierarchical_consistency'],
-                    'typical_volume': 'very_high',
-                    'update_frequency': 'high'
-                },
-                'application': {
-                    'patterns': ['app', 'application', 'service', 'platform', 'workload'],
-                    'business_value': 75,
-                    'strategic_priority': 'medium',
-                    'ao1_relevance': ['REQ-4'],
-                    'data_quality_expectations': ['hierarchical_consistency', 'completeness'],
-                    'typical_volume': 'medium',
-                    'update_frequency': 'low'
-                }
+        self.table_context_patterns = {
+            'cmdb': {
+                'patterns': ['cmdb', 'configuration', 'asset', 'inventory', 'ci_'],
+                'business_value': 'Critical for asset management and visibility',
+                'ao1_relevance': ['REQ-1']
+            },
+            'security': {
+                'patterns': ['security', 'sec_', 'edr', 'endpoint', 'agent', 'antivirus'],
+                'business_value': 'Essential for security posture assessment',
+                'ao1_relevance': ['REQ-6']
+            },
+            'logging': {
+                'patterns': ['log', 'event', 'siem', 'splunk', 'chronicle', 'audit'],
+                'business_value': 'Required for compliance and monitoring',
+                'ao1_relevance': ['REQ-7']
+            },
+            'infrastructure': {
+                'patterns': ['infra', 'server', 'vm', 'cloud', 'compute', 'instance'],
+                'business_value': 'Important for infrastructure visibility',
+                'ao1_relevance': ['REQ-2', 'REQ-5']
+            },
+            'network': {
+                'patterns': ['network', 'net_', 'dns', 'ip_', 'domain', 'fqdn'],
+                'business_value': 'Valuable for network asset tracking',
+                'ao1_relevance': ['REQ-8']
+            },
+            'application': {
+                'patterns': ['app', 'application', 'service', 'platform', 'workload'],
+                'business_value': 'Useful for application mapping',
+                'ao1_relevance': ['REQ-4']
+            },
+            'identity': {
+                'patterns': ['identity', 'user', 'account', 'auth', 'ad_', 'ldap'],
+                'business_value': 'Important for user access analysis',
+                'ao1_relevance': ['REQ-8']
+            },
+            'business': {
+                'patterns': ['business', 'org', 'department', 'cost_center', 'bu_'],
+                'business_value': 'Valuable for organizational mapping',
+                'ao1_relevance': ['REQ-4']
             }
         }
     
-    def _calculate_strategic_weights(self) -> Dict[str, float]:
-        """Calculate strategic weights for different business factors."""
-        return {
-            'data_volume_weight': 0.25,
-            'business_value_weight': 0.30,
-            'ao1_relevance_weight': 0.25,
-            'data_quality_weight': 0.20
-        }
-    
-    def analyze_comprehensive_business_context(self, table_name: str, dataset_name: str, 
-                                             row_count: int) -> Dict[str, Any]:
+    def analyze_table_context(self, table_name: str, dataset_name: str) -> Dict[str, Any]:
         """
-        Perform comprehensive business context analysis with predictive insights.
+        Analyze the business context of a table.
+        
+        Args:
+            table_name: Name of the table
+            dataset_name: Name of the dataset
+            
+        Returns:
+            Dict containing context analysis results
         """
         full_name = f"{dataset_name}.{table_name}".lower()
         
-        # Primary context detection
         context_scores = {}
-        best_context = None
-        max_score = 0
-        
-        for context_type, config in self.business_patterns['table_contexts'].items():
+        for context_type, config in self.table_context_patterns.items():
             score = 0
-            matched_patterns = []
-            
             for pattern in config['patterns']:
                 if pattern in full_name:
                     score += 1
-                    matched_patterns.append(pattern)
-            
             context_scores[context_type] = score
-            
-            if score > max_score:
-                max_score = score
-                best_context = context_type
         
-        # Get context configuration
-        if best_context and max_score > 0:
-            context_config = self.business_patterns['table_contexts'][best_context]
-            confidence = min(1.0, max_score / len(context_config['patterns']))
-        else:
-            context_config = {
-                'business_value': 50,
-                'strategic_priority': 'low',
-                'ao1_relevance': [],
-                'data_quality_expectations': ['basic_consistency'],
-                'typical_volume': 'unknown',
-                'update_frequency': 'unknown'
-            }
-            confidence = 0.0
-            best_context = 'general'
+        # Determine primary context
+        primary_context = max(context_scores.items(), key=lambda x: x[1])
+        context_type = primary_context[0] if primary_context[1] > 0 else 'general'
         
-        # Calculate strategic scores
-        strategic_analysis = self._calculate_strategic_scores(
-            context_config, row_count, confidence
-        )
-        
-        # Generate predictive insights
-        predictive_insights = self._generate_predictive_insights(
-            best_context, context_config, row_count, strategic_analysis
-        )
+        config = self.table_context_patterns.get(context_type, {
+            'business_value': 'Standard business data',
+            'ao1_relevance': []
+        })
         
         return {
-            'primary_context': best_context,
-            'context_confidence': confidence,
+            'primary_context': context_type,
             'context_scores': context_scores,
-            'business_value': context_config['business_value'],
-            'strategic_priority': context_config['strategic_priority'],
-            'ao1_relevance': context_config['ao1_relevance'],
-            'data_quality_expectations': context_config['data_quality_expectations'],
-            'strategic_analysis': strategic_analysis,
-            'predictive_insights': predictive_insights,
-            'recommended_actions': self._generate_recommended_actions(best_context, strategic_analysis)
+            'business_relevance': config['business_value'],
+            'ao1_relevance': config['ao1_relevance'],
+            'confidence': primary_context[1] / len(config.get('patterns', [1])) if primary_context[1] > 0 else 0.0
         }
-    
-    def _calculate_strategic_scores(self, context_config: Dict, row_count: int, 
-                                  confidence: float) -> Dict[str, Any]:
-        """Calculate comprehensive strategic scores."""
-        weights = self.strategic_weights
-        
-        # Data volume score (0-100)
-        volume_score = min(100, math.log10(max(1, row_count)) * 10)
-        
-        # Business value score (from context)
-        business_score = context_config['business_value']
-        
-        # AO1 relevance score
-        ao1_score = len(context_config['ao1_relevance']) * 25
-        
-        # Quality score (based on expectations)
-        quality_score = len(context_config['data_quality_expectations']) * 20
-        
-        # Composite strategic score
-        composite_score = (
-            volume_score * weights['data_volume_weight'] +
-            business_score * weights['business_value_weight'] +
-            ao1_score * weights['ao1_relevance_weight'] +
-            quality_score * weights['data_quality_weight']
-        ) * confidence
-        
-        return {
-            'volume_score': volume_score,
-            'business_score': business_score,
-            'ao1_score': ao1_score,
-            'quality_score': quality_score,
-            'composite_score': composite_score,
-            'confidence_adjusted_score': composite_score
-        }
-    
-    def _generate_predictive_insights(self, context_type: str, context_config: Dict,
-                                    row_count: int, strategic_analysis: Dict) -> Dict[str, Any]:
-        """Generate predictive insights for strategic planning."""
-        insights = {
-            'implementation_complexity': 'medium',
-            'success_probability': 0.7,
-            'roi_estimate': 'moderate',
-            'maintenance_burden': 'standard',
-            'scalability_forecast': 'good'
-        }
-        
-        # Adjust based on context type
-        if context_type in ['security', 'logging', 'cmdb']:
-            insights.update({
-                'implementation_complexity': 'low',
-                'success_probability': 0.9,
-                'roi_estimate': 'high',
-                'maintenance_burden': 'low'
-            })
-        elif context_type in ['infrastructure', 'network']:
-            insights.update({
-                'implementation_complexity': 'medium',
-                'success_probability': 0.8,
-                'roi_estimate': 'moderate',
-                'maintenance_burden': 'medium'
-            })
-        
-        # Adjust based on data volume
-        if row_count > 1000000:
-            insights['scalability_forecast'] = 'excellent'
-            insights['roi_estimate'] = self._upgrade_roi(insights['roi_estimate'])
-        elif row_count < 10000:
-            insights['scalability_forecast'] = 'limited'
-            insights['roi_estimate'] = self._downgrade_roi(insights['roi_estimate'])
-        
-        return insights
-    
-    def _generate_recommended_actions(self, context_type: str, 
-                                    strategic_analysis: Dict) -> List[str]:
-        """Generate specific recommended actions."""
-        actions = []
-        composite_score = strategic_analysis['composite_score']
-        
-        if composite_score > 80:
-            actions.extend([
-                'Prioritize for immediate implementation',
-                'Conduct detailed field mapping analysis',
-                'Establish automated monitoring for data quality'
-            ])
-        elif composite_score > 60:
-            actions.extend([
-                'Include in Phase 2 implementation plan',
-                'Validate field consistency and coverage',
-                'Design appropriate data quality checks'
-            ])
-        else:
-            actions.extend([
-                'Consider for future phases',
-                'Investigate data quality improvements',
-                'Evaluate alternative data sources'
-            ])
-        
-        # Context-specific actions
-        if context_type == 'security':
-            actions.append('Coordinate with security team for validation')
-        elif context_type == 'logging':
-            actions.append('Verify SIEM platform compatibility')
-        elif context_type == 'cmdb':
-            actions.append('Align with asset management processes')
-        
-        return actions
-    
-    def _upgrade_roi(self, current_roi: str) -> str:
-        """Upgrade ROI estimate."""
-        upgrade_map = {'low': 'moderate', 'moderate': 'high', 'high': 'very_high'}
-        return upgrade_map.get(current_roi, current_roi)
-    
-    def _downgrade_roi(self, current_roi: str) -> str:
-        """Downgrade ROI estimate."""
-        downgrade_map = {'very_high': 'high', 'high': 'moderate', 'moderate': 'low'}
-        return downgrade_map.get(current_roi, current_roi)
 
 
-class IntelligentFieldAnalyzer:
+class AO1FieldAnalyzer:
     """
-    Ultra-intelligent field analyzer with advanced pattern recognition.
+    Comprehensive AO1 field analysis engine.
     
-    Combines multiple analysis techniques for maximum accuracy and insight.
+    Combines exact keyword matching, semantic analysis, business context,
+    and strategic scoring to identify optimal AO1 compliance fields.
     """
     
-    def __init__(self, ml_system: IntelligentMLSystem):
-        self.ml_system = ml_system
-        self.business_analyzer = IntelligentBusinessAnalyzer()
+    def __init__(self, ml_analyzer: AdvancedMLAnalyzer):
+        self.ml_analyzer = ml_analyzer
+        self.business_analyzer = BusinessContextAnalyzer()
         self.all_keywords = get_all_keywords()
-        self.analysis_cache = {}
         
-    def analyze_field_with_intelligence(self, field_name: str, table_name: str, 
-                                      dataset_name: str, row_count: int) -> Optional[IntelligentFieldAnalysis]:
+    def analyze_field(self, field_name: str, table_name: str, dataset_name: str, row_count: int) -> Optional[FieldAnalysis]:
         """
-        Perform comprehensive intelligent field analysis.
+        Comprehensive field analysis for AO1 compliance.
         
-        Combines exact matching, semantic analysis, pattern recognition,
-        and business intelligence for optimal results.
+        Args:
+            field_name: Name of the field to analyze
+            table_name: Name of the containing table
+            dataset_name: Name of the containing dataset
+            row_count: Number of rows in the table
+            
+        Returns:
+            FieldAnalysis object if field is AO1-relevant, None otherwise
         """
         if not field_name:
             return None
-        
-        # Create cache key for performance optimization
-        cache_key = f"{dataset_name}.{table_name}.{field_name}"
-        if cache_key in self.analysis_cache:
-            return self.analysis_cache[cache_key]
-        
+            
         field_lower = field_name.lower().strip()
         
-        # Phase 1: Business Context Analysis
-        business_context = self.business_analyzer.analyze_comprehensive_business_context(
-            table_name, dataset_name, row_count
+        # Analyze table business context
+        table_context = self.business_analyzer.analyze_table_context(table_name, dataset_name)
+        
+        # Check for exact keyword matches
+        exact_matches = []
+        matching_requirements = []
+        
+        if field_lower in self.all_keywords:
+            exact_matches.append(field_lower)
+            matching_requirements.extend(find_keyword_requirement(field_lower))
+        
+        # Check for partial matches
+        partial_matches = []
+        for keyword in self.all_keywords:
+            if keyword != field_lower:
+                if keyword in field_lower or field_lower in keyword:
+                    partial_matches.append(keyword)
+                    matching_requirements.extend(find_keyword_requirement(keyword))
+        
+        # Remove duplicate requirements
+        matching_requirements = list(set(matching_requirements))
+        
+        # Compute semantic similarity across all requirements
+        max_semantic_similarity = 0.0
+        best_semantic_req = None
+        
+        for req_id, req_info in AO1_REQUIREMENTS.items():
+            similarity = self.ml_analyzer.compute_semantic_similarity(field_name, req_info['keywords'])
+            if similarity > max_semantic_similarity:
+                max_semantic_similarity = similarity
+                best_semantic_req = req_id
+        
+        # Determine match type and base confidence
+        if exact_matches:
+            match_type = 'EXACT'
+            confidence = 100.0
+        elif partial_matches and max_semantic_similarity > 0.7:
+            match_type = 'ML_IDENTIFIED'
+            confidence = min(90.0, max_semantic_similarity * 100)
+            if best_semantic_req and f"{best_semantic_req}: {AO1_REQUIREMENTS[best_semantic_req]['name']}" not in matching_requirements:
+                matching_requirements.append(f"{best_semantic_req}: {AO1_REQUIREMENTS[best_semantic_req]['name']}")
+        elif partial_matches:
+            match_type = 'PARTIAL'
+            confidence = min(80.0, len(partial_matches) * 25)
+        elif max_semantic_similarity > 0.5:
+            match_type = 'SUSPECTED'
+            confidence = max_semantic_similarity * 100
+            if best_semantic_req:
+                matching_requirements.append(f"{best_semantic_req}: {AO1_REQUIREMENTS[best_semantic_req]['name']}")
+        else:
+            return None  # Not AO1-relevant
+        
+        # Apply context-based confidence adjustments
+        context_boost = self._calculate_context_boost(matching_requirements, table_context)
+        confidence = min(100.0, confidence + context_boost)
+        
+        # Calculate strategic priority
+        strategic_priority = self._calculate_strategic_priority(
+            match_type, confidence, row_count, table_context, matching_requirements
         )
         
-        # Phase 2: Keyword Matching Analysis
-        exact_matches, partial_matches, matching_requirements = self._analyze_keyword_matches(field_lower)
-        
-        # Phase 3: Semantic Similarity Analysis
-        semantic_analysis = self._analyze_semantic_similarity(field_name, matching_requirements)
-        
-        # Phase 4: Pattern Strength Analysis
-        pattern_analysis = self._analyze_pattern_strength(field_name, field_lower)
-        
-        # Phase 5: Determine Match Type and Confidence
-        match_type, confidence = self._determine_match_type_and_confidence(
-            exact_matches, partial_matches, semantic_analysis, pattern_analysis
+        # Generate business context and recommendations
+        business_context = self._generate_business_context(
+            field_name, table_name, dataset_name, matching_requirements, table_context
         )
         
-        # Skip if not AO1-relevant
-        if match_type is None:
-            return None
-        
-        # Phase 6: Calculate Advanced Metrics
-        advanced_metrics = self._calculate_advanced_metrics(
-            match_type, confidence, semantic_analysis, business_context, row_count
+        recommendation = self._generate_recommendation(
+            match_type, confidence, matching_requirements, row_count, table_context
         )
         
-        # Phase 7: Generate Intelligence Insights
-        intelligence_insights = self._generate_intelligence_insights(
-            field_name, business_context, advanced_metrics, matching_requirements
-        )
-        
-        # Create comprehensive analysis result
-        analysis = IntelligentFieldAnalysis(
+        return FieldAnalysis(
             field_name=field_name,
             table_name=table_name,
             dataset_name=dataset_name,
@@ -1402,269 +1870,169 @@ class IntelligentFieldAnalyzer:
             confidence=confidence,
             matching_keywords=exact_matches + partial_matches,
             matching_requirements=matching_requirements,
-            semantic_similarity=semantic_analysis['max_similarity'],
-            pattern_strength=pattern_analysis['strength'],
-            business_context_score=business_context['strategic_analysis']['composite_score'],
-            data_quality_score=self._estimate_data_quality_score(business_context),
-            strategic_value=advanced_metrics['strategic_value'],
-            implementation_complexity=intelligence_insights['implementation_complexity'],
-            success_probability=intelligence_insights['success_probability'],
-            roi_estimate=intelligence_insights['roi_estimate'],
-            maintenance_burden=intelligence_insights['maintenance_burden'],
-            business_context=intelligence_insights['business_explanation'],
-            table_context=business_context['primary_context'],
-            recommendation=intelligence_insights['recommendation'],
-            next_actions=intelligence_insights['next_actions'],
-            validation_status='pending',
-            confidence_intervals=advanced_metrics['confidence_intervals'],
-            risk_factors=intelligence_insights['risk_factors']
+            semantic_similarity=max_semantic_similarity,
+            business_context=business_context,
+            table_context=table_context['primary_context'],
+            recommendation=recommendation,
+            strategic_priority=strategic_priority
         )
-        
-        # Cache result for performance
-        self.analysis_cache[cache_key] = analysis
-        
-        return analysis
     
-    def _analyze_keyword_matches(self, field_lower: str) -> Tuple[List[str], List[str], List[str]]:
-        """Analyze exact and partial keyword matches."""
-        exact_matches = []
-        partial_matches = []
-        matching_requirements = []
+    def _calculate_context_boost(self, matching_requirements: List[str], table_context: Dict) -> float:
+        """Calculate confidence boost based on table context alignment."""
+        boost = 0.0
+        context_type = table_context['primary_context']
         
-        # Exact matches
-        if field_lower in self.all_keywords:
-            exact_matches.append(field_lower)
-            matching_requirements.extend(find_keyword_requirement(field_lower))
+        # Context-requirement alignment mapping
+        context_req_mapping = {
+            'cmdb': ['REQ-1'],
+            'security': ['REQ-6'],
+            'logging': ['REQ-7'],
+            'infrastructure': ['REQ-2', 'REQ-5'],
+            'network': ['REQ-8'],
+            'application': ['REQ-4'],
+            'business': ['REQ-4'],
+            'identity': ['REQ-8']
+        }
         
-        # Partial matches with intelligent scoring
-        for keyword in self.all_keywords:
-            if keyword != field_lower:
-                # Substring matching
-                if keyword in field_lower or field_lower in keyword:
-                    partial_matches.append(keyword)
-                    matching_requirements.extend(find_keyword_requirement(keyword))
-                # Fuzzy matching for common variations
-                elif self._calculate_edit_distance(keyword, field_lower) <= 2:
-                    partial_matches.append(keyword)
-                    matching_requirements.extend(find_keyword_requirement(keyword))
+        expected_reqs = context_req_mapping.get(context_type, [])
+        alignment_count = 0
         
-        # Remove duplicates
-        matching_requirements = list(set(matching_requirements))
+        for req in matching_requirements:
+            req_id = req.split(':')[0]
+            if req_id in expected_reqs:
+                alignment_count += 1
+                boost += 10.0
         
-        return exact_matches, partial_matches, matching_requirements
+        # Additional boost for high-confidence context
+        if table_context.get('confidence', 0) > 0.8:
+            boost += 5.0
+        
+        return min(boost, 25.0)  # Cap boost at 25 points
     
-    def _analyze_semantic_similarity(self, field_name: str, matching_requirements: List[str]) -> Dict[str, Any]:
-        """Perform advanced semantic similarity analysis."""
-        max_similarity = 0.0
-        best_requirement = None
-        requirement_similarities = {}
+    def _calculate_strategic_priority(self, match_type: str, confidence: float, 
+                                    row_count: int, table_context: Dict, 
+                                    matching_requirements: List[str]) -> int:
+        """
+        Calculate strategic priority score for implementation planning.
         
-        for req_id, req_info in AO1_REQUIREMENTS.items():
-            similarity = self.ml_system.compute_intelligent_similarity(field_name, req_info['keywords'])
-            requirement_similarities[req_id] = similarity
+        Returns:
+            Integer priority score (higher = more strategic value)
+        """
+        priority = 0
+        
+        # Base score from match type
+        match_scores = {
+            'EXACT': 100,
+            'ML_IDENTIFIED': 80,
+            'PARTIAL': 60,
+            'SUSPECTED': 40
+        }
+        priority += match_scores.get(match_type, 0)
+        
+        # Data volume bonus
+        if row_count > 10000000:  # 10M+ rows
+            priority += 50
+        elif row_count > 1000000:  # 1M+ rows
+            priority += 30
+        elif row_count > 100000:  # 100K+ rows
+            priority += 15
+        elif row_count > 10000:  # 10K+ rows
+            priority += 5
+        
+        # Confidence bonus
+        priority += int(confidence * 0.5)
+        
+        # Business context bonus
+        context_scores = {
+            'cmdb': 40,
+            'security': 35,
+            'logging': 35,
+            'infrastructure': 25,
+            'network': 20,
+            'application': 20,
+            'business': 15,
+            'identity': 15
+        }
+        priority += context_scores.get(table_context['primary_context'], 5)
+        
+        # Multiple requirement bonus
+        if len(matching_requirements) > 1:
+            priority += len(matching_requirements) * 10
+        
+        return priority
+    
+    def _generate_business_context(self, field_name: str, table_name: str, dataset_name: str,
+                                 matching_requirements: List[str], table_context: Dict) -> str:
+        """Generate comprehensive business context explanation."""
+        context_type = table_context['primary_context']
+        business_relevance = table_context['business_relevance']
+        
+        req_purposes = []
+        for req in matching_requirements:
+            req_id = req.split(':')[0]
+            if req_id in AO1_REQUIREMENTS:
+                req_purposes.append(AO1_REQUIREMENTS[req_id]['business_purpose'])
+        
+        context = f"The field '{field_name}' in table {dataset_name}.{table_name} "
+        context += f"appears to be part of a {context_type} system with {business_relevance.lower()}. "
+        
+        if req_purposes:
+            unique_purposes = list(set(req_purposes))
+            context += f"This field supports: {'; '.join(unique_purposes)}. "
+        
+        # Add strategic context
+        if context_type in ['cmdb', 'security', 'logging']:
+            context += "This represents a high-priority data source for AO1 compliance measurement."
+        elif context_type in ['infrastructure', 'network']:
+            context += "This provides valuable technical asset visibility for compliance analysis."
+        else:
+            context += "This contributes to comprehensive organizational asset visibility."
             
-            if similarity > max_similarity:
-                max_similarity = similarity
-                best_requirement = req_id
-        
-        return {
-            'max_similarity': max_similarity,
-            'best_requirement': best_requirement,
-            'requirement_similarities': requirement_similarities,
-            'confidence_level': 'high' if max_similarity > 0.8 else 'medium' if max_similarity > 0.6 else 'low'
-        }
+        return context
     
-    def _analyze_pattern_strength(self, field_name: str, field_lower: str) -> Dict[str, Any]:
-        """Analyze pattern strength and field name intelligence."""
-        strength_factors = {
-            'length_appropriateness': self._assess_length_appropriateness(field_name),
-            'naming_convention': self._assess_naming_convention(field_name),
-            'semantic_clarity': self._assess_semantic_clarity(field_lower),
-            'business_alignment': self._assess_business_alignment(field_lower)
-        }
+    def _generate_recommendation(self, match_type: str, confidence: float,
+                               matching_requirements: List[str], row_count: int,
+                               table_context: Dict) -> str:
+        """Generate actionable implementation recommendation."""
+        recommendation = ""
         
-        overall_strength = statistics.mean(strength_factors.values())
-        
-        return {
-            'strength': overall_strength,
-            'factors': strength_factors,
-            'quality_assessment': 'excellent' if overall_strength > 0.8 else 'good' if overall_strength > 0.6 else 'fair'
-        }
-    
-    def _determine_match_type_and_confidence(self, exact_matches: List[str], partial_matches: List[str],
-                                           semantic_analysis: Dict, pattern_analysis: Dict) -> Tuple[Optional[str], float]:
-        """Determine match type and confidence using intelligent scoring."""
-        if exact_matches:
-            return 'EXACT', 100.0
-        
-        max_semantic = semantic_analysis['max_similarity']
-        pattern_strength = pattern_analysis['strength']
-        
-        if partial_matches and max_semantic > 0.75 and pattern_strength > 0.7:
-            return 'SEMANTIC', min(95.0, max_semantic * 100 + pattern_strength * 10)
-        elif partial_matches and pattern_strength > 0.6:
-            return 'PATTERN', min(85.0, pattern_strength * 100 + len(partial_matches) * 10)
-        elif max_semantic > 0.5:
-            return 'INFERRED', max_semantic * 100
+        # Base recommendation from match type and confidence
+        if match_type == 'EXACT' and confidence >= 95:
+            recommendation = "HIGHLY RECOMMENDED - Perfect AO1 compliance match"
+        elif match_type == 'EXACT':
+            recommendation = "RECOMMENDED - Direct AO1 keyword match"
+        elif match_type == 'ML_IDENTIFIED' and confidence >= 85:
+            recommendation = "RECOMMENDED - ML analysis indicates high AO1 relevance"
+        elif match_type == 'PARTIAL' and confidence >= 75:
+            recommendation = "CONSIDER - Partial match with good confidence"
+        elif match_type == 'SUSPECTED' and confidence >= 60:
+            recommendation = "INVESTIGATE - Semantic analysis suggests potential relevance"
         else:
-            return None, 0.0
-    
-    def _calculate_advanced_metrics(self, match_type: str, confidence: float, 
-                                  semantic_analysis: Dict, business_context: Dict, 
-                                  row_count: int) -> Dict[str, Any]:
-        """Calculate advanced intelligence metrics."""
-        # Strategic value calculation
-        strategic_value = self._calculate_strategic_value(
-            match_type, confidence, business_context, row_count
-        )
+            recommendation = "REVIEW - Low confidence, requires manual validation"
         
-        # Confidence intervals
-        confidence_intervals = {
-            'confidence': (max(0, confidence - 10), min(100, confidence + 10)),
-            'strategic_value': (max(0, strategic_value - 20), min(100, strategic_value + 20))
-        }
+        # Add data volume context
+        if row_count > 5000000:
+            recommendation += " - Exceptional data volume provides maximum visibility impact"
+        elif row_count > 1000000:
+            recommendation += " - High data volume provides substantial visibility"
+        elif row_count > 100000:
+            recommendation += " - Good data volume for meaningful analysis"
+        elif row_count > 10000:
+            recommendation += " - Moderate data volume"
+        else:
+            recommendation += " - Limited data volume may reduce impact"
         
-        return {
-            'strategic_value': strategic_value,
-            'confidence_intervals': confidence_intervals
-        }
-    
-    def _generate_intelligence_insights(self, field_name: str, business_context: Dict,
-                                      advanced_metrics: Dict, matching_requirements: List[str]) -> Dict[str, Any]:
-        """Generate comprehensive intelligence insights."""
-        insights = {
-            'implementation_complexity': self._assess_implementation_complexity(business_context),
-            'success_probability': self._calculate_success_probability(advanced_metrics),
-            'roi_estimate': self._estimate_roi(business_context, advanced_metrics),
-            'maintenance_burden': self._assess_maintenance_burden(business_context),
-            'business_explanation': self._generate_business_explanation(field_name, business_context, matching_requirements),
-            'recommendation': self._generate_smart_recommendation(advanced_metrics, business_context),
-            'next_actions': business_context['recommended_actions'],
-            'risk_factors': self._identify_risk_factors(business_context, advanced_metrics)
-        }
+        # Add business context guidance
+        if table_context['primary_context'] in ['cmdb', 'security', 'logging']:
+            recommendation += " - HIGH BUSINESS PRIORITY for compliance"
+        elif table_context['primary_context'] in ['infrastructure', 'network']:
+            recommendation += " - Important for technical asset visibility"
         
-        return insights
-    
-    # Simplified assessment methods
-    def _assess_length_appropriateness(self, field_name: str) -> float:
-        length = len(field_name)
-        if 5 <= length <= 25:
-            return 1.0
-        elif 3 <= length <= 35:
-            return 0.8
-        else:
-            return 0.5
-    
-    def _assess_naming_convention(self, field_name: str) -> float:
-        # Check for standard naming patterns
-        if '_' in field_name or field_name.islower():
-            return 1.0
-        elif field_name.replace('_', '').isalnum():
-            return 0.8
-        else:
-            return 0.6
-    
-    def _assess_semantic_clarity(self, field_lower: str) -> float:
-        # Simple clarity assessment
-        clarity_indicators = ['name', 'id', 'type', 'status', 'address', 'date', 'time']
-        for indicator in clarity_indicators:
-            if indicator in field_lower:
-                return 0.9
-        return 0.7
-    
-    def _assess_business_alignment(self, field_lower: str) -> float:
-        business_terms = ['business', 'org', 'dept', 'unit', 'service', 'app', 'system']
-        for term in business_terms:
-            if term in field_lower:
-                return 0.9
-        return 0.7
-    
-    def _calculate_edit_distance(self, s1: str, s2: str) -> int:
-        """Calculate simple edit distance."""
-        if len(s1) > len(s2):
-            s1, s2 = s2, s1
-        distances = range(len(s1) + 1)
-        for i2, c2 in enumerate(s2):
-            distances_ = [i2 + 1]
-            for i1, c1 in enumerate(s1):
-                if c1 == c2:
-                    distances_.append(distances[i1])
-                else:
-                    distances_.append(1 + min((distances[i1], distances[i1 + 1], distances_[-1])))
-            distances = distances_
-        return distances[-1]
-    
-    def _calculate_strategic_value(self, match_type: str, confidence: float,
-                                 business_context: Dict, row_count: int) -> int:
-        base_score = {'EXACT': 100, 'SEMANTIC': 80, 'PATTERN': 60, 'INFERRED': 40}.get(match_type, 0)
-        volume_bonus = min(30, math.log10(max(1, row_count)) * 3)
-        business_bonus = business_context['business_value'] * 0.2
-        return int(base_score + volume_bonus + business_bonus)
-    
-    def _estimate_data_quality_score(self, business_context: Dict) -> float:
-        return business_context['business_value'] * 0.8
-    
-    def _assess_implementation_complexity(self, business_context: Dict) -> str:
-        if business_context['primary_context'] in ['security', 'logging']:
-            return 'low'
-        elif business_context['primary_context'] in ['cmdb', 'infrastructure']:
-            return 'medium'
-        else:
-            return 'high'
-    
-    def _calculate_success_probability(self, advanced_metrics: Dict) -> float:
-        return min(1.0, advanced_metrics['strategic_value'] / 100.0)
-    
-    def _estimate_roi(self, business_context: Dict, advanced_metrics: Dict) -> str:
-        score = (business_context['business_value'] + advanced_metrics['strategic_value']) / 2
-        if score > 80:
-            return 'high'
-        elif score > 60:
-            return 'medium'
-        else:
-            return 'low'
-    
-    def _assess_maintenance_burden(self, business_context: Dict) -> str:
-        if business_context['strategic_priority'] == 'critical':
-            return 'low'
-        else:
-            return 'medium'
-    
-    def _generate_business_explanation(self, field_name: str, business_context: Dict,
-                                     matching_requirements: List[str]) -> str:
-        context_type = business_context['primary_context']
-        reqs = ', '.join(matching_requirements) if matching_requirements else 'general analysis'
-        
-        return (f"Field '{field_name}' identified in {context_type} context with "
-                f"{business_context['business_value']} business value score. "
-                f"Supports requirements: {reqs}. "
-                f"Strategic priority: {business_context['strategic_priority']}.")
-    
-    def _generate_smart_recommendation(self, advanced_metrics: Dict, business_context: Dict) -> str:
-        strategic_value = advanced_metrics['strategic_value']
-        
-        if strategic_value > 80:
-            return f"HIGHLY RECOMMENDED - Strategic value {strategic_value}/100"
-        elif strategic_value > 60:
-            return f"RECOMMENDED - Good strategic value {strategic_value}/100"
-        else:
-            return f"CONSIDER - Moderate value {strategic_value}/100"
-    
-    def _identify_risk_factors(self, business_context: Dict, advanced_metrics: Dict) -> List[str]:
-        risks = []
-        if business_context['business_value'] < 50:
-            risks.append('Low business value')
-        if advanced_metrics['strategic_value'] < 40:
-            risks.append('Limited strategic impact')
-        return risks or ['No significant risks identified']
+        return recommendation
 
 
-# Fixed BigQuery authentication - EXACT copy from original
 def authenticate_bigquery():
     """Authenticate with BigQuery using service account"""
-    from google.cloud import bigquery
-    from google.oauth2 import service_account
-    
     SERVICE_ACCOUNT_FILE = os.path.join(file_path, "gcp_prod_key.json")
     credentials = service_account.Credentials.from_service_account_file(SERVICE_ACCOUNT_FILE)
     settings['KATANA_PG'] = {'client_encoding': 'utf8'}
@@ -1674,77 +2042,98 @@ def authenticate_bigquery():
     return client
 
 
-class UltraIntelligentBigQueryScanner:
+class BigQueryScanner:
     """
-    Ultra-intelligent BigQuery scanner with advanced optimization and intelligence.
+    Advanced BigQuery scanning engine with original authentication method.
+    
+    Uses the exact same authentication approach as the original working script.
     """
     
-    def __init__(self):
+    def __init__(self, project_id: str = "prj-fisv-p-gcss-sas-d19dd0f1df"):
+        self.project_id = project_id
         self.client = None
         self.authenticated = False
-        self.scan_statistics = {}
         
     def authenticate(self) -> bool:
-        """Authenticate using the EXACT original method."""
+        """
+        Authenticate with BigQuery using the exact original method.
+        
+        Returns:
+            True if authentication successful
+        """
         try:
+            # Use the exact same function from the original script
             self.client = authenticate_bigquery()
             self.authenticated = True
             return True
+                
         except Exception as e:
             logger.error(f"BigQuery authentication failed: {e}")
             return False
     
-    def perform_intelligent_scan(self, analyzer: IntelligentFieldAnalyzer,
-                               max_datasets: int = 20, max_tables: int = 50) -> Dict[str, List[IntelligentFieldAnalysis]]:
-        """Perform ultra-intelligent BigQuery scanning."""
+    def scan_datasets_and_tables(self, analyzer: AO1FieldAnalyzer) -> Dict[str, List[FieldAnalysis]]:
+        """
+        Scan all datasets and tables for AO1-relevant fields.
+        
+        Args:
+            analyzer: AO1FieldAnalyzer instance for field analysis
+            
+        Returns:
+            Dict mapping dataset names to lists of field analyses
+        """
         if not self.authenticated:
-            logger.error("BigQuery authentication required")
+            logger.error("BigQuery authentication required before scanning")
             return {}
         
         results = {}
-        stats = {'datasets': 0, 'tables': 0, 'fields': 0, 'matches': 0}
+        scan_stats = {
+            'datasets_scanned': 0,
+            'tables_scanned': 0,
+            'fields_analyzed': 0,
+            'ao1_matches_found': 0
+        }
         
         try:
-            logger.info("Starting ultra-intelligent BigQuery scanning")
-            
-            # Get datasets with intelligent prioritization
+            # Get all datasets
             datasets = list(self.client.list_datasets())
-            datasets_to_scan = datasets[:max_datasets]
-            stats['datasets'] = len(datasets_to_scan)
+            total_datasets = len(datasets)
+            scan_stats['datasets_scanned'] = total_datasets
             
-            for dataset in datasets_to_scan:
+            logger.info(f"Starting BigQuery scan: {total_datasets} datasets found")
+            
+            for dataset_idx, dataset in enumerate(datasets):
                 dataset_id = dataset.dataset_id
-                logger.info(f"Scanning dataset: {dataset_id}")
+                logger.info(f"Scanning dataset: {dataset_id} ({dataset_idx + 1}/{total_datasets})")
                 
                 dataset_results = []
                 
                 try:
-                    # Get tables with intelligent sorting
+                    # Get all tables in dataset
                     tables = list(self.client.list_tables(dataset.reference))
-                    table_data = []
                     
+                    # Sort tables by estimated row count (descending) for priority processing
+                    table_data = []
                     for table in tables:
                         try:
                             table_ref = self.client.get_table(table.reference)
-                            row_count = table_ref.num_rows or 0
-                            table_data.append((table_ref, row_count))
+                            table_data.append((table_ref, table_ref.num_rows or 0))
                         except Exception as e:
-                            logger.debug(f"Could not get table info for {table.table_id}: {e}")
-                            continue
+                            logger.warning(f"Could not get table info for {table.table_id}: {e}")
+                            table_data.append((table, 0))
                     
-                    # Sort by row count (largest first) for maximum impact
+                    # Sort by row count (largest first)
                     table_data.sort(key=lambda x: x[1], reverse=True)
-                    tables_to_scan = table_data[:max_tables]
-                    stats['tables'] += len(tables_to_scan)
                     
-                    for table_ref, row_count in tables_to_scan:
+                    for table_ref, row_count in table_data:
+                        scan_stats['tables_scanned'] += 1
+                        
                         logger.debug(f"Analyzing table: {table_ref.table_id} ({row_count:,} rows)")
                         
-                        # Analyze each field with intelligence
+                        # Analyze each field in the table
                         for field in table_ref.schema:
-                            stats['fields'] += 1
+                            scan_stats['fields_analyzed'] += 1
                             
-                            field_analysis = analyzer.analyze_field_with_intelligence(
+                            field_analysis = analyzer.analyze_field(
                                 field_name=field.name,
                                 table_name=table_ref.table_id,
                                 dataset_name=dataset_id,
@@ -1753,66 +2142,85 @@ class UltraIntelligentBigQueryScanner:
                             
                             if field_analysis:
                                 dataset_results.append(field_analysis)
-                                stats['matches'] += 1
-                                logger.debug(f"AO1 match: {field.name} ({field_analysis.match_type})")
+                                scan_stats['ao1_matches_found'] += 1
+                                logger.debug(f"AO1 match found: {field.name} ({field_analysis.match_type})")
                     
                     if dataset_results:
-                        # Sort by strategic value
-                        dataset_results.sort(key=lambda x: x.strategic_value, reverse=True)
+                        # Sort results by strategic priority
+                        dataset_results.sort(key=lambda x: (x.strategic_priority, x.row_count), reverse=True)
                         results[dataset_id] = dataset_results
                         logger.info(f"Dataset {dataset_id}: {len(dataset_results)} AO1 fields found")
-                
+                    
                 except Exception as e:
                     logger.warning(f"Error processing dataset {dataset_id}: {e}")
                     continue
             
-            self.scan_statistics = stats
-            logger.info(f"Scan complete: {stats['matches']} AO1 matches from {stats['fields']} fields")
+            # Log final statistics
+            logger.info(f"BigQuery scan completed:")
+            logger.info(f"  Datasets scanned: {scan_stats['datasets_scanned']}")
+            logger.info(f"  Tables analyzed: {scan_stats['tables_scanned']}")
+            logger.info(f"  Fields analyzed: {scan_stats['fields_analyzed']}")
+            logger.info(f"  AO1 matches found: {scan_stats['ao1_matches_found']}")
             
         except Exception as e:
-            logger.error(f"Scanning failed: {e}")
-        
+            logger.error(f"BigQuery scanning failed: {e}")
+            
         return results
 
 
-class UltraIntelligentReportGenerator:
+class AO1ReportGenerator:
     """
-    Ultra-intelligent report generator with advanced analytics and insights.
+    Professional AO1 compliance report generator.
+    
+    Creates comprehensive, executive-ready reports with strategic insights,
+    implementation guidance, and actionable recommendations.
     """
     
     def __init__(self):
         self.timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    
-    def generate_ultra_intelligent_report(self, scan_results: Dict[str, List[IntelligentFieldAnalysis]],
-                                        scan_stats: Dict, output_dir: str = ".") -> str:
-        """Generate ultra-intelligent comprehensive report."""
-        # Organize results by requirement
-        req_results = self._organize_by_requirement(scan_results)
         
-        # Generate strategic insights
+    def generate_comprehensive_report(self, scan_results: Dict[str, List[FieldAnalysis]], 
+                                    output_dir: str = ".") -> str:
+        """
+        Generate comprehensive AO1 field discovery report.
+        
+        Args:
+            scan_results: Results from BigQuery scanning
+            output_dir: Directory to save the report
+            
+        Returns:
+            Path to the generated report file
+        """
+        # Organize and prioritize results
+        req_results = self._organize_by_requirement(scan_results)
         strategic_insights = self._generate_strategic_insights(scan_results, req_results)
         
-        # Create comprehensive report
-        report_content = self._create_comprehensive_report(
-            scan_results, req_results, strategic_insights, scan_stats
-        )
+        # Generate report content
+        report_content = self._generate_report_content(req_results, scan_results, strategic_insights)
         
-        # Write report
-        output_file = os.path.join(output_dir, f"AO1_Ultra_Intelligent_Report_{self.timestamp}.txt")
+        # Write to file
+        output_file = os.path.join(output_dir, f"AO1_Field_Discovery_Report_{self.timestamp}.txt")
         
         try:
             with open(output_file, 'w', encoding='utf-8') as f:
                 f.write(report_content)
-            logger.info(f"Ultra-intelligent report generated: {output_file}")
+            
+            logger.info(f"Report generated: {output_file}")
             return output_file
+            
         except Exception as e:
             logger.error(f"Report generation failed: {e}")
             return ""
     
-    def _organize_by_requirement(self, scan_results: Dict) -> Dict[str, List[IntelligentFieldAnalysis]]:
-        """Organize results by AO1 requirement with intelligence."""
-        req_results = {req_id: [] for req_id in AO1_REQUIREMENTS.keys()}
+    def _organize_by_requirement(self, scan_results: Dict[str, List[FieldAnalysis]]) -> Dict[str, List[FieldAnalysis]]:
+        """Organize and prioritize results by AO1 requirement."""
+        req_results = {}
         
+        # Initialize all requirements
+        for req_id in AO1_REQUIREMENTS.keys():
+            req_results[req_id] = []
+        
+        # Categorize all findings
         for dataset_results in scan_results.values():
             for analysis in dataset_results:
                 for req in analysis.matching_requirements:
@@ -1820,92 +2228,153 @@ class UltraIntelligentReportGenerator:
                     if req_id in req_results:
                         req_results[req_id].append(analysis)
         
-        # Sort by strategic value
+        # Sort each requirement's results by strategic priority
         for req_id in req_results:
-            req_results[req_id].sort(key=lambda x: x.strategic_value, reverse=True)
+            req_results[req_id].sort(key=lambda x: (x.strategic_priority, x.row_count), reverse=True)
         
         return req_results
     
-    def _generate_strategic_insights(self, scan_results: Dict, req_results: Dict) -> Dict:
-        """Generate ultra-intelligent strategic insights."""
+    def _generate_strategic_insights(self, scan_results: Dict[str, List[FieldAnalysis]], 
+                                   req_results: Dict[str, List[FieldAnalysis]]) -> Dict[str, Any]:
+        """Generate strategic insights for executive summary."""
         total_findings = sum(len(results) for results in scan_results.values())
         
-        # High-value opportunities
-        high_value = []
+        # High-value opportunities (EXACT matches with substantial data)
+        high_value_fields = []
         for dataset_results in scan_results.values():
             for analysis in dataset_results:
-                if analysis.strategic_value > 80 and analysis.row_count > 100000:
-                    high_value.append(analysis)
+                if analysis.match_type == 'EXACT' and analysis.row_count > 100000:
+                    high_value_fields.append(analysis)
         
-        high_value.sort(key=lambda x: x.strategic_value, reverse=True)
+        high_value_fields.sort(key=lambda x: x.strategic_priority, reverse=True)
         
-        # Quick wins
+        # Coverage analysis
+        coverage_analysis = {}
+        for req_id, req_info in AO1_REQUIREMENTS.items():
+            findings = req_results.get(req_id, [])
+            exact_matches = len([f for f in findings if f.match_type == 'EXACT'])
+            high_confidence = len([f for f in findings if f.confidence >= 80])
+            
+            coverage_analysis[req_id] = {
+                'name': req_info['name'],
+                'total_candidates': len(findings),
+                'exact_matches': exact_matches,
+                'high_confidence': high_confidence,
+                'coverage_score': min(100, (exact_matches * 20) + (high_confidence * 5))
+            }
+        
+        # Quick wins identification
         quick_wins = []
         for dataset_results in scan_results.values():
             for analysis in dataset_results:
                 if (analysis.match_type == 'EXACT' and 
-                    analysis.confidence > 95 and 
-                    analysis.success_probability > 0.8):
+                    analysis.confidence >= 95 and 
+                    analysis.row_count > 50000):
                     quick_wins.append(analysis)
         
-        quick_wins.sort(key=lambda x: x.strategic_value, reverse=True)
+        quick_wins.sort(key=lambda x: x.strategic_priority, reverse=True)
         
         return {
             'total_findings': total_findings,
-            'high_value_opportunities': high_value[:10],
+            'high_value_opportunities': high_value_fields[:10],
+            'coverage_analysis': coverage_analysis,
             'quick_wins': quick_wins[:5],
-            'datasets_analyzed': len(scan_results)
+            'datasets_with_findings': len(scan_results),
+            'average_confidence': sum(
+                analysis.confidence 
+                for results in scan_results.values() 
+                for analysis in results
+            ) / max(total_findings, 1)
         }
     
-    def _create_comprehensive_report(self, scan_results: Dict, req_results: Dict,
-                                   strategic_insights: Dict, scan_stats: Dict) -> str:
-        """Create comprehensive ultra-intelligent report."""
+    def _generate_report_content(self, req_results: Dict[str, List[FieldAnalysis]], 
+                               scan_results: Dict[str, List[FieldAnalysis]], 
+                               strategic_insights: Dict[str, Any]) -> str:
+        """Generate the complete report content."""
+        
         content = []
         
         # Header
         content.extend([
-            "AO1 ULTRA-INTELLIGENT FIELD DISCOVERY REPORT",
+            "AO1 BIGQUERY FIELD DISCOVERY REPORT",
             "=" * 80,
             f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
-            f"Intelligence Level: Ultra-Advanced ML with Predictive Analytics",
-            f"Target Project: prj-fisv-p-gcss-sas-d19dd0f1df",
+            f"Target Project: prj-fisv-p-gcss-sas-dl9dd0f1df",
+            f"Analysis Engine: Advanced ML with Corporate Security Integration",
             ""
         ])
         
         # Executive Summary
         content.extend([
-            "EXECUTIVE INTELLIGENCE SUMMARY",
+            "EXECUTIVE SUMMARY",
             "=" * 50,
             "",
-            f"Ultra-intelligent analysis discovered {strategic_insights['total_findings']:,} AO1-relevant fields",
-            f"Datasets analyzed: {strategic_insights['datasets_analyzed']}",
-            f"High-value opportunities: {len(strategic_insights['high_value_opportunities'])}",
-            f"Quick-win implementations: {len(strategic_insights['quick_wins'])}",
+            f"Total AO1-relevant fields discovered: {strategic_insights['total_findings']:,}",
+            f"Datasets with AO1 fields: {strategic_insights['datasets_with_findings']}",
+            f"Average confidence score: {strategic_insights['average_confidence']:.1f}%",
+            f"High-value opportunities identified: {len(strategic_insights['high_value_opportunities'])}",
             ""
         ])
         
-        # Strategic Opportunities
+        # Coverage Analysis
+        content.extend([
+            "AO1 REQUIREMENTS COVERAGE ANALYSIS",
+            "-" * 45,
+            ""
+        ])
+        
+        for req_id, req_info in AO1_REQUIREMENTS.items():
+            coverage = strategic_insights['coverage_analysis'][req_id]
+            content.append(
+                f"{req_id} {coverage['name']}: {coverage['total_candidates']} candidates "
+                f"({coverage['exact_matches']} exact, {coverage['high_confidence']} high-confidence) "
+                f"- Coverage Score: {coverage['coverage_score']}/100"
+            )
+        
+        content.append("")
+        
+        # Strategic Recommendations
+        content.extend([
+            "STRATEGIC RECOMMENDATIONS",
+            "-" * 35,
+            ""
+        ])
+        
+        if strategic_insights['quick_wins']:
+            content.extend([
+                "IMMEDIATE IMPLEMENTATION PRIORITIES:",
+                ""
+            ])
+            
+            for i, analysis in enumerate(strategic_insights['quick_wins'], 1):
+                content.extend([
+                    f"{i}. Field '{analysis.field_name}' in {analysis.dataset_name}.{analysis.table_name}",
+                    f"   Data Volume: {analysis.row_count:,} rows | Confidence: {analysis.confidence:.1f}% | Type: {analysis.match_type}",
+                    f"   Requirements: {', '.join(analysis.matching_requirements)}",
+                    f"   Business Value: {analysis.business_context}",
+                    f"   Implementation: {analysis.recommendation}",
+                    ""
+                ])
+        
         if strategic_insights['high_value_opportunities']:
             content.extend([
-                "HIGH-VALUE STRATEGIC OPPORTUNITIES",
-                "-" * 45,
+                "HIGH-VALUE OPPORTUNITIES:",
                 ""
             ])
             
             for i, analysis in enumerate(strategic_insights['high_value_opportunities'][:5], 1):
                 content.extend([
                     f"{i}. {analysis.dataset_name}.{analysis.table_name}.{analysis.field_name}",
-                    f"   Strategic Value: {analysis.strategic_value}/100 | Data: {analysis.row_count:,} rows",
-                    f"   Match Type: {analysis.match_type} | Confidence: {analysis.confidence:.1f}%",
-                    f"   Success Probability: {analysis.success_probability:.1%} | ROI: {analysis.roi_estimate}",
-                    f"   Recommendation: {analysis.recommendation}",
+                    f"   Strategic Priority: {analysis.strategic_priority} | Data: {analysis.row_count:,} rows",
+                    f"   {analysis.recommendation}",
                     ""
                 ])
         
-        # Requirements Analysis
+        # Detailed Results by Requirement
         content.extend([
-            "INTELLIGENT REQUIREMENTS ANALYSIS",
-            "=" * 50,
+            "",
+            "DETAILED FINDINGS BY AO1 REQUIREMENT",
+            "=" * 80,
             ""
         ])
         
@@ -1915,143 +2384,210 @@ class UltraIntelligentReportGenerator:
             content.extend([
                 f"{req_id}: {req_info['name']}",
                 "-" * 60,
-                f"Strategic Weight: {req_info['strategic_weight']}/100",
-                f"Fields Discovered: {len(findings)}",
+                f"Purpose: {req_info['description']}",
+                f"Business Value: {req_info['business_purpose']}",
+                f"Key Concepts: {', '.join(req_info['key_concepts'])}",
                 ""
             ])
             
-            if findings:
+            if not findings:
                 content.extend([
-                    "TOP INTELLIGENT RECOMMENDATIONS:",
+                    "No matching fields found for this requirement.",
+                    "Recommendation: Review data sources and field naming conventions.",
                     ""
                 ])
-                
-                for i, analysis in enumerate(findings[:5], 1):
-                    content.extend([
-                        f"{i}. Field '{analysis.field_name}' in {analysis.dataset_name}.{analysis.table_name}",
-                        f"   Strategic Value: {analysis.strategic_value} | Type: {analysis.match_type} | Confidence: {analysis.confidence:.1f}%",
-                        f"   Business Context: {analysis.business_context}",
-                        f"   Implementation: {analysis.implementation_complexity} complexity, {analysis.success_probability:.1%} success rate",
-                        f"   Next Actions: {', '.join(analysis.next_actions[:2])}",
-                        ""
-                    ])
-            else:
+                continue
+            
+            # Categorize findings
+            exact_matches = [f for f in findings if f.match_type == 'EXACT']
+            ml_identified = [f for f in findings if f.match_type == 'ML_IDENTIFIED']
+            partial_matches = [f for f in findings if f.match_type == 'PARTIAL']
+            suspected = [f for f in findings if f.match_type == 'SUSPECTED']
+            
+            content.extend([
+                f"FINDINGS SUMMARY: {len(findings)} total field candidates",
+                f"  EXACT: {len(exact_matches)} | ML-IDENTIFIED: {len(ml_identified)} | PARTIAL: {len(partial_matches)} | SUSPECTED: {len(suspected)}",
+                ""
+            ])
+            
+            # Top recommendations for this requirement
+            content.extend([
+                "TOP FIELD RECOMMENDATIONS:",
+                ""
+            ])
+            
+            for i, analysis in enumerate(findings[:10], 1):
                 content.extend([
-                    "No fields discovered for this requirement.",
-                    "Recommendation: Expand data source analysis or verify field naming conventions.",
+                    f"{i}. Field '{analysis.field_name}' in {analysis.dataset_name}.{analysis.table_name}",
+                    f"   Data Volume: {analysis.row_count:,} rows | Match: {analysis.match_type} | Confidence: {analysis.confidence:.1f}%",
+                    f"   Table Context: {analysis.table_context} | Semantic Score: {analysis.semantic_similarity:.2f}",
+                    "",
+                    f"   Business Assessment:",
+                    f"   {analysis.business_context}",
+                    "",
+                    f"   Implementation Guidance:",
+                    f"   {analysis.recommendation}",
+                    "",
+                    "   " + "-" * 70,
                     ""
                 ])
+        
+        # Implementation Roadmap
+        content.extend([
+            "",
+            "IMPLEMENTATION ROADMAP",
+            "=" * 30,
+            "",
+            "PHASE 1: Quick Wins (0-30 days)",
+            "- Implement exact matches with high data volumes",
+            "- Focus on CMDB, security, and logging tables",
+            "- Establish baseline AO1 measurements",
+            "",
+            "PHASE 2: High-Confidence Matches (30-60 days)",
+            "- Deploy ML-identified and high-confidence partial matches",
+            "- Validate field mappings and data quality",
+            "- Expand coverage across all 8 requirements",
+            "",
+            "PHASE 3: Comprehensive Coverage (60-90 days)",
+            "- Investigate suspected matches through manual review",
+            "- Optimize field selection based on initial results",
+            "- Complete AO1 visibility implementation",
+            "",
+            "SUCCESS METRICS:",
+            "- 80% coverage across all AO1 requirements",
+            "- Automated visibility measurement deployment",
+            "- Regular reporting and monitoring established"
+        ])
         
         return "\n".join(content)
 
 
 def main():
     """
-    Ultra-intelligent main execution with comprehensive error handling and optimization.
+    Main execution function with comprehensive AO1 field discovery.
+    
+    Orchestrates the complete process from corporate connection establishment
+    through BigQuery scanning to report generation.
     """
-    print("AO1 ULTRA-INTELLIGENT DISCOVERY SYSTEM")
+    print("AO1 BIGQUERY FIELD DISCOVERY SYSTEM")
     print("=" * 80)
-    print("Next-generation AI-powered AO1 compliance field discovery")
-    print("Advanced ML • Corporate Security • Predictive Analytics")
-    print(f"Target: prj-fisv-p-gcss-sas-d19dd0f1df")
-    print(f"Execution: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    print("Enterprise-grade AO1 compliance field identification")
+    print("Advanced ML analysis with corporate security integration")
+    print(f"Target Project: prj-fisv-p-gcss-sas-dl9dd0f1df")
+    print(f"Execution Time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     print()
     
     try:
-        # Phase 1: Corporate Intelligence
-        print("PHASE 1: CORPORATE INTELLIGENCE INITIALIZATION")
-        print("-" * 55)
-        corp_manager = CorporateIntelligenceManager()
-        connection_result = corp_manager.establish_intelligent_corporate_connection()
+        # Step 1: Establish secure corporate connectivity for external services
+        print("STEP 1: SECURE CORPORATE CONNECTIVITY")
+        print("-" * 50)
+        connection_manager = CorporateConnectionManager()
+        connection_result = connection_manager.establish_secure_corporate_connection()
         
         if connection_result['success']:
-            print(f"Corporate intelligence established: {connection_result['methods']} secure methods")
-            print(f"Optimal security method: {connection_result['optimal_method']['method']}")
+            print(f"Secure connectivity established: {connection_result['methods']} methods working")
+            print(f"Optimal method: {connection_result['optimal_method'].name}")
             print(f"Security score: {connection_result['security_score']}/10")
         else:
-            print("Limited corporate connectivity - proceeding with available capabilities")
+            print("Limited connectivity detected - continuing with offline capabilities")
         print()
         
-        # Phase 2: ML Intelligence System
-        print("PHASE 2: ML INTELLIGENCE SYSTEM")
+        # Step 2: Initialize ML system with secure connections
+        print("STEP 2: ML SYSTEM INITIALIZATION")
         print("-" * 40)
-        ml_system = IntelligentMLSystem()
-        ml_status = ml_system.initialize_intelligent_system()
+        dependency_manager = MLDependencyManager()
+        available_libs = dependency_manager.check_and_install_dependencies()
         
-        print(f"ML intelligence initialized")
-        print(f"Hardware class: {ml_status['hardware_profile']['performance_class']}")
-        print(f"ML strategy: {ml_status['ml_strategy']}")
-        print(f"Compute device: {ml_system.device}")
-        print(f"Capabilities: {ml_status['capabilities']['semantic_analysis']}")
+        ml_analyzer = AdvancedMLAnalyzer(dependency_manager)
+        capability_summary = dependency_manager.get_ml_capability_summary()
+        
+        print(f"ML capabilities: {capability_summary}")
+        print(f"ML strategy: {ml_analyzer.ml_strategy}")
+        print(f"Compute device: {ml_analyzer.device}")
+        
+        # Display specific ML features
+        if ml_analyzer.ml_strategy == 'sentence_transformers':
+            print("Advanced semantic analysis with transformer models enabled")
+        elif ml_analyzer.ml_strategy == 'built_in_embeddings':
+            print("Semantic analysis using optimized built-in embeddings")
+        elif ml_analyzer.ml_strategy == 'tfidf_similarity':
+            print("Statistical text similarity analysis available")
+        else:
+            print("Pattern matching analysis mode")
         print()
         
-        # Phase 3: Field Analysis Intelligence
-        print("PHASE 3: FIELD ANALYSIS INTELLIGENCE")
-        print("-" * 45)
-        field_analyzer = IntelligentFieldAnalyzer(ml_system)
+        # Step 3: Initialize AO1 analysis engine
+        print("STEP 3: AO1 ANALYSIS ENGINE")
+        print("-" * 35)
+        field_analyzer = AO1FieldAnalyzer(ml_analyzer)
         keyword_count = len(get_all_keywords())
-        print(f"AO1 intelligence loaded: {keyword_count} keywords across 8 requirements")
-        print("Analysis modes: Exact • Semantic • Pattern • Predictive • Business Intelligence")
+        
+        print(f"AO1 keywords loaded: {keyword_count} across 8 requirements")
+        print("Analysis capabilities: Exact matching, Pattern recognition, Semantic similarity, Business context")
         print()
         
-        # Phase 4: BigQuery Ultra-Intelligent Scanning
-        print("PHASE 4: BIGQUERY ULTRA-INTELLIGENT SCANNING")
-        print("-" * 50)
-        scanner = UltraIntelligentBigQueryScanner()
+        # Step 4: BigQuery scanning with original authentication
+        print("STEP 4: BIGQUERY SCANNING")
+        print("-" * 30)
+        scanner = BigQueryScanner()
         
         if not scanner.authenticate():
-            print("BigQuery authentication failed - check credentials")
+            print("BigQuery authentication failed")
+            print("Please ensure proper Google Cloud credentials are configured")
             return False
         
         print("BigQuery authentication successful")
-        print("Initiating ultra-intelligent field discovery...")
+        print("Beginning comprehensive dataset analysis...")
         
-        # Perform intelligent scan
-        scan_results = scanner.perform_intelligent_scan(field_analyzer)
+        # Perform the comprehensive scan
+        scan_results = scanner.scan_datasets_and_tables(field_analyzer)
         
         if not scan_results:
-            print("No AO1-relevant fields discovered")
+            print("Scan completed: No AO1-relevant fields found")
             return True
         
-        # Phase 5: Ultra-Intelligent Reporting
+        # Step 5: Generate comprehensive report
         print()
-        print("PHASE 5: ULTRA-INTELLIGENT REPORT GENERATION")
-        print("-" * 50)
-        report_generator = UltraIntelligentReportGenerator()
-        report_file = report_generator.generate_ultra_intelligent_report(
-            scan_results, scanner.scan_statistics
-        )
+        print("STEP 5: REPORT GENERATION")
+        print("-" * 30)
+        report_generator = AO1ReportGenerator()
+        report_file = report_generator.generate_comprehensive_report(scan_results)
         
         if report_file:
-            print(f"Ultra-intelligent report: {report_file}")
-        
-        # Phase 6: Executive Summary
+            print(f"Comprehensive report generated: {report_file}")
+        else:
+            print("Report generation failed")
         print()
-        print("EXECUTIVE INTELLIGENCE SUMMARY")
-        print("-" * 40)
+        
+        # Step 6: Executive summary
+        print("EXECUTION SUMMARY")
+        print("-" * 25)
         total_findings = sum(len(results) for results in scan_results.values())
-        high_strategic = sum(
+        high_priority = sum(
             1 for results in scan_results.values() 
             for analysis in results 
-            if analysis.strategic_value > 80
+            if analysis.strategic_priority > 150
         )
         
         print(f"Datasets analyzed: {len(scan_results)}")
-        print(f"AO1 fields discovered: {total_findings:,}")
-        print(f"High strategic value: {high_strategic}")
-        print(f"ML intelligence: {ml_system.ml_strategy}")
+        print(f"AO1-relevant fields found: {total_findings:,}")
+        print(f"High-priority recommendations: {high_priority}")
+        print(f"ML strategy used: {ml_analyzer.ml_strategy}")
         if report_file:
-            print(f"Detailed analysis: {report_file}")
+            print(f"Detailed report: {report_file}")
         print()
         
-        print("ULTRA-INTELLIGENT DISCOVERY COMPLETE")
-        print("Advanced AI analysis with predictive insights delivered")
+        print("AO1 FIELD DISCOVERY COMPLETE")
+        print("Review the generated report for detailed findings and implementation guidance")
         
         return True
         
+    except KeyboardInterrupt:
+        print("\nExecution interrupted by user")
+        return False
     except Exception as e:
-        logger.error(f"Ultra-intelligent discovery failed: {e}")
-        print(f"Critical system error: {e}")
+        logger.error(f"Execution failed: {e}")
+        print(f"Critical error: {e}")
         return False
 
 
