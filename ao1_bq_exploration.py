@@ -16,7 +16,7 @@ Architecture:
 
 Author: Enterprise Security Analytics Team
 Version: 2.0
-Target: prj-fisv-p-gcss-sas-dl9dd0f1df
+Target: prj-fisv-p-gcss-sas-d19dd0f1df
 """
 
 import os
@@ -52,6 +52,10 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+# Import required libraries
+from google.cloud import bigquery
+from google.oauth2 import service_account
+
 # Import AO1 keywords from external module
 from ao1_keywords import (
     REQ1_GLOBAL_VIEW_KEYWORDS,
@@ -67,6 +71,17 @@ from ao1_keywords import (
 )
 
 logger.info("AO1 keywords successfully imported from external module")
+
+# BigQuery Authentication - exactly like the working app.py
+SERVICE_ACCOUNT_FILE = os.path.join(file_path, "gcp_prod_key.json")
+credentials = service_account.Credentials.from_service_account_file(SERVICE_ACCOUNT_FILE)
+
+project = "chronicle-fisv"
+clientBQ = bigquery.Client(project="chronicle-fisv", credentials=credentials)
+
+def runBQQuery(query):
+    df = clientBQ.query(query).to_dataframe()
+    return df
 
 # AO1 requirements metadata
 AO1_REQUIREMENTS = {
@@ -2031,26 +2046,15 @@ class AO1FieldAnalyzer:
         return recommendation
 
 
-def authenticate_bigquery():
-    """Authenticate with BigQuery using service account"""
-    SERVICE_ACCOUNT_FILE = os.path.join(file_path, "gcp_prod_key.json")
-    credentials = service_account.Credentials.from_service_account_file(SERVICE_ACCOUNT_FILE)
-    settings['KATANA_PG'] = {'client_encoding': 'utf8'}
-    project = "prj-fisv-p-gcss-sas-d19dd0f1df"
-    client = bigquery.Client(project=project, credentials=credentials)
-    logger.info("Successfully authenticated with BigQuery for AO1 exploration")
-    return client
-
-
 class BigQueryScanner:
     """
-    Advanced BigQuery scanning engine with original authentication method.
+    Advanced BigQuery scanning engine with cross-project authentication.
     
-    Uses the exact same authentication approach as the original working script.
+    Authenticates to chronicle-fisv but scans the target project.
     """
     
-    def __init__(self, project_id: str = "prj-fisv-p-gcss-sas-d19dd0f1df"):
-        self.project_id = project_id
+    def __init__(self, target_project_id: str = "prj-fisv-p-gcss-sas-d19dd0f1df"):
+        self.target_project_id = target_project_id
         self.client = None
         self.authenticated = False
         
@@ -2062,9 +2066,10 @@ class BigQueryScanner:
             True if authentication successful
         """
         try:
-            # Use the exact same function from the original script
-            self.client = authenticate_bigquery()
+            # Use the global clientBQ from the authentication setup
+            self.client = clientBQ
             self.authenticated = True
+            logger.info("Successfully authenticated with BigQuery for AO1 exploration")
             return True
                 
         except Exception as e:
@@ -2073,7 +2078,7 @@ class BigQueryScanner:
     
     def scan_datasets_and_tables(self, analyzer: AO1FieldAnalyzer) -> Dict[str, List[FieldAnalysis]]:
         """
-        Scan all datasets and tables for AO1-relevant fields.
+        Scan all datasets and tables for AO1-relevant fields in the target project.
         
         Args:
             analyzer: AO1FieldAnalyzer instance for field analysis
@@ -2094,12 +2099,12 @@ class BigQueryScanner:
         }
         
         try:
-            # Get all datasets
-            datasets = list(self.client.list_datasets())
+            # Get all datasets from the TARGET project, not the auth project
+            datasets = list(self.client.list_datasets(project=self.target_project_id))
             total_datasets = len(datasets)
             scan_stats['datasets_scanned'] = total_datasets
             
-            logger.info(f"Starting BigQuery scan: {total_datasets} datasets found")
+            logger.info(f"Starting BigQuery scan on target project {self.target_project_id}: {total_datasets} datasets found")
             
             for dataset_idx, dataset in enumerate(datasets):
                 dataset_id = dataset.dataset_id
@@ -2299,7 +2304,8 @@ class AO1ReportGenerator:
             "AO1 BIGQUERY FIELD DISCOVERY REPORT",
             "=" * 80,
             f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
-            f"Target Project: prj-fisv-p-gcss-sas-dl9dd0f1df",
+            f"Authentication Project: chronicle-fisv",
+            f"Target Scanning Project: prj-fisv-p-gcss-sas-d19dd0f1df",
             f"Analysis Engine: Advanced ML with Corporate Security Integration",
             ""
         ])
@@ -2473,7 +2479,8 @@ def main():
     print("=" * 80)
     print("Enterprise-grade AO1 compliance field identification")
     print("Advanced ML analysis with corporate security integration")
-    print(f"Target Project: prj-fisv-p-gcss-sas-dl9dd0f1df")
+    print(f"Authentication Project: chronicle-fisv")
+    print(f"Target Scanning Project: prj-fisv-p-gcss-sas-d19dd0f1df")
     print(f"Execution Time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     print()
     
@@ -2526,7 +2533,7 @@ def main():
         print("Analysis capabilities: Exact matching, Pattern recognition, Semantic similarity, Business context")
         print()
         
-        # Step 4: BigQuery scanning with original authentication
+        # Step 4: BigQuery scanning with cross-project authentication
         print("STEP 4: BIGQUERY SCANNING")
         print("-" * 30)
         scanner = BigQueryScanner()
@@ -2537,6 +2544,8 @@ def main():
             return False
         
         print("BigQuery authentication successful")
+        print(f"Authenticated to: chronicle-fisv")
+        print(f"Scanning target project: {scanner.target_project_id}")
         print("Beginning comprehensive dataset analysis...")
         
         # Perform the comprehensive scan
