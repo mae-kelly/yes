@@ -513,6 +513,83 @@ class AdvancedAO1Analyzer:
             logger.error("ML INITIALIZATION ERROR: {}".format(e))
             print("ERROR: ML component initialization failed - {}".format(str(e)[:100]))
             self.sentence_model = None
+        
+    def initialize_ml_components(self):
+        """Initialize ML components with robust Hugging Face connectivity"""
+        try:
+            if not HF_AVAILABLE:
+                logger.warning("ML COMPONENTS: Hugging Face libraries not available - using basic mode")
+                return
+            
+            # Test Hugging Face connectivity
+            connection_results = self.hf_connector.test_huggingface_connectivity()
+            successful_methods = sum(connection_results.values())
+            
+            print("CONNECTIVITY: {}/7 Hugging Face connection methods successful".format(successful_methods))
+            
+            if successful_methods == 0:
+                print("WARNING: No Hugging Face connectivity - falling back to basic analysis")
+                return
+            
+            # Authenticate if possible
+            auth_methods = self.hf_connector.authenticate_huggingface()
+            
+            # Determine optimal loading strategy
+            strategies = self.hf_connector.get_optimal_model_strategy(connection_results)
+            
+            if not strategies:
+                print("WARNING: No viable model loading strategies found")
+                return
+            
+            # Load sentence transformer model with fallback
+            model_options = [
+                'sentence-transformers/all-MiniLM-L6-v2',
+                'sentence-transformers/all-mpnet-base-v2',
+                'sentence-transformers/paraphrase-MiniLM-L6-v2',
+                'distilbert-base-uncased',
+                'bert-base-uncased'
+            ]
+            
+            model_loaded = False
+            for model_name in model_options:
+                print("MODELS: Attempting to load '{}'...".format(model_name))
+                model, method = self.hf_connector.load_model_with_fallback(model_name, strategies)
+                
+                if model is not None:
+                    self.sentence_model = model
+                    self.sentence_model_method = method
+                    model_loaded = True
+                    print("MODELS: Successfully loaded '{}' via {}".format(model_name, method))
+                    break
+                else:
+                    print("MODELS: Failed to load '{}'".format(model_name))
+            
+            if not model_loaded:
+                print("WARNING: Unable to load any sentence transformer models")
+                self.sentence_model = None
+                return
+            
+            # Initialize TF-IDF vectorizer
+            self.tfidf_vectorizer = TfidfVectorizer(
+                max_features=1000,
+                ngram_range=(1, 3),
+                stop_words='english'
+            )
+            
+            # Pre-compute requirement embeddings
+            self._compute_requirement_embeddings()
+            
+            # Initialize neural matcher
+            self._initialize_neural_matcher()
+            
+            print("ML COMPONENTS: Full initialization complete with {} connectivity".format(
+                len(self.hf_connector.successful_connections)
+            ))
+            
+        except Exception as e:
+            logger.error("ML INITIALIZATION ERROR: {}".format(e))
+            print("ERROR: ML component initialization failed - {}".format(str(e)[:100]))
+            self.sentence_model = None
     
     def _compute_requirement_embeddings(self):
         """Pre-compute embeddings for all AO1 requirements with multiple model strategies"""
