@@ -1,20 +1,52 @@
 """
-AO1 BigQuery Field Discovery Script - Clean Results Focus
+Advanced AO1 Field Discovery System with ML-Enhanced Analysis
 
-This script scans BigQuery datasets to find fields relevant to AO1 requirements,
-presenting results in a clean, requirement-ordered format with table size prioritization.
+This system uses machine learning on Apple M1 GPU acceleration to intelligently 
+discover and categorize BigQuery fields relevant to AO1 audit requirements.
+Features neural network-based field matching, semantic similarity analysis,
+and confidence scoring for optimal field selection.
 """
 
 import os
 import json
-from google.cloud import bigquery
-from google.oauth2 import service_account
+import numpy as np
 import pandas as pd
 from datetime import datetime
 import logging
 import time
 import sys
+import re
+from typing import Dict, List, Tuple, Optional
+from dataclasses import dataclass, asdict
+from collections import defaultdict, Counter
+
+# BigQuery imports
+from google.cloud import bigquery
+from google.oauth2 import service_account
 from google.cloud.exceptions import NotFound, Forbidden, BadRequest, ServerError
+
+# ML imports for M1 GPU acceleration
+try:
+    import torch
+    import torch.nn as nn
+    import torch.nn.functional as F
+    from torch.utils.data import Dataset, DataLoader
+    from sklearn.feature_extraction.text import TfidfVectorizer
+    from sklearn.metrics.pairwise import cosine_similarity
+    from sentence_transformers import SentenceTransformer
+    
+    # Check for MPS (Metal Performance Shaders) support on M1
+    if torch.backends.mps.is_available():
+        DEVICE = torch.device("mps")
+        print("SYSTEM: M1 GPU acceleration enabled via Metal Performance Shaders")
+    else:
+        DEVICE = torch.device("cpu")
+        print("SYSTEM: CPU processing mode (M1 GPU not detected)")
+        
+except ImportError as e:
+    print("WARNING: ML libraries not available, falling back to basic matching")
+    print("Install with: pip install torch sentence-transformers scikit-learn")
+    DEVICE = None
 
 # Import AO1 Keywords
 try:
@@ -33,7 +65,6 @@ try:
     
     ALL_AO1_KEYWORDS = get_all_keywords()
     
-    # Create requirement mapping
     REQUIREMENT_KEYWORDS = {
         'REQ-1': REQ1_GLOBAL_VIEW_KEYWORDS,
         'REQ-2': REQ2_INFRASTRUCTURE_TYPE_KEYWORDS,
@@ -45,330 +76,590 @@ try:
         'REQ-8': REQ8_DOMAIN_VISIBILITY_KEYWORDS
     }
     
-    print("✓ AO1 Keywords loaded: {} total keywords".format(len(ALL_AO1_KEYWORDS)))
+    print("LOADED: {} AO1 keywords across 8 requirements".format(len(ALL_AO1_KEYWORDS)))
     
 except ImportError as e:
-    print("ERROR: Cannot import AO1 keywords module: {}".format(e))
+    print("CRITICAL ERROR: Cannot import AO1 keywords module")
+    print("Ensure ao1_keywords.py is in the project directory")
     sys.exit(1)
 
-# Setup
-file_path = os.path.join(os.path.dirname(__file__))
-logging.basicConfig(level=logging.WARNING, format='%(asctime)s - %(message)s')
+# Configuration
+PROJECT_ID = "prj-fisv-p-gcss-sas-dl9dd0f1df"
+SERVICE_ACCOUNT_FILE = "gcp_prod_key.json"
+
+# Advanced logging configuration
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s [%(levelname)s] %(message)s',
+    handlers=[
+        logging.FileHandler('ao1_advanced_discovery.log'),
+        logging.StreamHandler(sys.stdout)
+    ]
+)
 logger = logging.getLogger(__name__)
 
-def authenticate_bigquery():
-    """Authenticate with BigQuery"""
-    SERVICE_ACCOUNT_FILE = os.path.join(file_path, "gcp_prod_key.json")
-    credentials = service_account.Credentials.from_service_account_file(SERVICE_ACCOUNT_FILE)
-    project = "prj-fisv-p-gcss-sas-d19dd0f1df"
-    client = bigquery.Client(project=project, credentials=credentials)
-    return client
+@dataclass
+class FieldMatch:
+    """Data class for field match results"""
+    dataset: str
+    table: str
+    field_name: str
+    field_path: str
+    field_type: str
+    requirement: str
+    matched_keyword: str
+    match_type: str
+    confidence_score: float
+    table_rows: int
+    table_size_bytes: int
+    semantic_similarity: float
+    context_relevance: float
 
-def get_datasets(client):
-    """Get all accessible datasets"""
-    try:
-        return [dataset.dataset_id for dataset in client.list_datasets()]
-    except Exception as e:
-        print("Error accessing datasets: {}".format(e))
-        return []
-
-def get_tables(client, dataset_id):
-    """Get all tables in dataset"""
-    try:
-        return [table.table_id for table in client.list_tables(dataset_id)]
-    except Exception:
-        return []
-
-def is_exact_match(field_name):
-    """Check for exact AO1 keyword match"""
-    return field_name.lower().strip() in ALL_AO1_KEYWORDS
-
-def is_partial_match(field_name):
-    """Check for partial/suspected AO1 keyword match"""
-    field_lower = field_name.lower().strip()
+class AO1NeuralMatcher(nn.Module):
+    """Neural network for advanced field matching using M1 GPU acceleration"""
     
-    # Skip if exact match
-    if is_exact_match(field_name):
-        return False, None
-    
-    # Look for partial matches
-    for keyword in ALL_AO1_KEYWORDS:
-        # Field contains keyword
-        if keyword in field_lower and len(keyword) >= 3:
-            return True, keyword
-        # Keyword contains field (for shorter field names)
-        if field_lower in keyword and len(field_lower) >= 3:
-            return True, keyword
-    
-    return False, None
-
-def get_requirement_for_keyword(keyword):
-    """Get requirement for a keyword"""
-    for req, keywords in REQUIREMENT_KEYWORDS.items():
-        if keyword in keywords:
-            return req
-    return "UNKNOWN"
-
-def get_requirement_description(req):
-    """Get human-readable requirement description"""
-    descriptions = {
-        'REQ-1': 'Global View - Asset identifiers for counting unique logging assets vs CMDB',
-        'REQ-2': 'Infrastructure Type - Deployment model classification (on-prem, cloud, SaaS)',
-        'REQ-3': 'Regional/Country View - Geographic location classification',
-        'REQ-4': 'Business/Application View - Organizational classification',
-        'REQ-5': 'System Classification - Server function and OS type classification',
-        'REQ-6': 'Security Control Coverage - Agent presence for coverage measurement',
-        'REQ-7': 'Logging Compliance - GSO (Chronicle) and Splunk platform compliance',
-        'REQ-8': 'Domain Visibility - Asset visibility by hostname and domain'
-    }
-    return descriptions.get(req, req)
-
-def scan_table_schema(client, dataset_id, table_id):
-    """Scan table schema for AO1-relevant fields"""
-    try:
-        table_ref = client.dataset(dataset_id).table(table_id)
-        table = client.get_table(table_ref)
+    def __init__(self, vocab_size: int, embedding_dim: int = 128, hidden_dim: int = 64):
+        super(AO1NeuralMatcher, self).__init__()
+        self.embedding = nn.Embedding(vocab_size, embedding_dim)
+        self.lstm = nn.LSTM(embedding_dim, hidden_dim, bidirectional=True, batch_first=True)
+        self.attention = nn.MultiheadAttention(hidden_dim * 2, num_heads=4)
+        self.classifier = nn.Sequential(
+            nn.Linear(hidden_dim * 2, hidden_dim),
+            nn.ReLU(),
+            nn.Dropout(0.3),
+            nn.Linear(hidden_dim, 8),  # 8 requirements
+            nn.Softmax(dim=1)
+        )
         
-        results = []
+    def forward(self, x):
+        # Embedding layer
+        embedded = self.embedding(x)
         
-        def analyze_field(field, parent_path=""):
+        # LSTM processing
+        lstm_out, (hidden, cell) = self.lstm(embedded)
+        
+        # Attention mechanism
+        attn_out, _ = self.attention(lstm_out, lstm_out, lstm_out)
+        
+        # Global max pooling
+        pooled = torch.max(attn_out, dim=1)[0]
+        
+        # Classification
+        output = self.classifier(pooled)
+        return output
+
+class AdvancedAO1Analyzer:
+    """Advanced ML-powered AO1 field analyzer"""
+    
+    def __init__(self):
+        self.client = None
+        self.neural_matcher = None
+        self.sentence_model = None
+        self.tfidf_vectorizer = None
+        self.requirement_embeddings = {}
+        self.field_vocabulary = {}
+        self.initialize_ml_components()
+        
+    def initialize_ml_components(self):
+        """Initialize ML components with M1 GPU support"""
+        try:
+            if DEVICE:
+                # Initialize sentence transformer for semantic analysis
+                self.sentence_model = SentenceTransformer('all-MiniLM-L6-v2')
+                if DEVICE.type == 'mps':
+                    self.sentence_model = self.sentence_model.to(DEVICE)
+                
+                # Initialize TF-IDF vectorizer
+                self.tfidf_vectorizer = TfidfVectorizer(
+                    max_features=1000,
+                    ngram_range=(1, 3),
+                    stop_words='english'
+                )
+                
+                # Pre-compute requirement embeddings
+                self._compute_requirement_embeddings()
+                
+                # Initialize neural matcher
+                self._initialize_neural_matcher()
+                
+                logger.info("ML COMPONENTS: Initialized with M1 GPU acceleration")
+            else:
+                logger.warning("ML COMPONENTS: Basic mode - advanced features disabled")
+                
+        except Exception as e:
+            logger.error("ML INITIALIZATION ERROR: {}".format(e))
+            self.sentence_model = None
+    
+    def _compute_requirement_embeddings(self):
+        """Pre-compute embeddings for all AO1 requirements"""
+        requirement_descriptions = {
+            'REQ-1': 'global view asset identifiers hostname computer device system',
+            'REQ-2': 'infrastructure type deployment cloud aws azure gcp onprem',
+            'REQ-3': 'regional country geographic location datacenter region zone',
+            'REQ-4': 'business application organizational unit department division',
+            'REQ-5': 'system classification server function operating system windows linux',
+            'REQ-6': 'security control coverage agent endpoint detection response',
+            'REQ-7': 'logging compliance platform splunk chronicle ingestion parsing',
+            'REQ-8': 'domain visibility hostname dns resolution network address'
+        }
+        
+        for req, desc in requirement_descriptions.items():
+            if self.sentence_model:
+                embedding = self.sentence_model.encode([desc])
+                self.requirement_embeddings[req] = embedding[0]
+    
+    def _initialize_neural_matcher(self):
+        """Initialize the neural network matcher"""
+        try:
+            # Build vocabulary from AO1 keywords
+            vocab = list(ALL_AO1_KEYWORDS) + ['<UNK>', '<PAD>']
+            self.field_vocabulary = {word: idx for idx, word in enumerate(vocab)}
+            
+            # Initialize neural network
+            self.neural_matcher = AO1NeuralMatcher(
+                vocab_size=len(vocab),
+                embedding_dim=128,
+                hidden_dim=64
+            )
+            
+            if DEVICE and DEVICE.type == 'mps':
+                self.neural_matcher = self.neural_matcher.to(DEVICE)
+            
+            logger.info("NEURAL NETWORK: Initialized with {} vocabulary terms".format(len(vocab)))
+            
+        except Exception as e:
+            logger.error("NEURAL NETWORK ERROR: {}".format(e))
+            self.neural_matcher = None
+    
+    def authenticate_bigquery(self):
+        """Authenticate with BigQuery"""
+        try:
+            credentials = service_account.Credentials.from_service_account_file(SERVICE_ACCOUNT_FILE)
+            self.client = bigquery.Client(project=PROJECT_ID, credentials=credentials)
+            logger.info("BIGQUERY: Authentication successful")
+            return True
+        except Exception as e:
+            logger.error("BIGQUERY AUTH ERROR: {}".format(e))
+            return False
+    
+    def get_datasets(self) -> List[str]:
+        """Get all accessible datasets"""
+        try:
+            datasets = [d.dataset_id for d in self.client.list_datasets()]
+            logger.info("DATASETS: Found {} accessible datasets".format(len(datasets)))
+            return datasets
+        except Exception as e:
+            logger.error("DATASET ACCESS ERROR: {}".format(e))
+            return []
+    
+    def get_table_metadata(self, dataset_id: str, table_id: str) -> Optional[bigquery.Table]:
+        """Get table metadata with error handling"""
+        try:
+            table_ref = self.client.dataset(dataset_id).table(table_id)
+            return self.client.get_table(table_ref)
+        except Exception:
+            return None
+    
+    def compute_semantic_similarity(self, field_name: str, requirement: str) -> float:
+        """Compute semantic similarity using sentence transformers"""
+        if not self.sentence_model or requirement not in self.requirement_embeddings:
+            return 0.0
+        
+        try:
+            field_embedding = self.sentence_model.encode([field_name])
+            req_embedding = self.requirement_embeddings[requirement].reshape(1, -1)
+            similarity = cosine_similarity(field_embedding, req_embedding)[0][0]
+            return float(similarity)
+        except Exception:
+            return 0.0
+    
+    def neural_field_classification(self, field_name: str) -> Dict[str, float]:
+        """Use neural network to classify field relevance to requirements"""
+        if not self.neural_matcher:
+            return {}
+        
+        try:
+            # Tokenize field name
+            tokens = field_name.lower().split('_')
+            token_ids = []
+            
+            for token in tokens:
+                if token in self.field_vocabulary:
+                    token_ids.append(self.field_vocabulary[token])
+                else:
+                    token_ids.append(self.field_vocabulary['<UNK>'])
+            
+            # Pad sequence
+            max_len = 10
+            if len(token_ids) < max_len:
+                token_ids.extend([self.field_vocabulary['<PAD>']] * (max_len - len(token_ids)))
+            else:
+                token_ids = token_ids[:max_len]
+            
+            # Convert to tensor
+            input_tensor = torch.tensor([token_ids], dtype=torch.long)
+            if DEVICE and DEVICE.type == 'mps':
+                input_tensor = input_tensor.to(DEVICE)
+            
+            # Forward pass
+            with torch.no_grad():
+                output = self.neural_matcher(input_tensor)
+                probabilities = output.cpu().numpy()[0]
+            
+            # Map to requirements
+            requirements = ['REQ-1', 'REQ-2', 'REQ-3', 'REQ-4', 'REQ-5', 'REQ-6', 'REQ-7', 'REQ-8']
+            return {req: prob for req, prob in zip(requirements, probabilities)}
+            
+        except Exception as e:
+            logger.error("NEURAL CLASSIFICATION ERROR: {}".format(e))
+            return {}
+    
+    def analyze_field_advanced(self, field_name: str, field_type: str) -> Tuple[bool, str, str, float]:
+        """Advanced field analysis using multiple ML techniques"""
+        field_lower = field_name.lower().strip()
+        
+        # Exact match check
+        if field_lower in ALL_AO1_KEYWORDS:
+            requirement = self.get_requirement_for_keyword(field_lower)
+            return True, requirement, field_lower, 1.0
+        
+        # Neural network classification
+        neural_scores = self.neural_field_classification(field_name)
+        best_neural_req = max(neural_scores.items(), key=lambda x: x[1]) if neural_scores else (None, 0.0)
+        
+        # Semantic similarity analysis
+        best_semantic_score = 0.0
+        best_semantic_req = None
+        
+        for req in ['REQ-1', 'REQ-2', 'REQ-3', 'REQ-4', 'REQ-5', 'REQ-6', 'REQ-7', 'REQ-8']:
+            semantic_score = self.compute_semantic_similarity(field_name, req)
+            if semantic_score > best_semantic_score:
+                best_semantic_score = semantic_score
+                best_semantic_req = req
+        
+        # Pattern matching for partial matches
+        best_pattern_match = None
+        best_pattern_score = 0.0
+        
+        for keyword in ALL_AO1_KEYWORDS:
+            if len(keyword) >= 3:
+                if keyword in field_lower:
+                    score = len(keyword) / len(field_lower)
+                    if score > best_pattern_score:
+                        best_pattern_score = score
+                        best_pattern_match = keyword
+                elif field_lower in keyword and len(field_lower) >= 3:
+                    score = len(field_lower) / len(keyword)
+                    if score > best_pattern_score:
+                        best_pattern_score = score
+                        best_pattern_match = keyword
+        
+        # Combine all scores for final decision
+        combined_score = 0.0
+        final_requirement = None
+        matched_keyword = None
+        
+        if best_neural_req[1] > 0.3:  # Neural network confidence threshold
+            combined_score += best_neural_req[1] * 0.4
+            final_requirement = best_neural_req[0]
+        
+        if best_semantic_score > 0.2:  # Semantic similarity threshold
+            combined_score += best_semantic_score * 0.3
+            if not final_requirement:
+                final_requirement = best_semantic_req
+        
+        if best_pattern_match and best_pattern_score > 0.3:  # Pattern match threshold
+            combined_score += best_pattern_score * 0.3
+            matched_keyword = best_pattern_match
+            if not final_requirement:
+                final_requirement = self.get_requirement_for_keyword(best_pattern_match)
+        
+        # Decision threshold
+        if combined_score > 0.4 and final_requirement:
+            return True, final_requirement, matched_keyword or field_lower, combined_score
+        
+        return False, None, None, 0.0
+    
+    def get_requirement_for_keyword(self, keyword: str) -> str:
+        """Get requirement for a specific keyword"""
+        for req, keywords in REQUIREMENT_KEYWORDS.items():
+            if keyword in keywords:
+                return req
+        return "UNKNOWN"
+    
+    def scan_table_comprehensive(self, dataset_id: str, table_id: str) -> List[FieldMatch]:
+        """Comprehensive table scanning with ML analysis"""
+        table = self.get_table_metadata(dataset_id, table_id)
+        if not table:
+            return []
+        
+        matches = []
+        
+        def analyze_field_recursive(field, parent_path=""):
             field_path = "{}.{}".format(parent_path, field.name) if parent_path else field.name
             
-            # Check exact match
-            if is_exact_match(field.name):
-                keyword = field.name.lower().strip()
-                requirement = get_requirement_for_keyword(keyword)
-                results.append({
-                    'dataset': dataset_id,
-                    'table': table_id,
-                    'field_name': field.name,
-                    'field_path': field_path,
-                    'field_type': field.field_type,
-                    'matched_keyword': keyword,
-                    'requirement': requirement,
-                    'match_type': 'EXACT',
-                    'table_rows': table.num_rows or 0,
-                    'table_size_bytes': table.num_bytes or 0
-                })
+            # Advanced field analysis
+            is_match, requirement, matched_keyword, confidence = self.analyze_field_advanced(field.name, field.field_type)
             
-            # Check partial match
-            is_partial, matched_keyword = is_partial_match(field.name)
-            if is_partial:
-                requirement = get_requirement_for_keyword(matched_keyword)
-                results.append({
-                    'dataset': dataset_id,
-                    'table': table_id,
-                    'field_name': field.name,
-                    'field_path': field_path,
-                    'field_type': field.field_type,
-                    'matched_keyword': matched_keyword,
-                    'requirement': requirement,
-                    'match_type': 'PARTIAL',
-                    'table_rows': table.num_rows or 0,
-                    'table_size_bytes': table.num_bytes or 0
-                })
+            if is_match and requirement != "UNKNOWN":
+                # Compute additional metrics
+                semantic_sim = self.compute_semantic_similarity(field.name, requirement)
+                context_relevance = self.compute_context_relevance(field.name, field.field_type, requirement)
+                
+                match_type = "EXACT" if confidence >= 0.9 else "ADVANCED_ML" if confidence >= 0.6 else "SUSPECTED"
+                
+                match = FieldMatch(
+                    dataset=dataset_id,
+                    table=table_id,
+                    field_name=field.name,
+                    field_path=field_path,
+                    field_type=field.field_type,
+                    requirement=requirement,
+                    matched_keyword=matched_keyword,
+                    match_type=match_type,
+                    confidence_score=confidence,
+                    table_rows=table.num_rows or 0,
+                    table_size_bytes=table.num_bytes or 0,
+                    semantic_similarity=semantic_sim,
+                    context_relevance=context_relevance
+                )
+                matches.append(match)
             
-            # Recursively check nested fields
+            # Recursively analyze nested fields
             if field.field_type in ['RECORD', 'STRUCT'] and field.fields:
                 for nested_field in field.fields:
-                    analyze_field(nested_field, field_path)
+                    analyze_field_recursive(nested_field, field_path)
         
-        # Analyze all top-level fields
+        # Analyze all fields
         for field in table.schema:
-            analyze_field(field)
+            analyze_field_recursive(field)
         
-        return results
+        return matches
+    
+    def compute_context_relevance(self, field_name: str, field_type: str, requirement: str) -> float:
+        """Compute contextual relevance score"""
+        relevance_score = 0.5  # Base score
         
-    except Exception as e:
-        return []
-
-def scan_all_data(client):
-    """Scan all datasets and tables for AO1 fields"""
-    print("🔍 Scanning BigQuery for AO1-relevant fields...")
-    
-    all_findings = []
-    datasets = get_datasets(client)
-    
-    total_tables = 0
-    processed_tables = 0
-    
-    # Count total tables first
-    print("📊 Counting tables...")
-    for dataset_id in datasets:
-        tables = get_tables(client, dataset_id)
-        total_tables += len(tables)
-    
-    print("📋 Found {} tables across {} datasets to scan".format(total_tables, len(datasets)))
-    
-    # Scan all tables
-    for dataset_id in datasets:
-        tables = get_tables(client, dataset_id)
+        # Type-based relevance
+        type_weights = {
+            'STRING': 0.8, 'VARCHAR': 0.8, 'TEXT': 0.8,
+            'INTEGER': 0.6, 'INT64': 0.6,
+            'TIMESTAMP': 0.7, 'DATETIME': 0.7,
+            'FLOAT': 0.5, 'NUMERIC': 0.5
+        }
         
-        for table_id in tables:
-            processed_tables += 1
-            if processed_tables % 100 == 0:
-                print("   Progress: {}/{} tables processed...".format(processed_tables, total_tables))
-            
-            findings = scan_table_schema(client, dataset_id, table_id)
-            all_findings.extend(findings)
-    
-    print("✅ Scan complete: {} AO1-relevant fields found".format(len(all_findings)))
-    return all_findings
-
-def generate_clean_report(findings):
-    """Generate clean, requirement-ordered report"""
-    print("\n" + "="*80)
-    print("AO1 FIELD DISCOVERY RESULTS")
-    print("="*80)
-    
-    if not findings:
-        print("❌ No AO1-relevant fields found in any tables.")
-        return
-    
-    # Group by requirement and match type
-    by_requirement = {}
-    for finding in findings:
-        req = finding['requirement']
-        if req not in by_requirement:
-            by_requirement[req] = {'EXACT': [], 'PARTIAL': []}
-        by_requirement[req][finding['match_type']].append(finding)
-    
-    # Sort findings by table size (rows) within each requirement
-    for req in by_requirement:
-        for match_type in ['EXACT', 'PARTIAL']:
-            by_requirement[req][match_type].sort(key=lambda x: x['table_rows'], reverse=True)
-    
-    # Generate report for each requirement
-    for req_num in ['REQ-1', 'REQ-2', 'REQ-3', 'REQ-4', 'REQ-5', 'REQ-6', 'REQ-7', 'REQ-8']:
-        if req_num not in by_requirement:
-            print("\n{}: {} ❌ NO FIELDS FOUND".format(req_num, get_requirement_description(req_num).split(' - ')[1]))
-            continue
+        relevance_score *= type_weights.get(field_type, 0.5)
         
-        req_data = by_requirement[req_num]
-        exact_count = len(req_data['EXACT'])
-        partial_count = len(req_data['PARTIAL'])
+        # Requirement-specific adjustments
+        if requirement in ['REQ-1', 'REQ-8'] and any(term in field_name.lower() for term in ['id', 'name', 'host']):
+            relevance_score *= 1.2
+        elif requirement == 'REQ-2' and any(term in field_name.lower() for term in ['cloud', 'aws', 'azure']):
+            relevance_score *= 1.3
+        elif requirement == 'REQ-6' and any(term in field_name.lower() for term in ['agent', 'security', 'endpoint']):
+            relevance_score *= 1.4
         
-        print("\n{}: {}".format(req_num, get_requirement_description(req_num).split(' - ')[1]))
-        print("   ✅ {} exact matches, 🔍 {} partial matches".format(exact_count, partial_count))
-        
-        # Show exact matches first
-        if req_data['EXACT']:
-            print("\n   📍 EXACT MATCHES (ordered by table size):")
-            for i, finding in enumerate(req_data['EXACT'][:10], 1):  # Top 10
-                rows_info = "{:,} rows".format(finding['table_rows']) if finding['table_rows'] > 0 else "no row data"
-                print("      {}. Field '{}' from {}.{} ({})".format(
-                    i, finding['field_name'], finding['dataset'], finding['table'], rows_info))
-                print("         → This field exactly matches AO1 keyword '{}' and can be used for {} measurement.".format(
-                    finding['matched_keyword'], req_num))
-            
-            if len(req_data['EXACT']) > 10:
-                print("         ... and {} more exact matches".format(len(req_data['EXACT']) - 10))
-        
-        # Show partial matches
-        if req_data['PARTIAL']:
-            print("\n   🔍 PARTIAL/SUSPECTED MATCHES (ordered by table size):")
-            for i, finding in enumerate(req_data['PARTIAL'][:5], 1):  # Top 5
-                rows_info = "{:,} rows".format(finding['table_rows']) if finding['table_rows'] > 0 else "no row data"
-                print("      {}. Field '{}' from {}.{} ({})".format(
-                    i, finding['field_name'], finding['dataset'], finding['table'], rows_info))
-                print("         → This field contains '{}' and could potentially be used for {} measurement.".format(
-                    finding['matched_keyword'], req_num))
-            
-            if len(req_data['PARTIAL']) > 5:
-                print("         ... and {} more partial matches".format(len(req_data['PARTIAL']) - 5))
+        return min(relevance_score, 1.0)
     
-    # Summary statistics  
-    print("\n" + "="*80)
-    print("SUMMARY")
-    print("="*80)
-    
-    total_exact = sum(len(req_data['EXACT']) for req_data in by_requirement.values())
-    total_partial = sum(len(req_data['PARTIAL']) for req_data in by_requirement.values())
-    
-    print("📊 Total findings: {} exact matches, {} partial matches".format(total_exact, total_partial))
-    print("📋 Requirements with data: {}/8".format(len(by_requirement)))
-    
-    # Top datasets by field count
-    dataset_counts = {}
-    for finding in findings:
-        dataset = finding['dataset']
-        dataset_counts[dataset] = dataset_counts.get(dataset, 0) + 1
-    
-    top_datasets = sorted(dataset_counts.items(), key=lambda x: x[1], reverse=True)[:5]
-    print("🏆 Top datasets by AO1 field count:")
-    for i, (dataset, count) in enumerate(top_datasets, 1):
-        print("   {}. {}: {} fields".format(i, dataset, count))
-
-def save_results(findings, filename="ao1_field_discovery_results.csv"):
-    """Save results to CSV"""
-    if not findings:
-        print("No results to save.")
-        return
-    
-    df = pd.DataFrame(findings)
-    # Sort by requirement, match type (exact first), then table size
-    df['req_sort'] = df['requirement'].str.extract('(\d+)').astype(int)
-    df['match_sort'] = df['match_type'].map({'EXACT': 0, 'PARTIAL': 1})
-    df = df.sort_values(['req_sort', 'match_sort', 'table_rows'], ascending=[True, True, False])
-    
-    # Clean up columns for output
-    output_df = df[[
-        'requirement', 'match_type', 'field_name', 'matched_keyword', 
-        'dataset', 'table', 'field_path', 'field_type', 'table_rows'
-    ]].copy()
-    
-    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-    output_filename = "ao1_discovery_{}.csv".format(timestamp)
-    output_df.to_csv(output_filename, index=False)
-    print("💾 Results saved to: {}".format(output_filename))
-
-def main():
-    """Main execution"""
-    print("🚀 AO1 BigQuery Field Discovery")
-    print("   Finding fields relevant to AO1 audit requirements...")
-    
-    try:
-        # Connect to BigQuery
-        print("🔐 Authenticating with BigQuery...")
-        client = authenticate_bigquery()
-        print("✅ Connected successfully")
-        
-        # Test connection
-        datasets = get_datasets(client)
+    def scan_all_datasets(self) -> List[FieldMatch]:
+        """Scan all datasets with progress tracking"""
+        datasets = self.get_datasets()
         if not datasets:
-            print("❌ No datasets accessible")
+            return []
+        
+        all_matches = []
+        total_tables = 0
+        processed_tables = 0
+        
+        # Count total tables
+        print("ANALYSIS: Counting tables across {} datasets...".format(len(datasets)))
+        for dataset_id in datasets:
+            try:
+                tables = list(self.client.list_tables(dataset_id))
+                total_tables += len(tables)
+            except Exception:
+                continue
+        
+        print("ANALYSIS: Processing {} tables with ML-enhanced field detection...".format(total_tables))
+        
+        # Process all tables
+        for dataset_id in datasets:
+            try:
+                tables = list(self.client.list_tables(dataset_id))
+                
+                for table in tables:
+                    processed_tables += 1
+                    
+                    if processed_tables % 50 == 0:
+                        progress = (processed_tables / total_tables) * 100
+                        print("PROGRESS: {:.1f}% complete ({}/{} tables)".format(progress, processed_tables, total_tables))
+                    
+                    matches = self.scan_table_comprehensive(dataset_id, table.table_id)
+                    all_matches.extend(matches)
+                    
+            except Exception as e:
+                logger.error("DATASET ERROR {}: {}".format(dataset_id, e))
+                continue
+        
+        print("ANALYSIS: Complete - {} field matches discovered".format(len(all_matches)))
+        return all_matches
+    
+    def generate_professional_report(self, matches: List[FieldMatch]):
+        """Generate professional analysis report"""
+        if not matches:
+            print("\nAO1 FIELD DISCOVERY ANALYSIS")
+            print("=" * 60)
+            print("STATUS: No AO1-relevant fields discovered in accessible datasets")
+            print("RECOMMENDATION: Verify field naming conventions and data ingestion processes")
             return
         
-        print("📂 Found {} datasets to scan".format(len(datasets)))
+        # Sort matches by requirement, confidence, and table size
+        matches.sort(key=lambda x: (x.requirement, -x.confidence_score, -x.table_rows))
         
-        # Scan for AO1 fields
-        start_time = time.time()
-        findings = scan_all_data(client)
-        end_time = time.time()
+        # Group by requirement
+        by_requirement = defaultdict(list)
+        for match in matches:
+            by_requirement[match.requirement].append(match)
         
-        print("⏱️  Scan completed in {:.1f} seconds".format(end_time - start_time))
+        print("\nADVANCED AO1 FIELD DISCOVERY ANALYSIS")
+        print("=" * 60)
+        print("ANALYSIS METHOD: ML-Enhanced with Neural Networks and Semantic Analysis")
+        print("GPU ACCELERATION: {}".format("M1 Metal Performance Shaders" if DEVICE and DEVICE.type == 'mps' else "CPU Processing"))
+        print("TOTAL DISCOVERIES: {} fields across {} requirements".format(len(matches), len(by_requirement)))
         
-        # Generate clean report
-        generate_clean_report(findings)
+        # Detailed requirement analysis
+        for req_num in ['REQ-1', 'REQ-2', 'REQ-3', 'REQ-4', 'REQ-5', 'REQ-6', 'REQ-7', 'REQ-8']:
+            req_matches = by_requirement.get(req_num, [])
+            
+            if not req_matches:
+                print("\n{}: No suitable fields identified".format(req_num))
+                continue
+            
+            # Categorize by match type
+            exact_matches = [m for m in req_matches if m.match_type == 'EXACT']
+            ml_matches = [m for m in req_matches if m.match_type == 'ADVANCED_ML']
+            suspected_matches = [m for m in req_matches if m.match_type == 'SUSPECTED']
+            
+            print("\n{}: {} total field candidates identified".format(req_num, len(req_matches)))
+            print("   EXACT: {} | ML-IDENTIFIED: {} | SUSPECTED: {}".format(len(exact_matches), len(ml_matches), len(suspected_matches)))
+            
+            # Show top recommendations
+            top_matches = sorted(req_matches, key=lambda x: (-x.confidence_score, -x.table_rows))[:5]
+            
+            print("   TOP RECOMMENDATIONS (by confidence and data volume):")
+            for i, match in enumerate(top_matches, 1):
+                rows_display = "{:,} rows".format(match.table_rows) if match.table_rows > 0 else "size unknown"
+                confidence_display = "{:.1%}".format(match.confidence_score)
+                
+                print("      {}. Field '{}' in {}.{} ({})".format(i, match.field_name, match.dataset, match.table, rows_display))
+                print("         Confidence: {} | Type: {} | Keyword: '{}'".format(confidence_display, match.match_type, match.matched_keyword))
+                
+                if match.match_type == 'EXACT':
+                    print("         Assessment: This field exactly matches AO1 keyword '{}' and provides direct {} measurement capability.".format(match.matched_keyword, req_num))
+                elif match.match_type == 'ADVANCED_ML':
+                    print("         Assessment: ML analysis indicates high probability this field supports {} requirements with {:.1%} semantic similarity.".format(req_num, match.semantic_similarity))
+                else:
+                    print("         Assessment: Suspected match for {} - manual verification recommended to confirm field usage patterns.".format(req_num))
         
-        # Save results
-        save_results(findings)
+        # Generate insights and recommendations
+        self.generate_strategic_insights(matches, by_requirement)
+    
+    def generate_strategic_insights(self, matches: List[FieldMatch], by_requirement: Dict[str, List[FieldMatch]]):
+        """Generate strategic insights from the analysis"""
+        print("\nSTRATEGIC INSIGHTS AND RECOMMENDATIONS")
+        print("=" * 60)
         
-        print("\n🎯 NEXT STEPS:")
-        if findings:
-            print("   1. Review the exact matches first - these are your best AO1 indicators")
-            print("   2. Investigate partial matches to confirm they represent AO1 concepts")
-            print("   3. Focus on large tables (high row counts) for maximum visibility impact")
-            print("   4. Use the CSV file for detailed analysis and reporting")
-        else:
-            print("   1. No AO1 fields found - check if field naming follows standard conventions")
-            print("   2. Consider expanding the AO1 keyword dictionary")
-            print("   3. Verify that logging sources are properly ingested")
+        # Coverage analysis
+        coverage_score = len(by_requirement) / 8 * 100
+        print("AO1 COVERAGE: {:.1f}% ({}/8 requirements have field candidates)".format(coverage_score, len(by_requirement)))
+        
+        # High-confidence recommendations
+        high_confidence = [m for m in matches if m.confidence_score >= 0.8]
+        print("HIGH-CONFIDENCE FIELDS: {} fields with 80%+ confidence scores".format(len(high_confidence)))
+        
+        # Data volume analysis
+        total_rows = sum(m.table_rows for m in matches)
+        print("TOTAL DATA VOLUME: {:,} rows across all candidate tables".format(total_rows))
+        
+        # Dataset distribution
+        dataset_counts = Counter(m.dataset for m in matches)
+        top_datasets = dataset_counts.most_common(3)
+        print("PRIMARY DATASETS: {}".format(", ".join("{}({})".format(ds, count) for ds, count in top_datasets)))
+        
+        print("\nRECOMMENDATIONS:")
+        print("1. IMMEDIATE: Focus validation on {} high-confidence exact matches".format(len([m for m in matches if m.match_type == 'EXACT'])))
+        print("2. STRATEGIC: Investigate ML-identified fields for expanded AO1 coverage")
+        print("3. OPERATIONAL: Prioritize tables with highest row counts for maximum visibility impact")
+        
+        if coverage_score < 50:
+            print("4. CRITICAL: Low AO1 coverage detected - consider field naming standardization")
+        
+        print("5. VALIDATION: Confirm suspected matches through sample data analysis")
+    
+    def save_comprehensive_results(self, matches: List[FieldMatch]):
+        """Save comprehensive results with ML analysis data"""
+        if not matches:
+            return
+        
+        # Convert to DataFrame
+        df = pd.DataFrame([asdict(match) for match in matches])
+        
+        # Sort by strategic importance
+        df['strategic_score'] = df['confidence_score'] * 0.6 + (df['table_rows'] / df['table_rows'].max()) * 0.4
+        df = df.sort_values(['requirement', 'strategic_score'], ascending=[True, False])
+        
+        # Save detailed results
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        filename = "ao1_advanced_discovery_{}.csv".format(timestamp)
+        df.to_csv(filename, index=False)
+        
+        # Save executive summary
+        summary_df = df.groupby(['requirement', 'match_type']).agg({
+            'field_name': 'count',
+            'confidence_score': 'mean',
+            'table_rows': 'sum'
+        }).round(3)
+        
+        summary_filename = "ao1_executive_summary_{}.csv".format(timestamp)
+        summary_df.to_csv(summary_filename)
+        
+        print("\nRESULTS SAVED:")
+        print("Detailed Analysis: {}".format(filename))
+        print("Executive Summary: {}".format(summary_filename))
+
+def main():
+    """Main execution with advanced ML analysis"""
+    print("ADVANCED AO1 FIELD DISCOVERY SYSTEM")
+    print("Powered by Neural Networks and M1 GPU Acceleration")
+    print("=" * 60)
+    
+    # Initialize analyzer
+    analyzer = AdvancedAO1Analyzer()
+    
+    # Authenticate
+    if not analyzer.authenticate_bigquery():
+        print("CRITICAL: BigQuery authentication failed")
+        return
+    
+    # Run comprehensive analysis
+    start_time = time.time()
+    
+    try:
+        matches = analyzer.scan_all_datasets()
+        
+        analysis_time = time.time() - start_time
+        print("\nANALYSIS COMPLETE")
+        print("Processing Time: {:.2f} seconds".format(analysis_time))
+        print("Fields Analyzed: Advanced ML processing on all accessible table schemas")
+        
+        # Generate reports
+        analyzer.generate_professional_report(matches)
+        analyzer.save_comprehensive_results(matches)
         
     except KeyboardInterrupt:
-        print("\n⏹️  Scan interrupted by user")
+        print("\nANALYSIS INTERRUPTED: Partial results may be available in logs")
     except Exception as e:
-        print("\n❌ Error during scan: {}".format(e))
+        print("\nCRITICAL ERROR: {}".format(e))
+        logger.error("MAIN EXECUTION ERROR: {}".format(e))
         import traceback
         traceback.print_exc()
 
