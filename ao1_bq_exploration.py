@@ -823,8 +823,11 @@ class EnterpriseAO1Analyzer:
         # Step 2: Detect and configure GPU
         gpu_info = self.gpu_detector.comprehensive_gpu_detection()
         
-        # Step 3: Initialize ML components if available
+        # Step 3: Initialize ML components based on what's available
+        print("\nML SYSTEM INITIALIZATION:")
+        
         if ML_LIBRARIES_AVAILABLE:
+            print("✓ All ML libraries available - Initializing advanced features")
             self.hf_manager = EnterpriseHuggingFaceManager(self.proxy_manager)
             connectivity = self.hf_manager.comprehensive_connectivity_test()
             
@@ -832,13 +835,27 @@ class EnterpriseAO1Analyzer:
                 self.ml_model, self.ml_strategy = self.hf_manager.load_optimal_model(self.gpu_detector)
                 if self.ml_model:
                     self._compute_requirement_embeddings()
-                    print("ML COMPONENTS: Fully operational")
+                    print("✓ ML COMPONENTS: Fully operational with {} strategy".format(self.ml_strategy))
                 else:
-                    print("ML COMPONENTS: Limited functionality")
+                    print("⚠ ML COMPONENTS: Libraries available but model loading failed")
             else:
-                print("ML COMPONENTS: Offline mode only")
+                print("⚠ ML COMPONENTS: Libraries available but no connectivity")
+        elif HF_AVAILABLE and SKLEARN_AVAILABLE:
+            print("⚠ Partial ML available - PyTorch missing, using basic transformers")
+            self.hf_manager = EnterpriseHuggingFaceManager(self.proxy_manager)
+            connectivity = self.hf_manager.comprehensive_connectivity_test()
+            if self.hf_manager.successful_connections:
+                # Try to load basic transformer models without PyTorch neural networks
+                self.ml_model, self.ml_strategy = self.hf_manager.load_optimal_model(self.gpu_detector)
+                if self.ml_model:
+                    self._compute_requirement_embeddings()
+                    print("✓ ML COMPONENTS: Partial functionality (no neural networks)")
+        elif SKLEARN_AVAILABLE:
+            print("⚠ Basic ML available - Only scikit-learn features")
+            print("✓ ML COMPONENTS: TF-IDF and similarity scoring available")
         else:
-            print("ML COMPONENTS: Not available - using pattern matching")
+            print("ℹ ML COMPONENTS: Using pattern matching only")
+            print("  For full ML features, install: pip install torch transformers sentence-transformers scikit-learn")
     
     def authenticate_bigquery(self) -> bool:
         """Authenticate with BigQuery"""
@@ -909,7 +926,7 @@ class EnterpriseAO1Analyzer:
             self.requirement_embeddings = {}
     
     def compute_advanced_field_score(self, field_name: str) -> Dict[str, float]:
-        """Compute advanced scoring for field relevance"""
+        """Compute advanced scoring for field relevance with fallback methods"""
         scores = {
             'exact_match': 0.0,
             'pattern_match': 0.0,
@@ -920,11 +937,11 @@ class EnterpriseAO1Analyzer:
         
         field_lower = field_name.lower().strip()
         
-        # Exact match scoring
+        # Exact match scoring (always available)
         if field_lower in ALL_AO1_KEYWORDS:
             scores['exact_match'] = 1.0
         
-        # Pattern matching scoring
+        # Pattern matching scoring (always available)
         best_pattern_score = 0.0
         matched_keyword = None
         
@@ -949,6 +966,8 @@ class EnterpriseAO1Analyzer:
                 best_semantic_score = 0.0
                 
                 for req in self.requirement_embeddings.keys():
+                    similarity = 0.0
+                    
                     if self.ml_strategy == 'sentence_transformers':
                         field_embedding = self.ml_model.encode([field_name])
                         req_embedding = self.requirement_embeddings[req].reshape(1, -1)
@@ -969,9 +988,6 @@ class EnterpriseAO1Analyzer:
                         req_embedding = self.requirement_embeddings[req].reshape(1, -1)
                         similarity = cosine_similarity(field_embedding, req_embedding)[0][0]
                     
-                    else:
-                        similarity = 0.0
-                    
                     if similarity > best_semantic_score:
                         best_semantic_score = similarity
                 
@@ -979,14 +995,76 @@ class EnterpriseAO1Analyzer:
                 
             except Exception as e:
                 print("SEMANTIC SCORING ERROR: {}".format(e))
+                scores['semantic_similarity'] = 0.0
         
-        # Composite scoring
-        weights = {
-            'exact_match': 0.4,
-            'pattern_match': 0.3,
-            'semantic_similarity': 0.2,
-            'neural_classification': 0.1
-        }
+        # TF-IDF similarity scoring (fallback if sklearn available but no ML models)
+        elif SKLEARN_AVAILABLE and not self.ml_model:
+            try:
+                # Simple TF-IDF based similarity
+                requirement_texts = [
+                    'global view asset identifiers hostname computer device system name',
+                    'infrastructure type deployment cloud aws azure gcp onpremises datacenter',
+                    'regional country geographic location datacenter region zone address',
+                    'business application organizational unit department division company',
+                    'system classification server function operating system windows linux unix',
+                    'security control coverage agent endpoint detection response edr tanium',
+                    'logging compliance platform splunk chronicle ingestion parsing sourcetype',
+                    'domain visibility hostname dns resolution network address fqdn'
+                ]
+                
+                vectorizer = TfidfVectorizer(stop_words='english')
+                all_texts = requirement_texts + [field_name]
+                tfidf_matrix = vectorizer.fit_transform(all_texts)
+                
+                # Compute similarity between field and each requirement
+                field_vector = tfidf_matrix[-1]
+                similarities = []
+                
+                for i in range(len(requirement_texts)):
+                    req_vector = tfidf_matrix[i]
+                    similarity = cosine_similarity(field_vector, req_vector)[0][0]
+                    similarities.append(similarity)
+                
+                scores['semantic_similarity'] = max(similarities) if similarities else 0.0
+                
+            except Exception as e:
+                print("TF-IDF SCORING ERROR: {}".format(e))
+                scores['semantic_similarity'] = 0.0
+        
+        # Neural classification (only if PyTorch available)
+        if TORCH_AVAILABLE and self.neural_matcher:
+            try:
+                # Neural scoring would go here
+                scores['neural_classification'] = 0.0  # Placeholder
+            except Exception as e:
+                print("NEURAL SCORING ERROR: {}".format(e))
+                scores['neural_classification'] = 0.0
+        
+        # Composite scoring with adaptive weights based on available features
+        if self.ml_model and self.requirement_embeddings:
+            # Full ML mode
+            weights = {
+                'exact_match': 0.4,
+                'pattern_match': 0.3,
+                'semantic_similarity': 0.2,
+                'neural_classification': 0.1
+            }
+        elif SKLEARN_AVAILABLE:
+            # TF-IDF mode
+            weights = {
+                'exact_match': 0.5,
+                'pattern_match': 0.4,
+                'semantic_similarity': 0.1,
+                'neural_classification': 0.0
+            }
+        else:
+            # Pattern matching only mode
+            weights = {
+                'exact_match': 0.7,
+                'pattern_match': 0.3,
+                'semantic_similarity': 0.0,
+                'neural_classification': 0.0
+            }
         
         scores['composite_score'] = sum(scores[key] * weights[key] for key in weights.keys())
         
