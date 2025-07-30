@@ -63,14 +63,14 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# BigQuery authentication - ORIGINAL WORKING STRUCTURE
+# BigQuery authentication - EXACT ORIGINAL PATTERN
 from google.cloud import bigquery
 from google.oauth2 import service_account
 
 SERVICE_ACCOUNT_FILE = os.path.join(file_path, "gcp_prod_key.json")
 credentials = service_account.Credentials.from_service_account_file(SERVICE_ACCOUNT_FILE)
 project = "chronicle-fisv"
-clientBQ = bigquery.Client(project="chronicle-fisv", credentials=credentials)
+clientBQ = bigquery.Client(project=project, credentials=credentials)
 
 def runBQQuery(query):
     """Execute BigQuery SQL with neural analysis integration."""
@@ -1678,7 +1678,7 @@ class AdvancedBigQueryScanner:
         start_time = time.time()
         
         try:
-            # Get datasets with intelligent filtering
+            # Get datasets with intelligent filtering - USING CORRECT PROJECT
             datasets = list(self.client.list_datasets(project=self.target_project_id))
             
             # Prioritize datasets based on naming patterns
@@ -2118,7 +2118,8 @@ def main():
     print("State-of-the-Art Deep Learning with Multi-Layer Neural Networks")
     print("Forward/Backward Propagation • Attention Mechanisms • Ensemble Methods")
     print("Advanced Semantic Analysis • Real-time Neural Predictions")
-    print(f"Target Project: prj-fisv-p-gcss-sas-dl9dd0f1df")
+    print(f"Authentication Project: chronicle-fisv")
+    print(f"Target Scanning Project: prj-fisv-p-gcss-sas-dl9dd0f1df")
     print(f"Execution Time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     print()
     
@@ -2139,7 +2140,7 @@ def main():
         # Initialize advanced BigQuery scanner
         print("INITIALIZING ADVANCED BIGQUERY NEURAL SCANNER")
         print("-" * 60)
-        scanner = AdvancedBigQueryScanner()
+        scanner = AdvancedBigQueryScanner()  # Will use default "prj-fisv-p-gcss-sas-dl9dd0f1df"
         
         if not scanner.authenticate():
             print("❌ Authentication failed")
