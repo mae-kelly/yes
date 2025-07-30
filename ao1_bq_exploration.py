@@ -25,7 +25,7 @@ from google.cloud import bigquery
 from google.oauth2 import service_account
 from google.cloud.exceptions import NotFound, Forbidden, BadRequest, ServerError
 
-# ML imports for M1 GPU acceleration
+# ML imports for M1 GPU acceleration with multiple Hugging Face connection methods
 try:
     import torch
     import torch.nn as nn
@@ -33,7 +33,21 @@ try:
     from torch.utils.data import Dataset, DataLoader
     from sklearn.feature_extraction.text import TfidfVectorizer
     from sklearn.metrics.pairwise import cosine_similarity
+    
+    # Multiple Hugging Face connection attempts
     from sentence_transformers import SentenceTransformer
+    from transformers import (
+        AutoTokenizer, AutoModel, AutoConfig,
+        pipeline, logging as hf_logging
+    )
+    import requests
+    from huggingface_hub import (
+        HfApi, hf_hub_download, login, 
+        cached_download, snapshot_download
+    )
+    
+    # Suppress HF warnings for cleaner output
+    hf_logging.set_verbosity_error()
     
     # Check for MPS (Metal Performance Shaders) support on M1
     if torch.backends.mps.is_available():
@@ -43,10 +57,14 @@ try:
         DEVICE = torch.device("cpu")
         print("SYSTEM: CPU processing mode (M1 GPU not detected)")
         
+    HF_AVAILABLE = True
+    print("HUGGING FACE: Libraries loaded successfully")
+        
 except ImportError as e:
     print("WARNING: ML libraries not available, falling back to basic matching")
-    print("Install with: pip install torch sentence-transformers scikit-learn")
+    print("Install with: pip install torch sentence-transformers transformers huggingface-hub scikit-learn")
     DEVICE = None
+    HF_AVAILABLE = False
 
 # Import AO1 Keywords
 try:
@@ -148,7 +166,251 @@ class AO1NeuralMatcher(nn.Module):
         output = self.classifier(pooled)
         return output
 
-class AdvancedAO1Analyzer:
+class HuggingFaceConnector:
+    """Advanced Hugging Face model connector with multiple connection strategies"""
+    
+    def __init__(self):
+        self.api = None
+        self.models = {}
+        self.connection_methods = []
+        self.successful_connections = []
+        
+    def test_huggingface_connectivity(self):
+        """Test multiple ways to connect to Hugging Face"""
+        print("HUGGING FACE: Testing connectivity with multiple methods...")
+        
+        connection_results = {
+            'hub_api': False,
+            'direct_download': False,
+            'pipeline_access': False,
+            'sentence_transformers': False,
+            'transformers_library': False,
+            'cached_models': False,
+            'offline_models': False
+        }
+        
+        # Method 1: HuggingFace Hub API
+        try:
+            self.api = HfApi()
+            models = self.api.list_models(limit=1)
+            list(models)  # Force evaluation
+            connection_results['hub_api'] = True
+            self.successful_connections.append('Hub API')
+            print("  ✓ Hub API: Connected successfully")
+        except Exception as e:
+            print("  ✗ Hub API: {}".format(str(e)[:50]))
+        
+        # Method 2: Direct model download
+        try:
+            model_id = "sentence-transformers/all-MiniLM-L6-v2"
+            config_path = hf_hub_download(repo_id=model_id, filename="config.json")
+            if os.path.exists(config_path):
+                connection_results['direct_download'] = True
+                self.successful_connections.append('Direct Download')
+                print("  ✓ Direct Download: Model files accessible")
+        except Exception as e:
+            print("  ✗ Direct Download: {}".format(str(e)[:50]))
+        
+        # Method 3: Pipeline access
+        try:
+            pipe = pipeline("text-classification", model="distilbert-base-uncased", return_all_scores=True)
+            test_result = pipe("test text")
+            if test_result:
+                connection_results['pipeline_access'] = True
+                self.successful_connections.append('Pipeline Access')
+                print("  ✓ Pipeline Access: Transformers pipeline working")
+        except Exception as e:
+            print("  ✗ Pipeline Access: {}".format(str(e)[:50]))
+        
+        # Method 4: Sentence Transformers
+        try:
+            model = SentenceTransformer('all-MiniLM-L6-v2')
+            test_embedding = model.encode(["test"])
+            if test_embedding is not None:
+                connection_results['sentence_transformers'] = True
+                self.successful_connections.append('Sentence Transformers')
+                print("  ✓ Sentence Transformers: Model loaded and functional")
+        except Exception as e:
+            print("  ✗ Sentence Transformers: {}".format(str(e)[:50]))
+        
+        # Method 5: Raw Transformers library
+        try:
+            tokenizer = AutoTokenizer.from_pretrained("distilbert-base-uncased")
+            model = AutoModel.from_pretrained("distilbert-base-uncased")
+            test_tokens = tokenizer("test", return_tensors="pt")
+            with torch.no_grad():
+                outputs = model(**test_tokens)
+            if outputs is not None:
+                connection_results['transformers_library'] = True
+                self.successful_connections.append('Raw Transformers')
+                print("  ✓ Raw Transformers: Direct model access working")
+        except Exception as e:
+            print("  ✗ Raw Transformers: {}".format(str(e)[:50]))
+        
+        # Method 6: Check for cached models
+        try:
+            from huggingface_hub import scan_cache_dir
+            cache_info = scan_cache_dir()
+            if len(cache_info.repos) > 0:
+                connection_results['cached_models'] = True
+                self.successful_connections.append('Cached Models')
+                print("  ✓ Cached Models: {} models found in local cache".format(len(cache_info.repos)))
+        except Exception as e:
+            print("  ✗ Cached Models: {}".format(str(e)[:50]))
+        
+        # Method 7: Offline model check
+        try:
+            import transformers
+            transformers.utils.logging.set_verbosity_error()
+            
+            # Check if we can load models in offline mode
+            os.environ["TRANSFORMERS_OFFLINE"] = "1"
+            os.environ["HF_DATASETS_OFFLINE"] = "1"
+            
+            # Try to load a small model offline
+            tokenizer = AutoTokenizer.from_pretrained("distilbert-base-uncased", local_files_only=True)
+            connection_results['offline_models'] = True
+            self.successful_connections.append('Offline Mode')
+            print("  ✓ Offline Models: Local model access confirmed")
+            
+            # Reset environment
+            if "TRANSFORMERS_OFFLINE" in os.environ:
+                del os.environ["TRANSFORMERS_OFFLINE"]
+            if "HF_DATASETS_OFFLINE" in os.environ:
+                del os.environ["HF_DATASETS_OFFLINE"]
+                
+        except Exception as e:
+            print("  ✗ Offline Models: {}".format(str(e)[:50]))
+        
+        return connection_results
+    
+    def get_optimal_model_strategy(self, connection_results):
+        """Determine the best model loading strategy based on connectivity"""
+        strategies = []
+        
+        if connection_results['sentence_transformers']:
+            strategies.append({
+                'method': 'sentence_transformers',
+                'priority': 1,
+                'description': 'SentenceTransformers with automatic optimization'
+            })
+        
+        if connection_results['transformers_library']:
+            strategies.append({
+                'method': 'transformers_direct',
+                'priority': 2,
+                'description': 'Direct transformers library access'
+            })
+        
+        if connection_results['pipeline_access']:
+            strategies.append({
+                'method': 'pipeline',
+                'priority': 3,
+                'description': 'Transformers pipeline interface'
+            })
+        
+        if connection_results['cached_models']:
+            strategies.append({
+                'method': 'cached',
+                'priority': 2,
+                'description': 'Local cached models'
+            })
+        
+        if connection_results['offline_models']:
+            strategies.append({
+                'method': 'offline',
+                'priority': 4,
+                'description': 'Offline model access'
+            })
+        
+        # Sort by priority
+        strategies.sort(key=lambda x: x['priority'])
+        
+        return strategies
+    
+    def load_model_with_fallback(self, model_name, strategies):
+        """Load model using fallback strategy chain"""
+        print("HUGGING FACE: Loading model '{}' with fallback strategies...".format(model_name))
+        
+        for strategy in strategies:
+            try:
+                method = strategy['method']
+                print("  Attempting: {}".format(strategy['description']))
+                
+                if method == 'sentence_transformers':
+                    model = SentenceTransformer(model_name)
+                    if DEVICE and DEVICE.type == 'mps':
+                        model = model.to(DEVICE)
+                    print("  ✓ SUCCESS: SentenceTransformers model loaded")
+                    return model, method
+                
+                elif method == 'transformers_direct':
+                    tokenizer = AutoTokenizer.from_pretrained(model_name)
+                    model = AutoModel.from_pretrained(model_name)
+                    if DEVICE and DEVICE.type == 'mps':
+                        model = model.to(DEVICE)
+                    print("  ✓ SUCCESS: Direct transformers model loaded")
+                    return {'model': model, 'tokenizer': tokenizer}, method
+                
+                elif method == 'pipeline':
+                    model = pipeline("feature-extraction", model=model_name)
+                    print("  ✓ SUCCESS: Pipeline model loaded")
+                    return model, method
+                
+                elif method == 'cached':
+                    # Try to load from cache with local_files_only
+                    model = SentenceTransformer(model_name, local_files_only=True)
+                    if DEVICE and DEVICE.type == 'mps':
+                        model = model.to(DEVICE)
+                    print("  ✓ SUCCESS: Cached model loaded")
+                    return model, method
+                
+                elif method == 'offline':
+                    os.environ["TRANSFORMERS_OFFLINE"] = "1"
+                    tokenizer = AutoTokenizer.from_pretrained(model_name, local_files_only=True)
+                    model = AutoModel.from_pretrained(model_name, local_files_only=True)
+                    if DEVICE and DEVICE.type == 'mps':
+                        model = model.to(DEVICE)
+                    # Reset environment
+                    if "TRANSFORMERS_OFFLINE" in os.environ:
+                        del os.environ["TRANSFORMERS_OFFLINE"]
+                    print("  ✓ SUCCESS: Offline model loaded")
+                    return {'model': model, 'tokenizer': tokenizer}, method
+                
+            except Exception as e:
+                print("  ✗ FAILED: {}".format(str(e)[:60]))
+                continue
+        
+        print("  ✗ ALL METHODS FAILED: Unable to load model '{}'".format(model_name))
+        return None, None
+    
+    def authenticate_huggingface(self):
+        """Attempt Hugging Face authentication with multiple methods"""
+        auth_methods = []
+        
+        # Method 1: Environment variable
+        if 'HUGGINGFACE_TOKEN' in os.environ:
+            try:
+                login(token=os.environ['HUGGINGFACE_TOKEN'])
+                auth_methods.append('Environment Variable')
+                print("HUGGING FACE AUTH: Authenticated via environment variable")
+            except Exception as e:
+                print("HUGGING FACE AUTH: Environment variable failed - {}".format(str(e)[:50]))
+        
+        # Method 2: Try cached token
+        try:
+            login()  # Will use cached token if available
+            auth_methods.append('Cached Token')
+            print("HUGGING FACE AUTH: Authenticated via cached token")
+        except Exception as e:
+            print("HUGGING FACE AUTH: Cached token failed - {}".format(str(e)[:50]))
+        
+        # Method 3: Anonymous access
+        if not auth_methods:
+            print("HUGGING FACE AUTH: Using anonymous access (limited to public models)")
+            auth_methods.append('Anonymous')
+        
+        return auth_methods
     """Advanced ML-powered AO1 field analyzer"""
     
     def __init__(self):
@@ -160,38 +422,100 @@ class AdvancedAO1Analyzer:
         self.field_vocabulary = {}
         self.initialize_ml_components()
         
+class AdvancedAO1Analyzer:
+    """Advanced ML-powered AO1 field analyzer with robust Hugging Face connectivity"""
+    
+    def __init__(self):
+        self.client = None
+        self.neural_matcher = None
+        self.sentence_model = None
+        self.sentence_model_method = None
+        self.transformers_model = None
+        self.tfidf_vectorizer = None
+        self.requirement_embeddings = {}
+        self.field_vocabulary = {}
+        self.hf_connector = HuggingFaceConnector()
+        self.initialize_ml_components()
+        
     def initialize_ml_components(self):
-        """Initialize ML components with M1 GPU support"""
+        """Initialize ML components with robust Hugging Face connectivity"""
         try:
-            if DEVICE:
-                # Initialize sentence transformer for semantic analysis
-                self.sentence_model = SentenceTransformer('all-MiniLM-L6-v2')
-                if DEVICE.type == 'mps':
-                    self.sentence_model = self.sentence_model.to(DEVICE)
+            if not HF_AVAILABLE:
+                logger.warning("ML COMPONENTS: Hugging Face libraries not available - using basic mode")
+                return
+            
+            # Test Hugging Face connectivity
+            connection_results = self.hf_connector.test_huggingface_connectivity()
+            successful_methods = sum(connection_results.values())
+            
+            print("CONNECTIVITY: {}/7 Hugging Face connection methods successful".format(successful_methods))
+            
+            if successful_methods == 0:
+                print("WARNING: No Hugging Face connectivity - falling back to basic analysis")
+                return
+            
+            # Authenticate if possible
+            auth_methods = self.hf_connector.authenticate_huggingface()
+            
+            # Determine optimal loading strategy
+            strategies = self.hf_connector.get_optimal_model_strategy(connection_results)
+            
+            if not strategies:
+                print("WARNING: No viable model loading strategies found")
+                return
+            
+            # Load sentence transformer model with fallback
+            model_options = [
+                'sentence-transformers/all-MiniLM-L6-v2',
+                'sentence-transformers/all-mpnet-base-v2',
+                'sentence-transformers/paraphrase-MiniLM-L6-v2',
+                'distilbert-base-uncased',
+                'bert-base-uncased'
+            ]
+            
+            model_loaded = False
+            for model_name in model_options:
+                print("MODELS: Attempting to load '{}'...".format(model_name))
+                model, method = self.hf_connector.load_model_with_fallback(model_name, strategies)
                 
-                # Initialize TF-IDF vectorizer
-                self.tfidf_vectorizer = TfidfVectorizer(
-                    max_features=1000,
-                    ngram_range=(1, 3),
-                    stop_words='english'
-                )
-                
-                # Pre-compute requirement embeddings
-                self._compute_requirement_embeddings()
-                
-                # Initialize neural matcher
-                self._initialize_neural_matcher()
-                
-                logger.info("ML COMPONENTS: Initialized with M1 GPU acceleration")
-            else:
-                logger.warning("ML COMPONENTS: Basic mode - advanced features disabled")
-                
+                if model is not None:
+                    self.sentence_model = model
+                    self.sentence_model_method = method
+                    model_loaded = True
+                    print("MODELS: Successfully loaded '{}' via {}".format(model_name, method))
+                    break
+                else:
+                    print("MODELS: Failed to load '{}'".format(model_name))
+            
+            if not model_loaded:
+                print("WARNING: Unable to load any sentence transformer models")
+                self.sentence_model = None
+                return
+            
+            # Initialize TF-IDF vectorizer
+            self.tfidf_vectorizer = TfidfVectorizer(
+                max_features=1000,
+                ngram_range=(1, 3),
+                stop_words='english'
+            )
+            
+            # Pre-compute requirement embeddings
+            self._compute_requirement_embeddings()
+            
+            # Initialize neural matcher
+            self._initialize_neural_matcher()
+            
+            print("ML COMPONENTS: Full initialization complete with {} connectivity".format(
+                len(self.hf_connector.successful_connections)
+            ))
+            
         except Exception as e:
             logger.error("ML INITIALIZATION ERROR: {}".format(e))
+            print("ERROR: ML component initialization failed - {}".format(str(e)[:100]))
             self.sentence_model = None
     
     def _compute_requirement_embeddings(self):
-        """Pre-compute embeddings for all AO1 requirements"""
+        """Pre-compute embeddings for all AO1 requirements with multiple model strategies"""
         requirement_descriptions = {
             'REQ-1': 'global view asset identifiers hostname computer device system',
             'REQ-2': 'infrastructure type deployment cloud aws azure gcp onprem',
@@ -203,10 +527,48 @@ class AdvancedAO1Analyzer:
             'REQ-8': 'domain visibility hostname dns resolution network address'
         }
         
-        for req, desc in requirement_descriptions.items():
-            if self.sentence_model:
-                embedding = self.sentence_model.encode([desc])
-                self.requirement_embeddings[req] = embedding[0]
+        if not self.sentence_model:
+            print("EMBEDDINGS: No sentence model available - skipping embedding computation")
+            return
+        
+        try:
+            print("EMBEDDINGS: Computing requirement embeddings...")
+            
+            for req, desc in requirement_descriptions.items():
+                if self.sentence_model_method == 'sentence_transformers':
+                    # Standard SentenceTransformer approach
+                    embedding = self.sentence_model.encode([desc])
+                    self.requirement_embeddings[req] = embedding[0]
+                    
+                elif self.sentence_model_method in ['transformers_direct', 'offline']:
+                    # Direct transformers approach
+                    model = self.sentence_model['model']
+                    tokenizer = self.sentence_model['tokenizer']
+                    
+                    inputs = tokenizer(desc, return_tensors='pt', padding=True, truncation=True)
+                    if DEVICE and DEVICE.type == 'mps':
+                        inputs = {k: v.to(DEVICE) for k, v in inputs.items()}
+                    
+                    with torch.no_grad():
+                        outputs = model(**inputs)
+                        # Use mean pooling of last hidden states
+                        embedding = outputs.last_hidden_state.mean(dim=1).cpu().numpy()[0]
+                        self.requirement_embeddings[req] = embedding
+                
+                elif self.sentence_model_method == 'pipeline':
+                    # Pipeline approach
+                    embedding = self.sentence_model(desc)[0]
+                    # Average the token embeddings
+                    if isinstance(embedding, list) and len(embedding) > 0:
+                        embedding_array = np.array(embedding).mean(axis=0)
+                        self.requirement_embeddings[req] = embedding_array
+            
+            print("EMBEDDINGS: Successfully computed embeddings for {} requirements".format(len(self.requirement_embeddings)))
+            
+        except Exception as e:
+            logger.error("EMBEDDING COMPUTATION ERROR: {}".format(e))
+            print("ERROR: Failed to compute requirement embeddings - {}".format(str(e)[:100]))
+            self.requirement_embeddings = {}
     
     def _initialize_neural_matcher(self):
         """Initialize the neural network matcher"""
@@ -261,16 +623,49 @@ class AdvancedAO1Analyzer:
             return None
     
     def compute_semantic_similarity(self, field_name: str, requirement: str) -> float:
-        """Compute semantic similarity using sentence transformers"""
+        """Compute semantic similarity using multiple model strategies"""
         if not self.sentence_model or requirement not in self.requirement_embeddings:
             return 0.0
         
         try:
-            field_embedding = self.sentence_model.encode([field_name])
-            req_embedding = self.requirement_embeddings[requirement].reshape(1, -1)
-            similarity = cosine_similarity(field_embedding, req_embedding)[0][0]
+            if self.sentence_model_method == 'sentence_transformers':
+                # Standard SentenceTransformer approach
+                field_embedding = self.sentence_model.encode([field_name])
+                req_embedding = self.requirement_embeddings[requirement].reshape(1, -1)
+                similarity = cosine_similarity(field_embedding, req_embedding)[0][0]
+                
+            elif self.sentence_model_method in ['transformers_direct', 'offline']:
+                # Direct transformers approach
+                model = self.sentence_model['model']
+                tokenizer = self.sentence_model['tokenizer']
+                
+                inputs = tokenizer(field_name, return_tensors='pt', padding=True, truncation=True)
+                if DEVICE and DEVICE.type == 'mps':
+                    inputs = {k: v.to(DEVICE) for k, v in inputs.items()}
+                
+                with torch.no_grad():
+                    outputs = model(**inputs)
+                    field_embedding = outputs.last_hidden_state.mean(dim=1).cpu().numpy()
+                
+                req_embedding = self.requirement_embeddings[requirement].reshape(1, -1)
+                similarity = cosine_similarity(field_embedding, req_embedding)[0][0]
+                
+            elif self.sentence_model_method == 'pipeline':
+                # Pipeline approach
+                field_result = self.sentence_model(field_name)[0]
+                if isinstance(field_result, list) and len(field_result) > 0:
+                    field_embedding = np.array(field_result).mean(axis=0).reshape(1, -1)
+                    req_embedding = self.requirement_embeddings[requirement].reshape(1, -1)
+                    similarity = cosine_similarity(field_embedding, req_embedding)[0][0]
+                else:
+                    similarity = 0.0
+            else:
+                similarity = 0.0
+            
             return float(similarity)
-        except Exception:
+            
+        except Exception as e:
+            logger.error("SEMANTIC SIMILARITY ERROR: {}".format(e))
             return 0.0
     
     def neural_field_classification(self, field_name: str) -> Dict[str, float]:
@@ -504,7 +899,7 @@ class AdvancedAO1Analyzer:
         return all_matches
     
     def generate_professional_report(self, matches: List[FieldMatch]):
-        """Generate professional analysis report"""
+        """Generate professional analysis report with connectivity status"""
         if not matches:
             print("\nAO1 FIELD DISCOVERY ANALYSIS")
             print("=" * 60)
@@ -523,9 +918,20 @@ class AdvancedAO1Analyzer:
         print("\nADVANCED AO1 FIELD DISCOVERY ANALYSIS")
         print("=" * 60)
         print("ANALYSIS METHOD: ML-Enhanced with Neural Networks and Semantic Analysis")
+        
+        # Display connectivity status
+        if hasattr(self, 'hf_connector') and self.hf_connector.successful_connections:
+            print("HUGGING FACE: Connected via {}".format(", ".join(self.hf_connector.successful_connections[:3])))
+        else:
+            print("HUGGING FACE: Limited connectivity - using fallback methods")
+            
+        if self.sentence_model_method:
+            print("MODEL STRATEGY: {}".format(self.sentence_model_method.replace('_', ' ').title()))
+        
         print("GPU ACCELERATION: {}".format("M1 Metal Performance Shaders" if DEVICE and DEVICE.type == 'mps' else "CPU Processing"))
         print("TOTAL DISCOVERIES: {} fields across {} requirements".format(len(matches), len(by_requirement)))
         
+        # Rest of the report generation remains the same...
         # Detailed requirement analysis
         for req_num in ['REQ-1', 'REQ-2', 'REQ-3', 'REQ-4', 'REQ-5', 'REQ-6', 'REQ-7', 'REQ-8']:
             req_matches = by_requirement.get(req_num, [])
@@ -627,13 +1033,23 @@ class AdvancedAO1Analyzer:
         print("Executive Summary: {}".format(summary_filename))
 
 def main():
-    """Main execution with advanced ML analysis"""
+    """Main execution with advanced ML analysis and robust Hugging Face connectivity"""
     print("ADVANCED AO1 FIELD DISCOVERY SYSTEM")
     print("Powered by Neural Networks and M1 GPU Acceleration")
+    print("Multiple Hugging Face Connection Strategies")
     print("=" * 60)
     
     # Initialize analyzer
+    print("INITIALIZATION: Setting up advanced ML components...")
     analyzer = AdvancedAO1Analyzer()
+    
+    # Display connectivity summary
+    if hasattr(analyzer, 'hf_connector') and analyzer.hf_connector.successful_connections:
+        print("CONNECTIVITY STATUS: Successfully connected via {}".format(
+            ", ".join(analyzer.hf_connector.successful_connections)
+        ))
+    else:
+        print("CONNECTIVITY STATUS: Limited Hugging Face access - using fallback analysis")
     
     # Authenticate
     if not analyzer.authenticate_bigquery():
@@ -649,11 +1065,20 @@ def main():
         analysis_time = time.time() - start_time
         print("\nANALYSIS COMPLETE")
         print("Processing Time: {:.2f} seconds".format(analysis_time))
+        print("Model Strategy: {}".format(analyzer.sentence_model_method or "Basic Pattern Matching"))
         print("Fields Analyzed: Advanced ML processing on all accessible table schemas")
         
         # Generate reports
         analyzer.generate_professional_report(matches)
         analyzer.save_comprehensive_results(matches)
+        
+        # Additional connectivity diagnostics
+        if hasattr(analyzer, 'hf_connector'):
+            print("\nCONNECTIVITY DIAGNOSTICS:")
+            print("Successful Methods: {}".format(len(analyzer.hf_connector.successful_connections)))
+            if analyzer.hf_connector.successful_connections:
+                for method in analyzer.hf_connector.successful_connections:
+                    print("  - {}".format(method))
         
     except KeyboardInterrupt:
         print("\nANALYSIS INTERRUPTED: Partial results may be available in logs")
