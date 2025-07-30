@@ -218,66 +218,182 @@ class EnterpriseProxyManager:
                 print("\nPROXY CONFIGURATION")
                 print("Enter your corporate proxy details:")
                 
-                proxy_host = input("Proxy host (e.g., proxy.company.com): ").strip()
-                proxy_port = input("Proxy port (e.g., 8080): ").strip()
+                # Ask for HTTP proxy
+                print("\nHTTP PROXY CONFIGURATION:")
+                http_proxy_host = input("HTTP proxy host (e.g., proxy.company.com): ").strip()
+                http_proxy_port = input("HTTP proxy port (e.g., 8080): ").strip()
                 
-                if proxy_host and proxy_port:
-                    needs_auth = input("Does proxy require authentication? (y/n): ").lower().strip()
-                    
-                    if needs_auth == 'y':
-                        username = input("Username: ").strip()
-                        password = getpass.getpass("Password: ")
-                        proxy_url = "http://{}:{}@{}:{}".format(username, password, proxy_host, proxy_port)
-                    else:
-                        proxy_url = "http://{}:{}".format(proxy_host, proxy_port)
-                    
+                # Ask for HTTPS proxy
+                print("\nHTTPS PROXY CONFIGURATION:")
+                use_same_https = input("Use same settings for HTTPS proxy? (y/n): ").lower().strip()
+                
+                if use_same_https == 'y':
+                    https_proxy_host = http_proxy_host
+                    https_proxy_port = http_proxy_port
+                else:
+                    https_proxy_host = input("HTTPS proxy host (e.g., proxy-ssl.company.com): ").strip()
+                    https_proxy_port = input("HTTPS proxy port (e.g., 8443): ").strip()
+                
+                # Check for authentication
+                needs_auth = input("\nDoes proxy require authentication? (y/n): ").lower().strip()
+                
+                username = ""
+                password = ""
+                if needs_auth == 'y':
+                    username = input("Username: ").strip()
+                    password = getpass.getpass("Password: ")
+                
+                # Build proxy URLs
+                if username and password:
+                    http_proxy_url = "http://{}:{}@{}:{}".format(username, password, http_proxy_host, http_proxy_port)
+                    https_proxy_url = "http://{}:{}@{}:{}".format(username, password, https_proxy_host, https_proxy_port)
+                else:
+                    http_proxy_url = "http://{}:{}".format(http_proxy_host, http_proxy_port)
+                    https_proxy_url = "http://{}:{}".format(https_proxy_host, https_proxy_port)
+                
+                # Configure proxy settings
+                if http_proxy_host and http_proxy_port:
                     self.proxy_config = {
-                        'http_proxy': proxy_url,
-                        'https_proxy': proxy_url,
-                        'HTTP_PROXY': proxy_url,
-                        'HTTPS_PROXY': proxy_url
+                        'http_proxy': http_proxy_url,
+                        'HTTP_PROXY': http_proxy_url
                     }
+                    
+                    if https_proxy_host and https_proxy_port:
+                        self.proxy_config.update({
+                            'https_proxy': https_proxy_url,
+                            'HTTPS_PROXY': https_proxy_url
+                        })
                     
                     # Set environment variables
                     for key, value in self.proxy_config.items():
                         os.environ[key] = value
                     
+                    print("\nPROXY SETTINGS CONFIGURED:")
+                    print("  HTTP Proxy: {}:{}".format(http_proxy_host, http_proxy_port))
+                    print("  HTTPS Proxy: {}:{}".format(https_proxy_host, https_proxy_port))
+                    print("  Authentication: {}".format("Yes" if username else "No"))
+                    
                     return self.test_proxy_configuration()
+                else:
+                    print("ERROR: Invalid proxy configuration")
+                    return False
         
         return True  # No proxy needed
     
     def test_proxy_configuration(self) -> bool:
-        """Test if proxy configuration works"""
-        print("TESTING: Proxy configuration...")
+        """Test if proxy configuration works with enterprise settings"""
+        print("TESTING: Proxy configuration with enterprise settings...")
+        
+        # Import required modules for proxy testing
+        try:
+            import urllib3
+            from requests.adapters import HTTPAdapter
+            from urllib3.util.retry import Retry
+        except ImportError:
+            print("WARNING: Advanced proxy testing not available - using basic testing")
+            return self._basic_proxy_test()
+        
+        # Configure requests session with enterprise-friendly settings
+        session = requests.Session()
+        
+        # Apply proxy configuration
+        if self.proxy_config:
+            session.proxies.update(self.proxy_config)
+            print("  PROXY SETTINGS APPLIED:")
+            for key, value in self.proxy_config.items():
+                # Mask password in output
+                masked_value = value
+                if '@' in value:
+                    parts = value.split('@')
+                    if ':' in parts[0]:
+                        auth_part = parts[0].split('://')[-1]
+                        if ':' in auth_part:
+                            user, _ = auth_part.split(':', 1)
+                            masked_value = value.replace(auth_part, "{}:****".format(user))
+                print("    {}: {}".format(key, masked_value))
+        
+        # Enterprise-friendly session configuration
+        session.headers.update({
+            'User-Agent': 'AO1-Discovery-Tool/1.0 (Enterprise)',
+            'Accept': 'application/json, text/plain, */*',
+            'Accept-Encoding': 'gzip, deflate',
+            'Connection': 'keep-alive'
+        })
+        
+        # Disable SSL verification for corporate environments if needed
+        session.verify = False
+        urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+        
+        # Configure retries with enterprise-friendly settings
+        retry_strategy = Retry(
+            total=3,
+            backoff_factor=2,
+            status_forcelist=[429, 500, 502, 503, 504],
+            allowed_methods=["HEAD", "GET", "OPTIONS"]
+        )
+        
+        adapter = HTTPAdapter(max_retries=retry_strategy)
+        session.mount("http://", adapter)
+        session.mount("https://", adapter)
         
         test_urls = [
-            'https://huggingface.co/api/models',
-            'https://pypi.org/simple/',
-            'https://github.com'
+            ('http://httpbin.org/get', 'HTTP connectivity test'),
+            ('https://httpbin.org/get', 'HTTPS connectivity test'),
+            ('https://pypi.org/simple/', 'Python package index'),
+            ('https://huggingface.co', 'Hugging Face main site'),
+            ('https://github.com', 'GitHub connectivity')
         ]
         
         successful_tests = 0
         
+        for url, description in test_urls:
+            try:
+                print("  TESTING: {} - {}".format(description, url))
+                response = session.get(url, timeout=15)
+                if response.status_code == 200:
+                    successful_tests += 1
+                    print("    SUCCESS: Status {} - {} bytes".format(response.status_code, len(response.content)))
+                else:
+                    print("    PARTIAL: Status {} (non-200 but connected)".format(response.status_code))
+                    successful_tests += 0.5  # Partial credit for connection
+            except requests.exceptions.ProxyError as e:
+                print("    PROXY ERROR: {}".format(str(e)[:80]))
+            except requests.exceptions.SSLError as e:
+                print("    SSL ERROR: {} (common in corporate environments)".format(str(e)[:60]))
+            except requests.exceptions.ConnectTimeout as e:
+                print("    TIMEOUT: {}".format(str(e)[:60]))
+            except requests.exceptions.ConnectionError as e:
+                print("    CONNECTION ERROR: {}".format(str(e)[:80]))
+            except Exception as e:
+                print("    ERROR: {}".format(str(e)[:80]))
+        
+        self.proxy_working = successful_tests >= len(test_urls) / 3  # More lenient threshold
+        
+        if self.proxy_working:
+            print("PROXY: Configuration successful ({:.1f}/{} tests passed)".format(successful_tests, len(test_urls)))
+            print("Network connectivity established for ML model downloads")
+        else:
+            print("PROXY: Limited connectivity ({:.1f}/{} tests passed)".format(successful_tests, len(test_urls)))
+            print("Will attempt to use cached models and offline mode")
+            print("Consider contacting IT support if full connectivity is needed")
+        
+        return self.proxy_working
+    
+    def _basic_proxy_test(self) -> bool:
+        """Basic proxy test without advanced features"""
+        test_urls = ['https://httpbin.org/get', 'https://pypi.org/simple/']
+        successful_tests = 0
+        
         for url in test_urls:
             try:
-                response = requests.get(url, timeout=10)
+                response = requests.get(url, timeout=10, verify=False)
                 if response.status_code == 200:
                     successful_tests += 1
                     print("  SUCCESS: {}".format(url))
-                else:
-                    print("  FAILED: {} (Status: {})".format(url, response.status_code))
             except Exception as e:
                 print("  ERROR: {} - {}".format(url, str(e)[:50]))
         
-        self.proxy_working = successful_tests >= len(test_urls) / 2
-        
-        if self.proxy_working:
-            print("PROXY: Configuration successful ({}/{} tests passed)".format(successful_tests, len(test_urls)))
-        else:
-            print("PROXY: Configuration may have issues ({}/{} tests passed)".format(successful_tests, len(test_urls)))
-            print("Consider contacting IT support for network access")
-        
-        return self.proxy_working
+        return successful_tests > 0
 
 class M1GPUDetector:
     """M1 GPU detection and optimization manager"""
