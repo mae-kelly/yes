@@ -623,49 +623,48 @@ class ClaudeSemanticEmbedding:
         
         # Create base embeddings with consistent dimensions
         token_embeddings = []
-        base_dim = 512  # Standard base dimension
+        target_dim = 768  # Standardized dimension for all processing
         
         for i, token in enumerate(tokens):
-            # Get token embedding
-            token_emb = self._get_token_embedding(token)
+            # Get base token embedding (512D)
+            token_emb = self._get_token_embedding(token)  # Returns 512D
             
-            # Ensure consistent base dimension
-            if len(token_emb) != base_dim:
-                if len(token_emb) > base_dim:
-                    token_emb = token_emb[:base_dim]
-                else:
-                    token_emb = np.pad(token_emb, (0, base_dim - len(token_emb)), 'constant')
-            
-            # Add positional encoding
-            pos_dim = 256  # Positional encoding dimension
+            # Get positional encoding (256D)
             if i < len(self.positional_embeddings):
-                pos_emb = self.positional_embeddings[i][:pos_dim]
+                pos_emb = self.positional_embeddings[i][:256]  # Ensure 256D
             else:
-                # Extrapolate positional encoding for longer sequences
-                pos_emb = self._extrapolate_position(i, pos_dim)
+                pos_emb = self._extrapolate_position(i, 256)  # 256D
             
-            # Combine token and positional embeddings
-            combined_emb = np.concatenate([token_emb, pos_emb])
+            # Combine to target dimension (768D = 512D + 256D)
+            combined_emb = np.concatenate([token_emb, pos_emb])  # 768D
+            
+            # Ensure exactly target_dim
+            if len(combined_emb) != target_dim:
+                if len(combined_emb) > target_dim:
+                    combined_emb = combined_emb[:target_dim]
+                else:
+                    combined_emb = np.pad(combined_emb, (0, target_dim - len(combined_emb)), 'constant')
+            
             token_embeddings.append(combined_emb)
         
         if not token_embeddings:
             return np.zeros(self.embedding_dim)
         
-        # Apply contextual understanding
+        # All subsequent operations work with 768D embeddings
+        # Apply contextual understanding (768D → 768D)
         contextual_embeddings = self._apply_contextual_understanding(token_embeddings, tokens, context)
         
-        # Apply semantic concept enhancement
+        # Apply semantic concept enhancement (768D → 768D)
         semantic_enhanced = self._apply_semantic_concepts(contextual_embeddings, tokens)
         
-        # Apply attention mechanism
+        # Apply attention mechanism (768D → 768D)
         attended_embeddings = self._apply_self_attention(semantic_enhanced)
         
-        # Global pooling to get final embedding
-        final_embedding = self._global_pooling(attended_embeddings)
+        # Global pooling to get final embedding (768D → 768D)
+        pooled_embedding = self._global_pooling(attended_embeddings)
         
-        # Ensure correct dimensionality
-        if len(final_embedding) != self.embedding_dim:
-            final_embedding = self._resize_embedding(final_embedding, self.embedding_dim)
+        # Final resize to target embedding dimension (768D → 1024D)
+        final_embedding = self._resize_embedding(pooled_embedding, self.embedding_dim)
         
         return final_embedding
     
@@ -837,15 +836,19 @@ class ClaudeSemanticEmbedding:
         if not embeddings:
             return embeddings
         
-        # Standardize all embeddings to the same dimension
-        target_dim = max(len(emb) for emb in embeddings)
-        standardized_embeddings = []
+        # All embeddings should be 768D at this point
+        target_dim = 768
         
+        # Verify and standardize all embeddings
+        standardized_embeddings = []
         for emb in embeddings:
-            if len(emb) < target_dim:
-                padded = np.pad(emb, (0, target_dim - len(emb)), 'constant')
+            if len(emb) != target_dim:
+                if len(emb) > target_dim:
+                    padded = emb[:target_dim]
+                else:
+                    padded = np.pad(emb, (0, target_dim - len(emb)), 'constant')
             else:
-                padded = emb[:target_dim]
+                padded = emb.copy()
             standardized_embeddings.append(padded)
         
         contextual_embs = []
@@ -855,31 +858,27 @@ class ClaudeSemanticEmbedding:
             context_factor = 1.0 + (i / len(embeddings)) * 0.1
             
             # Apply token context (neighboring tokens influence)
-            neighbor_influence = np.zeros_like(emb)
+            neighbor_influence = np.zeros(target_dim)  # Explicit dimension
             
             for j in range(max(0, i-2), min(len(standardized_embeddings), i+3)):
                 if j != i:
                     distance = abs(i - j)
                     weight = 1.0 / (distance + 1)
-                    # Ensure same dimensions for addition
-                    neighbor_emb = standardized_embeddings[j]
-                    if len(neighbor_emb) == len(neighbor_influence):
-                        neighbor_influence += neighbor_emb * weight * 0.1
+                    neighbor_influence += standardized_embeddings[j] * weight * 0.1
             
             # Combine with context transformation
             context_emb = emb * context_factor + neighbor_influence
             
-            # Apply learned context transformation if dimensions match
-            transform_dim = min(self.context_transform.shape[1], len(context_emb))
-            if transform_dim > 0:
-                context_emb_slice = context_emb[:transform_dim]
-                transform_slice = self.context_transform[:transform_dim, :transform_dim]
-                transformed_slice = np.dot(transform_slice, context_emb_slice)
+            # Apply learned context transformation (simplified to avoid dimension issues)
+            # Use a subset of the transformation matrix that matches our dimensions
+            transform_size = min(target_dim, self.context_transform.shape[0], self.context_transform.shape[1])
+            if transform_size > 0:
+                emb_slice = context_emb[:transform_size]
+                transform_slice = self.context_transform[:transform_size, :transform_size]
+                transformed_slice = np.dot(transform_slice, emb_slice)
                 
-                # Create final embedding
-                final_emb = context_emb.copy()
-                final_emb[:len(transformed_slice)] = transformed_slice
-                context_emb = final_emb
+                # Update the embedding with transformed values
+                context_emb[:transform_size] = transformed_slice
             
             contextual_embs.append(context_emb)
         
@@ -890,15 +889,19 @@ class ClaudeSemanticEmbedding:
         if not embeddings:
             return embeddings
         
-        # Standardize embedding dimensions
-        target_dim = max(len(emb) for emb in embeddings)
-        standardized_embeddings = []
+        # All embeddings should be 768D at this point
+        target_dim = 768
         
+        # Verify all embeddings are correct dimension
+        standardized_embeddings = []
         for emb in embeddings:
-            if len(emb) < target_dim:
-                padded = np.pad(emb, (0, target_dim - len(emb)), 'constant')
+            if len(emb) != target_dim:
+                if len(emb) > target_dim:
+                    padded = emb[:target_dim]
+                else:
+                    padded = np.pad(emb, (0, target_dim - len(emb)), 'constant')
             else:
-                padded = emb[:target_dim]
+                padded = emb.copy()
             standardized_embeddings.append(padded)
         
         semantic_embs = []
@@ -914,12 +917,12 @@ class ClaudeSemanticEmbedding:
                 
                 # Check if token matches concept
                 if any(keyword in token for keyword in concept_keywords):
-                    # Resize concept embedding to match current embedding
-                    if len(concept_embedding) != len(emb):
-                        if len(concept_embedding) > len(emb):
-                            influence = concept_embedding[:len(emb)]
+                    # Resize concept embedding to match target dimension
+                    if len(concept_embedding) != target_dim:
+                        if len(concept_embedding) > target_dim:
+                            influence = concept_embedding[:target_dim]
                         else:
-                            influence = np.pad(concept_embedding, (0, len(emb) - len(concept_embedding)), 'constant')
+                            influence = np.pad(concept_embedding, (0, target_dim - len(concept_embedding)), 'constant')
                     else:
                         influence = concept_embedding.copy()
                     
@@ -929,10 +932,14 @@ class ClaudeSemanticEmbedding:
             
             # Combine concept influences
             if concept_influences:
-                total_influence = np.sum(concept_influences, axis=0)
+                # Ensure all influences are same dimension
+                total_influence = np.zeros(target_dim)
+                for influence in concept_influences:
+                    if len(influence) == target_dim:
+                        total_influence += influence
                 enhanced_emb = emb + total_influence
             else:
-                enhanced_emb = emb
+                enhanced_emb = emb.copy()
             
             semantic_embs.append(enhanced_emb)
         
@@ -943,30 +950,33 @@ class ClaudeSemanticEmbedding:
         if not embeddings or len(embeddings) == 1:
             return embeddings
         
-        # Ensure all embeddings have the same dimension
-        max_dim = max(len(emb) for emb in embeddings)
-        padded_embeddings = []
+        # All embeddings should be 768D at this point
+        target_dim = 768
         
+        # Verify and standardize all embeddings
+        standardized_embeddings = []
         for emb in embeddings:
-            if len(emb) < max_dim:
-                padded = np.pad(emb, (0, max_dim - len(emb)), 'constant')
+            if len(emb) != target_dim:
+                if len(emb) > target_dim:
+                    padded = emb[:target_dim]
+                else:
+                    padded = np.pad(emb, (0, target_dim - len(emb)), 'constant')
             else:
-                padded = emb[:max_dim]
-            padded_embeddings.append(padded)
-        
-        embeddings = padded_embeddings
+                padded = emb.copy()
+            standardized_embeddings.append(padded)
         
         # Simple attention mechanism
-        attention_weights = np.zeros((len(embeddings), len(embeddings)))
+        num_embeddings = len(standardized_embeddings)
+        attention_weights = np.zeros((num_embeddings, num_embeddings))
         
-        for i in range(len(embeddings)):
-            for j in range(len(embeddings)):
+        for i in range(num_embeddings):
+            for j in range(num_embeddings):
                 # Compute attention weight (simplified dot-product attention)
-                similarity = np.dot(embeddings[i], embeddings[j])
+                similarity = np.dot(standardized_embeddings[i], standardized_embeddings[j])
                 attention_weights[i, j] = similarity
         
         # Apply softmax to each row
-        for i in range(len(embeddings)):
+        for i in range(num_embeddings):
             row_max = np.max(attention_weights[i])
             attention_weights[i] = np.exp(attention_weights[i] - row_max)
             row_sum = np.sum(attention_weights[i])
@@ -975,10 +985,10 @@ class ClaudeSemanticEmbedding:
         
         # Apply attention
         attended_embeddings = []
-        for i in range(len(embeddings)):
-            attended = np.zeros_like(embeddings[i])
-            for j in range(len(embeddings)):
-                attended += attention_weights[i, j] * embeddings[j]
+        for i in range(num_embeddings):
+            attended = np.zeros(target_dim)  # Explicit dimension
+            for j in range(num_embeddings):
+                attended += attention_weights[i, j] * standardized_embeddings[j]
             attended_embeddings.append(attended)
         
         return attended_embeddings
@@ -986,22 +996,27 @@ class ClaudeSemanticEmbedding:
     def _global_pooling(self, embeddings: List[np.ndarray]) -> np.ndarray:
         """Apply global pooling to get final embedding."""
         if not embeddings:
-            return np.zeros(self.embedding_dim)
+            return np.zeros(768)  # Return 768D for consistency
         
-        # Ensure all embeddings have the same dimension
-        max_dim = max(len(emb) for emb in embeddings)
-        padded_embeddings = []
+        # All embeddings should be 768D at this point
+        target_dim = 768
         
+        # Verify and standardize all embeddings
+        standardized_embeddings = []
         for emb in embeddings:
-            if len(emb) < max_dim:
-                padded = np.pad(emb, (0, max_dim - len(emb)), 'constant')
+            if len(emb) != target_dim:
+                if len(emb) > target_dim:
+                    padded = emb[:target_dim]
+                else:
+                    padded = np.pad(emb, (0, target_dim - len(emb)), 'constant')
             else:
-                padded = emb[:max_dim]
-            padded_embeddings.append(padded)
+                padded = emb.copy()
+            standardized_embeddings.append(padded)
         
         # Combine different pooling strategies
-        mean_pool = np.mean(padded_embeddings, axis=0)
-        max_pool = np.max(padded_embeddings, axis=0)
+        embeddings_array = np.array(standardized_embeddings)
+        mean_pool = np.mean(embeddings_array, axis=0)
+        max_pool = np.max(embeddings_array, axis=0)
         
         # Weighted combination
         combined = mean_pool * 0.7 + max_pool * 0.3
