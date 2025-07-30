@@ -618,21 +618,35 @@ class ClaudeSemanticEmbedding:
         text_clean = self._preprocess_text(text)
         tokens = self._tokenize_advanced(text_clean)
         
-        # Create base embeddings
+        if not tokens:
+            return np.zeros(self.embedding_dim)
+        
+        # Create base embeddings with consistent dimensions
         token_embeddings = []
+        base_dim = 512  # Standard base dimension
+        
         for i, token in enumerate(tokens):
             # Get token embedding
             token_emb = self._get_token_embedding(token)
             
+            # Ensure consistent base dimension
+            if len(token_emb) != base_dim:
+                if len(token_emb) > base_dim:
+                    token_emb = token_emb[:base_dim]
+                else:
+                    token_emb = np.pad(token_emb, (0, base_dim - len(token_emb)), 'constant')
+            
             # Add positional encoding
+            pos_dim = 256  # Positional encoding dimension
             if i < len(self.positional_embeddings):
-                token_emb = np.concatenate([token_emb, self.positional_embeddings[i]])
+                pos_emb = self.positional_embeddings[i][:pos_dim]
             else:
                 # Extrapolate positional encoding for longer sequences
-                pos_emb = self._extrapolate_position(i, 256)
-                token_emb = np.concatenate([token_emb, pos_emb])
+                pos_emb = self._extrapolate_position(i, pos_dim)
             
-            token_embeddings.append(token_emb)
+            # Combine token and positional embeddings
+            combined_emb = np.concatenate([token_emb, pos_emb])
+            token_embeddings.append(combined_emb)
         
         if not token_embeddings:
             return np.zeros(self.embedding_dim)
@@ -711,24 +725,40 @@ class ClaudeSemanticEmbedding:
     
     def _get_token_embedding(self, token: str) -> np.ndarray:
         """Get embedding for a token with fallback strategies."""
+        base_dim = 512  # Consistent base dimension
+        
         # Direct vocabulary lookup
         if token in self.word_to_idx:
             idx = self.word_to_idx[token]
-            return self.word_embeddings[idx].copy()
+            emb = self.word_embeddings[idx].copy()
+            # Ensure correct dimension
+            if len(emb) != base_dim:
+                if len(emb) > base_dim:
+                    emb = emb[:base_dim]
+                else:
+                    emb = np.pad(emb, (0, base_dim - len(emb)), 'constant')
+            return emb
         
         # Subword fallback
         subword_emb = self._get_subword_embedding(token)
         if subword_emb is not None:
+            # Ensure correct dimension
+            if len(subword_emb) != base_dim:
+                if len(subword_emb) > base_dim:
+                    subword_emb = subword_emb[:base_dim]
+                else:
+                    subword_emb = np.pad(subword_emb, (0, base_dim - len(subword_emb)), 'constant')
             return subword_emb
         
         # Character-level fallback
         char_emb = self._get_character_embedding(token)
         
-        # Pad to correct size
-        if len(char_emb) < 512:
-            char_emb = np.pad(char_emb, (0, 512 - len(char_emb)), 'constant')
-        elif len(char_emb) > 512:
-            char_emb = char_emb[:512]
+        # Ensure correct dimension
+        if len(char_emb) != base_dim:
+            if len(char_emb) > base_dim:
+                char_emb = char_emb[:base_dim]
+            else:
+                char_emb = np.pad(char_emb, (0, base_dim - len(char_emb)), 'constant')
         
         return char_emb
     
@@ -736,6 +766,8 @@ class ClaudeSemanticEmbedding:
         """Get subword-level embedding."""
         if len(token) < 3:
             return None
+        
+        base_dim = 256  # Subword embedding dimension
         
         # Simple BPE-like subword extraction
         subwords = []
@@ -746,23 +778,47 @@ class ClaudeSemanticEmbedding:
         
         if subwords:
             # Average subword embeddings
-            return np.mean(subwords, axis=0)
+            avg_emb = np.mean(subwords, axis=0)
+            
+            # Ensure correct dimension
+            if len(avg_emb) != base_dim:
+                if len(avg_emb) > base_dim:
+                    avg_emb = avg_emb[:base_dim]
+                else:
+                    avg_emb = np.pad(avg_emb, (0, base_dim - len(avg_emb)), 'constant')
+            
+            return avg_emb
         
         return None
     
     def _get_character_embedding(self, token: str) -> np.ndarray:
         """Get character-level embedding."""
+        char_dim = 128  # Character embedding dimension
+        max_chars = 16  # Maximum characters to process
+        
         char_embs = []
-        for char in token[:16]:  # Limit to 16 characters
+        for char in token[:max_chars]:
             char_idx = ord(char) if ord(char) < 256 else 0
             char_embs.append(self.char_embeddings[char_idx])
         
         if char_embs:
             # Combine character embeddings
-            combined = np.concatenate(char_embs)
+            if len(char_embs) == 1:
+                combined = char_embs[0]
+            else:
+                # Average character embeddings
+                combined = np.mean(char_embs, axis=0)
+            
+            # Ensure correct dimension
+            if len(combined) != char_dim:
+                if len(combined) > char_dim:
+                    combined = combined[:char_dim]
+                else:
+                    combined = np.pad(combined, (0, char_dim - len(combined)), 'constant')
+            
             return combined
         
-        return np.zeros(128)
+        return np.zeros(char_dim)
     
     def _extrapolate_position(self, position: int, dim: int) -> np.ndarray:
         """Extrapolate positional encoding for positions beyond training."""
@@ -781,34 +837,49 @@ class ClaudeSemanticEmbedding:
         if not embeddings:
             return embeddings
         
+        # Standardize all embeddings to the same dimension
+        target_dim = max(len(emb) for emb in embeddings)
+        standardized_embeddings = []
+        
+        for emb in embeddings:
+            if len(emb) < target_dim:
+                padded = np.pad(emb, (0, target_dim - len(emb)), 'constant')
+            else:
+                padded = emb[:target_dim]
+            standardized_embeddings.append(padded)
+        
         contextual_embs = []
         
-        for i, (emb, token) in enumerate(zip(embeddings, tokens)):
+        for i, (emb, token) in enumerate(zip(standardized_embeddings, tokens)):
             # Apply positional context
             context_factor = 1.0 + (i / len(embeddings)) * 0.1
             
             # Apply token context (neighboring tokens influence)
             neighbor_influence = np.zeros_like(emb)
             
-            for j in range(max(0, i-2), min(len(embeddings), i+3)):
+            for j in range(max(0, i-2), min(len(standardized_embeddings), i+3)):
                 if j != i:
                     distance = abs(i - j)
                     weight = 1.0 / (distance + 1)
-                    neighbor_influence += embeddings[j] * weight * 0.1
+                    # Ensure same dimensions for addition
+                    neighbor_emb = standardized_embeddings[j]
+                    if len(neighbor_emb) == len(neighbor_influence):
+                        neighbor_influence += neighbor_emb * weight * 0.1
             
             # Combine with context transformation
             context_emb = emb * context_factor + neighbor_influence
             
-            # Apply learned context transformation
-            if len(context_emb) >= self.context_transform.shape[1]:
-                context_emb_resized = context_emb[:self.context_transform.shape[1]]
-                transformed = np.dot(self.context_transform, context_emb_resized)
+            # Apply learned context transformation if dimensions match
+            transform_dim = min(self.context_transform.shape[1], len(context_emb))
+            if transform_dim > 0:
+                context_emb_slice = context_emb[:transform_dim]
+                transform_slice = self.context_transform[:transform_dim, :transform_dim]
+                transformed_slice = np.dot(transform_slice, context_emb_slice)
                 
-                # Pad back to original size
-                if len(transformed) < len(context_emb):
-                    transformed = np.pad(transformed, (0, len(context_emb) - len(transformed)), 'constant')
-                
-                context_emb = transformed[:len(context_emb)]
+                # Create final embedding
+                final_emb = context_emb.copy()
+                final_emb[:len(transformed_slice)] = transformed_slice
+                context_emb = final_emb
             
             contextual_embs.append(context_emb)
         
@@ -816,9 +887,23 @@ class ClaudeSemanticEmbedding:
     
     def _apply_semantic_concepts(self, embeddings: List[np.ndarray], tokens: List[str]) -> List[np.ndarray]:
         """Apply semantic concept enhancement."""
+        if not embeddings:
+            return embeddings
+        
+        # Standardize embedding dimensions
+        target_dim = max(len(emb) for emb in embeddings)
+        standardized_embeddings = []
+        
+        for emb in embeddings:
+            if len(emb) < target_dim:
+                padded = np.pad(emb, (0, target_dim - len(emb)), 'constant')
+            else:
+                padded = emb[:target_dim]
+            standardized_embeddings.append(padded)
+        
         semantic_embs = []
         
-        for emb, token in zip(embeddings, tokens):
+        for emb, token in zip(standardized_embeddings, tokens):
             # Find matching semantic concepts
             concept_influences = []
             
@@ -829,16 +914,17 @@ class ClaudeSemanticEmbedding:
                 
                 # Check if token matches concept
                 if any(keyword in token for keyword in concept_keywords):
-                    # Add concept influence
-                    influence = concept_embedding * concept_weight * 0.2
-                    
-                    # Resize to match embedding dimension
-                    if len(influence) != len(emb):
-                        if len(influence) > len(emb):
-                            influence = influence[:len(emb)]
+                    # Resize concept embedding to match current embedding
+                    if len(concept_embedding) != len(emb):
+                        if len(concept_embedding) > len(emb):
+                            influence = concept_embedding[:len(emb)]
                         else:
-                            influence = np.pad(influence, (0, len(emb) - len(influence)), 'constant')
+                            influence = np.pad(concept_embedding, (0, len(emb) - len(concept_embedding)), 'constant')
+                    else:
+                        influence = concept_embedding.copy()
                     
+                    # Scale by concept weight
+                    influence = influence * concept_weight * 0.2
                     concept_influences.append(influence)
             
             # Combine concept influences
