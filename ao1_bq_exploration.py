@@ -1,14 +1,9 @@
 """
-Ultra-Robust Enterprise AO1 Field Discovery System
-Self-Healing ML-Powered BigQuery Analysis with Automatic Dependency Resolution
+Perfect AO1 Field Discovery System
+Business-Focused BigQuery Analysis for Audit Compliance
 
-This system will:
-1. Auto-install missing dependencies
-2. Try multiple Python environments
-3. Handle all corporate proxy scenarios
-4. Automatically configure M1 GPU optimization
-5. Never fail - always find a way to work
-6. Provide enterprise-grade AO1 field discovery
+This system analyzes BigQuery tables to identify the exact fields needed for AO1 audit requirements,
+providing clear business summaries and actionable recommendations for each requirement.
 """
 
 import os
@@ -16,773 +11,255 @@ import sys
 import json
 import time
 import logging
-import getpass
-import subprocess
-import importlib
-import pkg_resources
+import pandas as pd
+import numpy as np
 from datetime import datetime
 from typing import Dict, List, Tuple, Optional, Any
 from dataclasses import dataclass, asdict
 from collections import defaultdict, Counter
-import numpy as np
-import pandas as pd
 import requests
-import urllib.parse
-import socket
 
-# Corporate logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s [%(levelname)s] %(name)s: %(message)s',
-    handlers=[
-        logging.FileHandler('ao1_enterprise_discovery.log'),
-        logging.StreamHandler(sys.stdout)
-    ]
-)
-logger = logging.getLogger('AO1Discovery')
+# BigQuery imports
+from google.cloud import bigquery
+from google.oauth2 import service_account
+from google.cloud.exceptions import NotFound, Forbidden, BadRequest, ServerError
 
 # Configuration
 PROJECT_ID = "prj-fisv-p-gcss-sas-dl9dd0f1df"
 SERVICE_ACCOUNT_FILE = "gcp_prod_key.json"
 
+# Setup logging
+logging.basicConfig(level=logging.WARNING)
+logger = logging.getLogger('AO1Discovery')
+
 @dataclass
-class FieldMatch:
-    """Enterprise field match result"""
+class AO1Finding:
+    """Perfect AO1 field finding with business context"""
+    requirement: str
+    requirement_name: str
     dataset: str
     table: str
     field_name: str
-    field_path: str
     field_type: str
-    requirement: str
-    matched_keyword: str
-    match_type: str
-    confidence_score: float
     table_rows: int
-    table_size_bytes: int
-    semantic_similarity: float
-    context_relevance: float
+    confidence: str
+    business_context: str
+    usage_recommendation: str
+    table_purpose: str
+    why_relevant: str
 
-class RobustDependencyManager:
-    """Ultra-robust dependency management with automatic installation"""
+class AO1RequirementsAnalyzer:
+    """Analyzes tables and fields against specific AO1 requirements"""
     
     def __init__(self):
-        self.installation_attempts = []
-        self.successful_imports = {}
-        self.failed_imports = {}
-        self.python_executables = self._find_python_executables()
-        
-    def _find_python_executables(self) -> List[str]:
-        """Find all available Python executables"""
-        candidates = [
-            sys.executable,
-            'python3',
-            'python',
-            '/usr/bin/python3',
-            '/usr/local/bin/python3',
-            os.path.expanduser('~/.pyenv/shims/python'),
-            os.path.expanduser('~/miniforge3/bin/python'),
-            os.path.expanduser('~/anaconda3/bin/python'),
-            os.path.expanduser('~/miniconda3/bin/python')
-        ]
-        
-        valid_executables = []
-        for candidate in candidates:
-            try:
-                result = subprocess.run([candidate, '--version'], 
-                                      capture_output=True, text=True, timeout=5)
-                if result.returncode == 0:
-                    valid_executables.append(candidate)
-            except:
-                continue
-        
-        return list(set(valid_executables))  # Remove duplicates
-    
-    def _install_with_multiple_methods(self, package: str, alternative_names: List[str] = None):
-        """Try multiple installation methods until one succeeds"""
-        if alternative_names is None:
-            alternative_names = []
-        
-        all_packages = [package] + alternative_names
-        installation_methods = [
-            ('pip install', 'pip install {}'),
-            ('pip3 install', 'pip3 install {}'),
-            ('python -m pip install', '{} -m pip install {}'),
-            ('python3 -m pip install', '{} -m pip install {}'),
-            ('conda install', 'conda install -y {}'),
-            ('mamba install', 'mamba install -y {}')
-        ]
-        
-        for pkg in all_packages:
-            for method_name, command_template in installation_methods:
-                for python_exec in self.python_executables:
-                    try:
-                        if 'python' in command_template and '{}' in command_template:
-                            command = command_template.format(python_exec, pkg)
-                        else:
-                            command = command_template.format(pkg)
-                        
-                        print("INSTALL ATTEMPT: {} using {}".format(pkg, command))
-                        
-                        result = subprocess.run(command.split(), 
-                                              capture_output=True, text=True, timeout=300)
-                        
-                        if result.returncode == 0:
-                            print("SUCCESS: {} installed via {}".format(pkg, method_name))
-                            self.installation_attempts.append({
-                                'package': pkg,
-                                'method': method_name,
-                                'command': command,
-                                'success': True
-                            })
-                            return True
-                        else:
-                            print("FAILED: {} - {}".format(command, result.stderr[:100]))
-                            
-                    except subprocess.TimeoutExpired:
-                        print("TIMEOUT: {} installation timeout".format(command))
-                    except Exception as e:
-                        print("ERROR: {} - {}".format(command, str(e)[:50]))
-        
-        return False
-    
-    def ensure_dependency(self, module_name: str, package_name: str = None, 
-                         alternative_packages: List[str] = None) -> Tuple[bool, Any]:
-        """Ensure a dependency is available, installing if necessary"""
-        if package_name is None:
-            package_name = module_name
-        
-        if alternative_packages is None:
-            alternative_packages = []
-        
-        # Try importing first
-        try:
-            module = importlib.import_module(module_name)
-            self.successful_imports[module_name] = module
-            print("✓ {}: Already available".format(module_name))
-            return True, module
-        except ImportError:
-            print("⚠ {}: Not available, attempting installation".format(module_name))
-        
-        # Try installing
-        success = self._install_with_multiple_methods(package_name, alternative_packages)
-        
-        if success:
-            # Try importing again after installation
-            try:
-                # Reload the module in case it was partially loaded
-                if module_name in sys.modules:
-                    importlib.reload(sys.modules[module_name])
-                else:
-                    module = importlib.import_module(module_name)
-                
-                self.successful_imports[module_name] = module
-                print("✓ {}: Successfully installed and imported".format(module_name))
-                return True, module
-            except ImportError as e:
-                print("✗ {}: Installation succeeded but import failed - {}".format(module_name, e))
-                self.failed_imports[module_name] = str(e)
-        else:
-            print("✗ {}: All installation methods failed".format(module_name))
-            self.failed_imports[module_name] = "Installation failed"
-        
-        return False, None
-
-class UltraRobustMLSystem:
-    """Ultra-robust ML system that tries everything until it works"""
-    
-    def __init__(self):
-        self.dependency_manager = RobustDependencyManager()
-        self.torch_available = False
-        self.transformers_available = False
-        self.sentence_transformers_available = False
-        self.sklearn_available = False
-        self.device = None
-        self.models = {}
-        self.initialize_ml_stack()
-    
-    def initialize_ml_stack(self):
-        """Initialize ML stack with aggressive dependency resolution"""
-        print("ULTRA-ROBUST ML INITIALIZATION")
-        print("=" * 60)
-        print("Will try every possible method until full ML stack is available")
-        
-        # Essential dependencies in order of importance
-        ml_dependencies = [
-            # Core packages
-            ('numpy', 'numpy', []),
-            ('pandas', 'pandas', []),
-            ('requests', 'requests', []),
-            ('sklearn', 'scikit-learn', ['sklearn']),
+        self.requirements = {
+            'REQ-1': {
+                'name': 'Global View - Asset Identification',
+                'purpose': 'Count unique logging assets vs CMDB for visibility percentage',
+                'key_fields': ['hostname', 'host_name', 'computer_name', 'device_name', 'asset_id', 'system_id', 'ip_address', 'mac_address', 'serial_number', 'uuid'],
+                'table_types': ['cmdb', 'asset', 'inventory', 'device', 'computer', 'host', 'server', 'endpoint', 'workstation', 'system'],
+                'business_goal': 'Identify primary asset identifiers to correlate log sources with CMDB records'
+            },
             
-            # PyTorch (try multiple variants for M1 compatibility)
-            ('torch', 'torch', ['torch --index-url https://download.pytorch.org/whl/cpu',
-                                'torch torchvision torchaudio']),
+            'REQ-2': {
+                'name': 'Infrastructure Type - Deployment Classification',
+                'purpose': 'Classify assets by deployment model (On-Prem, Cloud, SaaS, API)',
+                'key_fields': ['cloud', 'aws', 'azure', 'gcp', 'datacenter', 'virtual_machine', 'vm', 'container', 'kubernetes', 'saas', 'application_type', 'deployment_type', 'platform', 'infrastructure_type'],
+                'table_types': ['cloud', 'infrastructure', 'deployment', 'platform', 'service', 'application', 'vm', 'container'],
+                'business_goal': 'Categorize infrastructure to show visibility across deployment models'
+            },
             
-            # Hugging Face ecosystem
-            ('transformers', 'transformers', ['transformers[torch]']),
-            ('sentence_transformers', 'sentence-transformers', []),
-            ('huggingface_hub', 'huggingface-hub', []),
+            'REQ-3': {
+                'name': 'Regional/Country View - Geographic Classification',
+                'purpose': 'Show visibility by geographic location and region',
+                'key_fields': ['region', 'country', 'location', 'datacenter', 'site', 'zone', 'office', 'facility', 'geographic_region', 'aws_region', 'azure_region', 'gcp_region'],
+                'table_types': ['region', 'location', 'geographic', 'datacenter', 'site', 'facility', 'office'],
+                'business_goal': 'Demonstrate geographic coverage of logging across all regions'
+            },
             
-            # Google Cloud
-            ('google.cloud.bigquery', 'google-cloud-bigquery', []),
-            ('google.oauth2', 'google-auth', [])
-        ]
-        
-        self.successful_dependencies = {}
-        self.failed_dependencies = {}
-        
-        for module_name, package_name, alternatives in ml_dependencies:
-            success, module = self.dependency_manager.ensure_dependency(
-                module_name, package_name, alternatives
-            )
+            'REQ-4': {
+                'name': 'Business/Application View - Organizational Structure',
+                'purpose': 'Show visibility by business unit and application ownership',
+                'key_fields': ['business_unit', 'bu', 'department', 'division', 'organization', 'application', 'app_name', 'service_name', 'owner', 'cost_center', 'project'],
+                'table_types': ['business', 'application', 'app', 'organization', 'department', 'service', 'project'],
+                'business_goal': 'Track logging coverage across business units and applications'
+            },
             
-            if success:
-                self.successful_dependencies[module_name] = module
-                
-                # Set specific flags for important modules
-                if module_name == 'torch':
-                    self.torch_available = True
-                    self._configure_torch()
-                elif module_name == 'transformers':
-                    self.transformers_available = True
-                elif module_name == 'sentence_transformers':
-                    self.sentence_transformers_available = True
-                elif module_name == 'sklearn':
-                    self.sklearn_available = True
-                    
-            else:
-                self.failed_dependencies[module_name] = "Failed to install/import"
-        
-        # Print final status
-        self._print_ml_status()
-        
-        # Initialize models if dependencies are available
-        if self.torch_available and self.transformers_available:
-            self._initialize_models()
-    
-    def _configure_torch(self):
-        """Configure PyTorch for optimal performance"""
-        try:
-            torch = self.successful_dependencies['torch']
+            'REQ-5': {
+                'name': 'System Classification - Server Function and OS',
+                'purpose': 'Classify systems by function and operating system type',
+                'key_fields': ['windows', 'linux', 'unix', 'operating_system', 'os_type', 'server_type', 'server_function', 'web_server', 'database_server', 'mail_server', 'dns_server', 'system_type'],
+                'table_types': ['system', 'server', 'os', 'operating', 'database', 'web', 'mail', 'dns'],
+                'business_goal': 'Show logging coverage across different system types and functions'
+            },
             
-            # Try to detect and configure M1 GPU
-            if hasattr(torch.backends, 'mps') and torch.backends.mps.is_available():
-                self.device = torch.device('mps')
-                print("✓ M1 GPU (MPS): Configured for acceleration")
-            else:
-                self.device = torch.device('cpu')
-                print("✓ CPU: Configured for processing")
-                
-            # Set optimal CPU threads
-            if self.device.type == 'cpu':
-                torch.set_num_threads(min(8, torch.get_num_threads()))
-                
-        except Exception as e:
-            print("⚠ PyTorch configuration warning: {}".format(e))
-            self.device = torch.device('cpu')
-    
-    def _initialize_models(self):
-        """Initialize ML models with robust fallback"""
-        print("\nMODEL INITIALIZATION:")
-        
-        model_configs = [
-            # Lightweight models first
-            ('sentence-transformers/all-MiniLM-L6-v2', 'lightweight'),
-            ('sentence-transformers/paraphrase-MiniLM-L6-v2', 'lightweight'),
-            ('distilbert-base-uncased', 'medium'),
-            ('sentence-transformers/all-mpnet-base-v2', 'full-featured')
-        ]
-        
-        for model_name, model_type in model_configs:
-            try:
-                print("Attempting to load: {}".format(model_name))
-                
-                if self.sentence_transformers_available:
-                    SentenceTransformer = self.successful_dependencies['sentence_transformers'].SentenceTransformer
-                    model = SentenceTransformer(model_name)
-                    if self.device and self.device.type == 'mps':
-                        model = model.to(self.device)
-                    
-                    # Test the model
-                    test_embedding = model.encode(['test'])
-                    if test_embedding is not None:
-                        self.models['sentence_transformer'] = model
-                        self.models['strategy'] = 'sentence_transformers'
-                        print("✓ SUCCESS: {} loaded and tested".format(model_name))
-                        break
-                
-            except Exception as e:
-                print("✗ FAILED: {} - {}".format(model_name, str(e)[:100]))
-                continue
-        
-        if not self.models and self.transformers_available:
-            # Try basic transformers
-            try:
-                transformers = self.successful_dependencies['transformers']
-                tokenizer = transformers.AutoTokenizer.from_pretrained('distilbert-base-uncased')
-                model = transformers.AutoModel.from_pretrained('distilbert-base-uncased')
-                
-                if self.device and self.device.type == 'mps':
-                    model = model.to(self.device)
-                
-                self.models['transformers'] = {'model': model, 'tokenizer': tokenizer}
-                self.models['strategy'] = 'transformers_direct'
-                print("✓ SUCCESS: Basic transformers loaded")
-                
-            except Exception as e:
-                print("✗ Basic transformers failed: {}".format(e))
-    
-    def _print_ml_status(self):
-        """Print comprehensive ML system status"""
-        print("\nML SYSTEM STATUS:")
-        print("✓ Successful: {} dependencies".format(len(self.successful_dependencies)))
-        print("✗ Failed: {} dependencies".format(len(self.failed_dependencies)))
-        
-        if self.successful_dependencies:
-            print("\nAVAILABLE CAPABILITIES:")
-            for module_name in self.successful_dependencies:
-                if module_name == 'torch':
-                    print("  ✓ PyTorch: Neural networks, GPU acceleration")
-                elif module_name == 'transformers':
-                    print("  ✓ Transformers: Language models, embeddings")
-                elif module_name == 'sentence_transformers':
-                    print("  ✓ Sentence Transformers: Semantic similarity")
-                elif module_name == 'sklearn':
-                    print("  ✓ Scikit-learn: TF-IDF, similarity metrics")
-                elif module_name == 'google.cloud.bigquery':
-                    print("  ✓ BigQuery: Database connectivity")
-        
-        if self.failed_dependencies:
-            print("\nFAILED DEPENDENCIES:")
-            for module_name, error in self.failed_dependencies.items():
-                print("  ✗ {}: {}".format(module_name, error))
-
-class EnterpriseProxyManager:
-    """Ultra-robust corporate proxy manager"""
-    
-    def __init__(self):
-        self.proxy_config = {}
-        self.proxy_working = False
-        
-    def auto_configure_proxy(self) -> bool:
-        """Automatically detect and configure corporate proxy"""
-        print("\nCORPORATE PROXY AUTO-CONFIGURATION")
-        print("=" * 50)
-        
-        # Method 1: Check environment variables
-        proxy_vars = ['HTTP_PROXY', 'HTTPS_PROXY', 'http_proxy', 'https_proxy']
-        existing_proxies = {var: os.environ.get(var) for var in proxy_vars if os.environ.get(var)}
-        
-        if existing_proxies:
-            print("DETECTED: Existing proxy configuration")
-            for var, value in existing_proxies.items():
-                masked_value = self._mask_proxy_password(value)
-                print("  {}: {}".format(var, masked_value))
+            'REQ-6': {
+                'name': 'Security Control Coverage - Agent Deployment',
+                'purpose': 'Measure security agent coverage (EDR, Tanium, DLP)',
+                'key_fields': ['edr', 'crowdstrike', 'falcon', 'tanium', 'dlp', 'agent_id', 'sensor_id', 'endpoint_security', 'antivirus', 'security_agent'],
+                'table_types': ['security', 'agent', 'endpoint', 'edr', 'crowdstrike', 'tanium', 'dlp'],
+                'business_goal': 'Demonstrate security tool coverage across the environment'
+            },
             
-            self.proxy_config = existing_proxies
-            if self._test_proxy():
-                return True
-        
-        # Method 2: Interactive configuration
-        print("CORPORATE NETWORK: Manual proxy configuration required")
-        configure = input("Configure proxy settings? (y/n): ").lower().strip()
-        
-        if configure == 'y':
-            return self._interactive_proxy_setup()
-        
-        # Method 3: Try without proxy
-        print("Attempting direct connection...")
-        return self._test_direct_connection()
-    
-    def _interactive_proxy_setup(self) -> bool:
-        """Interactive proxy setup with validation"""
-        print("\nPROXY CONFIGURATION")
-        print("Format: http://proxy.company.com:8080")
-        print("With auth: http://username:password@proxy.company.com:8080")
-        
-        http_proxy = input("HTTP_PROXY: ").strip()
-        https_proxy = input("HTTPS_PROXY: ").strip()
-        
-        if http_proxy:
-            self.proxy_config['HTTP_PROXY'] = http_proxy
-            self.proxy_config['http_proxy'] = http_proxy
-            os.environ['HTTP_PROXY'] = http_proxy
-            os.environ['http_proxy'] = http_proxy
-        
-        if https_proxy:
-            self.proxy_config['HTTPS_PROXY'] = https_proxy
-            self.proxy_config['https_proxy'] = https_proxy
-            os.environ['HTTPS_PROXY'] = https_proxy
-            os.environ['https_proxy'] = https_proxy
-        
-        return self._test_proxy()
-    
-    def _test_proxy(self) -> bool:
-        """Comprehensive proxy testing"""
-        test_urls = [
-            'http://httpbin.org/get',
-            'https://httpbin.org/get',
-            'https://pypi.org/simple/',
-            'https://huggingface.co'
-        ]
-        
-        successful_tests = 0
-        
-        for url in test_urls:
-            try:
-                response = requests.get(url, 
-                                      proxies=self.proxy_config,
-                                      timeout=10,
-                                      verify=False)
-                if response.status_code == 200:
-                    successful_tests += 1
-                    print("  ✓ {}".format(url))
-                else:
-                    print("  ⚠ {} (Status: {})".format(url, response.status_code))
-            except Exception as e:
-                print("  ✗ {} - {}".format(url, str(e)[:60]))
-        
-        self.proxy_working = successful_tests >= len(test_urls) // 2
-        
-        if self.proxy_working:
-            print("✓ PROXY: Working ({}/{} tests passed)".format(successful_tests, len(test_urls)))
-        else:
-            print("⚠ PROXY: Limited connectivity ({}/{} tests passed)".format(successful_tests, len(test_urls)))
-        
-        return self.proxy_working
-    
-    def _test_direct_connection(self) -> bool:
-        """Test direct internet connection"""
-        try:
-            response = requests.get('http://httpbin.org/get', timeout=5)
-            if response.status_code == 200:
-                print("✓ DIRECT: Internet connection working")
-                return True
-        except:
-            pass
-        
-        print("✗ DIRECT: No internet connectivity")
-        return False
-    
-    def _mask_proxy_password(self, proxy_url: str) -> str:
-        """Mask password in proxy URL for logging"""
-        if '@' in proxy_url:
-            parts = proxy_url.split('@')
-            if ':' in parts[0]:
-                auth_part = parts[0].split('://')[-1]
-                if ':' in auth_part:
-                    user = auth_part.split(':')[0]
-                    return proxy_url.replace(auth_part, "{}:****".format(user))
-        return proxy_url
-
-class UltraRobustAO1Analyzer:
-    """Ultra-robust AO1 analyzer that never fails"""
-    
-    def __init__(self):
-        print("ULTRA-ROBUST AO1 FIELD DISCOVERY SYSTEM")
-        print("Self-Healing Enterprise ML Analysis")
-        print("=" * 60)
-        
-        # Initialize all systems
-        self.ml_system = UltraRobustMLSystem()
-        self.proxy_manager = EnterpriseProxyManager()
-        self.client = None
-        self.requirement_embeddings = {}
-        
-        # Load AO1 keywords
-        self._load_ao1_keywords()
-        
-        # Initialize enterprise environment
-        self._initialize_enterprise_environment()
-    
-    def _load_ao1_keywords(self):
-        """Load AO1 keywords with fallback"""
-        try:
-            from ao1_keywords import (
-                REQ1_GLOBAL_VIEW_KEYWORDS,
-                REQ2_INFRASTRUCTURE_TYPE_KEYWORDS,
-                REQ3_REGIONAL_COUNTRY_KEYWORDS,
-                REQ4_BUSINESS_APPLICATION_KEYWORDS,
-                REQ5_SYSTEM_CLASSIFICATION_KEYWORDS,
-                REQ6_SECURITY_CONTROL_COVERAGE_KEYWORDS,
-                REQ7_LOGGING_COMPLIANCE_KEYWORDS,
-                REQ8_DOMAIN_VISIBILITY_KEYWORDS,
-                get_all_keywords
-            )
+            'REQ-7': {
+                'name': 'Logging Compliance - Platform Coverage',
+                'purpose': 'Show logging platform compliance (Splunk, Chronicle)',
+                'key_fields': ['splunk', 'sourcetype', 'index', 'chronicle', 'log_source', 'event_source', 'data_source', 'ingestion', 'parser'],
+                'table_types': ['log', 'event', 'splunk', 'chronicle', 'siem', 'logging', 'audit'],
+                'business_goal': 'Validate that data is properly ingested into logging platforms'
+            },
             
-            self.all_keywords = get_all_keywords()
-            self.requirement_keywords = {
-                'REQ-1': REQ1_GLOBAL_VIEW_KEYWORDS,
-                'REQ-2': REQ2_INFRASTRUCTURE_TYPE_KEYWORDS,
-                'REQ-3': REQ3_REGIONAL_COUNTRY_KEYWORDS,
-                'REQ-4': REQ4_BUSINESS_APPLICATION_KEYWORDS,
-                'REQ-5': REQ5_SYSTEM_CLASSIFICATION_KEYWORDS,
-                'REQ-6': REQ6_SECURITY_CONTROL_COVERAGE_KEYWORDS,
-                'REQ-7': REQ7_LOGGING_COMPLIANCE_KEYWORDS,
-                'REQ-8': REQ8_DOMAIN_VISIBILITY_KEYWORDS
+            'REQ-8': {
+                'name': 'Domain Visibility - Network Asset Discovery',
+                'purpose': 'Identify assets by hostname and domain for network visibility',
+                'key_fields': ['domain', 'fqdn', 'dns_name', 'hostname', 'network_name', 'domain_name'],
+                'table_types': ['domain', 'dns', 'network', 'hostname'],
+                'business_goal': 'Map network assets through domain and hostname analysis'
             }
-            print("✓ AO1 KEYWORDS: {} keywords loaded".format(len(self.all_keywords)))
-            
-        except ImportError:
-            print("✗ AO1 keywords module not found - using built-in keywords")
-            self._create_builtin_keywords()
+        }
     
-    def _create_builtin_keywords(self):
-        """Create built-in AO1 keywords as fallback"""
-        self.all_keywords = {
-            # REQ-1: Global View
-            'hostname', 'host_name', 'computer_name', 'device_name', 'asset_id',
-            'ip_address', 'mac_address', 'serial_number',
-            
-            # REQ-2: Infrastructure Type  
-            'cloud', 'aws', 'azure', 'gcp', 'datacenter', 'virtual_machine',
-            
-            # REQ-3: Regional/Country
-            'region', 'country', 'location', 'datacenter', 'zone',
-            
-            # REQ-4: Business/Application
-            'business_unit', 'application', 'department', 'organization',
-            
-            # REQ-5: System Classification
-            'windows', 'linux', 'unix', 'operating_system', 'server_type',
-            
-            # REQ-6: Security Control Coverage
-            'edr', 'crowdstrike', 'tanium', 'agent_id', 'endpoint_security',
-            
-            # REQ-7: Logging Compliance
-            'splunk', 'chronicle', 'sourcetype', 'index', 'log_source',
-            
-            # REQ-8: Domain Visibility
-            'domain', 'fqdn', 'dns_name', 'hostname'
+    def analyze_table_relevance(self, dataset_name: str, table_name: str) -> Dict[str, Any]:
+        """Analyze how relevant a table is to AO1 requirements"""
+        table_full_name = "{}.{}".format(dataset_name, table_name).lower()
+        
+        relevance = {
+            'is_ao1_relevant': False,
+            'primary_requirements': [],
+            'table_purpose': 'Unknown business purpose',
+            'confidence_level': 'Low'
         }
         
-        self.requirement_keywords = {
-            'REQ-1': {'hostname', 'host_name', 'computer_name', 'device_name', 'asset_id', 'ip_address'},
-            'REQ-2': {'cloud', 'aws', 'azure', 'gcp', 'datacenter', 'virtual_machine'},
-            'REQ-3': {'region', 'country', 'location', 'datacenter', 'zone'},
-            'REQ-4': {'business_unit', 'application', 'department', 'organization'},
-            'REQ-5': {'windows', 'linux', 'unix', 'operating_system', 'server_type'},
-            'REQ-6': {'edr', 'crowdstrike', 'tanium', 'agent_id', 'endpoint_security'},
-            'REQ-7': {'splunk', 'chronicle', 'sourcetype', 'index', 'log_source'},
-            'REQ-8': {'domain', 'fqdn', 'dns_name', 'hostname'}
-        }
+        requirement_matches = {}
         
-        print("✓ BUILT-IN KEYWORDS: {} keywords available".format(len(self.all_keywords)))
-    
-    def _initialize_enterprise_environment(self):
-        """Initialize enterprise environment"""
-        # Configure proxy
-        self.proxy_manager.auto_configure_proxy()
-        
-        # Authenticate BigQuery
-        self._authenticate_bigquery()
-        
-        # Compute embeddings if ML available
-        if self.ml_system.models:
-            self._compute_requirement_embeddings()
-    
-    def _authenticate_bigquery(self) -> bool:
-        """Authenticate with BigQuery using multiple methods"""
-        print("\nBIGQUERY AUTHENTICATION:")
-        
-        # Try importing BigQuery
-        if 'google.cloud.bigquery' not in self.ml_system.successful_dependencies:
-            print("✗ BigQuery library not available - attempting installation")
-            success, module = self.ml_system.dependency_manager.ensure_dependency(
-                'google.cloud.bigquery', 'google-cloud-bigquery'
-            )
-            if not success:
-                print("✗ CRITICAL: Cannot install BigQuery library")
-                return False
-        
-        try:
-            bigquery = self.ml_system.successful_dependencies['google.cloud.bigquery']
+        for req_id, req_data in self.requirements.items():
+            score = 0
+            matched_types = []
             
-            # Try service account authentication
-            if os.path.exists(SERVICE_ACCOUNT_FILE):
-                if 'google.oauth2' in self.ml_system.successful_dependencies:
-                    service_account = self.ml_system.successful_dependencies['google.oauth2'].service_account
-                    credentials = service_account.Credentials.from_service_account_file(SERVICE_ACCOUNT_FILE)
-                    self.client = bigquery.Client(project=PROJECT_ID, credentials=credentials)
-                else:
-                    print("⚠ google.oauth2 not available, trying default credentials")
-                    self.client = bigquery.Client(project=PROJECT_ID)
-            else:
-                print("⚠ Service account file not found, trying default credentials")
-                self.client = bigquery.Client(project=PROJECT_ID)
+            # Check if table name matches requirement table types
+            for table_type in req_data['table_types']:
+                if table_type in table_full_name:
+                    score += 1
+                    matched_types.append(table_type)
             
-            # Test connection
-            datasets = list(self.client.list_datasets(max_results=1))
-            print("✓ BIGQUERY: Authentication successful")
-            return True
+            if score > 0:
+                requirement_matches[req_id] = {
+                    'score': score,
+                    'matched_types': matched_types,
+                    'requirement_name': req_data['name'],
+                    'business_goal': req_data['business_goal']
+                }
+        
+        if requirement_matches:
+            # Sort by relevance score
+            sorted_matches = sorted(requirement_matches.items(), key=lambda x: x[1]['score'], reverse=True)
             
-        except Exception as e:
-            print("✗ BIGQUERY: Authentication failed - {}".format(e))
-            return False
-    
-    def _compute_requirement_embeddings(self):
-        """Compute requirement embeddings using available ML"""
-        requirement_descriptions = {
-            'REQ-1': 'global view asset identifiers hostname computer device system',
-            'REQ-2': 'infrastructure type deployment cloud aws azure gcp onpremises',
-            'REQ-3': 'regional country geographic location datacenter region zone',
-            'REQ-4': 'business application organizational unit department division',
-            'REQ-5': 'system classification server function operating system windows linux',
-            'REQ-6': 'security control coverage agent endpoint detection response edr',
-            'REQ-7': 'logging compliance platform splunk chronicle ingestion parsing',
-            'REQ-8': 'domain visibility hostname dns resolution network address fqdn'
-        }
+            relevance['is_ao1_relevant'] = True
+            relevance['primary_requirements'] = [req_id for req_id, _ in sorted_matches[:2]]  # Top 2 matches
+            
+            # Set table purpose based on primary requirement
+            primary_req = sorted_matches[0][1]
+            relevance['table_purpose'] = primary_req['business_goal']
+            relevance['confidence_level'] = 'High' if primary_req['score'] >= 2 else 'Medium'
         
-        try:
-            if 'sentence_transformer' in self.ml_system.models:
-                model = self.ml_system.models['sentence_transformer']
-                for req, desc in requirement_descriptions.items():
-                    embedding = model.encode([desc])[0]
-                    self.requirement_embeddings[req] = embedding
-                    
-                print("✓ EMBEDDINGS: Computed for {} requirements".format(len(self.requirement_embeddings)))
-                
-        except Exception as e:
-            print("⚠ EMBEDDINGS: Failed to compute - {}".format(e))
+        return relevance
     
-    def compute_field_score(self, field_name: str) -> Tuple[Dict[str, float], str]:
-        """Compute comprehensive field scoring"""
-        scores = {
-            'exact_match': 0.0,
-            'pattern_match': 0.0,
-            'semantic_similarity': 0.0,
-            'composite_score': 0.0
-        }
-        
+    def analyze_field_relevance(self, field_name: str, field_type: str, table_context: Dict[str, Any]) -> Dict[str, Any]:
+        """Analyze field relevance to AO1 requirements with business context"""
         field_lower = field_name.lower().strip()
-        matched_keyword = None
         
-        # Exact match
-        if field_lower in self.all_keywords:
-            scores['exact_match'] = 1.0
-            matched_keyword = field_lower
+        field_analysis = {
+            'matches': [],
+            'best_requirement': None,
+            'confidence': 'None',
+            'business_value': 'Unknown'
+        }
         
-        # Pattern matching
-        best_pattern_score = 0.0
-        for keyword in self.all_keywords:
-            if len(keyword) >= 3:
-                if keyword in field_lower:
-                    pattern_score = len(keyword) / len(field_lower)
-                    if pattern_score > best_pattern_score:
-                        best_pattern_score = pattern_score
-                        if not matched_keyword:
-                            matched_keyword = keyword
-                elif field_lower in keyword and len(field_lower) >= 3:
-                    pattern_score = len(field_lower) / len(keyword)
-                    if pattern_score > best_pattern_score:
-                        best_pattern_score = pattern_score
-                        if not matched_keyword:
-                            matched_keyword = keyword
+        requirement_scores = {}
         
-        scores['pattern_match'] = best_pattern_score
+        # Check field against each requirement
+        for req_id, req_data in self.requirements.items():
+            score = 0
+            match_type = None
+            
+            # Exact match
+            if field_lower in [kf.lower() for kf in req_data['key_fields']]:
+                score = 10
+                match_type = 'Exact Match'
+            else:
+                # Partial match
+                for key_field in req_data['key_fields']:
+                    if key_field in field_lower or field_lower in key_field:
+                        if len(key_field) >= 3:  # Avoid false positives
+                            score = max(score, 7)
+                            match_type = 'Partial Match'
+            
+            # Boost score if field requirement matches table context
+            if req_id in table_context.get('primary_requirements', []):
+                score *= 2
+                if match_type:
+                    match_type += ' (Table Context Match)'
+            
+            if score > 0:
+                requirement_scores[req_id] = {
+                    'score': score,
+                    'match_type': match_type,
+                    'requirement_name': req_data['name'],
+                    'business_goal': req_data['business_goal']
+                }
         
-        # Semantic similarity (if available)
-        if self.requirement_embeddings and 'sentence_transformer' in self.ml_system.models:
-            try:
-                model = self.ml_system.models['sentence_transformer']
-                field_embedding = model.encode([field_name])
-                
-                best_similarity = 0.0
-                for req_embedding in self.requirement_embeddings.values():
-                    if 'sklearn' in self.ml_system.successful_dependencies:
-                        cosine_similarity = self.ml_system.successful_dependencies['sklearn'].metrics.pairwise.cosine_similarity
-                        similarity = cosine_similarity(field_embedding, req_embedding.reshape(1, -1))[0][0]
-                        best_similarity = max(best_similarity, similarity)
-                
-                scores['semantic_similarity'] = best_similarity
-                
-            except Exception as e:
-                print("⚠ Semantic scoring error: {}".format(e))
+        if requirement_scores:
+            # Find best match
+            best_req_id = max(requirement_scores.keys(), key=lambda k: requirement_scores[k]['score'])
+            best_match = requirement_scores[best_req_id]
+            
+            field_analysis['best_requirement'] = best_req_id
+            field_analysis['matches'] = list(requirement_scores.keys())
+            
+            # Set confidence level
+            if best_match['score'] >= 15:
+                field_analysis['confidence'] = 'Very High'
+            elif best_match['score'] >= 10:
+                field_analysis['confidence'] = 'High'
+            elif best_match['score'] >= 7:
+                field_analysis['confidence'] = 'Medium'
+            else:
+                field_analysis['confidence'] = 'Low'
+            
+            field_analysis['business_value'] = best_match['business_goal']
         
-        # Composite score
-        if scores['exact_match'] > 0:
-            scores['composite_score'] = 1.0
-        elif scores['semantic_similarity'] > 0:
-            scores['composite_score'] = 0.4 * scores['pattern_match'] + 0.6 * scores['semantic_similarity']
-        else:
-            scores['composite_score'] = scores['pattern_match']
-        
-        return scores, matched_keyword or field_lower
+        return field_analysis
+
+class PerfectAO1Analyzer:
+    """Perfect AO1 analyzer focused on business outcomes"""
     
-    def get_requirement_for_keyword(self, keyword: str) -> str:
-        """Get requirement for keyword"""
-        for req, keywords in self.requirement_keywords.items():
-            if keyword in keywords:
-                return req
-        return "UNKNOWN"
+    def __init__(self):
+        self.client = None
+        self.requirements_analyzer = AO1RequirementsAnalyzer()
+        self.findings = []
+        
+        # Authenticate
+        self._authenticate_bigquery()
     
-    def analyze_table(self, dataset_id: str, table_id: str) -> List[FieldMatch]:
-        """Analyze table for AO1 fields"""
+    def _authenticate_bigquery(self):
+        """Authenticate with BigQuery"""
         try:
-            table_ref = self.client.dataset(dataset_id).table(table_id)
-            table = self.client.get_table(table_ref)
-            
-            matches = []
-            
-            def analyze_field(field, parent_path=""):
-                field_path = "{}.{}".format(parent_path, field.name) if parent_path else field.name
-                
-                scores, matched_keyword = self.compute_field_score(field.name)
-                
-                if scores['composite_score'] > 0.3:  # Threshold for relevance
-                    requirement = self.get_requirement_for_keyword(matched_keyword)
-                    
-                    if scores['exact_match'] >= 1.0:
-                        match_type = "EXACT"
-                    elif scores['composite_score'] >= 0.8:
-                        match_type = "HIGH_CONFIDENCE"
-                    elif scores['composite_score'] >= 0.6:
-                        match_type = "ML_IDENTIFIED"
-                    else:
-                        match_type = "SUSPECTED"
-                    
-                    match = FieldMatch(
-                        dataset=dataset_id,
-                        table=table_id,
-                        field_name=field.name,
-                        field_path=field_path,
-                        field_type=field.field_type,
-                        requirement=requirement,
-                        matched_keyword=matched_keyword,
-                        match_type=match_type,
-                        confidence_score=scores['composite_score'],
-                        table_rows=table.num_rows or 0,
-                        table_size_bytes=table.num_bytes or 0,
-                        semantic_similarity=scores['semantic_similarity'],
-                        context_relevance=0.8  # Default context relevance
-                    )
-                    matches.append(match)
-                
-                # Handle nested fields
-                if field.field_type in ['RECORD', 'STRUCT'] and field.fields:
-                    for nested_field in field.fields:
-                        analyze_field(nested_field, field_path)
-            
-            for field in table.schema:
-                analyze_field(field)
-            
-            return matches
-            
+            credentials = service_account.Credentials.from_service_account_file(SERVICE_ACCOUNT_FILE)
+            self.client = bigquery.Client(project=PROJECT_ID, credentials=credentials)
+            print("✓ BigQuery: Connected successfully")
         except Exception as e:
-            logger.error("Table analysis error {}.{}: {}".format(dataset_id, table_id, e))
-            return []
+            print("✗ BigQuery: Authentication failed - {}".format(e))
+            sys.exit(1)
     
-    def scan_all_datasets(self) -> List[FieldMatch]:
-        """Scan all datasets for AO1 fields"""
-        if not self.client:
-            print("✗ CRITICAL: BigQuery client not available")
-            return []
+    def scan_for_ao1_fields(self) -> List[AO1Finding]:
+        """Scan BigQuery for AO1-relevant fields with business context"""
+        print("PERFECT AO1 FIELD DISCOVERY")
+        print("=" * 50)
+        print("Scanning for fields that support AO1 audit requirements...")
         
         try:
             datasets = [d.dataset_id for d in self.client.list_datasets()]
-            print("SCANNING: {} datasets".format(len(datasets)))
+            print("Found {} datasets to analyze".format(len(datasets)))
             
-            all_matches = []
             total_tables = 0
             processed_tables = 0
             
@@ -794,9 +271,9 @@ class UltraRobustAO1Analyzer:
                 except:
                     continue
             
-            print("PROCESSING: {} tables".format(total_tables))
+            print("Processing {} tables for AO1 relevance...".format(total_tables))
             
-            # Process tables
+            # Analyze each table
             for dataset_id in datasets:
                 try:
                     tables = list(self.client.list_tables(dataset_id))
@@ -804,121 +281,326 @@ class UltraRobustAO1Analyzer:
                     for table in tables:
                         processed_tables += 1
                         
-                        if processed_tables % 50 == 0:
+                        if processed_tables % 25 == 0:
                             progress = (processed_tables / total_tables) * 100
-                            print("PROGRESS: {:.1f}% ({}/{})".format(progress, processed_tables, total_tables))
+                            print("Progress: {:.1f}% ({}/{})".format(progress, processed_tables, total_tables))
                         
-                        matches = self.analyze_table(dataset_id, table.table_id)
-                        all_matches.extend(matches)
+                        # Analyze this table
+                        self._analyze_table_for_ao1(dataset_id, table.table_id)
                         
                 except Exception as e:
-                    logger.error("Dataset error {}: {}".format(dataset_id, e))
                     continue
             
-            print("ANALYSIS COMPLETE: {} matches found".format(len(all_matches)))
-            return all_matches
+            print("✓ Analysis complete: {} AO1 findings discovered".format(len(self.findings)))
+            return self.findings
             
         except Exception as e:
-            logger.error("Scan error: {}".format(e))
+            print("✗ Scan failed: {}".format(e))
             return []
     
-    def generate_report(self, matches: List[FieldMatch]):
-        """Generate comprehensive report"""
-        if not matches:
-            print("\nULTRA-ROBUST AO1 ANALYSIS COMPLETE")
-            print("=" * 60)
-            print("STATUS: No AO1-relevant fields discovered")
+    def _analyze_table_for_ao1(self, dataset_id: str, table_id: str):
+        """Analyze a specific table for AO1 fields"""
+        try:
+            # Get table metadata
+            table_ref = self.client.dataset(dataset_id).table(table_id)
+            table = self.client.get_table(table_ref)
+            
+            # Analyze table business context
+            table_context = self.requirements_analyzer.analyze_table_relevance(dataset_id, table_id)
+            
+            # Only analyze tables that are AO1-relevant or potentially relevant
+            if not table_context['is_ao1_relevant'] and len(table_context['primary_requirements']) == 0:
+                return
+            
+            # Analyze each field in the table
+            for field in table.schema:
+                self._analyze_field_for_ao1(field, dataset_id, table_id, table, table_context)
+                
+        except Exception as e:
+            pass  # Skip problematic tables
+    
+    def _analyze_field_for_ao1(self, field, dataset_id: str, table_id: str, table, table_context: Dict[str, Any]):
+        """Analyze a field for AO1 relevance"""
+        field_analysis = self.requirements_analyzer.analyze_field_relevance(
+            field.name, field.field_type, table_context
+        )
+        
+        # Only include fields with medium or higher confidence
+        if field_analysis['confidence'] in ['Medium', 'High', 'Very High']:
+            
+            # Create business recommendation
+            recommendation = self._create_field_recommendation(
+                field, dataset_id, table_id, table, field_analysis, table_context
+            )
+            
+            finding = AO1Finding(
+                requirement=field_analysis['best_requirement'],
+                requirement_name=self.requirements_analyzer.requirements[field_analysis['best_requirement']]['name'],
+                dataset=dataset_id,
+                table=table_id,
+                field_name=field.name,
+                field_type=field.field_type,
+                table_rows=table.num_rows or 0,
+                confidence=field_analysis['confidence'],
+                business_context=table_context['table_purpose'],
+                usage_recommendation=recommendation['usage'],
+                table_purpose=recommendation['table_purpose'],
+                why_relevant=recommendation['relevance_explanation']
+            )
+            
+            self.findings.append(finding)
+    
+    def _create_field_recommendation(self, field, dataset_id: str, table_id: str, table, 
+                                   field_analysis: Dict[str, Any], table_context: Dict[str, Any]) -> Dict[str, str]:
+        """Create business-focused recommendation for field usage"""
+        req_id = field_analysis['best_requirement']
+        req_data = self.requirements_analyzer.requirements[req_id]
+        
+        # Table size context
+        size_context = ""
+        if table.num_rows:
+            if table.num_rows > 1000000:
+                size_context = "large dataset ({:,} rows)".format(table.num_rows)
+            elif table.num_rows > 10000:
+                size_context = "medium dataset ({:,} rows)".format(table.num_rows)
+            else:
+                size_context = "small dataset ({:,} rows)".format(table.num_rows)
+        else:
+            size_context = "dataset size unknown"
+        
+        # Usage recommendation
+        usage_template = "Use this field as a {} for {} analysis. This {} provides {} coverage."
+        
+        field_role = "primary identifier" if field_analysis['confidence'] == 'Very High' else \
+                    "key field" if field_analysis['confidence'] == 'High' else \
+                    "supporting field"
+        
+        coverage_type = "comprehensive" if table.num_rows and table.num_rows > 100000 else "targeted"
+        
+        usage = usage_template.format(
+            field_role,
+            req_data['name'].split(' - ')[1].lower(),
+            size_context,
+            coverage_type
+        )
+        
+        # Table purpose explanation
+        table_purpose = "This table appears to contain {} and is highly relevant for {} requirements.".format(
+            table_context['table_purpose'].lower(),
+            req_data['name']
+        )
+        
+        # Why it's relevant
+        relevance_explanation = "Field '{}' directly supports {} by providing {}. {}".format(
+            field.name,
+            req_data['purpose'].lower(),
+            field_analysis['business_value'].lower(),
+            "This is exactly the type of data needed for AO1 compliance measurement." if field_analysis['confidence'] == 'Very High' else
+            "This field can contribute to AO1 visibility calculations."
+        )
+        
+        return {
+            'usage': usage,
+            'table_purpose': table_purpose,
+            'relevance_explanation': relevance_explanation
+        }
+    
+    def generate_business_report(self, findings: List[AO1Finding]):
+        """Generate business-focused report with clear summaries"""
+        if not findings:
+            print("\nAO1 FIELD DISCOVERY RESULTS")
+            print("=" * 50)
+            print("No AO1-relevant fields found in accessible datasets.")
+            print("Recommendation: Review data ingestion and field naming conventions.")
             return
         
-        # Sort by strategic importance
-        matches.sort(key=lambda x: (x.requirement, -x.confidence_score, -x.table_rows))
-        
-        # Group by requirement
+        # Group findings by requirement
         by_requirement = defaultdict(list)
-        for match in matches:
-            by_requirement[match.requirement].append(match)
+        for finding in findings:
+            by_requirement[finding.requirement].append(finding)
         
-        print("\nULTRA-ROBUST AO1 ANALYSIS COMPLETE")
-        print("=" * 60)
+        # Sort findings within each requirement by table size (largest first)
+        for req in by_requirement:
+            by_requirement[req].sort(key=lambda x: x.table_rows, reverse=True)
         
-        # System capabilities
-        capabilities = []
-        if self.ml_system.torch_available:
-            capabilities.append("PyTorch Neural Networks")
-        if self.ml_system.sentence_transformers_available:
-            capabilities.append("Semantic Analysis")
-        if self.ml_system.sklearn_available:
-            capabilities.append("Statistical Analysis")
+        print("\nAO1 FIELD DISCOVERY RESULTS")
+        print("=" * 50)
+        print("Business-Focused Analysis for Audit Compliance")
+        print("Total Discoveries: {} fields across {} requirements".format(len(findings), len(by_requirement)))
         
-        print("SYSTEM CAPABILITIES: {}".format(", ".join(capabilities) if capabilities else "Pattern Matching"))
-        print("PROXY STATUS: {}".format("Working" if self.proxy_manager.proxy_working else "Direct Connection"))
-        print("TOTAL DISCOVERIES: {} fields across {} requirements".format(len(matches), len(by_requirement)))
-        
-        # Requirement analysis
-        for req_num in ['REQ-1', 'REQ-2', 'REQ-3', 'REQ-4', 'REQ-5', 'REQ-6', 'REQ-7', 'REQ-8']:
-            req_matches = by_requirement.get(req_num, [])
+        # Generate requirement-by-requirement analysis
+        for req_id in ['REQ-1', 'REQ-2', 'REQ-3', 'REQ-4', 'REQ-5', 'REQ-6', 'REQ-7', 'REQ-8']:
+            req_findings = by_requirement.get(req_id, [])
+            req_data = self.requirements_analyzer.requirements[req_id]
             
-            if not req_matches:
-                print("\n{}: No fields identified".format(req_num))
+            print("\n{}".format("=" * 80))
+            print("{}: {}".format(req_id, req_data['name']))
+            print("Business Goal: {}".format(req_data['business_goal']))
+            print("=" * 80)
+            
+            if not req_findings:
+                print("STATUS: No suitable fields found for this requirement")
+                print("IMPACT: Cannot measure {} compliance".format(req_data['name'].split(' - ')[1].lower()))
+                print("RECOMMENDATION: Review data sources and field naming for {} data".format(req_data['purpose'].lower()))
                 continue
             
-            # Categorize
-            exact = [m for m in req_matches if m.match_type == 'EXACT']
-            high_conf = [m for m in req_matches if m.match_type == 'HIGH_CONFIDENCE']
-            ml_id = [m for m in req_matches if m.match_type == 'ML_IDENTIFIED']
-            suspected = [m for m in req_matches if m.match_type == 'SUSPECTED']
+            # Categorize findings by confidence
+            very_high = [f for f in req_findings if f.confidence == 'Very High']
+            high = [f for f in req_findings if f.confidence == 'High']
+            medium = [f for f in req_findings if f.confidence == 'Medium']
             
-            print("\n{}: {} total candidates".format(req_num, len(req_matches)))
-            print("   EXACT: {} | HIGH_CONF: {} | ML_ID: {} | SUSPECTED: {}".format(
-                len(exact), len(high_conf), len(ml_id), len(suspected)))
+            print("FINDINGS SUMMARY:")
+            print("  Very High Confidence: {} fields".format(len(very_high)))
+            print("  High Confidence: {} fields".format(len(high)))
+            print("  Medium Confidence: {} fields".format(len(medium)))
             
-            # Top recommendations
-            top_matches = sorted(req_matches, key=lambda x: (-x.confidence_score, -x.table_rows))[:3]
+            # Show top recommendations
+            top_findings = req_findings[:5]  # Top 5 by table size
             
-            print("   TOP RECOMMENDATIONS:")
-            for i, match in enumerate(top_matches, 1):
-                rows_info = "{:,} rows".format(match.table_rows) if match.table_rows > 0 else "unknown size"
-                print("      {}. Field '{}' in {}.{} ({})".format(
-                    i, match.field_name, match.dataset, match.table, rows_info))
-                print("         Confidence: {:.1%} | Type: {} | Semantic: {:.1%}".format(
-                    match.confidence_score, match.match_type, match.semantic_similarity))
+            print("\nTOP RECOMMENDED FIELDS:")
+            for i, finding in enumerate(top_findings, 1):
+                rows_display = "{:,} rows".format(finding.table_rows) if finding.table_rows > 0 else "size unknown"
+                
+                print("\n{}. FIELD: '{}' in {}.{} ({})".format(i, finding.field_name, finding.dataset, finding.table, rows_display))
+                print("   CONFIDENCE: {}".format(finding.confidence))
+                print("   BUSINESS CONTEXT: {}".format(finding.business_context))
+                print("   USAGE: {}".format(finding.usage_recommendation))
+                print("   WHY RELEVANT: {}".format(finding.why_relevant))
+            
+            if len(req_findings) > 5:
+                print("\n   ... and {} additional fields available".format(len(req_findings) - 5))
+        
+        # Generate executive summary
+        print("\n{}".format("=" * 80))
+        print("EXECUTIVE SUMMARY")
+        print("=" * 80)
+        
+        total_very_high = len([f for f in findings if f.confidence == 'Very High'])
+        total_high = len([f for f in findings if f.confidence == 'High'])
+        
+        print("AO1 READINESS ASSESSMENT:")
+        print("  Requirements with Data Available: {}/8 ({:.1f}%)".format(len(by_requirement), len(by_requirement)/8*100))
+        print("  High-Quality Fields Ready for Use: {}".format(total_very_high + total_high))
+        print("  Total Usable AO1 Fields: {}".format(len(findings)))
+        
+        # Data volume analysis
+        total_rows = sum(f.table_rows for f in findings if f.table_rows > 0)
+        print("  Total Data Volume: {:,} rows across all recommended tables".format(total_rows))
+        
+        print("\nNEXT STEPS:")
+        print("1. PRIORITY: Focus on Very High and High confidence fields for immediate AO1 implementation")
+        print("2. VALIDATION: Verify data quality and completeness in recommended tables")
+        print("3. INTEGRATION: Use these fields to build AO1 visibility dashboards and reports")
+        print("4. GAPS: Address requirements with no findings through data collection improvements")
     
-    def save_results(self, matches: List[FieldMatch]):
-        """Save comprehensive results"""
-        if not matches:
+    def save_business_results(self, findings: List[AO1Finding]):
+        """Save results in business-friendly format"""
+        if not findings:
             return
         
         timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
         
-        # Save detailed CSV
-        df = pd.DataFrame([asdict(match) for match in matches])
-        df['analysis_timestamp'] = timestamp
-        df = df.sort_values(['requirement', 'confidence_score'], ascending=[True, False])
+        # Create detailed DataFrame with business summaries
+        records = []
+        for finding in findings:
+            records.append({
+                'AO1_Requirement': finding.requirement,
+                'Requirement_Name': finding.requirement_name,
+                'Field_Name': finding.field_name,
+                'Dataset': finding.dataset,
+                'Table': finding.table,
+                'Field_Type': finding.field_type,
+                'Table_Rows': finding.table_rows,
+                'Confidence_Level': finding.confidence,
+                'Business_Summary': "{} This field supports {} and should be used for AO1 compliance measurement.".format(
+                    finding.why_relevant, finding.requirement_name.lower()
+                ),
+                'Usage_Recommendation': finding.usage_recommendation,
+                'Table_Business_Purpose': finding.table_purpose,
+                'Implementation_Priority': 'High' if finding.confidence in ['Very High', 'High'] else 'Medium',
+                'Data_Volume_Category': 'Large' if finding.table_rows > 100000 else 'Medium' if finding.table_rows > 10000 else 'Small'
+            })
         
-        filename = "ao1_ultra_robust_analysis_{}.csv".format(timestamp)
+        df = pd.DataFrame(records)
+        
+        # Sort by business priority
+        priority_order = {'Very High': 4, 'High': 3, 'Medium': 2, 'Low': 1}
+        df['_priority_sort'] = df['Confidence_Level'].map(priority_order)
+        df = df.sort_values(['AO1_Requirement', '_priority_sort', 'Table_Rows'], ascending=[True, False, False])
+        df = df.drop('_priority_sort', axis=1)
+        
+        # Save detailed results
+        filename = "AO1_Field_Discovery_Results_{}.csv".format(timestamp)
         df.to_csv(filename, index=False)
         
-        print("\nRESULTS SAVED: {}".format(filename))
-        print("Total records: {}".format(len(df)))
+        # Create executive summary
+        summary_records = []
+        by_req = df.groupby('AO1_Requirement')
+        
+        for req, group in by_req:
+            very_high = len(group[group['Confidence_Level'] == 'Very High'])
+            high = len(group[group['Confidence_Level'] == 'High'])
+            medium = len(group[group['Confidence_Level'] == 'Medium'])
+            total_rows = group['Table_Rows'].sum()
+            
+            top_field = group.iloc[0]  # Highest priority field
+            
+            summary_records.append({
+                'AO1_Requirement': req,
+                'Requirement_Name': top_field['Requirement_Name'],
+                'Fields_Found': len(group),
+                'Very_High_Confidence': very_high,
+                'High_Confidence': high,
+                'Medium_Confidence': medium,
+                'Total_Data_Rows': total_rows,
+                'Top_Recommended_Field': top_field['Field_Name'],
+                'Top_Recommended_Table': "{}.{}".format(top_field['Dataset'], top_field['Table']),
+                'Business_Impact': "Can measure {} compliance with {} high-quality fields covering {:,} rows of data.".format(
+                    top_field['Requirement_Name'].split(' - ')[1].lower(),
+                    very_high + high,
+                    total_rows
+                ),
+                'Implementation_Status': 'Ready' if very_high + high > 0 else 'Needs Review'
+            })
+        
+        summary_df = pd.DataFrame(summary_records)
+        summary_filename = "AO1_Executive_Summary_{}.csv".format(timestamp)
+        summary_df.to_csv(summary_filename, index=False)
+        
+        print("\nRESULTS SAVED:")
+        print("  Detailed Analysis: {} ({} fields)".format(filename, len(df)))
+        print("  Executive Summary: {} ({} requirements)".format(summary_filename, len(summary_df)))
 
 def main():
     """Main execution"""
+    print("PERFECT AO1 FIELD DISCOVERY SYSTEM")
+    print("Business-Focused BigQuery Analysis")
+    print("Finding the exact fields you need for AO1 compliance")
+    print("=" * 60)
+    
     try:
-        analyzer = UltraRobustAO1Analyzer()
+        analyzer = PerfectAO1Analyzer()
         
-        if analyzer.client:
-            matches = analyzer.scan_all_datasets()
-            analyzer.generate_report(matches)
-            analyzer.save_results(matches)
+        # Scan for AO1 fields
+        findings = analyzer.scan_for_ao1_fields()
+        
+        # Generate business report
+        analyzer.generate_business_report(findings)
+        
+        # Save business-friendly results
+        analyzer.save_business_results(findings)
+        
+        if findings:
+            print("\nSUCCESS: AO1 field discovery complete!")
+            print("Use the generated CSV files to implement your AO1 compliance measurement.")
         else:
-            print("CRITICAL: Could not establish BigQuery connection")
-            print("Check authentication and network connectivity")
+            print("\nATTENTION: No AO1 fields found.")
+            print("Consider reviewing data ingestion and field naming conventions.")
         
     except KeyboardInterrupt:
-        print("\nANALYSIS INTERRUPTED")
+        print("\nScan interrupted by user")
     except Exception as e:
-        print("\nCRITICAL ERROR: {}".format(e))
-        logger.error("Main execution error: {}".format(e))
+        print("\nError: {}".format(e))
 
 if __name__ == "__main__":
     main()
