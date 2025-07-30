@@ -1,8 +1,9 @@
 """
-AO1-Focused BigQuery Exploration Script
+AO1-Focused BigQuery Exploration Script - EXACT MATCHES ONLY
 
 This script connects to BigQuery with identical authentication to the original script
-and scans every dataset and table to identify AO1-relevant fields only.
+and scans every dataset and table to identify AO1-relevant fields using EXACT keyword matches only.
+No loose associations or substring matching.
 """
 
 import os
@@ -16,29 +17,41 @@ import time
 import sys
 from google.cloud.exceptions import NotFound, Forbidden, BadRequest, ServerError
 
-# Import the AO1 Keywords Dictionary from FILE1
+# Import the AO1 Keywords Dictionary - MODIFIED to use exact matches from our consolidated module
 try:
-    from ao1_keywords_dictionary import (
-        ALL_AO1_REQUIREMENTS_KEYWORDS,
-        get_keyword_requirement_context,
-        find_keywords_for_requirement,
-        explain_bigquery_field_ao1_relevance
+    # Import our consolidated AO1 keywords (update this import to match your keyword module)
+    from ao1_keywords import (
+        REQ1_GLOBAL_VIEW_KEYWORDS,
+        REQ2_INFRASTRUCTURE_TYPE_KEYWORDS,
+        REQ3_REGIONAL_COUNTRY_KEYWORDS,
+        REQ4_BUSINESS_APPLICATION_KEYWORDS,
+        REQ5_SYSTEM_CLASSIFICATION_KEYWORDS,
+        REQ6_SECURITY_CONTROL_COVERAGE_KEYWORDS,
+        REQ7_LOGGING_COMPLIANCE_KEYWORDS,
+        REQ8_DOMAIN_VISIBILITY_KEYWORDS,
+        get_all_keywords,
+        find_keyword_requirement
     )
+    
+    # Create consolidated keyword set for exact matching
+    ALL_AO1_KEYWORDS = get_all_keywords()
+    
     print("Successfully imported AO1 Keywords Dictionary")
-    print("Total keywords loaded: {}".format(len(ALL_AO1_REQUIREMENTS_KEYWORDS)))
+    print("Total keywords loaded: {}".format(len(ALL_AO1_KEYWORDS)))
     
     # Test the import by showing a few sample keywords
-    sample_keywords = list(ALL_AO1_REQUIREMENTS_KEYWORDS.keys())[:5]
+    sample_keywords = list(ALL_AO1_KEYWORDS)[:5]
     print("Sample keywords: {}".format(sample_keywords))
     
     # Test a keyword lookup
     test_keyword = 'hostname'
-    test_result = get_keyword_requirement_context(test_keyword)
-    print("Test lookup for '{}': {}".format(test_keyword, test_result['requirement']))
+    if test_keyword in ALL_AO1_KEYWORDS:
+        test_result = find_keyword_requirement(test_keyword)
+        print("Test lookup for '{}': {}".format(test_keyword, test_result))
     
 except ImportError as e:
     print("ERROR: Cannot import AO1 Keywords Dictionary: {}".format(e))
-    print("Make sure 'ao1_keywords_dictionary.py' is in the same directory")
+    print("Make sure the AO1 keywords module is in the same directory")
     sys.exit(1)
 except Exception as e:
     print("ERROR: Problem with AO1 Keywords Dictionary: {}".format(e))
@@ -53,7 +66,7 @@ logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(message)s',
     handlers=[
-        logging.FileHandler('ao1_bq_exploration.log'),
+        logging.FileHandler('ao1_bq_exploration_exact.log'),
         logging.StreamHandler(sys.stdout)
     ]
 )
@@ -108,111 +121,143 @@ def get_all_tables(client, dataset_id):
         return []
 
 def is_ao1_relevant_field(field_name):
-    """Check if a field name is relevant to AO1 requirements"""
+    """
+    Check if a field name is relevant to AO1 requirements using EXACT MATCHES ONLY.
+    No substring matching or loose associations.
+    """
     if not field_name:
         return False
         
+    # Clean the field name and check for exact match
     field_lower = field_name.lower().strip()
     
-    # First, check direct exact match
-    if field_lower in ALL_AO1_REQUIREMENTS_KEYWORDS:
-        logger.info("DIRECT MATCH: Field '{}' matches AO1 keyword '{}'".format(field_name, field_lower))
+    # EXACT MATCH ONLY - check if field name exactly matches any AO1 keyword
+    if field_lower in ALL_AO1_KEYWORDS:
+        logger.info("EXACT MATCH: Field '{}' matches AO1 keyword '{}'".format(field_name, field_lower))
         return True
     
-    # Check each AO1 keyword for substring matches
-    for ao1_keyword in ALL_AO1_REQUIREMENTS_KEYWORDS.keys():
-        # Exact match
-        if field_lower == ao1_keyword:
-            logger.info("EXACT MATCH: Field '{}' equals AO1 keyword '{}'".format(field_name, ao1_keyword))
-            return True
-        
-        # Field contains AO1 keyword
-        if ao1_keyword in field_lower:
-            logger.info("CONTAINS MATCH: Field '{}' contains AO1 keyword '{}'".format(field_name, ao1_keyword))
-            return True
-        
-        # AO1 keyword contains field (for shorter field names)
-        if field_lower in ao1_keyword:
-            logger.info("CONTAINED MATCH: AO1 keyword '{}' contains field '{}'".format(ao1_keyword, field_name))
-            return True
-    
-    # Log that no match was found for debugging
-    logger.debug("NO MATCH: Field '{}' not found in AO1 keywords".format(field_name))
+    # No match found
+    logger.debug("NO EXACT MATCH: Field '{}' not found in AO1 keywords".format(field_name))
     return False
 
 def categorize_ao1_field(field_name):
-    """Categorize an AO1-relevant field by requirement"""
+    """Categorize an AO1-relevant field by requirement using EXACT MATCHES ONLY"""
     if not field_name:
-        return {'category': 'unknown', 'requirement': 'No requirement', 'vendors': [], 'context': 'Invalid field name'}
+        return {
+            'category': 'unknown', 
+            'requirement': 'No requirement', 
+            'vendors': [], 
+            'context': 'Invalid field name'
+        }
     
     field_lower = field_name.lower().strip()
     
-    # Try direct lookup first
-    context = get_keyword_requirement_context(field_lower)
-    if context['category'] != 'unknown':
-        logger.info("DIRECT CATEGORIZE: Field '{}' -> {}".format(field_name, context['requirement']))
-        return context
+    # Only proceed if exact match exists
+    if field_lower not in ALL_AO1_KEYWORDS:
+        logger.warning("NO EXACT MATCH: Field '{}' not found in AO1 keywords".format(field_name))
+        return {
+            'category': 'unknown', 
+            'requirement': 'No AO1 requirement mapping identified', 
+            'vendors': [], 
+            'context': 'Field not an exact match to any AO1 keyword'
+        }
     
-    # Try to find the best matching AO1 keyword
-    best_match = None
-    best_score = 0
+    # Find which requirements contain this exact keyword
+    requirements = find_keyword_requirement(field_lower)
     
-    for ao1_keyword in ALL_AO1_REQUIREMENTS_KEYWORDS.keys():
-        score = 0
+    if requirements:
+        # Use the first requirement if multiple found
+        primary_requirement = requirements[0]
         
-        # Exact match gets highest score
-        if field_lower == ao1_keyword:
-            score = 100
-        # Field contains keyword
-        elif ao1_keyword in field_lower:
-            score = 80
-        # Keyword contains field
-        elif field_lower in ao1_keyword:
-            score = 60
+        # Extract vendors and category info based on the requirement
+        vendors = []
+        category = 'general'
+        context = "Exact match to AO1 keyword"
         
-        if score > best_score:
-            best_score = score
-            best_match = ao1_keyword
+        if 'REQ-6' in primary_requirement:
+            # Security control coverage - identify vendors
+            if any(vendor in field_lower for vendor in ['crowdstrike', 'falcon']):
+                vendors = ['CrowdStrike']
+            elif 'tanium' in field_lower:
+                vendors = ['Tanium']
+            elif 'dlp' in field_lower:
+                vendors = ['DLP']
+            elif 'axonius' in field_lower:
+                vendors = ['Axonius']
+            category = 'security_control'
+            
+        elif 'REQ-7' in primary_requirement:
+            # Logging platforms
+            if 'splunk' in field_lower:
+                vendors = ['Splunk']
+            elif any(chronicle in field_lower for chronicle in ['chronicle', 'gso']):
+                vendors = ['Google Chronicle']
+            category = 'logging_platform'
+            
+        elif 'REQ-2' in primary_requirement:
+            # Infrastructure type
+            if any(cloud in field_lower for cloud in ['aws', 'azure', 'gcp']):
+                vendors = ['Cloud']
+            category = 'infrastructure'
+            
+        elif 'REQ-5' in primary_requirement:
+            # System classification
+            if any(os in field_lower for os in ['windows', 'linux', 'unix']):
+                vendors = ['Operating System']
+            category = 'system_type'
+        
+        result = {
+            'category': category,
+            'requirement': primary_requirement,
+            'vendors': vendors,
+            'context': context
+        }
+        
+        logger.info("EXACT CATEGORIZATION: Field '{}' -> {}".format(field_name, primary_requirement))
+        return result
     
-    if best_match and best_score > 0:
-        context = get_keyword_requirement_context(best_match)
-        logger.info("BEST MATCH CATEGORIZE: Field '{}' -> '{}' -> {}".format(field_name, best_match, context['requirement']))
-        return context
-    
-    logger.warning("NO CATEGORIZATION: Field '{}' could not be categorized".format(field_name))
-    return {'category': 'unknown', 'requirement': 'No AO1 requirement mapping identified', 'vendors': [], 'context': 'Field not in AO1 dictionary'}
+    # This shouldn't happen if the field was found in ALL_AO1_KEYWORDS
+    logger.error("CATEGORIZATION ERROR: Field '{}' found in keywords but no requirements returned".format(field_name))
+    return {
+        'category': 'error', 
+        'requirement': 'Categorization error', 
+        'vendors': [], 
+        'context': 'Internal error in categorization'
+    }
 
 def test_ao1_keyword_detection():
-    """Test AO1 keyword detection with sample field names"""
-    print("Testing AO1 keyword detection...")
+    """Test AO1 keyword detection with sample field names using EXACT MATCHES ONLY"""
+    print("Testing AO1 EXACT keyword detection...")
     
-    # Test with some common field names that should match
+    # Test with some exact AO1 keywords that should match
     test_fields = [
         'hostname', 'host_name', 'computer_name', 'aid', 'business_unit', 
         'aws_region', 'sourcetype', 'ip_address', 'domain_name', 'application',
-        'windows', 'linux', 'edr', 'crowdstrike', 'tanium', 'office365'
+        'windows', 'linux', 'edr', 'crowdstrike', 'tanium', 'office365',
+        # Test some fields that should NOT match (not exact AO1 keywords)
+        'custom_hostname_field', 'hostname_backup', 'my_computer_name'
     ]
     
-    matches_found = 0
+    exact_matches_found = 0
     for field in test_fields:
         is_relevant = is_ao1_relevant_field(field)
         if is_relevant:
             context = categorize_ao1_field(field)
-            print("  MATCH: '{}' -> {}".format(field, context['requirement']))
-            matches_found += 1
+            print("  EXACT MATCH: '{}' -> {}".format(field, context['requirement']))
+            exact_matches_found += 1
         else:
-            print("  NO MATCH: '{}'".format(field))
+            print("  NO EXACT MATCH: '{}'".format(field))
     
-    print("Test completed: {}/{} fields matched AO1 keywords".format(matches_found, len(test_fields)))
+    print("Test completed: {}/{} fields had EXACT matches to AO1 keywords".format(exact_matches_found, len(test_fields)))
     
-    if matches_found == 0:
-        print("WARNING: No test fields matched - there may be an issue with keyword detection")
+    if exact_matches_found == 0:
+        print("WARNING: No test fields had exact matches - there may be an issue with keyword detection")
         return False
     
     return True
 
 def get_table_schema_ao1_focused(client, dataset_id, table_id):
-    """Get table schema and identify ONLY AO1-relevant fields"""
+    """Get table schema and identify ONLY AO1-relevant fields using EXACT MATCHES"""
     try:
         table_ref = client.dataset(dataset_id).table(table_id)
         table = client.get_table(table_ref)
@@ -221,7 +266,7 @@ def get_table_schema_ao1_focused(client, dataset_id, table_id):
         total_fields = 0
         
         def analyze_field(field, parent_name=""):
-            """Recursively analyze fields including nested structures"""
+            """Recursively analyze fields including nested structures using EXACT MATCHES ONLY"""
             nonlocal total_fields
             
             current_field_name = "{}.{}".format(parent_name, field.name) if parent_name else field.name
@@ -229,20 +274,23 @@ def get_table_schema_ao1_focused(client, dataset_id, table_id):
             
             field_info = None
             
+            # EXACT MATCH CHECK ONLY
             if is_ao1_relevant_field(field.name):
                 ao1_context = categorize_ao1_field(field.name)
                 field_info = {
                     'name': current_field_name,
+                    'base_field_name': field.name,  # Store the actual field name that matched
                     'type': field.field_type,
                     'mode': field.mode,
                     'ao1_requirement': ao1_context['requirement'],
                     'ao1_category': ao1_context['category'],
                     'ao1_vendors': ao1_context['vendors'],
                     'ao1_purpose': ao1_context['context'],
-                    'full_path': current_field_name
+                    'full_path': current_field_name,
+                    'match_type': 'EXACT'  # Indicate this was an exact match
                 }
                 
-                logger.info("    AO1 FIELD FOUND: {} -> {}".format(current_field_name, ao1_context['requirement']))
+                logger.info("    AO1 EXACT MATCH FOUND: {} -> {}".format(current_field_name, ao1_context['requirement']))
             
             # Handle nested fields for RECORD/STRUCT types  
             nested_ao1_fields = []
@@ -264,12 +312,14 @@ def get_table_schema_ao1_focused(client, dataset_id, table_id):
             field_results = analyze_field(field)
             ao1_relevant_fields.extend(field_results)
         
-        logger.info("  Table {}.{}: {} AO1 fields found out of {} total fields".format(dataset_id, table_id, len(ao1_relevant_fields), total_fields))
+        logger.info("  Table {}.{}: {} AO1 EXACT MATCHES found out of {} total fields".format(
+            dataset_id, table_id, len(ao1_relevant_fields), total_fields))
         
         return {
             'ao1_relevant_fields': ao1_relevant_fields,
             'total_fields': total_fields,
             'ao1_coverage_percentage': (len(ao1_relevant_fields) / total_fields * 100) if total_fields > 0 else 0,
+            'match_strategy': 'EXACT_ONLY',
             'table_info': {
                 'num_rows': table.num_rows if table.num_rows else 0,
                 'created': table.created.isoformat() if table.created else None,
@@ -290,7 +340,7 @@ def get_table_schema_ao1_focused(client, dataset_id, table_id):
         return {'ao1_relevant_fields': [], 'total_fields': 0, 'ao1_coverage_percentage': 0, 'error': str(e)}
 
 def explore_complete_ao1_project_structure(client):
-    """Complete exploration of ALL BigQuery datasets and tables for AO1 fields"""
+    """Complete exploration of ALL BigQuery datasets and tables for AO1 fields using EXACT MATCHES ONLY"""
     start_time = time.time()
     
     ao1_project_structure = {
@@ -298,7 +348,9 @@ def explore_complete_ao1_project_structure(client):
         'exploration_config': {
             'scan_type': 'COMPLETE_COMPREHENSIVE_SCAN',
             'ao1_focus': True,
-            'limits': 'NONE - All datasets and tables analyzed'
+            'match_strategy': 'EXACT_MATCHES_ONLY',
+            'limits': 'NONE - All datasets and tables analyzed',
+            'note': 'Only exact keyword matches counted - no substring or loose matching'
         },
         'ao1_summary': {
             'total_datasets_found': 0,
@@ -306,7 +358,7 @@ def explore_complete_ao1_project_structure(client):
             'total_tables_found': 0,
             'total_tables_analyzed': 0,
             'tables_with_ao1_fields': 0,
-            'total_ao1_fields_found': 0,
+            'total_ao1_exact_matches': 0,
             'ao1_requirements_coverage': {},
             'top_ao1_datasets': [],
             'ao1_field_distribution': {},
@@ -318,8 +370,8 @@ def explore_complete_ao1_project_structure(client):
         'datasets': {}
     }
     
-    logger.info("Starting COMPLETE AO1-focused BigQuery exploration...")
-    logger.info("This will scan EVERY dataset and EVERY table for AO1 relevance")
+    logger.info("Starting COMPLETE AO1-focused BigQuery exploration with EXACT MATCHES ONLY...")
+    logger.info("This will scan EVERY dataset and EVERY table for EXACT AO1 keyword matches")
     
     try:
         # Get ALL datasets
@@ -330,7 +382,7 @@ def explore_complete_ao1_project_structure(client):
             return ao1_project_structure
         
         ao1_project_structure['ao1_summary']['total_datasets_found'] = len(datasets)
-        logger.info("Found {} datasets to analyze completely".format(len(datasets)))
+        logger.info("Found {} datasets to analyze for EXACT matches".format(len(datasets)))
         
         dataset_count = 0
         for dataset_id in datasets:
@@ -343,7 +395,7 @@ def explore_complete_ao1_project_structure(client):
                     'total_tables': 0,
                     'tables_analyzed': 0,
                     'tables_with_ao1_fields': 0,
-                    'total_ao1_fields': 0,
+                    'total_ao1_exact_matches': 0,
                     'ao1_requirements_found': set(),
                     'ao1_vendors_found': set(),
                     'errors': [],
@@ -368,7 +420,7 @@ def explore_complete_ao1_project_structure(client):
                 table_count += 1
                 logger.info("  Table {}/{}: {}".format(table_count, len(tables), table_id))
                 
-                # Get AO1-relevant schema information for THIS table
+                # Get AO1-relevant schema information for THIS table (EXACT MATCHES ONLY)
                 table_ao1_analysis = get_table_schema_ao1_focused(client, dataset_id, table_id)
                 dataset_ao1_info['ao1_summary']['tables_analyzed'] += 1
                 ao1_project_structure['ao1_summary']['total_tables_analyzed'] += 1
@@ -382,9 +434,9 @@ def explore_complete_ao1_project_structure(client):
                 
                 if table_ao1_analysis['ao1_relevant_fields']:
                     dataset_ao1_info['ao1_summary']['tables_with_ao1_fields'] += 1
-                    dataset_ao1_info['ao1_summary']['total_ao1_fields'] += len(table_ao1_analysis['ao1_relevant_fields'])
+                    dataset_ao1_info['ao1_summary']['total_ao1_exact_matches'] += len(table_ao1_analysis['ao1_relevant_fields'])
                     ao1_project_structure['ao1_summary']['tables_with_ao1_fields'] += 1
-                    ao1_project_structure['ao1_summary']['total_ao1_fields_found'] += len(table_ao1_analysis['ao1_relevant_fields'])
+                    ao1_project_structure['ao1_summary']['total_ao1_exact_matches'] += len(table_ao1_analysis['ao1_relevant_fields'])
                     
                     # Track AO1 requirements and vendors found
                     for field in table_ao1_analysis['ao1_relevant_fields']:
@@ -392,9 +444,9 @@ def explore_complete_ao1_project_structure(client):
                         dataset_ao1_info['ao1_summary']['ao1_requirements_found'].add(req)
                         dataset_ao1_info['ao1_summary']['ao1_vendors_found'].update(field['ao1_vendors'])
                     
-                    logger.info("    Found {} AO1 fields".format(len(table_ao1_analysis['ao1_relevant_fields'])))
+                    logger.info("    Found {} AO1 EXACT MATCHES".format(len(table_ao1_analysis['ao1_relevant_fields'])))
                 else:
-                    logger.info("    No AO1 fields found")
+                    logger.info("    No AO1 exact matches found")
                 
                 dataset_ao1_info['tables'][table_id] = table_ao1_analysis
                 
@@ -410,16 +462,20 @@ def explore_complete_ao1_project_structure(client):
             ao1_project_structure['datasets'][dataset_id] = dataset_ao1_info
             ao1_project_structure['ao1_summary']['total_datasets_analyzed'] += 1
             
-            if dataset_ao1_info['ao1_summary']['total_ao1_fields'] > 0:
-                logger.info("  Dataset {}: {} AO1 fields found across {} tables".format(dataset_id, dataset_ao1_info['ao1_summary']['total_ao1_fields'], dataset_ao1_info['ao1_summary']['tables_with_ao1_fields']))
+            if dataset_ao1_info['ao1_summary']['total_ao1_exact_matches'] > 0:
+                logger.info("  Dataset {}: {} AO1 EXACT MATCHES found across {} tables".format(
+                    dataset_id, 
+                    dataset_ao1_info['ao1_summary']['total_ao1_exact_matches'], 
+                    dataset_ao1_info['ao1_summary']['tables_with_ao1_fields']
+                ))
             else:
-                logger.info("  Dataset {}: No AO1 fields found in {} tables".format(dataset_id, len(tables)))
+                logger.info("  Dataset {}: No AO1 exact matches found in {} tables".format(dataset_id, len(tables)))
             
             # Progress indicator for many datasets
             if dataset_count % 10 == 0:
                 elapsed = time.time() - start_time
                 logger.info("PROGRESS UPDATE: {}/{} datasets completed ({:.1f}s elapsed)".format(dataset_count, len(datasets), elapsed))
-                logger.info("   Current totals: {} AO1 fields found".format(ao1_project_structure['ao1_summary']['total_ao1_fields_found']))
+                logger.info("   Current totals: {} AO1 EXACT MATCHES found".format(ao1_project_structure['ao1_summary']['total_ao1_exact_matches']))
     
     except KeyboardInterrupt:
         logger.info("Complete AO1 exploration interrupted by user")
@@ -451,10 +507,10 @@ def explore_complete_ao1_project_structure(client):
         'vendors_found': list(all_vendors_found)
     }
     
-    # Identify top AO1 datasets by field count
+    # Identify top AO1 datasets by exact match count
     dataset_scores = []
     for dataset_id, dataset_info in ao1_project_structure['datasets'].items():
-        score = dataset_info['ao1_summary']['total_ao1_fields']
+        score = dataset_info['ao1_summary']['total_ao1_exact_matches']
         if score > 0:
             dataset_scores.append((dataset_id, score, dataset_info['ao1_summary']['tables_with_ao1_fields']))
     
@@ -474,27 +530,28 @@ def explore_complete_ao1_project_structure(client):
     return ao1_project_structure
 
 def generate_complete_ao1_summary_report(ao1_structure):
-    """Generate comprehensive AO1 summary report focusing on WHICH KEYWORDS found WHERE"""
+    """Generate comprehensive AO1 summary report focusing on EXACT KEYWORD MATCHES ONLY"""
     summary = ao1_structure['ao1_summary']
     
     print("\n" + "="*100)
-    print("AO1 LOG VISIBILITY MEASUREMENT - KEYWORD LOCATION MAPPING")
+    print("AO1 LOG VISIBILITY MEASUREMENT - EXACT KEYWORD MATCHES ONLY")
     print("="*100)
     
     print("\nSCAN OVERVIEW:")
+    print("   Match Strategy: EXACT KEYWORDS ONLY")
     print("   Duration: {:.1f} seconds".format(summary.get('exploration_duration_seconds', 0)))
     print("   Datasets analyzed: {}".format(summary['total_datasets_analyzed']))
     print("   Tables analyzed: {}".format(summary['total_tables_analyzed']))
-    print("   AO1 keywords found: {}".format(summary['total_ao1_fields_found']))
+    print("   AO1 exact matches found: {}".format(summary['total_ao1_exact_matches']))
     
-    # BUILD COMPREHENSIVE KEYWORD-TO-LOCATION MAPPING
+    # BUILD COMPREHENSIVE EXACT KEYWORD-TO-LOCATION MAPPING
     keyword_locations = {}  # keyword -> [(dataset, table, field_path, requirement), ...]
     requirement_keywords = {}  # requirement -> [keywords...]
     
     for dataset_id, dataset_info in ao1_structure['datasets'].items():
         for table_id, table_info in dataset_info['tables'].items():
             for field in table_info.get('ao1_relevant_fields', []):
-                keyword = field['name'].split('.')[-1].lower()  # Get base field name
+                keyword = field['base_field_name'].lower()  # Use the actual field name that matched
                 requirement = field['ao1_requirement'].split(' - ')[0]  # Get REQ-X
                 
                 if keyword not in keyword_locations:
@@ -505,14 +562,15 @@ def generate_complete_ao1_summary_report(ao1_structure):
                     'table': table_id, 
                     'field_path': field['full_path'],
                     'requirement': requirement,
-                    'purpose': field['ao1_purpose']
+                    'purpose': field['ao1_purpose'],
+                    'match_type': 'EXACT'
                 })
                 
                 if requirement not in requirement_keywords:
                     requirement_keywords[requirement] = set()
                 requirement_keywords[requirement].add(keyword)
     
-    print("\nAO1 REQUIREMENTS COVERAGE:")
+    print("\nAO1 REQUIREMENTS COVERAGE (EXACT MATCHES ONLY):")
     coverage = summary['ao1_requirements_coverage']
     print("   Requirements covered: {}/8 ({:.1f}%)".format(len(coverage['requirements_found']), coverage['coverage_percentage']))
     
@@ -522,11 +580,11 @@ def generate_complete_ao1_summary_report(ao1_structure):
             keyword_display = ', '.join(keywords_for_req[:5])
             if len(keywords_for_req) > 5:
                 keyword_display += '...'
-            print("   {} {}: {} keywords found: {}".format("FOUND", req, len(keywords_for_req), keyword_display))
+            print("   {} {}: {} exact keywords found: {}".format("FOUND", req, len(keywords_for_req), keyword_display))
         else:
-            print("   {} {}: NO KEYWORDS FOUND".format("MISSING", req))
+            print("   {} {}: NO EXACT KEYWORDS FOUND".format("MISSING", req))
     
-    print("\nTOP AO1 KEYWORDS BY LOCATION COUNT:")
+    print("\nTOP AO1 EXACT KEYWORDS BY LOCATION COUNT:")
     # Sort keywords by how many locations they appear in
     keyword_counts = [(kw, len(locs)) for kw, locs in keyword_locations.items()]
     keyword_counts.sort(key=lambda x: x[1], reverse=True)
@@ -537,42 +595,42 @@ def generate_complete_ao1_summary_report(ao1_structure):
         requirements = set(loc['requirement'] for loc in locations)
         print("   {:2d}. '{}': {} locations, {} datasets, {}".format(i, keyword, count, len(datasets), ', '.join(sorted(requirements))))
     
-    print("\nDETAILED KEYWORD-TO-LOCATION MAPPING:")
+    print("\nDETAILED EXACT KEYWORD-TO-LOCATION MAPPING:")
     
     # Group by requirement for organized display
     for req in sorted(requirement_keywords.keys()):
         req_keywords = sorted(requirement_keywords[req])
-        print("\n   {} KEYWORDS ({} found):".format(req, len(req_keywords)))
+        print("\n   {} EXACT KEYWORDS ({} found):".format(req, len(req_keywords)))
         
         for keyword in req_keywords[:10]:  # Show top 10 keywords per requirement
             locations = keyword_locations[keyword]
             req_locations = [loc for loc in locations if loc['requirement'] == req]
             
-            print("      KEYWORD '{}':".format(keyword))
+            print("      EXACT KEYWORD '{}':".format(keyword))
             for loc in req_locations[:3]:  # Show first 3 locations
                 print("         {}.{} -> {}".format(loc['dataset'], loc['table'], loc['field_path']))
             if len(req_locations) > 3:
                 print("         ... and {} more locations".format(len(req_locations) - 3))
     
-    return "AO1 Keyword Mapping: {} unique keywords found across {} datasets".format(len(keyword_locations), summary['total_datasets_analyzed'])
+    return "AO1 Exact Keyword Mapping: {} unique exact keywords found across {} datasets".format(len(keyword_locations), summary['total_datasets_analyzed'])
 
-def save_complete_ao1_results(ao1_structure, filename="complete_ao1_bq_exploration.json"):
+def save_complete_ao1_results(ao1_structure, filename="complete_ao1_bq_exploration_exact.json"):
     """Save complete AO1-focused results to file"""
     try:
         with open(filename, 'w') as f:
             json.dump(ao1_structure, f, indent=2, default=str)
-        logger.info("Complete AO1 results saved to: {}".format(filename))
-        print("Full complete AO1 analysis saved to: {}".format(filename))
+        logger.info("Complete AO1 EXACT MATCH results saved to: {}".format(filename))
+        print("Full complete AO1 exact match analysis saved to: {}".format(filename))
         
         # Also save a comprehensive summary CSV
-        summary_filename = filename.replace('.json', '_complete_summary.csv')
+        summary_filename = filename.replace('.json', '_exact_summary.csv')
         save_complete_ao1_summary_csv(ao1_structure, summary_filename)
         
     except Exception as e:
         logger.error("Error saving complete AO1 results to file: {}".format(e))
 
 def save_complete_ao1_summary_csv(ao1_structure, filename):
-    """Save complete AO1 keyword-to-location mapping as CSV"""
+    """Save complete AO1 exact keyword-to-location mapping as CSV"""
     try:
         ao1_findings = []
         
@@ -585,12 +643,13 @@ def save_complete_ao1_summary_csv(ao1_structure, filename):
                         'field_name': field['name'],
                         'field_path': field['full_path'],
                         'field_type': field['type'],
-                        'ao1_keyword': field['name'].split('.')[-1].lower(),
+                        'ao1_exact_keyword': field['base_field_name'].lower(),
                         'ao1_requirement': field['ao1_requirement'].split(' - ')[0],
                         'ao1_requirement_full': field['ao1_requirement'],
                         'ao1_category': field['ao1_category'],
                         'ao1_vendors': ', '.join(field['ao1_vendors']),
                         'ao1_purpose': field['ao1_purpose'],
+                        'match_type': 'EXACT',
                         'location_key': "{}.{}.{}".format(dataset_id, table_id, field['name']),
                         'table_rows': table_info.get('table_info', {}).get('num_rows', 0),
                         'table_size_bytes': table_info.get('table_info', {}).get('size_bytes', 0)
@@ -599,17 +658,17 @@ def save_complete_ao1_summary_csv(ao1_structure, filename):
         if ao1_findings:
             df = pd.DataFrame(ao1_findings)
             # Sort by requirement, then by keyword, then by dataset
-            df = df.sort_values(['ao1_requirement', 'ao1_keyword', 'dataset', 'table'])
+            df = df.sort_values(['ao1_requirement', 'ao1_exact_keyword', 'dataset', 'table'])
             df.to_csv(filename, index=False)
-            logger.info("Complete AO1 keyword mapping CSV saved: {}".format(filename))
-            print("Complete AO1 keyword-to-location mapping saved to: {}".format(filename))
+            logger.info("Complete AO1 exact keyword mapping CSV saved: {}".format(filename))
+            print("Complete AO1 exact keyword-to-location mapping saved to: {}".format(filename))
         
     except Exception as e:
         logger.error("Error saving complete AO1 CSV summary: {}".format(e))
 
 def main():
-    """Main AO1-focused BigQuery exploration"""
-    print("AO1-FOCUSED BIGQUERY EXPLORATION STARTING...")
+    """Main AO1-focused BigQuery exploration using EXACT MATCHES ONLY"""
+    print("AO1-FOCUSED BIGQUERY EXPLORATION - EXACT MATCHES ONLY")
     print("Attempting to connect to BigQuery...")
     
     try:
@@ -627,21 +686,22 @@ def main():
         
         print("Connection verified - found {} datasets".format(len(test_datasets)))
         
-        # Test AO1 keyword detection before running full scan
-        print("Testing AO1 keyword detection...")
+        # Test AO1 EXACT keyword detection before running full scan
+        print("Testing AO1 EXACT keyword detection...")
         if not test_ao1_keyword_detection():
-            print("ERROR: AO1 keyword detection test failed")
+            print("ERROR: AO1 exact keyword detection test failed")
             return
         
-        print("AO1 keyword detection test passed - proceeding with full scan")
+        print("AO1 exact keyword detection test passed - proceeding with full scan")
         
         # Run COMPLETE exploration (no user input needed)
         print("Starting COMPLETE AO1 exploration of ALL datasets and tables...")
-        print("This will scan every single dataset and table for AO1 keywords")
+        print("This will scan every single dataset and table for EXACT AO1 keyword matches")
+        print("NO substring matching or loose associations - EXACT MATCHES ONLY")
         print("This may take several minutes to complete")
         print("Press Ctrl+C anytime to interrupt and get partial results")
         
-        # Run comprehensive AO1-focused exploration
+        # Run comprehensive AO1-focused exploration with exact matching
         ao1_structure = explore_complete_ao1_project_structure(client)
         
         # Generate and display AO1 summary
@@ -649,28 +709,29 @@ def main():
         
         # Save AO1 results
         timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-        filename = "complete_ao1_bq_exploration_{}.json".format(timestamp)
+        filename = "complete_ao1_bq_exploration_exact_{}.json".format(timestamp)
         save_complete_ao1_results(ao1_structure, filename)
         
-        print("\nCOMPLETE AO1 EXPLORATION FINISHED!")
+        print("\nCOMPLETE AO1 EXACT MATCH EXPLORATION FINISHED!")
         print("Results saved to files with timestamp: {}".format(timestamp))
-        print("Check the CSV files for detailed keyword-to-location mappings")
+        print("Check the CSV files for detailed exact keyword-to-location mappings")
         
         # Show key AO1 recommendations
-        total_ao1_fields = ao1_structure['ao1_summary']['total_ao1_fields_found']
+        total_ao1_exact_matches = ao1_structure['ao1_summary']['total_ao1_exact_matches']
         
-        if total_ao1_fields > 0:
+        if total_ao1_exact_matches > 0:
             print("\nAO1 NEXT STEPS:")
-            print("1. Review the {} AO1-relevant keywords found".format(total_ao1_fields))
+            print("1. Review the {} AO1-relevant EXACT keyword matches found".format(total_ao1_exact_matches))
             print("2. Use the CSV mapping to build your visibility calculations") 
-            print("3. Focus on datasets with highest keyword diversity")
+            print("3. Focus on datasets with highest exact keyword diversity")
             print("4. Address any missing AO1 requirements")
         else:
             print("\nAO1 RECOMMENDATIONS:")
-            print("1. No AO1-relevant keywords found in scanned data")
+            print("1. No AO1-relevant EXACT keywords found in scanned data")
             print("2. Check field naming conventions in your logging systems")
-            print("3. Verify that log sources are properly ingested")
+            print("3. Verify that log sources are properly ingested with standard field names")
             print("4. Consider expanding the AO1 keyword dictionary")
+            print("5. Note: This scan used EXACT MATCHES ONLY - no partial matches counted")
             
     except KeyboardInterrupt:
         print("\nAO1 exploration interrupted by user")
@@ -680,7 +741,7 @@ def main():
         error_msg = "Fatal error during AO1 exploration: {}".format(e)
         print("\n{}".format(error_msg))
         logger.error(error_msg)
-        print("Check ao1_bq_exploration.log for detailed error information")
+        print("Check ao1_bq_exploration_exact.log for detailed error information")
         
         # Print the full stack trace for debugging
         import traceback
