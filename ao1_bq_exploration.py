@@ -1,9 +1,14 @@
 """
 Perfect AO1 Field Discovery System
-Business-Focused BigQuery Analysis for Audit Compliance
+Enterprise-Grade BigQuery Analysis for AO1 Compliance
 
-This system analyzes BigQuery tables to identify the exact fields needed for AO1 audit requirements,
-providing clear business summaries and actionable recommendations for each requirement.
+This system finds the exact fields needed for AO1 audit requirements by:
+1. Understanding table business context and purpose
+2. Analyzing field relevance with semantic understanding
+3. Providing clear, actionable paragraph summaries
+4. Prioritizing by data volume and business impact
+5. Working in any corporate network environment
+6. Generating executive-ready compliance reports
 """
 
 import os
@@ -11,594 +16,643 @@ import sys
 import json
 import time
 import logging
-import pandas as pd
-import numpy as np
+import getpass
+import subprocess
 from datetime import datetime
 from typing import Dict, List, Tuple, Optional, Any
 from dataclasses import dataclass, asdict
 from collections import defaultdict, Counter
+import numpy as np
+import pandas as pd
 import requests
 
-# BigQuery imports
-from google.cloud import bigquery
-from google.oauth2 import service_account
-from google.cloud.exceptions import NotFound, Forbidden, BadRequest, ServerError
+# Corporate logging
+logging.basicConfig(level=logging.WARNING)
+logger = logging.getLogger('AO1Discovery')
 
 # Configuration
 PROJECT_ID = "prj-fisv-p-gcss-sas-dl9dd0f1df"
 SERVICE_ACCOUNT_FILE = "gcp_prod_key.json"
 
-# Setup logging
-logging.basicConfig(level=logging.WARNING)
-logger = logging.getLogger('AO1Discovery')
-
 @dataclass
 class AO1Finding:
     """Perfect AO1 field finding with business context"""
-    requirement: str
-    requirement_name: str
     dataset: str
     table: str
     field_name: str
+    field_path: str
     field_type: str
-    table_rows: int
-    confidence: str
+    requirement: str
+    confidence_score: float
+    match_type: str
     business_context: str
-    usage_recommendation: str
     table_purpose: str
+    table_rows: int
+    data_volume_gb: float
     why_relevant: str
+    recommendation: str
+    priority_score: float
 
-class AO1RequirementsAnalyzer:
-    """Analyzes tables and fields against specific AO1 requirements"""
+class AO1RequirementsEngine:
+    """Perfect AO1 requirements understanding engine"""
     
     def __init__(self):
         self.requirements = {
             'REQ-1': {
-                'name': 'Global View - Asset Identification',
-                'purpose': 'Count unique logging assets vs CMDB for visibility percentage',
-                'key_fields': ['hostname', 'host_name', 'computer_name', 'device_name', 'asset_id', 'system_id', 'ip_address', 'mac_address', 'serial_number', 'uuid'],
-                'table_types': ['cmdb', 'asset', 'inventory', 'device', 'computer', 'host', 'server', 'endpoint', 'workstation', 'system'],
-                'business_goal': 'Identify primary asset identifiers to correlate log sources with CMDB records'
+                'name': 'Global View',
+                'purpose': 'Asset identification for counting unique logging assets vs CMDB',
+                'key_concepts': ['hostname', 'computer_name', 'device_name', 'asset_id', 'ip_address', 'mac_address', 'serial_number'],
+                'table_indicators': ['cmdb', 'asset', 'inventory', 'device', 'computer', 'host', 'server', 'endpoint', 'workstation'],
+                'business_value': 'Enables accurate asset counting and CMDB comparison for visibility measurement'
             },
-            
             'REQ-2': {
-                'name': 'Infrastructure Type - Deployment Classification',
-                'purpose': 'Classify assets by deployment model (On-Prem, Cloud, SaaS, API)',
-                'key_fields': ['cloud', 'aws', 'azure', 'gcp', 'datacenter', 'virtual_machine', 'vm', 'container', 'kubernetes', 'saas', 'application_type', 'deployment_type', 'platform', 'infrastructure_type'],
-                'table_types': ['cloud', 'infrastructure', 'deployment', 'platform', 'service', 'application', 'vm', 'container'],
-                'business_goal': 'Categorize infrastructure to show visibility across deployment models'
+                'name': 'Infrastructure Type',
+                'purpose': 'Classification by deployment model (On-Prem, Cloud, SaaS, API)',
+                'key_concepts': ['cloud', 'aws', 'azure', 'gcp', 'datacenter', 'virtual_machine', 'container', 'saas', 'api'],
+                'table_indicators': ['cloud', 'infrastructure', 'deployment', 'platform', 'service', 'vm', 'container', 'kubernetes'],
+                'business_value': 'Categorizes assets by infrastructure type for targeted visibility strategies'
             },
-            
             'REQ-3': {
-                'name': 'Regional/Country View - Geographic Classification',
-                'purpose': 'Show visibility by geographic location and region',
-                'key_fields': ['region', 'country', 'location', 'datacenter', 'site', 'zone', 'office', 'facility', 'geographic_region', 'aws_region', 'azure_region', 'gcp_region'],
-                'table_types': ['region', 'location', 'geographic', 'datacenter', 'site', 'facility', 'office'],
-                'business_goal': 'Demonstrate geographic coverage of logging across all regions'
+                'name': 'Regional/Country View',
+                'purpose': 'Geographic location classification for regional visibility statements',
+                'key_concepts': ['region', 'country', 'location', 'datacenter', 'zone', 'site', 'facility', 'office'],
+                'table_indicators': ['region', 'location', 'geographic', 'geo', 'site', 'facility', 'datacenter', 'office', 'branch'],
+                'business_value': 'Enables geographic visibility reporting and regional compliance measurement'
             },
-            
             'REQ-4': {
-                'name': 'Business/Application View - Organizational Structure',
-                'purpose': 'Show visibility by business unit and application ownership',
-                'key_fields': ['business_unit', 'bu', 'department', 'division', 'organization', 'application', 'app_name', 'service_name', 'owner', 'cost_center', 'project'],
-                'table_types': ['business', 'application', 'app', 'organization', 'department', 'service', 'project'],
-                'business_goal': 'Track logging coverage across business units and applications'
+                'name': 'Business/Application View',
+                'purpose': 'Organizational classification by Business Unit and Application',
+                'key_concepts': ['business_unit', 'application', 'department', 'organization', 'cost_center', 'owner'],
+                'table_indicators': ['application', 'business', 'organization', 'department', 'division', 'unit', 'team', 'project'],
+                'business_value': 'Links technical assets to business ownership for accountability and reporting'
             },
-            
             'REQ-5': {
-                'name': 'System Classification - Server Function and OS',
-                'purpose': 'Classify systems by function and operating system type',
-                'key_fields': ['windows', 'linux', 'unix', 'operating_system', 'os_type', 'server_type', 'server_function', 'web_server', 'database_server', 'mail_server', 'dns_server', 'system_type'],
-                'table_types': ['system', 'server', 'os', 'operating', 'database', 'web', 'mail', 'dns'],
-                'business_goal': 'Show logging coverage across different system types and functions'
+                'name': 'System Classification',
+                'purpose': 'Server function and OS type classification',
+                'key_concepts': ['windows', 'linux', 'unix', 'web_server', 'database', 'operating_system', 'server_type'],
+                'table_indicators': ['system', 'server', 'os', 'operating', 'database', 'web', 'function', 'role', 'type'],
+                'business_value': 'Categorizes systems by function and OS for targeted monitoring strategies'
             },
-            
             'REQ-6': {
-                'name': 'Security Control Coverage - Agent Deployment',
-                'purpose': 'Measure security agent coverage (EDR, Tanium, DLP)',
-                'key_fields': ['edr', 'crowdstrike', 'falcon', 'tanium', 'dlp', 'agent_id', 'sensor_id', 'endpoint_security', 'antivirus', 'security_agent'],
-                'table_types': ['security', 'agent', 'endpoint', 'edr', 'crowdstrike', 'tanium', 'dlp'],
-                'business_goal': 'Demonstrate security tool coverage across the environment'
+                'name': 'Security Control Coverage',
+                'purpose': 'Agent presence measurement (EDR, Tanium, DLP) for coverage calculation',
+                'key_concepts': ['edr', 'crowdstrike', 'tanium', 'agent_id', 'endpoint_security', 'dlp', 'protection'],
+                'table_indicators': ['security', 'agent', 'endpoint', 'edr', 'protection', 'crowdstrike', 'tanium', 'dlp'],
+                'business_value': 'Measures security tool coverage to identify protection gaps'
             },
-            
             'REQ-7': {
-                'name': 'Logging Compliance - Platform Coverage',
-                'purpose': 'Show logging platform compliance (Splunk, Chronicle)',
-                'key_fields': ['splunk', 'sourcetype', 'index', 'chronicle', 'log_source', 'event_source', 'data_source', 'ingestion', 'parser'],
-                'table_types': ['log', 'event', 'splunk', 'chronicle', 'siem', 'logging', 'audit'],
-                'business_goal': 'Validate that data is properly ingested into logging platforms'
+                'name': 'Logging Compliance',
+                'purpose': 'GSO (Chronicle) and Splunk platform compliance measurement',
+                'key_concepts': ['splunk', 'chronicle', 'sourcetype', 'index', 'log_source', 'ingestion', 'parsing'],
+                'table_indicators': ['log', 'event', 'audit', 'splunk', 'chronicle', 'siem', 'monitoring', 'ingestion'],
+                'business_value': 'Validates logging platform compliance and data ingestion completeness'
             },
-            
             'REQ-8': {
-                'name': 'Domain Visibility - Network Asset Discovery',
-                'purpose': 'Identify assets by hostname and domain for network visibility',
-                'key_fields': ['domain', 'fqdn', 'dns_name', 'hostname', 'network_name', 'domain_name'],
-                'table_types': ['domain', 'dns', 'network', 'hostname'],
-                'business_goal': 'Map network assets through domain and hostname analysis'
+                'name': 'Domain Visibility',
+                'purpose': 'Asset visibility by hostname and domain for network-based identification',
+                'key_concepts': ['domain', 'fqdn', 'dns_name', 'hostname', 'dns_resolution', 'nameserver'],
+                'table_indicators': ['domain', 'dns', 'network', 'hostname', 'fqdn', 'resolution', 'nameserver'],
+                'business_value': 'Enables network-based asset identification and DNS-driven visibility'
             }
         }
+
+class PerfectTableAnalyzer:
+    """Analyzes table business context and AO1 relevance perfectly"""
     
-    def analyze_table_relevance(self, dataset_name: str, table_name: str) -> Dict[str, Any]:
-        """Analyze how relevant a table is to AO1 requirements"""
-        table_full_name = "{}.{}".format(dataset_name, table_name).lower()
+    def __init__(self, requirements_engine: AO1RequirementsEngine):
+        self.requirements = requirements_engine.requirements
         
-        relevance = {
-            'is_ao1_relevant': False,
+    def analyze_table_context(self, dataset_name: str, table_name: str, table_description: str = "") -> Dict[str, Any]:
+        """Perfect table context analysis"""
+        full_identifier = "{}.{}".format(dataset_name, table_name).lower()
+        
+        context = {
             'primary_requirements': [],
-            'table_purpose': 'Unknown business purpose',
-            'confidence_level': 'Low'
-        }
-        
-        requirement_matches = {}
-        
-        for req_id, req_data in self.requirements.items():
-            score = 0
-            matched_types = []
-            
-            # Check if table name matches requirement table types
-            for table_type in req_data['table_types']:
-                if table_type in table_full_name:
-                    score += 1
-                    matched_types.append(table_type)
-            
-            if score > 0:
-                requirement_matches[req_id] = {
-                    'score': score,
-                    'matched_types': matched_types,
-                    'requirement_name': req_data['name'],
-                    'business_goal': req_data['business_goal']
-                }
-        
-        if requirement_matches:
-            # Sort by relevance score
-            sorted_matches = sorted(requirement_matches.items(), key=lambda x: x[1]['score'], reverse=True)
-            
-            relevance['is_ao1_relevant'] = True
-            relevance['primary_requirements'] = [req_id for req_id, _ in sorted_matches[:2]]  # Top 2 matches
-            
-            # Set table purpose based on primary requirement
-            primary_req = sorted_matches[0][1]
-            relevance['table_purpose'] = primary_req['business_goal']
-            relevance['confidence_level'] = 'High' if primary_req['score'] >= 2 else 'Medium'
-        
-        return relevance
-    
-    def analyze_field_relevance(self, field_name: str, field_type: str, table_context: Dict[str, Any]) -> Dict[str, Any]:
-        """Analyze field relevance to AO1 requirements with business context"""
-        field_lower = field_name.lower().strip()
-        
-        field_analysis = {
-            'matches': [],
-            'best_requirement': None,
-            'confidence': 'None',
-            'business_value': 'Unknown'
+            'secondary_requirements': [],
+            'business_purpose': 'unknown',
+            'ao1_relevance': 'low',
+            'confidence_multipliers': {},
+            'why_relevant': 'Table name does not clearly indicate AO1 relevance'
         }
         
         requirement_scores = {}
         
-        # Check field against each requirement
+        # Analyze against each AO1 requirement
         for req_id, req_data in self.requirements.items():
-            score = 0
-            match_type = None
+            score = 0.0
+            matches = []
             
-            # Exact match
-            if field_lower in [kf.lower() for kf in req_data['key_fields']]:
-                score = 10
-                match_type = 'Exact Match'
-            else:
-                # Partial match
-                for key_field in req_data['key_fields']:
-                    if key_field in field_lower or field_lower in key_field:
-                        if len(key_field) >= 3:  # Avoid false positives
-                            score = max(score, 7)
-                            match_type = 'Partial Match'
+            # Check table indicators (high weight)
+            for indicator in req_data['table_indicators']:
+                if indicator in full_identifier:
+                    score += 2.0
+                    matches.append(indicator)
             
-            # Boost score if field requirement matches table context
-            if req_id in table_context.get('primary_requirements', []):
-                score *= 2
-                if match_type:
-                    match_type += ' (Table Context Match)'
+            # Check key concepts (medium weight)
+            for concept in req_data['key_concepts']:
+                if concept in full_identifier:
+                    score += 1.0
+                    matches.append(concept)
             
             if score > 0:
                 requirement_scores[req_id] = {
                     'score': score,
-                    'match_type': match_type,
+                    'matches': matches,
                     'requirement_name': req_data['name'],
-                    'business_goal': req_data['business_goal']
+                    'purpose': req_data['purpose']
                 }
         
-        if requirement_scores:
-            # Find best match
-            best_req_id = max(requirement_scores.keys(), key=lambda k: requirement_scores[k]['score'])
-            best_match = requirement_scores[best_req_id]
-            
-            field_analysis['best_requirement'] = best_req_id
-            field_analysis['matches'] = list(requirement_scores.keys())
-            
-            # Set confidence level
-            if best_match['score'] >= 15:
-                field_analysis['confidence'] = 'Very High'
-            elif best_match['score'] >= 10:
-                field_analysis['confidence'] = 'High'
-            elif best_match['score'] >= 7:
-                field_analysis['confidence'] = 'Medium'
-            else:
-                field_analysis['confidence'] = 'Low'
-            
-            field_analysis['business_value'] = best_match['business_goal']
+        # Determine primary requirements (score >= 2.0)
+        for req_id, data in requirement_scores.items():
+            if data['score'] >= 2.0:
+                context['primary_requirements'].append(req_id)
+                context['confidence_multipliers'][req_id] = min(3.0, 1.0 + data['score'] * 0.5)
+                context['ao1_relevance'] = 'high'
+                context['business_purpose'] = data['purpose']
+                context['why_relevant'] = "Table name clearly indicates {} data based on keywords: {}".format(
+                    data['requirement_name'], ', '.join(data['matches'][:3])
+                )
+            elif data['score'] >= 1.0:
+                context['secondary_requirements'].append(req_id)
+                context['confidence_multipliers'][req_id] = min(2.0, 1.0 + data['score'] * 0.3)
+                if context['ao1_relevance'] == 'low':
+                    context['ao1_relevance'] = 'medium'
+                    context['business_purpose'] = data['purpose']
+                    context['why_relevant'] = "Table name suggests {} data based on keywords: {}".format(
+                        data['requirement_name'], ', '.join(data['matches'][:2])
+                    )
         
-        return field_analysis
+        return context
 
-class PerfectAO1Analyzer:
-    """Perfect AO1 analyzer focused on business outcomes"""
+class PerfectFieldAnalyzer:
+    """Perfect field analysis with business context understanding"""
+    
+    def __init__(self, requirements_engine: AO1RequirementsEngine):
+        self.requirements = requirements_engine.requirements
+        
+    def analyze_field(self, field_name: str, field_type: str, table_context: Dict[str, Any]) -> Dict[str, Any]:
+        """Perfect field analysis with business context"""
+        field_lower = field_name.lower().strip()
+        
+        analysis = {
+            'is_ao1_relevant': False,
+            'requirement': 'NONE',
+            'confidence_score': 0.0,
+            'match_type': 'NO_MATCH',
+            'why_relevant': 'Field does not match any AO1 keywords',
+            'recommendation': 'Not recommended for AO1 compliance measurement'
+        }
+        
+        best_score = 0.0
+        best_requirement = None
+        best_matches = []
+        
+        # Analyze against each requirement
+        for req_id, req_data in self.requirements.items():
+            score = 0.0
+            matches = []
+            
+            # Exact match (highest score)
+            for concept in req_data['key_concepts']:
+                if field_lower == concept.lower():
+                    score += 10.0
+                    matches.append(('exact', concept))
+                elif concept.lower() in field_lower:
+                    score += 5.0
+                    matches.append(('contains', concept))
+                elif field_lower in concept.lower() and len(field_lower) >= 3:
+                    score += 3.0
+                    matches.append(('contained', concept))
+            
+            # Apply table context multiplier
+            if req_id in table_context.get('confidence_multipliers', {}):
+                context_multiplier = table_context['confidence_multipliers'][req_id]
+                score *= context_multiplier
+                matches.append(('context_boost', context_multiplier))
+            
+            if score > best_score:
+                best_score = score
+                best_requirement = req_id
+                best_matches = matches
+        
+        # Determine if field is AO1 relevant
+        if best_score >= 5.0:
+            analysis['is_ao1_relevant'] = True
+            analysis['requirement'] = best_requirement
+            analysis['confidence_score'] = min(1.0, best_score / 30.0)  # Normalize to 0-1
+            
+            # Determine match type
+            if best_score >= 25.0:
+                analysis['match_type'] = 'PERFECT'
+            elif best_score >= 15.0:
+                analysis['match_type'] = 'EXCELLENT'
+            elif best_score >= 10.0:
+                analysis['match_type'] = 'GOOD'
+            else:
+                analysis['match_type'] = 'FAIR'
+            
+            # Generate explanation
+            req_data = self.requirements[best_requirement]
+            match_types = [match[0] for match in best_matches if match[0] != 'context_boost']
+            
+            if 'exact' in match_types:
+                analysis['why_relevant'] = "Field '{}' exactly matches AO1 requirement {} ({}) keywords".format(
+                    field_name, best_requirement, req_data['name']
+                )
+                analysis['recommendation'] = "HIGHLY RECOMMENDED - Perfect match for {} measurement".format(req_data['name'])
+            elif 'contains' in match_types:
+                analysis['why_relevant'] = "Field '{}' contains AO1 requirement {} ({}) keywords".format(
+                    field_name, best_requirement, req_data['name']
+                )
+                analysis['recommendation'] = "RECOMMENDED - Good candidate for {} measurement".format(req_data['name'])
+            else:
+                analysis['why_relevant'] = "Field '{}' partially matches AO1 requirement {} ({}) concepts".format(
+                    field_name, best_requirement, req_data['name']
+                )
+                analysis['recommendation'] = "CONSIDER - May be useful for {} measurement pending validation".format(req_data['name'])
+        
+        return analysis
+
+class PerfectAO1Discovery:
+    """Perfect AO1 field discovery system"""
     
     def __init__(self):
-        self.client = None
-        self.requirements_analyzer = AO1RequirementsAnalyzer()
-        self.findings = []
+        print("PERFECT AO1 FIELD DISCOVERY SYSTEM")
+        print("Enterprise AO1 Compliance Field Identification")
+        print("=" * 60)
         
-        # Authenticate
+        self.requirements_engine = AO1RequirementsEngine()
+        self.table_analyzer = PerfectTableAnalyzer(self.requirements_engine)
+        self.field_analyzer = PerfectFieldAnalyzer(self.requirements_engine)
+        self.client = None
+        
+        self._setup_enterprise_environment()
+        
+    def _setup_enterprise_environment(self):
+        """Setup enterprise environment quickly"""
+        # Handle proxy if needed
+        if not self._test_connection():
+            self._setup_proxy()
+        
+        # Authenticate BigQuery
         self._authenticate_bigquery()
+    
+    def _test_connection(self) -> bool:
+        """Quick connection test"""
+        try:
+            response = requests.get('http://httpbin.org/get', timeout=5)
+            return response.status_code == 200
+        except:
+            return False
+    
+    def _setup_proxy(self):
+        """Quick proxy setup"""
+        configure = input("Configure corporate proxy? (y/n): ").lower().strip()
+        if configure == 'y':
+            http_proxy = input("HTTP_PROXY: ").strip()
+            https_proxy = input("HTTPS_PROXY: ").strip()
+            
+            if http_proxy:
+                os.environ['HTTP_PROXY'] = http_proxy
+                os.environ['http_proxy'] = http_proxy
+            if https_proxy:
+                os.environ['HTTPS_PROXY'] = https_proxy
+                os.environ['https_proxy'] = https_proxy
     
     def _authenticate_bigquery(self):
         """Authenticate with BigQuery"""
         try:
-            credentials = service_account.Credentials.from_service_account_file(SERVICE_ACCOUNT_FILE)
-            self.client = bigquery.Client(project=PROJECT_ID, credentials=credentials)
+            from google.cloud import bigquery
+            from google.oauth2 import service_account
+            
+            if os.path.exists(SERVICE_ACCOUNT_FILE):
+                credentials = service_account.Credentials.from_service_account_file(SERVICE_ACCOUNT_FILE)
+                self.client = bigquery.Client(project=PROJECT_ID, credentials=credentials)
+            else:
+                self.client = bigquery.Client(project=PROJECT_ID)
+            
+            # Test connection
+            list(self.client.list_datasets(max_results=1))
             print("✓ BigQuery: Connected successfully")
+            
         except Exception as e:
-            print("✗ BigQuery: Authentication failed - {}".format(e))
+            print("✗ BigQuery: Connection failed - {}".format(e))
             sys.exit(1)
     
-    def scan_for_ao1_fields(self) -> List[AO1Finding]:
-        """Scan BigQuery for AO1-relevant fields with business context"""
-        print("PERFECT AO1 FIELD DISCOVERY")
-        print("=" * 50)
-        print("Scanning for fields that support AO1 audit requirements...")
+    def discover_perfect_ao1_fields(self) -> List[AO1Finding]:
+        """Discover perfect AO1 fields with business context"""
+        print("\nDISCOVERING AO1 FIELDS...")
         
-        try:
-            datasets = [d.dataset_id for d in self.client.list_datasets()]
-            print("Found {} datasets to analyze".format(len(datasets)))
-            
-            total_tables = 0
-            processed_tables = 0
-            
-            # Count tables
-            for dataset_id in datasets:
-                try:
-                    tables = list(self.client.list_tables(dataset_id))
-                    total_tables += len(tables)
-                except:
-                    continue
-            
-            print("Processing {} tables for AO1 relevance...".format(total_tables))
-            
-            # Analyze each table
-            for dataset_id in datasets:
-                try:
-                    tables = list(self.client.list_tables(dataset_id))
+        all_findings = []
+        datasets = [d.dataset_id for d in self.client.list_datasets()]
+        
+        total_tables = 0
+        for dataset_id in datasets:
+            try:
+                tables = list(self.client.list_tables(dataset_id))
+                total_tables += len(tables)
+            except:
+                continue
+        
+        print("Analyzing {} tables across {} datasets...".format(total_tables, len(datasets)))
+        
+        processed = 0
+        for dataset_id in datasets:
+            try:
+                tables = list(self.client.list_tables(dataset_id))
+                
+                for table_ref in tables:
+                    processed += 1
+                    if processed % 25 == 0:
+                        print("  Progress: {}/{} tables ({:.1f}%)".format(processed, total_tables, processed/total_tables*100))
                     
-                    for table in tables:
-                        processed_tables += 1
-                        
-                        if processed_tables % 25 == 0:
-                            progress = (processed_tables / total_tables) * 100
-                            print("Progress: {:.1f}% ({}/{})".format(progress, processed_tables, total_tables))
-                        
-                        # Analyze this table
-                        self._analyze_table_for_ao1(dataset_id, table.table_id)
-                        
-                except Exception as e:
-                    continue
-            
-            print("✓ Analysis complete: {} AO1 findings discovered".format(len(self.findings)))
-            return self.findings
-            
-        except Exception as e:
-            print("✗ Scan failed: {}".format(e))
-            return []
+                    findings = self._analyze_table_perfectly(dataset_id, table_ref.table_id)
+                    all_findings.extend(findings)
+                    
+            except Exception as e:
+                continue
+        
+        print("✓ Discovery complete: {} AO1-relevant fields found".format(len(all_findings)))
+        return all_findings
     
-    def _analyze_table_for_ao1(self, dataset_id: str, table_id: str):
-        """Analyze a specific table for AO1 fields"""
+    def _analyze_table_perfectly(self, dataset_id: str, table_id: str) -> List[AO1Finding]:
+        """Perfect table analysis"""
         try:
-            # Get table metadata
             table_ref = self.client.dataset(dataset_id).table(table_id)
             table = self.client.get_table(table_ref)
             
             # Analyze table business context
-            table_context = self.requirements_analyzer.analyze_table_relevance(dataset_id, table_id)
+            table_context = self.table_analyzer.analyze_table_context(dataset_id, table_id)
             
-            # Only analyze tables that are AO1-relevant or potentially relevant
-            if not table_context['is_ao1_relevant'] and len(table_context['primary_requirements']) == 0:
-                return
+            findings = []
             
-            # Analyze each field in the table
-            for field in table.schema:
-                self._analyze_field_for_ao1(field, dataset_id, table_id, table, table_context)
+            def analyze_field_recursive(field, parent_path=""):
+                field_path = "{}.{}".format(parent_path, field.name) if parent_path else field.name
                 
+                # Analyze field with business context
+                field_analysis = self.field_analyzer.analyze_field(field.name, field.field_type, table_context)
+                
+                if field_analysis['is_ao1_relevant']:
+                    # Calculate data volume
+                    table_size_gb = (table.num_bytes or 0) / (1024**3)
+                    
+                    # Calculate priority score (combines confidence, table size, and business context)
+                    priority_score = (
+                        field_analysis['confidence_score'] * 0.4 +
+                        min(1.0, (table.num_rows or 0) / 1000000) * 0.3 +  # Normalize rows to 0-1
+                        (1.0 if table_context['ao1_relevance'] == 'high' else 0.5 if table_context['ao1_relevance'] == 'medium' else 0.2) * 0.3
+                    )
+                    
+                    finding = AO1Finding(
+                        dataset=dataset_id,
+                        table=table_id,
+                        field_name=field.name,
+                        field_path=field_path,
+                        field_type=field.field_type,
+                        requirement=field_analysis['requirement'],
+                        confidence_score=field_analysis['confidence_score'],
+                        match_type=field_analysis['match_type'],
+                        business_context=table_context['business_purpose'],
+                        table_purpose=table_context['ao1_relevance'],
+                        table_rows=table.num_rows or 0,
+                        data_volume_gb=table_size_gb,
+                        why_relevant=field_analysis['why_relevant'],
+                        recommendation=field_analysis['recommendation'],
+                        priority_score=priority_score
+                    )
+                    findings.append(finding)
+                
+                # Handle nested fields
+                if field.field_type in ['RECORD', 'STRUCT'] and field.fields:
+                    for nested_field in field.fields:
+                        analyze_field_recursive(nested_field, field_path)
+            
+            # Analyze all fields
+            for field in table.schema:
+                analyze_field_recursive(field)
+            
+            return findings
+            
         except Exception as e:
-            pass  # Skip problematic tables
+            return []
     
-    def _analyze_field_for_ao1(self, field, dataset_id: str, table_id: str, table, table_context: Dict[str, Any]):
-        """Analyze a field for AO1 relevance"""
-        field_analysis = self.requirements_analyzer.analyze_field_relevance(
-            field.name, field.field_type, table_context
-        )
-        
-        # Only include fields with medium or higher confidence
-        if field_analysis['confidence'] in ['Medium', 'High', 'Very High']:
-            
-            # Create business recommendation
-            recommendation = self._create_field_recommendation(
-                field, dataset_id, table_id, table, field_analysis, table_context
-            )
-            
-            finding = AO1Finding(
-                requirement=field_analysis['best_requirement'],
-                requirement_name=self.requirements_analyzer.requirements[field_analysis['best_requirement']]['name'],
-                dataset=dataset_id,
-                table=table_id,
-                field_name=field.name,
-                field_type=field.field_type,
-                table_rows=table.num_rows or 0,
-                confidence=field_analysis['confidence'],
-                business_context=table_context['table_purpose'],
-                usage_recommendation=recommendation['usage'],
-                table_purpose=recommendation['table_purpose'],
-                why_relevant=recommendation['relevance_explanation']
-            )
-            
-            self.findings.append(finding)
-    
-    def _create_field_recommendation(self, field, dataset_id: str, table_id: str, table, 
-                                   field_analysis: Dict[str, Any], table_context: Dict[str, Any]) -> Dict[str, str]:
-        """Create business-focused recommendation for field usage"""
-        req_id = field_analysis['best_requirement']
-        req_data = self.requirements_analyzer.requirements[req_id]
-        
-        # Table size context
-        size_context = ""
-        if table.num_rows:
-            if table.num_rows > 1000000:
-                size_context = "large dataset ({:,} rows)".format(table.num_rows)
-            elif table.num_rows > 10000:
-                size_context = "medium dataset ({:,} rows)".format(table.num_rows)
-            else:
-                size_context = "small dataset ({:,} rows)".format(table.num_rows)
-        else:
-            size_context = "dataset size unknown"
-        
-        # Usage recommendation
-        usage_template = "Use this field as a {} for {} analysis. This {} provides {} coverage."
-        
-        field_role = "primary identifier" if field_analysis['confidence'] == 'Very High' else \
-                    "key field" if field_analysis['confidence'] == 'High' else \
-                    "supporting field"
-        
-        coverage_type = "comprehensive" if table.num_rows and table.num_rows > 100000 else "targeted"
-        
-        usage = usage_template.format(
-            field_role,
-            req_data['name'].split(' - ')[1].lower(),
-            size_context,
-            coverage_type
-        )
-        
-        # Table purpose explanation
-        table_purpose = "This table appears to contain {} and is highly relevant for {} requirements.".format(
-            table_context['table_purpose'].lower(),
-            req_data['name']
-        )
-        
-        # Why it's relevant
-        relevance_explanation = "Field '{}' directly supports {} by providing {}. {}".format(
-            field.name,
-            req_data['purpose'].lower(),
-            field_analysis['business_value'].lower(),
-            "This is exactly the type of data needed for AO1 compliance measurement." if field_analysis['confidence'] == 'Very High' else
-            "This field can contribute to AO1 visibility calculations."
-        )
-        
-        return {
-            'usage': usage,
-            'table_purpose': table_purpose,
-            'relevance_explanation': relevance_explanation
-        }
-    
-    def generate_business_report(self, findings: List[AO1Finding]):
-        """Generate business-focused report with clear summaries"""
+    def generate_perfect_report(self, findings: List[AO1Finding]):
+        """Generate perfect AO1 report with paragraph summaries"""
         if not findings:
-            print("\nAO1 FIELD DISCOVERY RESULTS")
-            print("=" * 50)
-            print("No AO1-relevant fields found in accessible datasets.")
-            print("Recommendation: Review data ingestion and field naming conventions.")
+            print("\nPERFECT AO1 ANALYSIS RESULTS")
+            print("=" * 60)
+            print("No AO1-relevant fields discovered in accessible datasets.")
+            print("Recommendation: Review field naming conventions and data architecture.")
             return
         
-        # Group findings by requirement
+        # Sort by priority score (highest first)
+        findings.sort(key=lambda x: x.priority_score, reverse=True)
+        
+        # Group by requirement
         by_requirement = defaultdict(list)
         for finding in findings:
             by_requirement[finding.requirement].append(finding)
         
-        # Sort findings within each requirement by table size (largest first)
-        for req in by_requirement:
-            by_requirement[req].sort(key=lambda x: x.table_rows, reverse=True)
-        
-        print("\nAO1 FIELD DISCOVERY RESULTS")
-        print("=" * 50)
-        print("Business-Focused Analysis for Audit Compliance")
+        print("\nPERFECT AO1 FIELD DISCOVERY RESULTS")
+        print("=" * 60)
         print("Total Discoveries: {} fields across {} requirements".format(len(findings), len(by_requirement)))
         
-        # Generate requirement-by-requirement analysis
+        # Executive Summary
+        print("\nEXECUTIVE SUMMARY:")
+        total_data_volume = sum(f.data_volume_gb for f in findings)
+        high_confidence = len([f for f in findings if f.confidence_score >= 0.8])
+        perfect_matches = len([f for f in findings if f.match_type == 'PERFECT'])
+        
+        print("• {} high-confidence field matches identified for AO1 compliance".format(high_confidence))
+        print("• {} perfect matches requiring immediate implementation".format(perfect_matches))
+        print("• {:.1f} GB of data available across identified tables".format(total_data_volume))
+        print("• {}/8 AO1 requirements have viable field candidates".format(len(by_requirement)))
+        
+        # Detailed findings by requirement
         for req_id in ['REQ-1', 'REQ-2', 'REQ-3', 'REQ-4', 'REQ-5', 'REQ-6', 'REQ-7', 'REQ-8']:
             req_findings = by_requirement.get(req_id, [])
-            req_data = self.requirements_analyzer.requirements[req_id]
-            
-            print("\n{}".format("=" * 80))
-            print("{}: {}".format(req_id, req_data['name']))
-            print("Business Goal: {}".format(req_data['business_goal']))
-            print("=" * 80)
             
             if not req_findings:
-                print("STATUS: No suitable fields found for this requirement")
-                print("IMPACT: Cannot measure {} compliance".format(req_data['name'].split(' - ')[1].lower()))
-                print("RECOMMENDATION: Review data sources and field naming for {} data".format(req_data['purpose'].lower()))
+                req_info = self.requirements_engine.requirements[req_id]
+                print("\n{} - {}: NO FIELDS IDENTIFIED".format(req_id, req_info['name']))
+                print("   Purpose: {}".format(req_info['purpose']))
+                print("   Recommendation: Review data sources for fields like: {}".format(
+                    ', '.join(req_info['key_concepts'][:5])
+                ))
                 continue
             
-            # Categorize findings by confidence
-            very_high = [f for f in req_findings if f.confidence == 'Very High']
-            high = [f for f in req_findings if f.confidence == 'High']
-            medium = [f for f in req_findings if f.confidence == 'Medium']
+            req_info = self.requirements_engine.requirements[req_id]
+            print("\n{} - {}: {} FIELDS IDENTIFIED".format(req_id, req_info['name'], len(req_findings)))
+            print("   Purpose: {}".format(req_info['purpose']))
+            print("   Business Value: {}".format(req_info['business_value']))
             
-            print("FINDINGS SUMMARY:")
-            print("  Very High Confidence: {} fields".format(len(very_high)))
-            print("  High Confidence: {} fields".format(len(high)))
-            print("  Medium Confidence: {} fields".format(len(medium)))
+            # Show top findings
+            top_findings = sorted(req_findings, key=lambda x: x.priority_score, reverse=True)[:5]
             
-            # Show top recommendations
-            top_findings = req_findings[:5]  # Top 5 by table size
-            
-            print("\nTOP RECOMMENDED FIELDS:")
             for i, finding in enumerate(top_findings, 1):
-                rows_display = "{:,} rows".format(finding.table_rows) if finding.table_rows > 0 else "size unknown"
-                
-                print("\n{}. FIELD: '{}' in {}.{} ({})".format(i, finding.field_name, finding.dataset, finding.table, rows_display))
-                print("   CONFIDENCE: {}".format(finding.confidence))
-                print("   BUSINESS CONTEXT: {}".format(finding.business_context))
-                print("   USAGE: {}".format(finding.usage_recommendation))
-                print("   WHY RELEVANT: {}".format(finding.why_relevant))
-            
-            if len(req_findings) > 5:
-                print("\n   ... and {} additional fields available".format(len(req_findings) - 5))
+                print("\n   {}. FIELD: '{}' in {}.{}".format(i, finding.field_name, finding.dataset, finding.table))
+                print("      Data Volume: {:,} rows ({:.2f} GB)".format(finding.table_rows, finding.data_volume_gb))
+                print("      Confidence: {:.1%} | Match Type: {} | Priority: {:.2f}".format(
+                    finding.confidence_score, finding.match_type, finding.priority_score))
+                print("      Analysis: {}".format(finding.why_relevant))
+                print("      Recommendation: {}".format(finding.recommendation))
         
-        # Generate executive summary
-        print("\n{}".format("=" * 80))
-        print("EXECUTIVE SUMMARY")
-        print("=" * 80)
+        # Strategic recommendations
+        print("\nSTRATEGIC RECOMMENDATIONS:")
         
-        total_very_high = len([f for f in findings if f.confidence == 'Very High'])
-        total_high = len([f for f in findings if f.confidence == 'High'])
+        perfect_fields = [f for f in findings[:10] if f.match_type == 'PERFECT']
+        if perfect_fields:
+            print("\n1. IMMEDIATE IMPLEMENTATION:")
+            print("   Deploy these {} perfect matches immediately for AO1 compliance:".format(len(perfect_fields)))
+            for f in perfect_fields[:3]:
+                print("   • {}.{}.{} - {} coverage".format(f.dataset, f.table, f.field_name, f.requirement))
         
-        print("AO1 READINESS ASSESSMENT:")
-        print("  Requirements with Data Available: {}/8 ({:.1f}%)".format(len(by_requirement), len(by_requirement)/8*100))
-        print("  High-Quality Fields Ready for Use: {}".format(total_very_high + total_high))
-        print("  Total Usable AO1 Fields: {}".format(len(findings)))
+        high_volume_fields = sorted([f for f in findings if f.table_rows > 100000], 
+                                   key=lambda x: x.table_rows, reverse=True)[:5]
+        if high_volume_fields:
+            print("\n2. HIGH-IMPACT OPPORTUNITIES:")
+            print("   Focus on these high-volume tables for maximum visibility impact:")
+            for f in high_volume_fields:
+                print("   • {}.{} - {:,} rows of {} data".format(
+                    f.dataset, f.table, f.table_rows, f.requirement))
         
-        # Data volume analysis
-        total_rows = sum(f.table_rows for f in findings if f.table_rows > 0)
-        print("  Total Data Volume: {:,} rows across all recommended tables".format(total_rows))
-        
-        print("\nNEXT STEPS:")
-        print("1. PRIORITY: Focus on Very High and High confidence fields for immediate AO1 implementation")
-        print("2. VALIDATION: Verify data quality and completeness in recommended tables")
-        print("3. INTEGRATION: Use these fields to build AO1 visibility dashboards and reports")
-        print("4. GAPS: Address requirements with no findings through data collection improvements")
+        missing_reqs = set(['REQ-1', 'REQ-2', 'REQ-3', 'REQ-4', 'REQ-5', 'REQ-6', 'REQ-7', 'REQ-8']) - set(by_requirement.keys())
+        if missing_reqs:
+            print("\n3. COVERAGE GAPS:")
+            print("   Address these {} missing requirements:".format(len(missing_reqs)))
+            for req in sorted(missing_reqs):
+                req_info = self.requirements_engine.requirements[req]
+                print("   • {} ({}): Look for fields like {}".format(
+                    req, req_info['name'], ', '.join(req_info['key_concepts'][:3])
+                ))
     
-    def save_business_results(self, findings: List[AO1Finding]):
-        """Save results in business-friendly format"""
+    def save_perfect_results(self, findings: List[AO1Finding]):
+        """Save perfect results with paragraph summaries"""
         if not findings:
             return
         
         timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
         
-        # Create detailed DataFrame with business summaries
-        records = []
+        # Create detailed report with paragraphs
+        report_data = []
+        
         for finding in findings:
-            records.append({
-                'AO1_Requirement': finding.requirement,
-                'Requirement_Name': finding.requirement_name,
-                'Field_Name': finding.field_name,
+            # Create paragraph summary
+            paragraph_summary = self._create_paragraph_summary(finding)
+            
+            report_data.append({
+                'Requirement': finding.requirement,
+                'Requirement_Name': self.requirements_engine.requirements[finding.requirement]['name'],
                 'Dataset': finding.dataset,
                 'Table': finding.table,
+                'Field_Name': finding.field_name,
+                'Field_Path': finding.field_path,
                 'Field_Type': finding.field_type,
-                'Table_Rows': finding.table_rows,
-                'Confidence_Level': finding.confidence,
-                'Business_Summary': "{} This field supports {} and should be used for AO1 compliance measurement.".format(
-                    finding.why_relevant, finding.requirement_name.lower()
-                ),
-                'Usage_Recommendation': finding.usage_recommendation,
-                'Table_Business_Purpose': finding.table_purpose,
-                'Implementation_Priority': 'High' if finding.confidence in ['Very High', 'High'] else 'Medium',
-                'Data_Volume_Category': 'Large' if finding.table_rows > 100000 else 'Medium' if finding.table_rows > 10000 else 'Small'
+                'Match_Type': finding.match_type,
+                'Confidence_Score': f"{finding.confidence_score:.1%}",
+                'Priority_Score': f"{finding.priority_score:.2f}",
+                'Table_Rows': f"{finding.table_rows:,}",
+                'Data_Volume_GB': f"{finding.data_volume_gb:.2f}",
+                'Business_Context': finding.business_context,
+                'Why_Relevant': finding.why_relevant,
+                'Recommendation': finding.recommendation,
+                'Paragraph_Summary': paragraph_summary,
+                'Analysis_Date': timestamp
             })
         
-        df = pd.DataFrame(records)
+        # Sort by priority
+        report_data.sort(key=lambda x: float(x['Priority_Score']), reverse=True)
         
-        # Sort by business priority
-        priority_order = {'Very High': 4, 'High': 3, 'Medium': 2, 'Low': 1}
-        df['_priority_sort'] = df['Confidence_Level'].map(priority_order)
-        df = df.sort_values(['AO1_Requirement', '_priority_sort', 'Table_Rows'], ascending=[True, False, False])
-        df = df.drop('_priority_sort', axis=1)
-        
-        # Save detailed results
-        filename = "AO1_Field_Discovery_Results_{}.csv".format(timestamp)
+        # Save comprehensive report
+        df = pd.DataFrame(report_data)
+        filename = "AO1_Perfect_Field_Discovery_{}.csv".format(timestamp)
         df.to_csv(filename, index=False)
         
-        # Create executive summary
-        summary_records = []
-        by_req = df.groupby('AO1_Requirement')
-        
-        for req, group in by_req:
-            very_high = len(group[group['Confidence_Level'] == 'Very High'])
-            high = len(group[group['Confidence_Level'] == 'High'])
-            medium = len(group[group['Confidence_Level'] == 'Medium'])
-            total_rows = group['Table_Rows'].sum()
-            
-            top_field = group.iloc[0]  # Highest priority field
-            
-            summary_records.append({
-                'AO1_Requirement': req,
-                'Requirement_Name': top_field['Requirement_Name'],
-                'Fields_Found': len(group),
-                'Very_High_Confidence': very_high,
-                'High_Confidence': high,
-                'Medium_Confidence': medium,
-                'Total_Data_Rows': total_rows,
-                'Top_Recommended_Field': top_field['Field_Name'],
-                'Top_Recommended_Table': "{}.{}".format(top_field['Dataset'], top_field['Table']),
-                'Business_Impact': "Can measure {} compliance with {} high-quality fields covering {:,} rows of data.".format(
-                    top_field['Requirement_Name'].split(' - ')[1].lower(),
-                    very_high + high,
-                    total_rows
-                ),
-                'Implementation_Status': 'Ready' if very_high + high > 0 else 'Needs Review'
-            })
-        
-        summary_df = pd.DataFrame(summary_records)
-        summary_filename = "AO1_Executive_Summary_{}.csv".format(timestamp)
-        summary_df.to_csv(summary_filename, index=False)
+        # Save executive summary
+        self._save_executive_summary(findings, timestamp)
         
         print("\nRESULTS SAVED:")
-        print("  Detailed Analysis: {} ({} fields)".format(filename, len(df)))
-        print("  Executive Summary: {} ({} requirements)".format(summary_filename, len(summary_df)))
+        print("• Detailed Report: {}".format(filename))
+        print("• Executive Summary: AO1_Executive_Summary_{}.txt".format(timestamp))
+        print("• Total Records: {}".format(len(report_data)))
+    
+    def _create_paragraph_summary(self, finding: AO1Finding) -> str:
+        """Create perfect paragraph summary for each finding"""
+        req_info = self.requirements_engine.requirements[finding.requirement]
+        
+        summary = "The field '{}' in table {}.{} is {} for AO1 {} compliance. ".format(
+            finding.field_name, finding.dataset, finding.table, 
+            "highly recommended" if finding.match_type == 'PERFECT' else "recommended",
+            finding.requirement
+        )
+        
+        summary += "This field {} and supports {} measurement. ".format(
+            finding.why_relevant.lower(),
+            req_info['name']
+        )
+        
+        if finding.table_rows > 100000:
+            summary += "The table contains {:,} rows of data, providing substantial volume for visibility analysis. ".format(
+                finding.table_rows
+            )
+        elif finding.table_rows > 0:
+            summary += "The table contains {:,} rows of data. ".format(finding.table_rows)
+        
+        summary += "Business value: {} ".format(req_info['business_value'])
+        
+        summary += "Implementation guidance: {}".format(finding.recommendation)
+        
+        return summary
+    
+    def _save_executive_summary(self, findings: List[AO1Finding], timestamp: str):
+        """Save executive summary report"""
+        filename = "AO1_Executive_Summary_{}.txt".format(timestamp)
+        
+        with open(filename, 'w') as f:
+            f.write("AO1 FIELD DISCOVERY EXECUTIVE SUMMARY\n")
+            f.write("=" * 50 + "\n")
+            f.write("Analysis Date: {}\n\n".format(datetime.now().strftime('%Y-%m-%d %H:%M:%S')))
+            
+            # Key metrics
+            by_req = defaultdict(list)
+            for finding in findings:
+                by_req[finding.requirement].append(finding)
+            
+            f.write("KEY FINDINGS:\n")
+            f.write("• Total AO1-relevant fields identified: {}\n".format(len(findings)))
+            f.write("• Requirements with field coverage: {}/8\n".format(len(by_req)))
+            f.write("• High-confidence matches: {}\n".format(len([f for f in findings if f.confidence_score >= 0.8])))
+            f.write("• Perfect matches for immediate use: {}\n".format(len([f for f in findings if f.match_type == 'PERFECT'])))
+            f.write("• Total data volume available: {:.1f} GB\n\n".format(sum(f.data_volume_gb for f in findings)))
+            
+            # Top recommendations
+            f.write("TOP RECOMMENDATIONS:\n")
+            top_5 = sorted(findings, key=lambda x: x.priority_score, reverse=True)[:5]
+            for i, finding in enumerate(top_5, 1):
+                f.write("{}. {}.{}.{} - {} ({:.1%} confidence)\n".format(
+                    i, finding.dataset, finding.table, finding.field_name, 
+                    finding.requirement, finding.confidence_score
+                ))
+            
+            f.write("\nNEXT STEPS:\n")
+            f.write("1. Implement perfect matches immediately\n")
+            f.write("2. Validate high-confidence candidates\n")
+            f.write("3. Address coverage gaps for missing requirements\n")
+            f.write("4. Focus on high-volume tables for maximum impact\n")
 
 def main():
-    """Main execution"""
-    print("PERFECT AO1 FIELD DISCOVERY SYSTEM")
-    print("Business-Focused BigQuery Analysis")
-    print("Finding the exact fields you need for AO1 compliance")
-    print("=" * 60)
-    
+    """Perfect main execution"""
     try:
-        analyzer = PerfectAO1Analyzer()
+        discovery = PerfectAO1Discovery()
+        findings = discovery.discover_perfect_ao1_fields()
+        discovery.generate_perfect_report(findings)
+        discovery.save_perfect_results(findings)
         
-        # Scan for AO1 fields
-        findings = analyzer.scan_for_ao1_fields()
-        
-        # Generate business report
-        analyzer.generate_business_report(findings)
-        
-        # Save business-friendly results
-        analyzer.save_business_results(findings)
-        
-        if findings:
-            print("\nSUCCESS: AO1 field discovery complete!")
-            print("Use the generated CSV files to implement your AO1 compliance measurement.")
-        else:
-            print("\nATTENTION: No AO1 fields found.")
-            print("Consider reviewing data ingestion and field naming conventions.")
+        print("\nPERFECT AO1 DISCOVERY COMPLETE!")
+        print("Review the generated reports for detailed implementation guidance.")
         
     except KeyboardInterrupt:
-        print("\nScan interrupted by user")
+        print("\nDiscovery interrupted by user")
     except Exception as e:
         print("\nError: {}".format(e))
 
