@@ -39,7 +39,9 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from functools import lru_cache, wraps
 import threading
 
-# Configure enterprise logging
+# Set up logging exactly like the original script
+file_path = os.path.join(os.path.dirname(__file__))
+settings = {}
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
@@ -2030,10 +2032,10 @@ class AO1FieldAnalyzer:
 
 
 def authenticate_bigquery():
-    """Authenticate with BigQuery using service account - EXACT COPY from original script"""
-    file_path = os.path.join(os.path.dirname(__file__))
+    """Authenticate with BigQuery using service account"""
     SERVICE_ACCOUNT_FILE = os.path.join(file_path, "gcp_prod_key.json")
     credentials = service_account.Credentials.from_service_account_file(SERVICE_ACCOUNT_FILE)
+    settings['KATANA_PG'] = {'client_encoding': 'utf8'}
     project = "prj-fisv-p-gcss-sas-d19dd0f1df"
     client = bigquery.Client(project=project, credentials=credentials)
     logger.info("Successfully authenticated with BigQuery for AO1 exploration")
