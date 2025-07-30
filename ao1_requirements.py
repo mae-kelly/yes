@@ -1,824 +1,374 @@
 """
-AO1 Log Visibility Measurement - Keywords Dictionary for Metrics Calculation
+AO1 Keywords: Complete Classification System for Security & IT Asset Management
+EXACT MATCHES ONLY - No loose associations
 
-This dictionary explains WHY each keyword matters for AO1 visibility metrics calculation.
-Each keyword is mapped to specific measurements and explains HOW finding it in BigQuery 
-helps calculate the visibility percentages CSOC needs for the AO1 project.
-
-CORRECT AO1 REQUIREMENTS:
-REQ-1: Global View - x% of all assets globally (CMDB count vs logging assets count)
-REQ-2: Infrastructure Type - % visibility by host/log type across infrastructure types (On-Prem, Cloud, SaaS, API)
-REQ-3: Regional and Country View - % visibility by location (Global Region, Country, Data Center, Cloud region)
-REQ-4: BU and Application View - % visibility by business context (Business Unit, CIO, APM, Application Class)
-REQ-5: System Classification - % by server function (Web Server, Windows Server, Linux Server, *Nix, Mainframe, Database, Network Appliance)
-REQ-6: Security Control Coverage - Agent-based visibility % (EDR, Tanium, DLP coverage via Axonius or console stats)
-REQ-7: Logging Compliance in GSO and Splunk - Ensure visibility statements based on logging platform
+Requirements Coverage:
+REQ-1: Global View - Asset identifiers for counting unique logging assets vs CMDB
+REQ-2: Infrastructure Type - Exact deployment model classification  
+REQ-3: Regional/Country View - Geographic location classification
+REQ-4: Business/Application View - Organizational classification
+REQ-5: System Classification - Server function and OS type classification
+REQ-6: Security Control Coverage - Agent presence for coverage measurement
+REQ-7: Logging Compliance - GSO (Chronicle) and Splunk platform compliance
 REQ-8: Domain Visibility - Asset visibility by hostname and domain
-
-Author: [Your Name]
-Date: [Date]
-Version: 10.0 - Correct Requirements Mapping
 """
 
-# KEYWORDS ORGANIZED BY CORRECT AO1 REQUIREMENTS
-AO1_REQUIREMENTS_KEYWORDS = {
-
-    # ==================== REQ-1: GLOBAL VIEW KEYWORDS ====================
-    # PURPOSE: Count unique assets generating logs vs total assets in CMDB for "x% of all assets globally"
-    # VENDORS: ServiceNow CMDB, Axonius, Chronicle, Splunk, ALL log sources
+# REQ-1: GLOBAL VIEW - Asset identifiers for counting unique logging assets vs CMDB
+REQ1_GLOBAL_VIEW_KEYWORDS = {
+    # Hostname identifiers
+    'hostname', 'host_name', 'computer_name', 'machine_name', 'device_name', 'system_name', 
+    'server_name', 'node_name', 'endpoint_name', 'asset_name', 'workstation_name', 'client_name', 'pc_name',
     
-    'req1_global_view_identifiers': {
-        'requirement': 'REQ-1: Global View - x% of all assets globally',
-        'vendors': ['servicenow', 'axonius', 'chronicle', 'splunk', 'all_log_sources'],
-        'calculation': 'COUNT DISTINCT logging assets / COUNT total CMDB assets * 100 = Global Visibility %',
-        'keywords': {
-            # Primary asset identifiers for global counting
-            'hostname': 'REQ-1 GLOBAL - Primary asset identifier. COUNT DISTINCT hostnames across all log sources vs total CMDB hostnames for global visibility %.',
-            'computer_name': 'REQ-1 GLOBAL - Windows asset identifier. Count unique Windows systems generating logs vs CMDB Windows inventory.',
-            'asset_id': 'REQ-1 GLOBAL - ServiceNow asset ID. Direct CMDB asset correlation for precise global asset counting.',
-            'sys_id': 'REQ-1 GLOBAL - ServiceNow system ID. Unique CMDB identifier for global asset inventory correlation.',
-            'device_id': 'REQ-1 GLOBAL - Axonius device ID. Unique device identifier for cybersecurity asset management counting.',
-            'machine_id': 'REQ-1 GLOBAL - Generic machine identifier. Universal asset ID for global asset deduplication.',
-            'serial_number': 'REQ-1 GLOBAL - Hardware serial number. Physical asset identifier for global hardware inventory correlation.',
-            'uuid': 'REQ-1 GLOBAL - Universally unique identifier. VM/cloud instance identifier for global virtual asset counting.',
-            'fqdn': 'REQ-1 GLOBAL - Fully qualified domain name. Complete hostname for global DNS-based asset identification.',
-            'ip_address': 'REQ-1 GLOBAL - Network identifier. IP-based asset identification when hostname unavailable for global counting.',
-            'mac_address': 'REQ-1 GLOBAL - Hardware network identifier. Physical network asset identification for global inventory.',
-            
-            # CMDB-specific global identifiers (ServiceNow)
-            'cmdb_ci': 'REQ-1 GLOBAL - ServiceNow configuration item. CMDB asset record for global inventory baseline counting.',
-            'ci_name': 'REQ-1 GLOBAL - ServiceNow CI name. CMDB asset name for global asset correlation and counting.',
-            'operational_status': 'REQ-1 GLOBAL - ServiceNow operational status. Active CMDB assets for global active asset counting.',
-            'discovery_source': 'REQ-1 GLOBAL - ServiceNow discovery source. Asset discovery method for global asset discovery tracking.',
-            
-            # Axonius global asset identifiers
-            'unique_id': 'REQ-1 GLOBAL - Axonius unique identifier. Cybersecurity asset management unique ID for global counting.',
-            'last_seen': 'REQ-1 GLOBAL - Axonius last seen timestamp. Active asset indicator for global active asset counting.',
-            'data_source': 'REQ-1 GLOBAL - Axonius data source. Asset data source for global asset source diversity counting.',
-            
-            # Chronicle/Splunk global log source identifiers
-            'host': 'REQ-1 GLOBAL - Chronicle/Splunk host field. Log source system for global logging asset counting.',
-            'source': 'REQ-1 GLOBAL - Splunk source field. Log file source for global log source counting.',
-            'metadata.collected_timestamp': 'REQ-1 GLOBAL - Chronicle collection timestamp. Log collection indicator for global log timing.',
-            'aid': 'REQ-1 GLOBAL - CrowdStrike Agent ID. EDR asset identifier for global endpoint security asset counting.'
-        }
-    },
-
-    # ==================== REQ-2: INFRASTRUCTURE TYPE KEYWORDS ====================
-    # PURPOSE: Classify assets by infrastructure type (On-Prem, Cloud, SaaS, API) for type-based visibility %
-    # VENDORS: AWS, F5 BIG-IP, Wiz.io, Office365, API platforms
+    # Asset IDs
+    'asset_id', 'sys_id', 'device_id', 'machine_id', 'computer_id', 'endpoint_id', 'node_id', 
+    'host_id', 'system_id', 'unique_id', 'ci_name', 'cmdb_ci',
     
-    'req2_infrastructure_type_classifiers': {
-        'requirement': 'REQ-2: Infrastructure Type - % visibility by host/log type across infrastructure types',
-        'vendors': ['aws', 'f5_bigip', 'wiz', 'office365', 'api_platforms'],
-        'calculation': 'GROUP BY infrastructure type, COUNT assets per type for type-specific visibility %',
-        'keywords': {
-            # On-Premises infrastructure indicators
-            'on_premises': 'REQ-2 ON-PREM - On-premises deployment indicator. Classify assets as On-Prem infrastructure type for visibility %.',
-            'datacenter': 'REQ-2 ON-PREM - Physical data center indicator. On-premises facility classification for infrastructure type counting.',
-            'physical_server': 'REQ-2 ON-PREM - Physical server indicator. Bare metal infrastructure classification for On-Prem type visibility.',
-            'f5_bigip': 'REQ-2 ON-PREM - F5 BIG-IP indicator. On-premises network infrastructure for On-Prem classification.',
-            'ltm': 'REQ-2 ON-PREM - F5 Local Traffic Manager. On-premises load balancer for On-Prem infrastructure counting.',
-            'facility': 'REQ-2 ON-PREM - Physical facility indicator. On-premises location classification for infrastructure type.',
-            'rack': 'REQ-2 ON-PREM - Server rack location. Physical infrastructure indicator for On-Prem classification.',
-            
-            # Cloud infrastructure indicators  
-            'cloud': 'REQ-2 CLOUD - Cloud deployment indicator. Classify assets as Cloud infrastructure type for visibility %.',
-            'aws': 'REQ-2 CLOUD - Amazon Web Services indicator. AWS cloud platform classification for Cloud type visibility.',
-            'azure': 'REQ-2 CLOUD - Microsoft Azure indicator. Azure cloud platform classification for Cloud infrastructure counting.',
-            'gcp': 'REQ-2 CLOUD - Google Cloud Platform indicator. GCP cloud classification for Cloud type visibility.',
-            'ec2': 'REQ-2 CLOUD - AWS EC2 instance indicator. Cloud compute classification for Cloud infrastructure counting.',
-            'virtual_machine': 'REQ-2 CLOUD - Virtual machine indicator. Cloud VM classification for Cloud type visibility.',
-            'container': 'REQ-2 CLOUD - Container deployment indicator. Cloud container classification for Cloud infrastructure counting.',
-            'serverless': 'REQ-2 CLOUD - Serverless deployment indicator. Cloud function classification for Cloud type visibility.',
-            'cloud_provider': 'REQ-2 CLOUD - Wiz cloud provider field. Cloud platform classification for Cloud infrastructure counting.',
-            'subscription_id': 'REQ-2 CLOUD - Cloud subscription identifier. Cloud account classification for Cloud type visibility.',
-            
-            # SaaS application indicators
-            'saas': 'REQ-2 SAAS - Software-as-a-Service indicator. Classify applications as SaaS infrastructure type for visibility %.',
-            'office365': 'REQ-2 SAAS - Microsoft Office 365 indicator. SaaS platform classification for SaaS type visibility.',
-            'workday': 'REQ-2 SAAS - Workday platform indicator. SaaS application classification for SaaS infrastructure counting.',
-            'salesforce': 'REQ-2 SAAS - Salesforce platform indicator. SaaS CRM classification for SaaS type visibility.',
-            'servicenow': 'REQ-2 SAAS - ServiceNow platform indicator. SaaS ITSM classification for SaaS infrastructure counting.',
-            'application_type': 'REQ-2 SAAS - Application type field from CMDB. SaaS classification for SaaS type visibility.',
-            'software_as_a_service': 'REQ-2 SAAS - SaaS deployment model. Direct SaaS classification for SaaS infrastructure counting.',
-            
-            # API infrastructure indicators
-            'api': 'REQ-2 API - API infrastructure indicator. Classify systems as API infrastructure type for visibility %.',
-            'api_gateway': 'REQ-2 API - API Gateway indicator. API management platform classification for API type visibility.',
-            'rest_api': 'REQ-2 API - REST API indicator. RESTful service classification for API infrastructure counting.',
-            'graphql': 'REQ-2 API - GraphQL API indicator. GraphQL service classification for API type visibility.',
-            'microservice': 'REQ-2 API - Microservice indicator. Service architecture classification for API infrastructure counting.',
-            'webhook': 'REQ-2 API - Webhook indicator. Event-driven API classification for API type visibility.',
-            'integration': 'REQ-2 API - Integration platform indicator. API integration classification for API infrastructure counting.'
-        }
-    },
-
-    # ==================== REQ-3: REGIONAL AND COUNTRY VIEW KEYWORDS ====================
-    # PURPOSE: Map assets to geographic locations for regional visibility %
-    # VENDORS: ServiceNow CMDB, AWS regions, Chronicle/Splunk, all systems with location data
+    # Hardware identifiers
+    'serial_number', 'serial_no', 'sn', 'uuid', 'guid', 'hardware_id', 'hw_id',
     
-    'req3_regional_country_classifiers': {
-        'requirement': 'REQ-3: Regional and Country View - % visibility by location',
-        'vendors': ['servicenow', 'aws', 'chronicle', 'splunk', 'all_location_sources'],
-        'calculation': 'GROUP BY geographic location, COUNT assets per region/country for location-based visibility %',
-        'keywords': {
-            # Global Region classification
-            'global_region': 'REQ-3 REGION - Global region classifier. Top-level geographic grouping for regional visibility % calculation.',
-            'region': 'REQ-3 REGION - Regional location field. Geographic region classification for regional asset counting.',
-            'americas': 'REQ-3 REGION - Americas region indicator. Major geographic region for Americas visibility measurement.',
-            'emea': 'REQ-3 REGION - EMEA region indicator. Europe/Middle East/Africa region for EMEA visibility counting.',
-            'asia_pacific': 'REQ-3 REGION - APAC region indicator. Asia Pacific region for APAC visibility measurement.',
-            'awsregion': 'REQ-3 REGION - AWS region field. Cloud geographic region for cloud regional visibility counting.',
-            
-            # Country classification
-            'country': 'REQ-3 COUNTRY - Country location field. National-level geographic classification for country visibility %.',
-            'country_code': 'REQ-3 COUNTRY - ISO country code. Standardized country identifier for country-level asset counting.',
-            'united_states': 'REQ-3 COUNTRY - United States indicator. US country classification for US visibility measurement.',
-            'canada': 'REQ-3 COUNTRY - Canada indicator. Canadian country classification for Canada visibility counting.',
-            'united_kingdom': 'REQ-3 COUNTRY - UK indicator. UK country classification for UK visibility measurement.',
-            'germany': 'REQ-3 COUNTRY - Germany indicator. German country classification for Germany visibility counting.',
-            'sourceipaddress': 'REQ-3 COUNTRY - Source IP for geolocation. IP-based geographic classification for country visibility.',
-            
-            # Data Center classification
-            'data_center': 'REQ-3 DATACENTER - Data center location field. Physical facility classification for data center visibility %.',
-            'datacenter': 'REQ-3 DATACENTER - Data center identifier. Facility location for data center visibility counting.',
-            'facility': 'REQ-3 DATACENTER - Physical facility field. Building location for facility-based visibility measurement.',
-            'site': 'REQ-3 DATACENTER - Site location field. Physical site classification for site visibility counting.',
-            'location': 'REQ-3 DATACENTER - ServiceNow location field. Asset location for location-based visibility measurement.',
-            'building': 'REQ-3 DATACENTER - Building location field. Physical building for building-level visibility counting.',
-            
-            # Cloud Region classification
-            'cloud_region': 'REQ-3 CLOUDREGION - Cloud provider region field. Cloud geographic region for cloud regional visibility %.',
-            'availability_zone': 'REQ-3 CLOUDREGION - Cloud availability zone. Sub-regional cloud classification for zone visibility counting.',
-            'edge_location': 'REQ-3 CLOUDREGION - CDN edge location. Content delivery geographic point for edge visibility measurement.',
-            'aws_region': 'REQ-3 CLOUDREGION - AWS region identifier. Amazon cloud region for AWS regional visibility counting.'
-        }
-    },
-
-    # ==================== REQ-4: BU AND APPLICATION VIEW KEYWORDS ====================
-    # PURPOSE: Map assets to business context for organizational visibility %
-    # VENDORS: ServiceNow, Workday, application-specific logs, business context in all tools
+    # Network identifiers
+    'fqdn', 'fully_qualified_domain_name', 'dns_name', 'canonical_name', 'cname',
+    'ip_address', 'ip_addr', 'ipv4', 'ipv6', 'inet_addr', 'network_address', 'host_address',
+    'mac_address', 'physical_address', 'ethernet_address',
     
-    'req4_business_application_classifiers': {
-        'requirement': 'REQ-4: BU and Application View - Business Unit, CIO, APM, Application Class',
-        'vendors': ['servicenow', 'workday', 'application_logs', 'business_context_all_tools'],
-        'calculation': 'GROUP BY business unit/application, COUNT assets per BU/app for organizational visibility %',
-        'keywords': {
-            # Business Unit classification
-            'business_unit': 'REQ-4 BU - Business unit field. Primary organizational classification for BU-level visibility % calculation.',
-            'bu': 'REQ-4 BU - Business unit abbreviation. Organizational unit identifier for business unit visibility counting.',
-            'division': 'REQ-4 BU - Business division field. Major organizational unit for divisional visibility measurement.',
-            'department': 'REQ-4 BU - Department field. Departmental classification for department-level visibility counting.',
-            'cost_center': 'REQ-4 BU - Cost center field. Financial organizational unit for cost center visibility measurement.',
-            'business_service': 'REQ-4 BU - ServiceNow business service. Service-to-BU mapping for business service visibility counting.',
-            'support_group': 'REQ-4 BU - ServiceNow support group. Asset ownership for organizational visibility measurement.',
-            
-            # CIO organization classification
-            'cio': 'REQ-4 CIO - CIO organization field. IT leadership classification for CIO organization visibility % calculation.',
-            'it_organization': 'REQ-4 CIO - IT organization unit. Technology organization for IT organizational visibility counting.',
-            'technology': 'REQ-4 CIO - Technology organization field. IT department classification for technology visibility measurement.',
-            'information_systems': 'REQ-4 CIO - Information systems unit. IT systems organization for IS visibility counting.',
-            'engineering': 'REQ-4 CIO - Engineering organization field. Technical development unit for engineering visibility measurement.',
-            'infrastructure': 'REQ-4 CIO - Infrastructure organization. IT infrastructure unit for infrastructure visibility counting.',
-            'security': 'REQ-4 CIO - Security organization field. Cybersecurity unit for security organization visibility measurement.',
-            
-            # APM (Application Performance Management) classification
-            'apm': 'REQ-4 APM - Application Performance Management field. APM classification for APM visibility % calculation.',
-            'application': 'REQ-4 APM - Application identifier. Primary application classification for application visibility counting.',
-            'app_name': 'REQ-4 APM - Application name field. Application identifier for application visibility measurement.',
-            'service': 'REQ-4 APM - Service identifier. Service-level classification for service visibility counting.',
-            'platform': 'REQ-4 APM - Platform identifier. Platform classification for platform visibility measurement.',
-            'workload': 'REQ-4 APM - Workload identifier. Application workload for workload visibility counting.',
-            'solution': 'REQ-4 APM - Solution identifier. Solution-level classification for solution visibility measurement.',
-            
-            # Application Class classification
-            'application_class': 'REQ-4 APPCLASS - Application class field. Application category classification for app class visibility % calculation.',
-            'app_class': 'REQ-4 APPCLASS - Application class abbreviation. App category for application class visibility counting.',
-            'application_type': 'REQ-4 APPCLASS - Application type field. App type classification for type-based visibility measurement.',
-            'service_class': 'REQ-4 APPCLASS - Service class field. Service category for service class visibility counting.',
-            'tier': 'REQ-4 APPCLASS - Application tier field. App tier (web/app/data) for tier-based visibility measurement.',
-            'component': 'REQ-4 APPCLASS - Application component field. App component for component visibility counting.'
-        }
-    },
-
-    # ==================== REQ-5: SYSTEM CLASSIFICATION KEYWORDS ====================
-    # PURPOSE: Classify assets by server function/OS type for system-type visibility %
-    # VENDORS: All OS/platform indicators across all tools, ServiceNow CMDB, Axonius
+    # Security agent identifiers
+    'aid', 'agent_id', 'sensor_id', 'cid', 'detection_id', 'incident_id', 'falcon_host_link',
     
-    'req5_system_classification': {
-        'requirement': 'REQ-5: System Classification - Web Server, Windows Server, Linux Server, *Nix, Mainframe, Database, Network Appliance',
-        'vendors': ['all_os_platforms', 'servicenow', 'axonius'],
-        'calculation': 'GROUP BY system type/function, COUNT assets per system classification for system-specific visibility %',
-        'keywords': {
-            # Web Server classification
-            'web_server': 'REQ-5 WEBSERVER - Web server function classification. Web infrastructure for Web Server visibility % calculation.',
-            'http_server': 'REQ-5 WEBSERVER - HTTP server function. Web service classification for web server visibility counting.',
-            'apache': 'REQ-5 WEBSERVER - Apache web server indicator. Apache web server for Apache visibility measurement.',
-            'nginx': 'REQ-5 WEBSERVER - Nginx web server indicator. Nginx web server for Nginx visibility counting.',
-            'iis': 'REQ-5 WEBSERVER - IIS web server indicator. Microsoft IIS for Windows web server visibility measurement.',
-            'tomcat': 'REQ-5 WEBSERVER - Tomcat application server. Java web server for Tomcat visibility counting.',
-            'web_application': 'REQ-5 WEBSERVER - Web application indicator. Web app classification for web application visibility measurement.',
-            
-            # Windows Server classification
-            'windows_server': 'REQ-5 WINDOWS - Windows server classification. Windows infrastructure for Windows Server visibility % calculation.',
-            'windows': 'REQ-5 WINDOWS - Windows OS indicator. Microsoft Windows for Windows system visibility counting.',
-            'microsoft_windows': 'REQ-5 WINDOWS - Microsoft Windows OS. Full Windows identifier for Windows visibility measurement.',
-            'domain_controller': 'REQ-5 WINDOWS - Windows domain controller. AD server for Windows infrastructure visibility counting.',
-            'active_directory': 'REQ-5 WINDOWS - Active Directory service. Windows directory service for AD visibility measurement.',
-            'exchange': 'REQ-5 WINDOWS - Exchange mail server. Microsoft mail server for Windows mail visibility counting.',
-            'windows_2019': 'REQ-5 WINDOWS - Windows Server 2019. Specific Windows version for Windows 2019 visibility measurement.',
-            'windows_2022': 'REQ-5 WINDOWS - Windows Server 2022. Latest Windows server for Windows 2022 visibility counting.',
-            
-            # Linux Server classification
-            'linux_server': 'REQ-5 LINUX - Linux server classification. Linux infrastructure for Linux Server visibility % calculation.',
-            'linux': 'REQ-5 LINUX - Linux OS indicator. Linux operating system for Linux system visibility counting.',
-            'redhat': 'REQ-5 LINUX - Red Hat Linux indicator. RHEL distribution for Red Hat visibility measurement.',
-            'rhel': 'REQ-5 LINUX - Red Hat Enterprise Linux. Enterprise Linux for RHEL visibility counting.',
-            'centos': 'REQ-5 LINUX - CentOS Linux indicator. CentOS distribution for CentOS visibility measurement.',
-            'ubuntu': 'REQ-5 LINUX - Ubuntu Linux indicator. Ubuntu distribution for Ubuntu visibility counting.',
-            'debian': 'REQ-5 LINUX - Debian Linux indicator. Debian distribution for Debian visibility measurement.',
-            'suse': 'REQ-5 LINUX - SUSE Linux indicator. SUSE distribution for SUSE visibility counting.',
-            
-            # *Nix (AIX, Solaris, etc) classification
-            'unix': 'REQ-5 NIX - Unix system classification. Unix OS for *Nix (AIX, Solaris, etc) visibility % calculation.',
-            'aix': 'REQ-5 NIX - IBM AIX Unix indicator. AIX system for AIX visibility counting.',
-            'solaris': 'REQ-5 NIX - Oracle Solaris Unix. Solaris system for Solaris visibility measurement.',
-            'hp_ux': 'REQ-5 NIX - HP-UX Unix indicator. HP Unix for HP-UX visibility counting.',
-            'freebsd': 'REQ-5 NIX - FreeBSD Unix indicator. BSD variant for FreeBSD visibility measurement.',
-            'sunos': 'REQ-5 NIX - SunOS Unix indicator. Legacy Sun Unix for SunOS visibility counting.',
-            'digital_unix': 'REQ-5 NIX - Digital Unix indicator. Legacy Unix for Digital Unix visibility measurement.',
-            
-            # Mainframe classification (Splunk only - no Chronicle migration)
-            'mainframe': 'REQ-5 MAINFRAME - Mainframe system classification. Mainframe infrastructure for Mainframe visibility % (Splunk only).',
-            'zos': 'REQ-5 MAINFRAME - z/OS mainframe OS. IBM mainframe for z/OS visibility counting (Splunk only).',
-            'mvs': 'REQ-5 MAINFRAME - MVS mainframe OS. Legacy mainframe for MVS visibility measurement (Splunk only).',
-            'cics': 'REQ-5 MAINFRAME - CICS transaction system. Mainframe transaction processing for CICS visibility counting (Splunk only).',
-            'ims': 'REQ-5 MAINFRAME - IMS database system. Mainframe database for IMS visibility measurement (Splunk only).',
-            'cobol': 'REQ-5 MAINFRAME - COBOL application indicator. Mainframe programming for COBOL visibility counting (Splunk only).',
-            
-            # Database classification
-            'database': 'REQ-5 DATABASE - Database server classification. Database infrastructure for Database visibility % calculation.',
-            'database_server': 'REQ-5 DATABASE - Database server function. Database server role for database visibility counting.',
-            'sql_server': 'REQ-5 DATABASE - Microsoft SQL Server. Microsoft database for SQL Server visibility measurement.',
-            'oracle_database': 'REQ-5 DATABASE - Oracle Database indicator. Oracle database for Oracle visibility counting.',
-            'mysql': 'REQ-5 DATABASE - MySQL database indicator. MySQL database for MySQL visibility measurement.',
-            'postgresql': 'REQ-5 DATABASE - PostgreSQL database. PostgreSQL for PostgreSQL visibility counting.',
-            'mongodb': 'REQ-5 DATABASE - MongoDB database indicator. NoSQL database for MongoDB visibility measurement.',
-            'db_engine': 'REQ-5 DATABASE - Database engine type. Database technology for database engine visibility counting.',
-            
-            # Network Appliance classification (FW, NDR, switch, router, etc)
-            'network_appliance': 'REQ-5 NETAPPL - Network appliance classification. Network infrastructure for Network Appliance visibility % calculation.',
-            'firewall': 'REQ-5 NETAPPL - Firewall appliance indicator. Security appliance for firewall visibility counting.',
-            'router': 'REQ-5 NETAPPL - Network router indicator. Routing appliance for router visibility measurement.',
-            'switch': 'REQ-5 NETAPPL - Network switch indicator. Switching appliance for switch visibility counting.',
-            'load_balancer': 'REQ-5 NETAPPL - Load balancer appliance. Load balancing for load balancer visibility measurement.',
-            'proxy': 'REQ-5 NETAPPL - Proxy appliance indicator. Proxy infrastructure for proxy visibility counting.',
-            'ndr': 'REQ-5 NETAPPL - Network Detection & Response. NDR appliance for NDR visibility measurement.',
-            'extrahop': 'REQ-5 NETAPPL - ExtraHop NDR platform. NDR system for ExtraHop visibility counting.',
-            'f5_bigip': 'REQ-5 NETAPPL - F5 BIG-IP appliance. Network appliance for F5 visibility measurement.',
-            'palo_alto': 'REQ-5 NETAPPL - Palo Alto firewall. Security appliance for Palo Alto visibility counting.'
-        }
-    },
-
-    # ==================== REQ-6: SECURITY CONTROL COVERAGE KEYWORDS ====================
-    # PURPOSE: Identify security agent presence for agent-based coverage % (via Axonius or console stats)
-    # VENDORS: CrowdStrike Falcon, Tanium, Axonius, DLP tools
+    # Logging identifiers
+    'host', 'source', 'log_source', 'data_source', 'event_source',
     
-    'req6_security_control_coverage': {
-        'requirement': 'REQ-6: Security Control Coverage - EDR, Tanium, DLP Agent (agent-based via Axonius or console stats)',
-        'vendors': ['crowdstrike', 'tanium', 'axonius', 'dlp_tools'],
-        'calculation': 'COUNT assets with security agents / COUNT total CMDB assets for agent coverage %',
-        'keywords': {
-            # EDR coverage (Axonius or console stats)
-            'edr': 'REQ-6 EDR - EDR agent coverage indicator. Endpoint Detection Response for EDR coverage % via Axonius or console stats.',
-            'crowdstrike': 'REQ-6 EDR - CrowdStrike Falcon EDR. Primary EDR platform for EDR agent coverage measurement via Axonius.',
-            'falcon': 'REQ-6 EDR - CrowdStrike Falcon agent. EDR agent presence for Falcon coverage counting via console stats.',
-            'aid': 'REQ-6 EDR - CrowdStrike Agent ID. Unique EDR agent identifier for precise EDR coverage calculation via Axonius.',
-            'sensor_id': 'REQ-6 EDR - EDR sensor identifier. EDR agent sensor for endpoint security coverage via console stats.',
-            'agent_version': 'REQ-6 EDR - EDR agent version. Agent deployment status for EDR coverage measurement via Axonius.',
-            'endpoint_detection': 'REQ-6 EDR - Endpoint detection capability. EDR functionality for endpoint security coverage via console stats.',
-            'detection_id': 'REQ-6 EDR - EDR detection event. EDR activity indicator for active EDR coverage via Axonius.',
-            
-            # Tanium coverage (Axonius or console stats)  
-            'tanium': 'REQ-6 TANIUM - Tanium agent coverage indicator. Endpoint management platform for Tanium coverage % via Axonius or console stats.',
-            'tanium_client': 'REQ-6 TANIUM - Tanium client agent. Endpoint agent presence for Tanium coverage counting via console stats.',
-            'computer_id': 'REQ-6 TANIUM - Tanium computer ID. Unique endpoint identifier for Tanium coverage calculation via Axonius.',
-            'sensor': 'REQ-6 TANIUM - Tanium sensor. Endpoint monitoring capability for Tanium sensor coverage via console stats.',
-            'endpoint_management': 'REQ-6 TANIUM - Endpoint management capability. Tanium functionality for endpoint management coverage via Axonius.',
-            'patch_management': 'REQ-6 TANIUM - Patch management capability. Tanium patching for patch management coverage via console stats.',
-            'compliance_monitoring': 'REQ-6 TANIUM - Compliance monitoring capability. Tanium compliance for compliance coverage via Axonius.',
-            
-            # DLP Agent coverage (Axonius or console stats)
-            'dlp': 'REQ-6 DLP - DLP agent coverage indicator. Data Loss Prevention for DLP Agent coverage % via Axonius or console stats.',
-            'dlp_agent': 'REQ-6 DLP - DLP agent identifier. Data protection agent for DLP agent coverage counting via console stats.',
-            'data_loss_prevention': 'REQ-6 DLP - Data Loss Prevention system. DLP platform for data protection coverage via Axonius.',
-            'endpoint_dlp': 'REQ-6 DLP - Endpoint DLP agent. Endpoint data protection for endpoint DLP coverage via console stats.',
-            'content_inspection': 'REQ-6 DLP - Content inspection capability. DLP analysis for data inspection coverage via Axonius.',
-            'policy_violation': 'REQ-6 DLP - DLP policy violation. DLP enforcement activity for DLP coverage measurement via console stats.',
-            
-            # Axonius coverage statistics
-            'axonius': 'REQ-6 AXONIUS - Axonius asset platform. Cybersecurity asset management for agent coverage statistics aggregation.',
-            'installed_software': 'REQ-6 AXONIUS - Axonius installed software. Software inventory for security agent presence detection via Axonius.',
-            'security_software': 'REQ-6 AXONIUS - Axonius security software. Security agent inventory for security control coverage via Axonius.',
-            'agent_coverage': 'REQ-6 AXONIUS - Axonius agent coverage. Security agent coverage statistics for coverage % calculation via Axonius.',
-            'endpoint_protection': 'REQ-6 AXONIUS - Axonius endpoint protection. Endpoint security coverage for security control measurement via Axonius.',
-            
-            # Console stats indicators
-            'console_stats': 'REQ-6 CONSOLE - Security console statistics. Agent management console for coverage statistics collection.',
-            'agent_status': 'REQ-6 CONSOLE - Agent status indicator. Security agent status for coverage measurement via console stats.',
-            'deployment_status': 'REQ-6 CONSOLE - Agent deployment status. Agent installation status for deployment coverage via console stats.',
-            'management_console': 'REQ-6 CONSOLE - Agent management console. Security platform console for agent coverage statistics.'
-        }
-    },
-
-    # ==================== REQ-7: LOGGING COMPLIANCE GSO AND SPLUNK KEYWORDS ====================
-    # PURPOSE: Ensure visibility statements based on logging platform compliance
-    # VENDORS: Chronicle (GSO), Splunk
-    
-    'req7_logging_compliance': {
-        'requirement': 'REQ-7: Logging Compliance in GSO and Splunk - Ensure visibility statements based on logging platform',
-        'vendors': ['chronicle_gso', 'splunk'],
-        'calculation': 'MEASURE logging compliance and visibility statement accuracy per platform',
-        'keywords': {
-            # Chronicle (GSO) compliance indicators
-            'chronicle': 'REQ-7 GSO - Google Chronicle SIEM platform. Primary SIEM for GSO logging compliance measurement.',
-            'gso': 'REQ-7 GSO - Google Security Operations. Chronicle platform for GSO visibility compliance tracking.',
-            'google_chronicle': 'REQ-7 GSO - Google Chronicle platform. Security operations platform for Chronicle compliance measurement.',
-            'udm': 'REQ-7 GSO - Chronicle Unified Data Model. Normalized data model for GSO data standardization compliance.',
-            'detection_engine': 'REQ-7 GSO - Chronicle detection engine. Security detection platform for GSO detection compliance.',
-            'yara_l': 'REQ-7 GSO - Chronicle YARA-L rules. Detection rule language for GSO rule compliance measurement.',
-            'ingestion_time': 'REQ-7 GSO - Chronicle ingestion timestamp. Log ingestion timing for GSO ingestion compliance.',
-            'metadata.collected_timestamp': 'REQ-7 GSO - Chronicle collection metadata. Log collection tracking for GSO collection compliance.',
-            'metadata.event_timestamp': 'REQ-7 GSO - Chronicle event metadata. Event timing for GSO event compliance measurement.',
-            'security_result': 'REQ-7 GSO - Chronicle security result. Security findings for GSO security compliance tracking.',
-            
-            # Splunk compliance indicators
-            'splunk': 'REQ-7 SPLUNK - Splunk SIEM platform. Secondary SIEM for Splunk logging compliance measurement.',
-            'sourcetype': 'REQ-7 SPLUNK - Splunk sourcetype field. Log source classification for Splunk source compliance tracking.',
-            'index': 'REQ-7 SPLUNK - Splunk index field. Data organization for Splunk index compliance measurement.',
-            '_time': 'REQ-7 SPLUNK - Splunk timestamp field. Event timing for Splunk temporal compliance tracking.',
-            'host': 'REQ-7 SPLUNK - Splunk host field. Source system identification for Splunk host compliance measurement.',
-            'source': 'REQ-7 SPLUNK - Splunk source field. Log file source for Splunk source compliance tracking.',
-            'splunk_server': 'REQ-7 SPLUNK - Splunk infrastructure. Platform deployment for Splunk infrastructure compliance.',
-            'indexer': 'REQ-7 SPLUNK - Splunk indexer. Data processing component for Splunk processing compliance measurement.',
-            'forwarder': 'REQ-7 SPLUNK - Splunk forwarder. Log collection agent for Splunk collection compliance tracking.',
-            'search_head': 'REQ-7 SPLUNK - Splunk search head. Query processing for Splunk query compliance measurement.',
-            
-            # Logging compliance measurement indicators
-            'log_ingestion': 'REQ-7 COMPLIANCE - Log ingestion measurement. Data ingestion rate for logging compliance tracking.',
-            'data_retention': 'REQ-7 COMPLIANCE - Data retention compliance. Log retention policy for compliance measurement.',
-            'log_completeness': 'REQ-7 COMPLIANCE - Log completeness indicator. Data completeness for logging compliance tracking.',
-            'ingestion_latency': 'REQ-7 COMPLIANCE - Ingestion latency measurement. Log processing delay for compliance measurement.',
-            'parsing_success': 'REQ-7 COMPLIANCE - Log parsing success rate. Data parsing compliance for logging compliance tracking.',
-            'field_extraction': 'REQ-7 COMPLIANCE - Field extraction success. Data extraction compliance for compliance measurement.',
-            'normalization': 'REQ-7 COMPLIANCE - Data normalization compliance. Data standardization for logging compliance tracking.',
-            'enrichment': 'REQ-7 COMPLIANCE - Data enrichment compliance. Data enhancement for compliance measurement.',
-            
-            # Platform-specific compliance
-            'visibility_statement': 'REQ-7 STATEMENT - Visibility statement accuracy. Platform-based visibility claims for statement compliance.',
-            'logging_platform': 'REQ-7 PLATFORM - Logging platform identifier. Platform classification for platform-specific compliance.',
-            'compliance_percentage': 'REQ-7 PERCENTAGE - Compliance percentage measurement. Platform compliance rate for compliance tracking.',
-            'coverage_statement': 'REQ-7 COVERAGE - Coverage statement accuracy. Platform coverage claims for coverage compliance measurement.'
-        }
-    },
-
-    # ==================== REQ-8: DOMAIN VISIBILITY KEYWORDS ====================
-    # PURPOSE: Asset visibility by hostname and domain for domain-based coverage %
-    # VENDORS: DNS systems, all hostname fields, ServiceNow CMDB, domain controllers
-    
-    'req8_domain_visibility': {
-        'requirement': 'REQ-8: Domain Visibility - Asset visibility by hostname and domain',
-        'vendors': ['dns_systems', 'all_hostname_sources', 'servicenow', 'domain_controllers'],
-        'calculation': 'COUNT DISTINCT domains and hostnames in logs vs DNS/CMDB records for domain coverage %',
-        'keywords': {
-            # Hostname visibility patterns
-            'hostname': 'REQ-8 HOSTNAME - Primary hostname field. Host name identification for hostname visibility measurement.',
-            'host_name': 'REQ-8 HOSTNAME - Host name field. System hostname for host-based visibility counting.',
-            'computer_name': 'REQ-8 HOSTNAME - Computer name field. Windows computer name for Windows hostname visibility.',
-            'machine_name': 'REQ-8 HOSTNAME - Machine name field. Generic machine identifier for machine hostname visibility.',
-            'server_name': 'REQ-8 HOSTNAME - Server name field. Server hostname for server hostname visibility measurement.',
-            'device_name': 'REQ-8 HOSTNAME - Device name field. Network device name for device hostname visibility.',
-            'node_name': 'REQ-8 HOSTNAME - Node name field. Cluster node name for node hostname visibility counting.',
-            'system_name': 'REQ-8 HOSTNAME - System name field. System identifier for system hostname visibility measurement.',
-            'asset_name': 'REQ-8 HOSTNAME - Asset name field. CMDB asset name for asset hostname visibility counting.',
-            
-            # Domain visibility patterns
-            'domain': 'REQ-8 DOMAIN - Domain name field. Primary domain identification for domain visibility measurement.',
-            'domain_name': 'REQ-8 DOMAIN - Domain name field. Full domain identifier for domain visibility counting.',
-            'fqdn': 'REQ-8 DOMAIN - Fully qualified domain name. Complete hostname+domain for FQDN visibility measurement.',
-            'dns_name': 'REQ-8 DOMAIN - DNS registered name. Authoritative DNS name for DNS visibility counting.',
-            'canonical_name': 'REQ-8 DOMAIN - DNS canonical name. CNAME record for DNS alias visibility measurement.',
-            'subdomain': 'REQ-8 DOMAIN - Subdomain identifier. Subdomain classification for subdomain visibility counting.',
-            'parent_domain': 'REQ-8 DOMAIN - Parent domain name. Higher-level domain for domain hierarchy visibility.',
-            'root_domain': 'REQ-8 DOMAIN - Root domain name. Base domain for primary domain visibility measurement.',
-            
-            # DNS record visibility
-            'a_record': 'REQ-8 DNS - DNS A record. IPv4 DNS record for DNS A record visibility measurement.',
-            'aaaa_record': 'REQ-8 DNS - DNS AAAA record. IPv6 DNS record for DNS AAAA record visibility counting.',
-            'cname_record': 'REQ-8 DNS - DNS CNAME record. DNS alias record for DNS alias visibility measurement.',
-            'mx_record': 'REQ-8 DNS - DNS MX record. Mail exchange record for DNS MX record visibility counting.',
-            'ns_record': 'REQ-8 DNS - DNS NS record. Name server record for DNS NS record visibility measurement.',
-            'ptr_record': 'REQ-8 DNS - DNS PTR record. Reverse DNS record for DNS PTR record visibility counting.',
-            'dns_query': 'REQ-8 DNS - DNS query event. DNS lookup activity for DNS query visibility measurement.',
-            'dns_response': 'REQ-8 DNS - DNS response event. DNS resolution response for DNS response visibility counting.',
-            
-            # Domain classification
-            'internal_domain': 'REQ-8 INTERNAL - Internal domain name. Corporate internal domain for internal domain visibility measurement.',
-            'external_domain': 'REQ-8 EXTERNAL - External domain name. External domain access for external domain visibility counting.',
-            'corporate_domain': 'REQ-8 INTERNAL - Corporate domain name. Company domain for corporate domain visibility measurement.',
-            'public_domain': 'REQ-8 EXTERNAL - Public domain name. Internet domain for public domain visibility counting.',
-            'private_domain': 'REQ-8 INTERNAL - Private domain name. Private domain for internal domain visibility measurement.',
-            
-            # Domain resolution and connectivity
-            'domain_resolution': 'REQ-8 RESOLUTION - Domain name resolution. DNS resolution success for domain resolution visibility.',
-            'name_resolution': 'REQ-8 RESOLUTION - Name resolution event. Hostname resolution for name resolution visibility measurement.',
-            'dns_lookup': 'REQ-8 RESOLUTION - DNS lookup event. DNS query activity for DNS lookup visibility counting.',
-            'reverse_dns': 'REQ-8 RESOLUTION - Reverse DNS lookup. IP to hostname resolution for reverse DNS visibility measurement.',
-            'forward_dns': 'REQ-8 RESOLUTION - Forward DNS lookup. Hostname to IP resolution for forward DNS visibility counting.',
-            'nxdomain': 'REQ-8 RESOLUTION - Non-existent domain. DNS NXDOMAIN response for domain existence visibility measurement.',
-            
-            # Domain membership and authentication
-            'domain_controller': 'REQ-8 DOMAIN_AUTH - Domain controller. AD domain controller for domain authentication visibility.',
-            'active_directory': 'REQ-8 DOMAIN_AUTH - Active Directory domain. Windows domain for AD domain visibility measurement.',
-            'domain_membership': 'REQ-8 DOMAIN_AUTH - Domain membership. System domain membership for domain member visibility counting.',
-            'kerberos_realm': 'REQ-8 DOMAIN_AUTH - Kerberos realm. Authentication realm for Kerberos domain visibility measurement.',
-            'distinguished_name': 'REQ-8 DOMAIN_AUTH - AD distinguished name. LDAP DN for AD object domain visibility counting.'
-        }
-    }
+    # Status tracking
+    'operational_status', 'discovery_source', 'last_seen', 'first_seen',
+    'collected_timestamp', 'event_timestamp', 'ingested_timestamp'
 }
 
-# FLATTENED KEYWORD LIST WITH REQUIREMENT CONTEXT
-ALL_AO1_REQUIREMENTS_KEYWORDS = {}
-for category, category_data in AO1_REQUIREMENTS_KEYWORDS.items():
-    requirement = category_data['requirement']
-    vendors = category_data['vendors']
-    calculation = category_data['calculation']
+# REQ-2: INFRASTRUCTURE TYPE - Exact deployment model classification
+REQ2_INFRASTRUCTURE_TYPE_KEYWORDS = {
+    # On-Premises EXACT indicators
+    'on_premises', 'on_prem', 'onpremises', 'onprem', 'datacenter', 'data_center', 
+    'physical_server', 'bare_metal', 'facility', 'rack', 'cabinet', 'server_room',
     
-    for keyword, context in category_data['keywords'].items():
-        ALL_AO1_REQUIREMENTS_KEYWORDS[keyword] = {
-            'category': category,
-            'requirement': requirement,
-            'vendors': vendors,
-            'calculation': calculation,
-            'context': context
-        }
+    # Cloud EXACT indicators  
+    'cloud', 'public_cloud', 'private_cloud', 'hybrid_cloud', 'multi_cloud',
+    
+    # AWS
+    'aws', 'amazon_web_services', 'ec2', 's3', 'lambda', 'rds', 'vpc', 'ecs', 'eks',
+    
+    # Azure
+    'azure', 'microsoft_azure', 'azure_vm', 'azure_sql', 'azure_storage', 'azure_ad', 'entra', 'entra_id',
+    
+    # Google Cloud
+    'gcp', 'google_cloud', 'google_cloud_platform', 'gce', 'compute_engine', 'gcs', 
+    'cloud_storage', 'bigquery', 'cloud_functions', 'gke',
+    
+    # Virtualization and containers
+    'virtual_machine', 'vm', 'instance', 'cloud_instance', 'container', 'docker', 
+    'kubernetes', 'k8s', 'pod', 'namespace', 'cluster',
+    'serverless', 'function', 'faas', 'lambda_function',
+    
+    # SaaS EXACT indicators
+    'saas', 'software_as_a_service', 'office365', 'o365', 'microsoft_365', 'm365', 
+    'teams', 'outlook', 'exchange', 'sharepoint', 'onedrive',
+    'salesforce', 'workday', 'servicenow', 'okta', 'zoom', 'slack', 'google_workspace', 'gsuite',
+    'application_type', 'hosted_application', 'cloud_software',
+    
+    # API EXACT indicators
+    'api', 'rest_api', 'soap_api', 'graphql', 'api_gateway', 'microservice', 'webhook', 
+    'integration', 'service_mesh',
+    
+    # F5 BIG-IP specific
+    'f5', 'bigip', 'big_ip', 'ltm', 'asm', 'afm', 'gtm', 'virtual_server', 'pool', 
+    'pool_member', 'node', 'irule'
+}
 
-def get_keyword_requirement_context(keyword):
-    """
-    Returns the AO1 requirement context for why a keyword matters
+# REQ-3: REGIONAL/COUNTRY VIEW - Geographic location classification
+REQ3_REGIONAL_COUNTRY_KEYWORDS = {
+    # Global regions EXACT
+    'global_region', 'region', 'geo_region', 'geographic_region', 'world_region',
+    'americas', 'north_america', 'south_america', 'emea', 'europe_middle_east_africa', 
+    'europe', 'middle_east', 'africa', 'asia_pacific', 'apac', 'asia', 'pacific', 'oceania',
     
-    Args:
-        keyword (str): Keyword found in BigQuery schema
-        
-    Returns:
-        dict: Context explaining which AO1 requirement this keyword supports
-    """
-    return ALL_AO1_REQUIREMENTS_KEYWORDS.get(keyword.lower(), {
-        'category': 'unknown',
-        'requirement': 'No AO1 requirement mapping identified',
-        'vendors': [],
-        'calculation': 'Not applicable for AO1 calculations',
-        'context': 'This keyword is not relevant for AO1 visibility measurements'
-    })
+    # Countries EXACT
+    'country', 'country_code', 'iso_country', 'iso_code',
+    'united_states', 'usa', 'us', 'canada', 'ca', 'united_kingdom', 'uk', 'britain', 
+    'great_britain', 'gb', 'germany', 'de', 'france', 'fr', 'japan', 'jp', 'china', 'cn', 
+    'india', 'in', 'australia', 'au', 'brazil', 'br', 'mexico', 'mx', 'russia', 'ru', 
+    'italy', 'it', 'spain', 'es', 'netherlands', 'nl',
+    
+    # Data centers EXACT
+    'data_center', 'datacenter', 'dc', 'facility', 'site', 'location', 'building', 
+    'campus', 'office', 'branch', 'headquarters', 'hq',
+    
+    # Cloud regions EXACT
+    'cloud_region', 'aws_region', 'awsregion', 'azure_region', 'gcp_region', 
+    'availability_zone', 'az', 'zone', 'edge_location', 'pop',
+    'us_east_1', 'us_west_1', 'us_west_2', 'eu_west_1', 'eu_central_1', 
+    'ap_southeast_1', 'ap_northeast_1',
+    
+    # Address components EXACT
+    'address', 'street_address', 'city', 'state', 'province', 'postal_code', 'zip_code', 'zip',
+    'latitude', 'longitude', 'coordinates', 'gps_coordinates',
+    
+    # IP geolocation EXACT
+    'sourceipaddress', 'source_ip_address', 'client_ip', 'remote_ip', 'external_ip', 'public_ip',
+    
+    # Timezone EXACT
+    'timezone', 'time_zone', 'tz', 'utc_offset', 'gmt_offset'
+}
 
-def find_keywords_for_requirement(requirement_number):
-    """
-    Find all keywords relevant to a specific AO1 requirement
+# REQ-4: BUSINESS/APPLICATION VIEW - Organizational classification
+REQ4_BUSINESS_APPLICATION_KEYWORDS = {
+    # Business Unit EXACT
+    'business_unit', 'bu', 'org_unit', 'organizational_unit', 'ou', 'division', 'department', 
+    'dept', 'organization', 'org', 'company', 'corporation', 'enterprise', 'subsidiary', 'entity',
+    'cost_center', 'profit_center', 'budget_center', 'business_service', 'support_group',
     
-    Args:
-        requirement_number (str): Requirement number (e.g., "REQ-1", "REQ-2")
-        
-    Returns:
-        list: Keywords that support the specified requirement
-    """
-    relevant_keywords = []
+    # CIO Organization EXACT (IT leadership only)
+    'cio', 'chief_information_officer', 'it_organization', 'information_technology', 
+    'technology_organization', 'information_systems', 'it_department', 'technology_department',
+    'engineering', 'software_engineering', 'infrastructure', 'it_infrastructure', 'operations', 
+    'it_operations', 'security', 'information_security', 'cybersecurity', 'it_security',
+    'architecture', 'enterprise_architecture', 'solution_architecture', 'technical_architecture',
     
-    for keyword, data in ALL_AO1_REQUIREMENTS_KEYWORDS.items():
-        if requirement_number.upper() in data['requirement'].upper():
-            relevant_keywords.append({
-                'keyword': keyword,
-                'context': data['context'],
-                'vendors': data['vendors'],
-                'calculation': data['calculation']
-            })
+    # APM (Application Performance Management) EXACT
+    'apm', 'application_performance_management', 'application', 'app', 'service', 'platform', 
+    'workload', 'solution', 'product', 'system',
+    'application_name', 'app_name', 'service_name', 'platform_name', 'solution_name', 
+    'product_name', 'system_name',
     
-    return relevant_keywords
+    # Application Class EXACT
+    'application_class', 'app_class', 'application_type', 'app_type', 'application_category', 
+    'service_class', 'service_type',
+    'tier', 'application_tier', 'web_tier', 'app_tier', 'data_tier', 'presentation_tier', 
+    'business_tier', 'database_tier',
+    'layer', 'application_layer', 'component', 'application_component', 'module', 'application_module',
+    
+    # Business functions EXACT
+    'finance', 'accounting', 'human_resources', 'hr', 'sales', 'marketing', 'operations', 
+    'business_operations', 'manufacturing', 'production', 'legal', 'compliance', 'risk_management', 
+    'audit', 'internal_audit', 'procurement', 'supply_chain', 'logistics', 'customer_service', 'support'
+}
 
-def explain_bigquery_field_ao1_relevance(field_name, table_name, dataset_name):
-    """
-    Explains how a BigQuery field supports specific AO1 requirements
+# REQ-5: SYSTEM CLASSIFICATION - Server function and OS type classification
+REQ5_SYSTEM_CLASSIFICATION_KEYWORDS = {
+    # Web Server EXACT
+    'web_server', 'http_server', 'https_server', 'apache', 'nginx', 'iis', 'internet_information_services', 
+    'tomcat', 'jetty', 'lighttpd', 'caddy', 'haproxy', 'web_application_server', 'application_server', 
+    'webapp', 'web_service',
     
-    Args:
-        field_name (str): BigQuery column name
-        table_name (str): BigQuery table name  
-        dataset_name (str): BigQuery dataset name
-        
-    Returns:
-        str: Complete explanation of AO1 requirement support
-    """
-    context = get_keyword_requirement_context(field_name)
+    # Windows Server EXACT
+    'windows_server', 'windows', 'microsoft_windows', 'win_server', 'windows_2019', 'windows_2022', 
+    'windows_2016', 'windows_2012', 'windows_2008', 'domain_controller', 'dc', 'active_directory', 
+    'ad', 'exchange_server', 'exchange', 'sql_server_windows', 'iis_server', 'windows_datacenter', 
+    'windows_standard', 'windows_enterprise', 'server_core', 'nano_server',
     
-    if context['category'] == 'unknown':
-        return f"Field '{field_name}' in {dataset_name}.{table_name} does not directly support any AO1 requirements."
+    # Linux Server EXACT
+    'linux_server', 'linux', 'gnu_linux', 'redhat', 'red_hat', 'rhel', 'red_hat_enterprise_linux', 
+    'centos', 'ubuntu', 'debian', 'suse', 'opensuse', 'sles', 'amazon_linux', 'oracle_linux', 
+    'rocky_linux', 'alma_linux', 'fedora', 'mint', 'arch_linux', 'gentoo', 'slackware', 'alpine',
     
-    return f"""
-FIELD: {field_name} (in {dataset_name}.{table_name})
-AO1 REQUIREMENT: {context['requirement']}
-RELEVANT VENDORS: {', '.join(context['vendors'])}
-CALCULATION METHOD: {context['calculation']}
-FIELD PURPOSE: {context['context']}
-    """
+    # *Nix (AIX, Solaris, etc) EXACT
+    'unix', 'aix', 'ibm_aix', 'solaris', 'oracle_solaris', 'sun_solaris', 'sunos', 'hp_ux', 
+    'hpux', 'freebsd', 'openbsd', 'netbsd', 'dragonfly_bsd', 'digital_unix', 'tru64', 'osf1', 
+    'irix', 'sgi_irix', 'qnx', 'unicos', 'cray_unicos',
+    
+    # Mainframe EXACT (Splunk only)
+    'mainframe', 'zos', 'z_os', 'mvs', 'vse', 'tpf', 'cics', 'ims', 'db2_mainframe', 'cobol', 
+    'jcl', 'rexx', 'pli', 'assembler', 'sysplex', 'lpar', 'zvm', 'vtam', 'racf', 'top_secret', 'acf2',
+    
+    # Database EXACT
+    'database_server', 'database', 'db_server', 'sql_server', 'microsoft_sql_server', 'mssql', 
+    'oracle_database', 'oracle_db', 'mysql', 'mariadb', 'postgresql', 'postgres', 'mongodb', 
+    'cassandra', 'redis', 'elasticsearch', 'influxdb', 'couchdb', 'dynamodb', 'cosmos_db',
+    'db2', 'sybase', 'informix', 'teradata', 'vertica', 'snowflake', 'bigquery_db',
+    
+    # Network Appliance EXACT (FW, NDR, switch, router, etc)
+    'network_appliance', 'firewall', 'fw', 'router', 'switch', 'load_balancer', 'lb', 
+    'proxy_server', 'proxy_appliance', 'ndr', 'network_detection_response', 'ids', 
+    'intrusion_detection_system', 'ips', 'intrusion_prevention_system', 'utm', 
+    'unified_threat_management', 'ngfw', 'next_generation_firewall', 'waf', 'web_application_firewall',
+    'wireless_controller', 'access_point', 'ap', 'network_switch', 'core_switch', 
+    'distribution_switch', 'access_switch', 'border_router', 'core_router', 'edge_router', 
+    'gateway', 'network_gateway', 'vpn_gateway', 'nat_gateway'
+}
 
-# EXPORT FUNCTIONS FOR AO1 MAPPING SCRIPT
+# REQ-6: SECURITY CONTROL COVERAGE - Agent presence for coverage measurement
+REQ6_SECURITY_CONTROL_COVERAGE_KEYWORDS = {
+    # EDR EXACT (Axonius or console stats)
+    'edr', 'endpoint_detection_response', 'endpoint_detection_and_response', 'crowdstrike', 'falcon', 
+    'crowdstrike_falcon', 'aid', 'agent_id', 'sensor_id', 'cid', 'customer_id', 'detection_id', 
+    'incident_id', 'falcon_host_link', 'agent_version', 'sensor_version', 'prevention_policy', 
+    'device_policy', 'endpoint_security', 'behavioral_detection', 'threat_hunting', 
+    'real_time_response', 'rtr', 'overwatch', 'falcon_insight', 'falcon_prevent', 'falcon_discover',
+    
+    # Tanium EXACT (Axonius or console stats)
+    'tanium', 'tanium_client', 'tanium_agent', 'computer_id', 'endpoint_id', 'tanium_server', 
+    'sensor_name', 'sensor_hash', 'package_name', 'action_name', 'question', 'tanium_question', 
+    'saved_question', 'scheduled_action', 'comply', 'detect', 'respond', 'threat_response', 
+    'patch_deployment', 'software_deployment', 'endpoint_management', 'vulnerability_scanning', 
+    'compliance_monitoring', 'asset_discovery', 'patch_management', 'configuration_management',
+    
+    # DLP Agent EXACT (Axonius or console stats)
+    'dlp', 'data_loss_prevention', 'dlp_agent', 'endpoint_dlp', 'network_dlp', 'content_inspection', 
+    'data_classification', 'policy_violation', 'sensitive_data', 'data_exfiltration', 'content_analysis', 
+    'pattern_matching', 'fingerprinting', 'exact_data_match', 'edm', 'document_fingerprint', 
+    'data_protection', 'information_protection',
+    
+    # Axonius coverage stats EXACT
+    'axonius', 'device_type', 'data_source', 'adapter', 'connection', 'last_seen', 'first_seen', 
+    'installed_software', 'security_software', 'running_processes', 'network_interfaces', 'open_ports', 
+    'services', 'vulnerabilities', 'patches', 'compliance_status', 'risk_score', 'agent_coverage', 
+    'endpoint_protection', 'security_control_coverage',
+    
+    # Console stats indicators EXACT
+    'console_stats', 'agent_status', 'deployment_status', 'management_console', 'security_console', 
+    'endpoint_console', 'agent_health', 'connectivity_status', 'last_checkin', 'heartbeat', 
+    'communication_status', 'online_status'
+}
+
+# REQ-7: LOGGING COMPLIANCE - GSO (Chronicle) and Splunk platform compliance
+REQ7_LOGGING_COMPLIANCE_KEYWORDS = {
+    # Chronicle (GSO) EXACT
+    'chronicle', 'google_chronicle', 'google_security_operations', 'gso', 'security_operations_suite',
+    'udm', 'unified_data_model', 'detection_engine', 'yara_l', 'yaral', 'chronicle_detection',
+    'ingestion_time', 'collection_timestamp', 'event_timestamp', 'parsed_timestamp', 'normalized_timestamp',
+    'metadata.collected_timestamp', 'metadata.event_timestamp', 'metadata.ingested_timestamp',
+    'security_result', 'detection_result', 'rule_detection', 'chronicle_rule', 'detection_rule',
+    'log_type', 'parser', 'chronicle_parser', 'data_ingestion', 'log_ingestion', 'ingestion_api',
+    
+    # Splunk EXACT
+    'splunk', 'splunk_enterprise', 'splunk_cloud', 'sourcetype', 'index', 'source', 'host', '_time',
+    'splunk_server', 'indexer', 'search_head', 'forwarder', 'universal_forwarder', 'heavy_forwarder',
+    'deployment_server', 'license_master', 'cluster_master', 'search_head_cluster',
+    'splunk_app', 'splunk_addon', 'technology_addon', 'ta', 'splunk_es', 'enterprise_security',
+    'splunk_itsi', 'it_service_intelligence', 'splunk_phantom', 'phantom', 'soar',
+    
+    # Logging compliance measurement EXACT
+    'log_completeness', 'data_completeness', 'ingestion_latency', 'parsing_success', 'parse_rate',
+    'field_extraction', 'data_normalization', 'normalization_success', 'enrichment_success',
+    'data_retention', 'retention_policy', 'log_retention', 'storage_policy', 'archival_policy',
+    'visibility_statement', 'coverage_statement', 'logging_platform', 'platform_compliance',
+    'compliance_percentage', 'coverage_percentage', 'ingestion_rate', 'throughput', 'data_volume'
+}
+
+# REQ-8: DOMAIN VISIBILITY - Asset visibility by hostname and domain
+REQ8_DOMAIN_VISIBILITY_KEYWORDS = {
+    # Hostname EXACT
+    'hostname', 'host_name', 'computer_name', 'machine_name', 'device_name', 'server_name', 
+    'node_name', 'system_name', 'endpoint_name', 'asset_name', 'workstation_name', 'client_name', 'pc_name',
+    
+    # Domain EXACT
+    'domain', 'domain_name', 'fqdn', 'fully_qualified_domain_name', 'dns_name', 'canonical_name', 
+    'cname', 'subdomain', 'parent_domain', 'root_domain', 'apex_domain', 'top_level_domain', 'tld', 
+    'second_level_domain', 'sld',
+    
+    # DNS records EXACT
+    'a_record', 'aaaa_record', 'cname_record', 'mx_record', 'ns_record', 'ptr_record', 'soa_record', 
+    'srv_record', 'txt_record', 'dns_query', 'dns_response', 'dns_request', 'dns_reply', 'query_name', 
+    'qname', 'query_type', 'qtype', 'response_code', 'rcode', 'dns_lookup', 'name_resolution', 
+    'domain_resolution', 'reverse_dns', 'forward_dns', 'dns_resolution',
+    
+    # Domain classification EXACT
+    'internal_domain', 'external_domain', 'corporate_domain', 'company_domain', 'business_domain',
+    'public_domain', 'private_domain', 'internet_domain', 'intranet_domain', 'local_domain',
+    'registered_domain', 'authoritative_domain', 'delegated_domain',
+    
+    # DNS servers and infrastructure EXACT
+    'dns_server', 'nameserver', 'name_server', 'authoritative_server', 'recursive_server', 'dns_resolver',
+    'root_server', 'tld_server', 'forwarder', 'dns_forwarder', 'caching_server', 'dns_cache',
+    
+    # Domain resolution status EXACT
+    'nxdomain', 'servfail', 'refused', 'noerror', 'dns_timeout', 'dns_failure', 'resolution_failure',
+    'domain_reachability', 'connectivity_test', 'domain_status', 'dns_status',
+    
+    # Domain membership and authentication EXACT
+    'domain_controller', 'dc', 'active_directory', 'ad', 'domain_membership', 'domain_joined',
+    'workgroup', 'kerberos_realm', 'ldap_domain', 'distinguished_name', 'dn', 'organizational_unit', 'ou',
+    'forest', 'domain_tree', 'trust_relationship', 'domain_trust', 'forest_trust',
+    
+    # Domain security EXACT
+    'domain_reputation', 'malicious_domain', 'suspicious_domain', 'blacklisted_domain', 'whitelisted_domain',
+    'blocked_domain', 'allowed_domain', 'threat_intelligence', 'domain_intelligence', 'ioc_domain',
+    'dga', 'domain_generation_algorithm', 'typosquatting', 'homograph_attack', 'punycode',
+    
+    # Domain registration EXACT
+    'domain_registrar', 'registrar', 'whois_data', 'domain_age', 'creation_date', 'expiration_date',
+    'registration_date', 'domain_owner', 'registrant', 'admin_contact', 'technical_contact'
+}
+
+# Export all keyword sets for easy import
 __all__ = [
-    'AO1_REQUIREMENTS_KEYWORDS',
-    'ALL_AO1_REQUIREMENTS_KEYWORDS',
-    'get_keyword_requirement_context',
-    'find_keywords_for_requirement',
-    'explain_bigquery_field_ao1_relevance'
+    'REQ1_GLOBAL_VIEW_KEYWORDS',
+    'REQ2_INFRASTRUCTURE_TYPE_KEYWORDS', 
+    'REQ3_REGIONAL_COUNTRY_KEYWORDS',
+    'REQ4_BUSINESS_APPLICATION_KEYWORDS',
+    'REQ5_SYSTEM_CLASSIFICATION_KEYWORDS',
+    'REQ6_SECURITY_CONTROL_COVERAGE_KEYWORDS',
+    'REQ7_LOGGING_COMPLIANCE_KEYWORDS',
+    'REQ8_DOMAIN_VISIBILITY_KEYWORDS'
 ]
 
-# DEMO AND TESTING FUNCTIONALITY
-def demo_keyword_lookup():
-    """
-    Demonstrates how to use the keyword dictionary for AO1 mapping
-    """
-    print("=" * 80)
-    print("AO1 LOG VISIBILITY KEYWORDS - DEMONSTRATION")
-    print("=" * 80)
-    
-    # Test some common BigQuery field names
-    test_fields = [
-        'hostname', 'business_unit', 'aid', 'cloud_region', 
-        'windows_server', 'edr', 'sourcetype', 'domain_name'
-    ]
-    
-    print("\n🔍 TESTING BIGQUERY FIELD RELEVANCE:")
-    print("-" * 50)
-    
-    for field in test_fields:
-        context = get_keyword_requirement_context(field)
-        print(f"\nFIELD: {field}")
-        print(f"REQUIREMENT: {context['requirement']}")
-        print(f"PURPOSE: {context['context']}")
-        print(f"VENDORS: {', '.join(context['vendors'])}")
-        print("-" * 50)
+# Utility functions for keyword validation and lookup
+def get_all_keywords():
+    """Return all keywords from all requirements as a single set."""
+    all_keywords = set()
+    for keyword_set in [
+        REQ1_GLOBAL_VIEW_KEYWORDS,
+        REQ2_INFRASTRUCTURE_TYPE_KEYWORDS,
+        REQ3_REGIONAL_COUNTRY_KEYWORDS,
+        REQ4_BUSINESS_APPLICATION_KEYWORDS,
+        REQ5_SYSTEM_CLASSIFICATION_KEYWORDS,
+        REQ6_SECURITY_CONTROL_COVERAGE_KEYWORDS,
+        REQ7_LOGGING_COMPLIANCE_KEYWORDS,
+        REQ8_DOMAIN_VISIBILITY_KEYWORDS
+    ]:
+        all_keywords.update(keyword_set)
+    return all_keywords
 
-def search_by_requirement():
-    """
-    Shows all keywords for each AO1 requirement
-    """
-    print("\n📋 KEYWORDS BY AO1 REQUIREMENT:")
-    print("=" * 80)
+def find_keyword_requirement(keyword):
+    """Find which requirement(s) contain a specific keyword."""
+    requirements = []
+    keyword_lower = keyword.lower()
     
-    requirements = ['REQ-1', 'REQ-2', 'REQ-3', 'REQ-4', 'REQ-5', 'REQ-6', 'REQ-7', 'REQ-8']
+    if keyword_lower in REQ1_GLOBAL_VIEW_KEYWORDS:
+        requirements.append('REQ-1: Global View')
+    if keyword_lower in REQ2_INFRASTRUCTURE_TYPE_KEYWORDS:
+        requirements.append('REQ-2: Infrastructure Type')
+    if keyword_lower in REQ3_REGIONAL_COUNTRY_KEYWORDS:
+        requirements.append('REQ-3: Regional/Country View')
+    if keyword_lower in REQ4_BUSINESS_APPLICATION_KEYWORDS:
+        requirements.append('REQ-4: Business/Application View')
+    if keyword_lower in REQ5_SYSTEM_CLASSIFICATION_KEYWORDS:
+        requirements.append('REQ-5: System Classification')
+    if keyword_lower in REQ6_SECURITY_CONTROL_COVERAGE_KEYWORDS:
+        requirements.append('REQ-6: Security Control Coverage')
+    if keyword_lower in REQ7_LOGGING_COMPLIANCE_KEYWORDS:
+        requirements.append('REQ-7: Logging Compliance')
+    if keyword_lower in REQ8_DOMAIN_VISIBILITY_KEYWORDS:
+        requirements.append('REQ-8: Domain Visibility')
     
-    for req in requirements:
-        keywords = find_keywords_for_requirement(req)
-        print(f"\n{req} Keywords ({len(keywords)} total):")
-        print("-" * 40)
-        
-        # Show first 5 keywords as examples
-        for i, kw in enumerate(keywords[:5]):
-            print(f"• {kw['keyword']}")
-        
-        if len(keywords) > 5:
-            print(f"  ... and {len(keywords) - 5} more keywords")
+    return requirements
 
-def simulate_bigquery_discovery():
-    """
-    Simulates discovering BigQuery fields and mapping them to AO1 requirements
-    """
-    print("\n🗄️  SIMULATED BIGQUERY SCHEMA DISCOVERY:")
-    print("=" * 80)
-    
-    # Simulate discovering fields in different datasets/tables
-    mock_discoveries = [
-        {'dataset': 'security_logs', 'table': 'crowdstrike_detections', 'field': 'aid'},
-        {'dataset': 'infrastructure', 'table': 'servicenow_cmdb', 'field': 'business_unit'},
-        {'dataset': 'cloud_logs', 'table': 'aws_cloudtrail', 'field': 'awsregion'},
-        {'dataset': 'network_logs', 'table': 'f5_bigip', 'field': 'ltm'},
-        {'dataset': 'identity_logs', 'table': 'active_directory', 'field': 'domain_controller'},
-        {'dataset': 'siem_logs', 'table': 'chronicle_udm', 'field': 'metadata.collected_timestamp'}
-    ]
-    
-    for discovery in mock_discoveries:
-        explanation = explain_bigquery_field_ao1_relevance(
-            discovery['field'], 
-            discovery['table'], 
-            discovery['dataset']
-        )
-        print(f"\n{explanation}")
-        print("-" * 80)
-
-def generate_mapping_report():
-    """
-    Generates a summary report of all AO1 keyword mappings
-    """
-    print("\n📊 AO1 KEYWORDS MAPPING REPORT:")
-    print("=" * 80)
-    
-    # Count keywords per requirement
-    req_counts = {}
-    vendor_counts = {}
-    
-    for keyword, data in ALL_AO1_REQUIREMENTS_KEYWORDS.items():
-        req = data['requirement'].split(' - ')[0]  # Get REQ-X part
-        req_counts[req] = req_counts.get(req, 0) + 1
-        
-        for vendor in data['vendors']:
-            vendor_counts[vendor] = vendor_counts.get(vendor, 0) + 1
-    
-    print(f"\nTOTAL KEYWORDS: {len(ALL_AO1_REQUIREMENTS_KEYWORDS)}")
-    print(f"TOTAL REQUIREMENTS: {len(req_counts)}")
-    print(f"TOTAL VENDORS: {len(vendor_counts)}")
-    
-    print("\nKEYWORDS PER REQUIREMENT:")
-    print("-" * 30)
-    for req, count in sorted(req_counts.items()):
-        print(f"{req}: {count} keywords")
-    
-    print("\nTOP VENDORS BY KEYWORD COUNT:")
-    print("-" * 30)
-    sorted_vendors = sorted(vendor_counts.items(), key=lambda x: x[1], reverse=True)
-    for vendor, count in sorted_vendors[:10]:
-        print(f"{vendor}: {count} keywords")
-
-def validate_keyword_coverage():
-    """
-    Validates that all AO1 requirements have adequate keyword coverage
-    """
-    print("\n✅ AO1 KEYWORD COVERAGE VALIDATION:")
-    print("=" * 80)
-    
-    required_minimums = {
-        'REQ-1': 10,  # Global View needs many identifiers
-        'REQ-2': 8,   # Infrastructure Type needs 4 types covered
-        'REQ-3': 8,   # Regional needs geographic coverage
-        'REQ-4': 8,   # BU/App needs organizational coverage  
-        'REQ-5': 15,  # System Classification needs all server types
-        'REQ-6': 8,   # Security Control needs agent coverage
-        'REQ-7': 8,   # Logging Compliance needs platform coverage
-        'REQ-8': 10   # Domain Visibility needs hostname/domain coverage
+def get_requirement_keywords(req_number):
+    """Get keywords for a specific requirement number (1-8)."""
+    req_map = {
+        1: REQ1_GLOBAL_VIEW_KEYWORDS,
+        2: REQ2_INFRASTRUCTURE_TYPE_KEYWORDS,
+        3: REQ3_REGIONAL_COUNTRY_KEYWORDS,
+        4: REQ4_BUSINESS_APPLICATION_KEYWORDS,
+        5: REQ5_SYSTEM_CLASSIFICATION_KEYWORDS,
+        6: REQ6_SECURITY_CONTROL_COVERAGE_KEYWORDS,
+        7: REQ7_LOGGING_COMPLIANCE_KEYWORDS,
+        8: REQ8_DOMAIN_VISIBILITY_KEYWORDS
     }
+    return req_map.get(req_number, set())
+
+def validate_keyword(keyword, requirement=None):
+    """Validate if a keyword exists in the system, optionally for a specific requirement."""
+    keyword_lower = keyword.lower()
     
-    validation_results = []
-    
-    for req_num, min_keywords in required_minimums.items():
-        keywords = find_keywords_for_requirement(req_num)
-        actual_count = len(keywords)
-        status = "✅ PASS" if actual_count >= min_keywords else "❌ FAIL"
-        
-        validation_results.append({
-            'requirement': req_num,
-            'expected_min': min_keywords,
-            'actual_count': actual_count,
-            'status': status
-        })
-        
-        print(f"{req_num}: {status} ({actual_count}/{min_keywords} keywords)")
-    
-    # Overall validation
-    failed_reqs = [r for r in validation_results if "FAIL" in r['status']]
-    
-    if not failed_reqs:
-        print(f"\n🎉 ALL REQUIREMENTS HAVE ADEQUATE KEYWORD COVERAGE!")
+    if requirement is None:
+        return keyword_lower in get_all_keywords()
     else:
-        print(f"\n⚠️  {len(failed_reqs)} REQUIREMENTS NEED MORE KEYWORDS")
-
-def interactive_field_lookup():
-    """
-    Interactive mode for looking up BigQuery fields
-    """
-    print("\n🔍 INTERACTIVE FIELD LOOKUP:")
-    print("=" * 80)
-    print("Enter BigQuery field names to see their AO1 relevance.")
-    print("Type 'quit' to exit, 'demo' for examples, or 'help' for commands.")
-    
-    while True:
-        try:
-            user_input = input("\nEnter field name: ").strip()
-            
-            if user_input.lower() == 'quit':
-                print("Goodbye! 👋")
-                break
-            elif user_input.lower() == 'demo':
-                demo_keyword_lookup()
-                continue
-            elif user_input.lower() == 'help':
-                print("\nAvailable commands:")
-                print("• Enter any field name (e.g., 'hostname', 'business_unit')")
-                print("• 'demo' - Show example field lookups")
-                print("• 'requirements' - Show keywords by requirement")
-                print("• 'report' - Generate mapping report")
-                print("• 'validate' - Validate keyword coverage")
-                print("• 'quit' - Exit")
-                continue
-            elif user_input.lower() == 'requirements':
-                search_by_requirement()
-                continue
-            elif user_input.lower() == 'report':
-                generate_mapping_report()
-                continue
-            elif user_input.lower() == 'validate':
-                validate_keyword_coverage()
-                continue
-            elif not user_input:
-                continue
-            
-            # Look up the field
-            context = get_keyword_requirement_context(user_input)
-            
-            if context['category'] == 'unknown':
-                print(f"❌ Field '{user_input}' not found in AO1 keywords dictionary.")
-                print("This field does not directly support AO1 visibility measurements.")
-            else:
-                print(f"\n✅ FIELD FOUND: {user_input}")
-                print(f"AO1 REQUIREMENT: {context['requirement']}")
-                print(f"RELEVANT VENDORS: {', '.join(context['vendors'])}")
-                print(f"CALCULATION: {context['calculation']}")
-                print(f"PURPOSE: {context['context']}")
-                
-        except KeyboardInterrupt:
-            print("\nGoodbye! 👋")
-            break
-        except Exception as e:
-            print(f"Error: {e}")
-
-# MAIN EXECUTION
-if __name__ == "__main__":
-    """
-    Main execution - runs comprehensive AO1 keyword demonstration
-    """
-    import sys
-    
-    print("🚀 AO1 LOG VISIBILITY MEASUREMENT - KEYWORDS DICTIONARY", flush=True)
-    print("=" * 80, flush=True)
-    print("This script demonstrates how BigQuery fields map to AO1 requirements.", flush=True)
-    print("=" * 80, flush=True)
-    
-    try:
-        # Test basic functionality first
-        print("\n🧪 TESTING BASIC FUNCTIONALITY...", flush=True)
-        test_keyword = 'hostname'
-        context = get_keyword_requirement_context(test_keyword)
-        print(f"✅ Dictionary lookup working: {test_keyword} -> {context['requirement'][:50]}...", flush=True)
-        
-        print(f"\n📊 DICTIONARY STATS:", flush=True)
-        print(f"   Total keywords: {len(ALL_AO1_REQUIREMENTS_KEYWORDS)}", flush=True)
-        print(f"   Categories: {len(AO1_REQUIREMENTS_KEYWORDS)}", flush=True)
-        
-        # Run all demonstrations
-        print("\n" + "="*50, flush=True)
-        print("RUNNING FULL DEMONSTRATION...", flush=True)
-        print("="*50, flush=True)
-        
-        demo_keyword_lookup()
-        sys.stdout.flush()
-        
-        search_by_requirement()
-        sys.stdout.flush()
-        
-        simulate_bigquery_discovery()
-        sys.stdout.flush()
-        
-        generate_mapping_report()
-        sys.stdout.flush()
-        
-        validate_keyword_coverage()  
-        sys.stdout.flush()
-        
-        # Offer interactive mode
-        print("\n" + "=" * 80, flush=True)
-        print("DEMONSTRATION COMPLETE!", flush=True)
-        print("=" * 80, flush=True)
-        
-        try:
-            response = input("Would you like to enter interactive field lookup mode? (y/n): ").strip().lower()
-            
-            if response in ['y', 'yes']:
-                interactive_field_lookup()
-            else:
-                print("\n🎯 FINAL SUMMARY:", flush=True)
-                print(f"✅ Dictionary contains {len(ALL_AO1_REQUIREMENTS_KEYWORDS)} keywords", flush=True)
-                print("✅ All 8 AO1 requirements covered", flush=True)
-                print("✅ Ready for BigQuery schema mapping!", flush=True)
-                print("\nTo use this dictionary in your mapping script:", flush=True)
-                print("from ao1_keywords_dictionary import get_keyword_requirement_context", flush=True)
-                print("context = get_keyword_requirement_context('your_field_name')", flush=True)
-                print("\nGoodbye! 👋", flush=True)
-                
-        except (EOFError, KeyboardInterrupt):
-            print("\n\nScript completed without interactive mode.", flush=True)
-            print("Dictionary is ready for use!", flush=True)
-            
-    except Exception as e:
-        print(f"\n❌ ERROR: {e}", flush=True)
-        print("Stack trace:", flush=True)
-        import traceback
-        traceback.print_exc()
-        
-    print("\n" + "="*50, flush=True)
-    print("SCRIPT EXECUTION FINISHED", flush=True)
-    print("="*50, flush=True)
+        req_keywords = get_requirement_keywords(requirement)
+        return keyword_lower in req_keywords
