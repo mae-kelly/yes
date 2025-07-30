@@ -2031,23 +2031,23 @@ class AO1FieldAnalyzer:
 
 class BigQueryScanner:
     """
-    Advanced BigQuery scanning engine with enterprise authentication.
+    Advanced BigQuery scanning engine with original authentication method.
     
-    Provides comprehensive dataset and table analysis with intelligent
-    error handling and progress tracking.
+    Uses the exact same authentication approach as the original working script
+    while maintaining all advanced analysis capabilities.
     """
     
-    def __init__(self, project_id: str = "prj-fisv-p-gcss-sas-dl9dd0f1df"):
+    def __init__(self, project_id: str = "prj-fisv-p-gcss-sas-d19dd0f1df"):
         self.project_id = project_id
         self.client = None
         self.authenticated = False
         
     def authenticate(self) -> bool:
         """
-        Authenticate with BigQuery using original Google Cloud methods.
+        Authenticate with BigQuery using the exact original method.
         
-        Separated from corporate connection management to avoid interference
-        with Google Cloud service authentication.
+        This matches the authentication from the original working script
+        to ensure compatibility and avoid any authentication issues.
         
         Returns:
             True if authentication successful
@@ -2055,53 +2055,28 @@ class BigQueryScanner:
         try:
             from google.cloud import bigquery
             from google.oauth2 import service_account
-            from google.auth import default
             
-            logger.info("Authenticating with BigQuery using Google Cloud methods")
+            logger.info("Authenticating with BigQuery using original method")
             
-            # Method 1: Service account key file
-            service_account_path = os.environ.get('GOOGLE_APPLICATION_CREDENTIALS')
-            if service_account_path and os.path.exists(service_account_path):
-                try:
-                    credentials = service_account.Credentials.from_service_account_file(service_account_path)
-                    self.client = bigquery.Client(project=self.project_id, credentials=credentials)
-                    
-                    # Test with simple dataset listing
-                    list(self.client.list_datasets(max_results=1))
-                    logger.info("BigQuery service account authentication successful")
-                    self.authenticated = True
-                    return True
-                except Exception as e:
-                    logger.debug(f"Service account authentication failed: {e}")
+            # Use exact same authentication as original script
+            file_path = os.path.join(os.path.dirname(__file__))
+            SERVICE_ACCOUNT_FILE = os.path.join(file_path, "gcp_prod_key.json")
             
-            # Method 2: Default credentials (gcloud, service account, etc.)
-            try:
-                credentials, detected_project = default()
+            if os.path.exists(SERVICE_ACCOUNT_FILE):
+                credentials = service_account.Credentials.from_service_account_file(SERVICE_ACCOUNT_FILE)
                 self.client = bigquery.Client(project=self.project_id, credentials=credentials)
-                
-                # Test with simple dataset listing
-                list(self.client.list_datasets(max_results=1))
-                logger.info("BigQuery default credentials authentication successful")
+                logger.info("Successfully authenticated with BigQuery using service account key")
                 self.authenticated = True
                 return True
-            except Exception as e:
-                logger.debug(f"Default credentials authentication failed: {e}")
-            
-            # Method 3: Project-only (for public datasets)
-            try:
-                self.client = bigquery.Client(project=self.project_id)
-                list(self.client.list_datasets(max_results=1))
-                logger.info("BigQuery project-only authentication successful")
-                self.authenticated = True
-                return True
-            except Exception as e:
-                logger.debug(f"Project-only authentication failed: {e}")
-                
-            logger.error("All BigQuery authentication methods failed")
-            return False
+            else:
+                logger.error(f"Service account file not found: {SERVICE_ACCOUNT_FILE}")
+                return False
                 
         except ImportError as e:
             logger.error(f"BigQuery library not available: {e}")
+            return False
+        except Exception as e:
+            logger.error(f"BigQuery authentication failed: {e}")
             return False
     
     def scan_datasets_and_tables(self, analyzer: AO1FieldAnalyzer) -> Dict[str, List[FieldAnalysis]]:
