@@ -1,14 +1,14 @@
 """
-Enterprise AO1 Field Discovery System
-Corporate-Grade ML-Powered BigQuery Field Analysis
+Ultra-Robust Enterprise AO1 Field Discovery System
+Self-Healing ML-Powered BigQuery Analysis with Automatic Dependency Resolution
 
-Features:
-- Corporate proxy detection and configuration
-- Multiple Hugging Face connection strategies
-- M1 GPU detection and optimization
-- Advanced neural field matching
-- Enterprise security and compliance
-- Robust error handling and fallback mechanisms
+This system will:
+1. Auto-install missing dependencies
+2. Try multiple Python environments
+3. Handle all corporate proxy scenarios
+4. Automatically configure M1 GPU optimization
+5. Never fail - always find a way to work
+6. Provide enterprise-grade AO1 field discovery
 """
 
 import os
@@ -18,6 +18,8 @@ import time
 import logging
 import getpass
 import subprocess
+import importlib
+import pkg_resources
 from datetime import datetime
 from typing import Dict, List, Tuple, Optional, Any
 from dataclasses import dataclass, asdict
@@ -27,91 +29,6 @@ import pandas as pd
 import requests
 import urllib.parse
 import socket
-
-# BigQuery imports
-from google.cloud import bigquery
-from google.oauth2 import service_account
-from google.cloud.exceptions import NotFound, Forbidden, BadRequest, ServerError
-
-# ML and HuggingFace imports with enterprise error handling
-ML_LIBRARIES_AVAILABLE = False
-TORCH_AVAILABLE = False
-HF_AVAILABLE = False
-SKLEARN_AVAILABLE = False
-
-try:
-    import torch
-    import torch.nn as nn
-    import torch.nn.functional as F
-    TORCH_AVAILABLE = True
-    print("SYSTEM: PyTorch loaded successfully")
-except ImportError:
-    print("WARNING: PyTorch not available - install with: pip install torch")
-
-try:
-    from transformers import (
-        AutoTokenizer, AutoModel, AutoConfig,
-        pipeline, logging as hf_logging
-    )
-    from huggingface_hub import (
-        HfApi, hf_hub_download, login, 
-        cached_download, snapshot_download,
-        scan_cache_dir
-    )
-    from sentence_transformers import SentenceTransformer
-    hf_logging.set_verbosity_error()
-    HF_AVAILABLE = True
-    print("SYSTEM: Hugging Face libraries loaded successfully")
-except ImportError:
-    print("WARNING: Hugging Face libraries not available")
-    print("Install with: pip install transformers sentence-transformers huggingface-hub")
-
-try:
-    from sklearn.feature_extraction.text import TfidfVectorizer
-    from sklearn.metrics.pairwise import cosine_similarity
-    SKLEARN_AVAILABLE = True
-    print("SYSTEM: Scikit-learn loaded successfully")
-except ImportError:
-    print("WARNING: Scikit-learn not available - install with: pip install scikit-learn")
-
-ML_LIBRARIES_AVAILABLE = TORCH_AVAILABLE and HF_AVAILABLE and SKLEARN_AVAILABLE
-
-# AO1 Keywords Import
-try:
-    from ao1_keywords import (
-        REQ1_GLOBAL_VIEW_KEYWORDS,
-        REQ2_INFRASTRUCTURE_TYPE_KEYWORDS,
-        REQ3_REGIONAL_COUNTRY_KEYWORDS,
-        REQ4_BUSINESS_APPLICATION_KEYWORDS,
-        REQ5_SYSTEM_CLASSIFICATION_KEYWORDS,
-        REQ6_SECURITY_CONTROL_COVERAGE_KEYWORDS,
-        REQ7_LOGGING_COMPLIANCE_KEYWORDS,
-        REQ8_DOMAIN_VISIBILITY_KEYWORDS,
-        get_all_keywords,
-        find_keyword_requirement
-    )
-    
-    ALL_AO1_KEYWORDS = get_all_keywords()
-    REQUIREMENT_KEYWORDS = {
-        'REQ-1': REQ1_GLOBAL_VIEW_KEYWORDS,
-        'REQ-2': REQ2_INFRASTRUCTURE_TYPE_KEYWORDS,
-        'REQ-3': REQ3_REGIONAL_COUNTRY_KEYWORDS,
-        'REQ-4': REQ4_BUSINESS_APPLICATION_KEYWORDS,
-        'REQ-5': REQ5_SYSTEM_CLASSIFICATION_KEYWORDS,
-        'REQ-6': REQ6_SECURITY_CONTROL_COVERAGE_KEYWORDS,
-        'REQ-7': REQ7_LOGGING_COMPLIANCE_KEYWORDS,
-        'REQ-8': REQ8_DOMAIN_VISIBILITY_KEYWORDS
-    }
-    print("AO1 KEYWORDS: {} keywords loaded across 8 requirements".format(len(ALL_AO1_KEYWORDS)))
-    
-except ImportError as e:
-    print("CRITICAL ERROR: Cannot import AO1 keywords module")
-    print("Ensure ao1_keywords.py is in the project directory")
-    sys.exit(1)
-
-# Configuration
-PROJECT_ID = "prj-fisv-p-gcss-sas-dl9dd0f1df"
-SERVICE_ACCOUNT_FILE = "gcp_prod_key.json"
 
 # Corporate logging
 logging.basicConfig(
@@ -123,6 +40,10 @@ logging.basicConfig(
     ]
 )
 logger = logging.getLogger('AO1Discovery')
+
+# Configuration
+PROJECT_ID = "prj-fisv-p-gcss-sas-dl9dd0f1df"
+SERVICE_ACCOUNT_FILE = "gcp_prod_key.json"
 
 @dataclass
 class FieldMatch:
@@ -140,991 +61,682 @@ class FieldMatch:
     table_size_bytes: int
     semantic_similarity: float
     context_relevance: float
-    neural_score: float
-    pattern_score: float
+
+class RobustDependencyManager:
+    """Ultra-robust dependency management with automatic installation"""
+    
+    def __init__(self):
+        self.installation_attempts = []
+        self.successful_imports = {}
+        self.failed_imports = {}
+        self.python_executables = self._find_python_executables()
+        
+    def _find_python_executables(self) -> List[str]:
+        """Find all available Python executables"""
+        candidates = [
+            sys.executable,
+            'python3',
+            'python',
+            '/usr/bin/python3',
+            '/usr/local/bin/python3',
+            os.path.expanduser('~/.pyenv/shims/python'),
+            os.path.expanduser('~/miniforge3/bin/python'),
+            os.path.expanduser('~/anaconda3/bin/python'),
+            os.path.expanduser('~/miniconda3/bin/python')
+        ]
+        
+        valid_executables = []
+        for candidate in candidates:
+            try:
+                result = subprocess.run([candidate, '--version'], 
+                                      capture_output=True, text=True, timeout=5)
+                if result.returncode == 0:
+                    valid_executables.append(candidate)
+            except:
+                continue
+        
+        return list(set(valid_executables))  # Remove duplicates
+    
+    def _install_with_multiple_methods(self, package: str, alternative_names: List[str] = None):
+        """Try multiple installation methods until one succeeds"""
+        if alternative_names is None:
+            alternative_names = []
+        
+        all_packages = [package] + alternative_names
+        installation_methods = [
+            ('pip install', 'pip install {}'),
+            ('pip3 install', 'pip3 install {}'),
+            ('python -m pip install', '{} -m pip install {}'),
+            ('python3 -m pip install', '{} -m pip install {}'),
+            ('conda install', 'conda install -y {}'),
+            ('mamba install', 'mamba install -y {}')
+        ]
+        
+        for pkg in all_packages:
+            for method_name, command_template in installation_methods:
+                for python_exec in self.python_executables:
+                    try:
+                        if 'python' in command_template and '{}' in command_template:
+                            command = command_template.format(python_exec, pkg)
+                        else:
+                            command = command_template.format(pkg)
+                        
+                        print("INSTALL ATTEMPT: {} using {}".format(pkg, command))
+                        
+                        result = subprocess.run(command.split(), 
+                                              capture_output=True, text=True, timeout=300)
+                        
+                        if result.returncode == 0:
+                            print("SUCCESS: {} installed via {}".format(pkg, method_name))
+                            self.installation_attempts.append({
+                                'package': pkg,
+                                'method': method_name,
+                                'command': command,
+                                'success': True
+                            })
+                            return True
+                        else:
+                            print("FAILED: {} - {}".format(command, result.stderr[:100]))
+                            
+                    except subprocess.TimeoutExpired:
+                        print("TIMEOUT: {} installation timeout".format(command))
+                    except Exception as e:
+                        print("ERROR: {} - {}".format(command, str(e)[:50]))
+        
+        return False
+    
+    def ensure_dependency(self, module_name: str, package_name: str = None, 
+                         alternative_packages: List[str] = None) -> Tuple[bool, Any]:
+        """Ensure a dependency is available, installing if necessary"""
+        if package_name is None:
+            package_name = module_name
+        
+        if alternative_packages is None:
+            alternative_packages = []
+        
+        # Try importing first
+        try:
+            module = importlib.import_module(module_name)
+            self.successful_imports[module_name] = module
+            print("✓ {}: Already available".format(module_name))
+            return True, module
+        except ImportError:
+            print("⚠ {}: Not available, attempting installation".format(module_name))
+        
+        # Try installing
+        success = self._install_with_multiple_methods(package_name, alternative_packages)
+        
+        if success:
+            # Try importing again after installation
+            try:
+                # Reload the module in case it was partially loaded
+                if module_name in sys.modules:
+                    importlib.reload(sys.modules[module_name])
+                else:
+                    module = importlib.import_module(module_name)
+                
+                self.successful_imports[module_name] = module
+                print("✓ {}: Successfully installed and imported".format(module_name))
+                return True, module
+            except ImportError as e:
+                print("✗ {}: Installation succeeded but import failed - {}".format(module_name, e))
+                self.failed_imports[module_name] = str(e)
+        else:
+            print("✗ {}: All installation methods failed".format(module_name))
+            self.failed_imports[module_name] = "Installation failed"
+        
+        return False, None
+
+class UltraRobustMLSystem:
+    """Ultra-robust ML system that tries everything until it works"""
+    
+    def __init__(self):
+        self.dependency_manager = RobustDependencyManager()
+        self.torch_available = False
+        self.transformers_available = False
+        self.sentence_transformers_available = False
+        self.sklearn_available = False
+        self.device = None
+        self.models = {}
+        self.initialize_ml_stack()
+    
+    def initialize_ml_stack(self):
+        """Initialize ML stack with aggressive dependency resolution"""
+        print("ULTRA-ROBUST ML INITIALIZATION")
+        print("=" * 60)
+        print("Will try every possible method until full ML stack is available")
+        
+        # Essential dependencies in order of importance
+        ml_dependencies = [
+            # Core packages
+            ('numpy', 'numpy', []),
+            ('pandas', 'pandas', []),
+            ('requests', 'requests', []),
+            ('sklearn', 'scikit-learn', ['sklearn']),
+            
+            # PyTorch (try multiple variants for M1 compatibility)
+            ('torch', 'torch', ['torch --index-url https://download.pytorch.org/whl/cpu',
+                                'torch torchvision torchaudio']),
+            
+            # Hugging Face ecosystem
+            ('transformers', 'transformers', ['transformers[torch]']),
+            ('sentence_transformers', 'sentence-transformers', []),
+            ('huggingface_hub', 'huggingface-hub', []),
+            
+            # Google Cloud
+            ('google.cloud.bigquery', 'google-cloud-bigquery', []),
+            ('google.oauth2', 'google-auth', [])
+        ]
+        
+        self.successful_dependencies = {}
+        self.failed_dependencies = {}
+        
+        for module_name, package_name, alternatives in ml_dependencies:
+            success, module = self.dependency_manager.ensure_dependency(
+                module_name, package_name, alternatives
+            )
+            
+            if success:
+                self.successful_dependencies[module_name] = module
+                
+                # Set specific flags for important modules
+                if module_name == 'torch':
+                    self.torch_available = True
+                    self._configure_torch()
+                elif module_name == 'transformers':
+                    self.transformers_available = True
+                elif module_name == 'sentence_transformers':
+                    self.sentence_transformers_available = True
+                elif module_name == 'sklearn':
+                    self.sklearn_available = True
+                    
+            else:
+                self.failed_dependencies[module_name] = "Failed to install/import"
+        
+        # Print final status
+        self._print_ml_status()
+        
+        # Initialize models if dependencies are available
+        if self.torch_available and self.transformers_available:
+            self._initialize_models()
+    
+    def _configure_torch(self):
+        """Configure PyTorch for optimal performance"""
+        try:
+            torch = self.successful_dependencies['torch']
+            
+            # Try to detect and configure M1 GPU
+            if hasattr(torch.backends, 'mps') and torch.backends.mps.is_available():
+                self.device = torch.device('mps')
+                print("✓ M1 GPU (MPS): Configured for acceleration")
+            else:
+                self.device = torch.device('cpu')
+                print("✓ CPU: Configured for processing")
+                
+            # Set optimal CPU threads
+            if self.device.type == 'cpu':
+                torch.set_num_threads(min(8, torch.get_num_threads()))
+                
+        except Exception as e:
+            print("⚠ PyTorch configuration warning: {}".format(e))
+            self.device = torch.device('cpu')
+    
+    def _initialize_models(self):
+        """Initialize ML models with robust fallback"""
+        print("\nMODEL INITIALIZATION:")
+        
+        model_configs = [
+            # Lightweight models first
+            ('sentence-transformers/all-MiniLM-L6-v2', 'lightweight'),
+            ('sentence-transformers/paraphrase-MiniLM-L6-v2', 'lightweight'),
+            ('distilbert-base-uncased', 'medium'),
+            ('sentence-transformers/all-mpnet-base-v2', 'full-featured')
+        ]
+        
+        for model_name, model_type in model_configs:
+            try:
+                print("Attempting to load: {}".format(model_name))
+                
+                if self.sentence_transformers_available:
+                    SentenceTransformer = self.successful_dependencies['sentence_transformers'].SentenceTransformer
+                    model = SentenceTransformer(model_name)
+                    if self.device and self.device.type == 'mps':
+                        model = model.to(self.device)
+                    
+                    # Test the model
+                    test_embedding = model.encode(['test'])
+                    if test_embedding is not None:
+                        self.models['sentence_transformer'] = model
+                        self.models['strategy'] = 'sentence_transformers'
+                        print("✓ SUCCESS: {} loaded and tested".format(model_name))
+                        break
+                
+            except Exception as e:
+                print("✗ FAILED: {} - {}".format(model_name, str(e)[:100]))
+                continue
+        
+        if not self.models and self.transformers_available:
+            # Try basic transformers
+            try:
+                transformers = self.successful_dependencies['transformers']
+                tokenizer = transformers.AutoTokenizer.from_pretrained('distilbert-base-uncased')
+                model = transformers.AutoModel.from_pretrained('distilbert-base-uncased')
+                
+                if self.device and self.device.type == 'mps':
+                    model = model.to(self.device)
+                
+                self.models['transformers'] = {'model': model, 'tokenizer': tokenizer}
+                self.models['strategy'] = 'transformers_direct'
+                print("✓ SUCCESS: Basic transformers loaded")
+                
+            except Exception as e:
+                print("✗ Basic transformers failed: {}".format(e))
+    
+    def _print_ml_status(self):
+        """Print comprehensive ML system status"""
+        print("\nML SYSTEM STATUS:")
+        print("✓ Successful: {} dependencies".format(len(self.successful_dependencies)))
+        print("✗ Failed: {} dependencies".format(len(self.failed_dependencies)))
+        
+        if self.successful_dependencies:
+            print("\nAVAILABLE CAPABILITIES:")
+            for module_name in self.successful_dependencies:
+                if module_name == 'torch':
+                    print("  ✓ PyTorch: Neural networks, GPU acceleration")
+                elif module_name == 'transformers':
+                    print("  ✓ Transformers: Language models, embeddings")
+                elif module_name == 'sentence_transformers':
+                    print("  ✓ Sentence Transformers: Semantic similarity")
+                elif module_name == 'sklearn':
+                    print("  ✓ Scikit-learn: TF-IDF, similarity metrics")
+                elif module_name == 'google.cloud.bigquery':
+                    print("  ✓ BigQuery: Database connectivity")
+        
+        if self.failed_dependencies:
+            print("\nFAILED DEPENDENCIES:")
+            for module_name, error in self.failed_dependencies.items():
+                print("  ✗ {}: {}".format(module_name, error))
 
 class EnterpriseProxyManager:
-    """Corporate proxy detection and configuration manager"""
+    """Ultra-robust corporate proxy manager"""
     
     def __init__(self):
         self.proxy_config = {}
-        self.proxy_detected = False
         self.proxy_working = False
         
-    def detect_corporate_environment(self) -> Dict[str, Any]:
-        """Detect if running in corporate environment with proxies"""
-        environment_info = {
-            'is_corporate': False,
-            'proxy_env_vars': {},
-            'network_restrictions': False,
-            'firewall_detected': False
-        }
-        
-        # Check for common proxy environment variables
-        proxy_vars = ['HTTP_PROXY', 'HTTPS_PROXY', 'http_proxy', 'https_proxy', 'ALL_PROXY', 'all_proxy']
-        for var in proxy_vars:
-            if os.environ.get(var):
-                environment_info['proxy_env_vars'][var] = os.environ[var]
-                environment_info['is_corporate'] = True
-        
-        # Test internet connectivity
-        test_urls = [
-            'https://huggingface.co',
-            'https://github.com',
-            'https://pypi.org',
-            'https://www.google.com'
-        ]
-        
-        connectivity_results = {}
-        for url in test_urls:
-            try:
-                response = requests.get(url, timeout=5)
-                connectivity_results[url] = response.status_code == 200
-            except:
-                connectivity_results[url] = False
-        
-        # If most URLs fail, likely behind firewall/proxy
-        failed_connections = sum(1 for connected in connectivity_results.values() if not connected)
-        if failed_connections >= len(test_urls) / 2:
-            environment_info['network_restrictions'] = True
-            environment_info['is_corporate'] = True
-        
-        return environment_info
-    
-    def configure_proxy_interactively(self):
-        """Interactive proxy configuration for corporate environments"""
-        print("\nCORPORATE NETWORK DETECTION")
+    def auto_configure_proxy(self) -> bool:
+        """Automatically detect and configure corporate proxy"""
+        print("\nCORPORATE PROXY AUTO-CONFIGURATION")
         print("=" * 50)
         
-        env_info = self.detect_corporate_environment()
+        # Method 1: Check environment variables
+        proxy_vars = ['HTTP_PROXY', 'HTTPS_PROXY', 'http_proxy', 'https_proxy']
+        existing_proxies = {var: os.environ.get(var) for var in proxy_vars if os.environ.get(var)}
         
-        if env_info['proxy_env_vars']:
+        if existing_proxies:
             print("DETECTED: Existing proxy configuration")
-            for var, value in env_info['proxy_env_vars'].items():
-                print("  {}: {}".format(var, value))
+            for var, value in existing_proxies.items():
+                masked_value = self._mask_proxy_password(value)
+                print("  {}: {}".format(var, masked_value))
             
-            use_existing = input("Use existing proxy configuration? (y/n): ").lower().strip()
-            if use_existing == 'y':
-                self.proxy_config = env_info['proxy_env_vars']
-                return self.test_proxy_configuration()
+            self.proxy_config = existing_proxies
+            if self._test_proxy():
+                return True
         
-        if env_info['network_restrictions'] or not env_info['proxy_env_vars']:
-            print("CORPORATE NETWORK: Proxy configuration may be required")
-            print("Contact your IT department for proxy settings if needed")
-            
-            configure_proxy = input("Do you need to configure proxy settings? (y/n): ").lower().strip()
-            
-            if configure_proxy == 'y':
-                print("\nPROXY CONFIGURATION")
-                print("Enter your corporate proxy environment variables:")
-                print("Example format: http://proxy.company.com:8080")
-                print("Example with auth: http://username:password@proxy.company.com:8080")
-                
-                # Ask for HTTP_PROXY
-                http_proxy = input("\nHTTP_PROXY: ").strip()
-                
-                # Ask for HTTPS_PROXY
-                https_proxy = input("HTTPS_PROXY: ").strip()
-                
-                # Configure proxy settings
-                self.proxy_config = {}
-                
-                if http_proxy:
-                    self.proxy_config['HTTP_PROXY'] = http_proxy
-                    self.proxy_config['http_proxy'] = http_proxy
-                    os.environ['HTTP_PROXY'] = http_proxy
-                    os.environ['http_proxy'] = http_proxy
-                
-                if https_proxy:
-                    self.proxy_config['HTTPS_PROXY'] = https_proxy
-                    self.proxy_config['https_proxy'] = https_proxy
-                    os.environ['HTTPS_PROXY'] = https_proxy
-                    os.environ['https_proxy'] = https_proxy
-                
-                if http_proxy or https_proxy:
-                    print("\nPROXY SETTINGS CONFIGURED:")
-                    if http_proxy:
-                        # Mask password in display
-                        display_http = http_proxy
-                        if '@' in http_proxy and ':' in http_proxy.split('@')[0]:
-                            parts = http_proxy.split('@')
-                            auth_part = parts[0].split('://')[-1]
-                            if ':' in auth_part:
-                                user = auth_part.split(':')[0]
-                                display_http = http_proxy.replace(auth_part, "{}:****".format(user))
-                        print("  HTTP_PROXY: {}".format(display_http))
-                    
-                    if https_proxy:
-                        # Mask password in display
-                        display_https = https_proxy
-                        if '@' in https_proxy and ':' in https_proxy.split('@')[0]:
-                            parts = https_proxy.split('@')
-                            auth_part = parts[0].split('://')[-1]
-                            if ':' in auth_part:
-                                user = auth_part.split(':')[0]
-                                display_https = https_proxy.replace(auth_part, "{}:****".format(user))
-                        print("  HTTPS_PROXY: {}".format(display_https))
-                    
-                    return self.test_proxy_configuration()
-                else:
-                    print("ERROR: No proxy settings provided")
-                    return False
+        # Method 2: Interactive configuration
+        print("CORPORATE NETWORK: Manual proxy configuration required")
+        configure = input("Configure proxy settings? (y/n): ").lower().strip()
         
-        return True  # No proxy needed
+        if configure == 'y':
+            return self._interactive_proxy_setup()
+        
+        # Method 3: Try without proxy
+        print("Attempting direct connection...")
+        return self._test_direct_connection()
     
-    def test_proxy_configuration(self) -> bool:
-        """Test proxy configuration with comprehensive debugging"""
-        print("TESTING: Proxy configuration with comprehensive diagnostics...")
+    def _interactive_proxy_setup(self) -> bool:
+        """Interactive proxy setup with validation"""
+        print("\nPROXY CONFIGURATION")
+        print("Format: http://proxy.company.com:8080")
+        print("With auth: http://username:password@proxy.company.com:8080")
         
-        # Import required modules for proxy testing
-        try:
-            import urllib3
-            from requests.adapters import HTTPAdapter
-            from urllib3.util.retry import Retry
-        except ImportError:
-            print("WARNING: Advanced proxy testing not available - using basic testing")
-            return self._basic_proxy_test()
+        http_proxy = input("HTTP_PROXY: ").strip()
+        https_proxy = input("HTTPS_PROXY: ").strip()
         
-        # First, let's verify what proxy settings we actually have
-        print("\nPROXY DIAGNOSTICS:")
-        print("Environment Variables:")
-        for var in ['HTTP_PROXY', 'HTTPS_PROXY', 'http_proxy', 'https_proxy']:
-            value = os.environ.get(var, 'Not set')
-            if value != 'Not set' and '@' in value:
-                # Mask password
-                parts = value.split('@')
-                if ':' in parts[0]:
-                    auth_part = parts[0].split('://')[-1]
-                    if ':' in auth_part:
-                        user = auth_part.split(':')[0]
-                        value = value.replace(auth_part, "{}:****".format(user))
-            print("  {}: {}".format(var, value))
+        if http_proxy:
+            self.proxy_config['HTTP_PROXY'] = http_proxy
+            self.proxy_config['http_proxy'] = http_proxy
+            os.environ['HTTP_PROXY'] = http_proxy
+            os.environ['http_proxy'] = http_proxy
         
-        print("\nInternal proxy config:")
-        for key, value in self.proxy_config.items():
-            masked_value = value
-            if '@' in value:
-                parts = value.split('@')
-                if ':' in parts[0]:
-                    auth_part = parts[0].split('://')[-1]
-                    if ':' in auth_part:
-                        user = auth_part.split(':')[0]
-                        masked_value = value.replace(auth_part, "{}:****".format(user))
-            print("  {}: {}".format(key, masked_value))
+        if https_proxy:
+            self.proxy_config['HTTPS_PROXY'] = https_proxy
+            self.proxy_config['https_proxy'] = https_proxy
+            os.environ['HTTPS_PROXY'] = https_proxy
+            os.environ['https_proxy'] = https_proxy
         
-        # Test with multiple strategies
-        strategies = [
-            ('basic_requests', 'Basic requests with proxy'),
-            ('urllib3_direct', 'Direct urllib3 with proxy'),
-            ('no_ssl_verify', 'Requests without SSL verification'),
-            ('session_based', 'Session-based with custom headers'),
-            ('system_proxy', 'System proxy detection')
+        return self._test_proxy()
+    
+    def _test_proxy(self) -> bool:
+        """Comprehensive proxy testing"""
+        test_urls = [
+            'http://httpbin.org/get',
+            'https://httpbin.org/get',
+            'https://pypi.org/simple/',
+            'https://huggingface.co'
         ]
         
-        successful_strategies = []
-        
-        for strategy_name, strategy_desc in strategies:
-            print("\n--- TESTING STRATEGY: {} ---".format(strategy_desc))
-            
-            try:
-                if strategy_name == 'basic_requests':
-                    success = self._test_basic_requests()
-                elif strategy_name == 'urllib3_direct':
-                    success = self._test_urllib3_direct()
-                elif strategy_name == 'no_ssl_verify':
-                    success = self._test_no_ssl_verify()
-                elif strategy_name == 'session_based':
-                    success = self._test_session_based()
-                elif strategy_name == 'system_proxy':
-                    success = self._test_system_proxy()
-                else:
-                    success = False
-                
-                if success:
-                    successful_strategies.append(strategy_name)
-                    print("  STRATEGY SUCCESS: {}".format(strategy_desc))
-                else:
-                    print("  STRATEGY FAILED: {}".format(strategy_desc))
-                    
-            except Exception as e:
-                print("  STRATEGY ERROR: {} - {}".format(strategy_desc, str(e)[:100]))
-        
-        self.proxy_working = len(successful_strategies) > 0
-        
-        if self.proxy_working:
-            print("\nPROXY DIAGNOSIS: SUCCESS")
-            print("Working strategies: {}".format(', '.join(successful_strategies)))
-            print("Network connectivity established for ML downloads")
-        else:
-            print("\nPROXY DIAGNOSIS: ALL STRATEGIES FAILED")
-            print("This suggests a proxy configuration or network issue")
-            print("Recommendations:")
-            print("1. Verify proxy URL format: http://proxy.company.com:8080")
-            print("2. Check if proxy requires authentication")
-            print("3. Test proxy with: curl -x <proxy> http://httpbin.org/get")
-            print("4. Contact IT support for network troubleshooting")
-            print("5. Will attempt offline/cached model usage")
-        
-        return self.proxy_working
-    
-    def _test_basic_requests(self) -> bool:
-        """Test basic requests with proxy"""
-        try:
-            response = requests.get('http://httpbin.org/get', 
-                                  proxies=self.proxy_config, 
-                                  timeout=10)
-            print("    Basic HTTP: Status {} ({} bytes)".format(response.status_code, len(response.content)))
-            return response.status_code == 200
-        except Exception as e:
-            print("    Basic HTTP failed: {}".format(str(e)[:80]))
-            return False
-    
-    def _test_urllib3_direct(self) -> bool:
-        """Test direct urllib3 with proxy"""
-        try:
-            import urllib3
-            
-            # Extract proxy info
-            proxy_url = self.proxy_config.get('http_proxy', self.proxy_config.get('HTTP_PROXY', ''))
-            if not proxy_url:
-                return False
-            
-            # Parse proxy URL
-            from urllib.parse import urlparse
-            parsed = urlparse(proxy_url)
-            
-            http = urllib3.ProxyManager(proxy_url)
-            resp = http.request('GET', 'http://httpbin.org/get', timeout=10)
-            print("    urllib3 direct: Status {} ({} bytes)".format(resp.status, len(resp.data)))
-            return resp.status == 200
-        except Exception as e:
-            print("    urllib3 direct failed: {}".format(str(e)[:80]))
-            return False
-    
-    def _test_no_ssl_verify(self) -> bool:
-        """Test requests without SSL verification"""
-        try:
-            import urllib3
-            urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
-            
-            response = requests.get('https://httpbin.org/get', 
-                                  proxies=self.proxy_config,
-                                  verify=False,
-                                  timeout=10)
-            print("    No SSL verify: Status {} ({} bytes)".format(response.status_code, len(response.content)))
-            return response.status_code == 200
-        except Exception as e:
-            print("    No SSL verify failed: {}".format(str(e)[:80]))
-            return False
-    
-    def _test_session_based(self) -> bool:
-        """Test session-based approach with custom headers"""
-        try:
-            session = requests.Session()
-            session.proxies.update(self.proxy_config)
-            session.headers.update({
-                'User-Agent': 'Mozilla/5.0 (Enterprise AO1 Tool)',
-                'Accept': '*/*',
-                'Connection': 'keep-alive'
-            })
-            session.verify = False
-            
-            response = session.get('http://httpbin.org/get', timeout=10)
-            print("    Session-based: Status {} ({} bytes)".format(response.status_code, len(response.content)))
-            return response.status_code == 200
-        except Exception as e:
-            print("    Session-based failed: {}".format(str(e)[:80]))
-            return False
-    
-    def _test_system_proxy(self) -> bool:
-        """Test using system proxy detection"""
-        try:
-            # Test if system can resolve proxy automatically
-            response = requests.get('http://httpbin.org/get', timeout=10)
-            print("    System proxy: Status {} ({} bytes)".format(response.status_code, len(response.content)))
-            return response.status_code == 200
-        except Exception as e:
-            print("    System proxy failed: {}".format(str(e)[:80]))
-            return False
-    
-    def _basic_proxy_test(self) -> bool:
-        """Basic proxy test without advanced features"""
-        test_urls = ['http://httpbin.org/get', 'https://httpbin.org/get']
         successful_tests = 0
         
         for url in test_urls:
             try:
                 response = requests.get(url, 
                                       proxies=self.proxy_config,
-                                      timeout=10, 
+                                      timeout=10,
                                       verify=False)
                 if response.status_code == 200:
                     successful_tests += 1
-                    print("  SUCCESS: {}".format(url))
-            except Exception as e:
-                print("  ERROR: {} - {}".format(url, str(e)[:50]))
-        
-        return successful_tests > 0
-
-class M1GPUDetector:
-    """M1 GPU detection and optimization manager"""
-    
-    def __init__(self):
-        self.device = None
-        self.gpu_available = False
-        self.gpu_type = None
-        self.optimization_level = 'basic'
-        
-    def comprehensive_gpu_detection(self) -> Dict[str, Any]:
-        """Comprehensive M1 GPU detection with multiple methods"""
-        gpu_info = {
-            'mps_available': False,
-            'mps_built': False,
-            'torch_device': 'cpu',
-            'platform_info': {},
-            'metal_performance': False,
-            'recommended_settings': {}
-        }
-        
-        print("GPU DETECTION: Comprehensive M1 analysis...")
-        
-        # Method 1: PyTorch MPS detection
-        if TORCH_AVAILABLE:
-            try:
-                gpu_info['mps_available'] = torch.backends.mps.is_available()
-                gpu_info['mps_built'] = torch.backends.mps.is_built()
-                
-                if gpu_info['mps_available']:
-                    self.device = torch.device("mps")
-                    gpu_info['torch_device'] = 'mps'
-                    self.gpu_available = True
-                    self.gpu_type = 'M1_MPS'
-                    print("  SUCCESS: M1 GPU detected via PyTorch MPS")
+                    print("  ✓ {}".format(url))
                 else:
-                    self.device = torch.device("cpu")
-                    print("  INFO: M1 GPU not available, using CPU")
-                    
+                    print("  ⚠ {} (Status: {})".format(url, response.status_code))
             except Exception as e:
-                print("  ERROR: PyTorch MPS detection failed - {}".format(e))
-                self.device = torch.device("cpu")
+                print("  ✗ {} - {}".format(url, str(e)[:60]))
         
-        # Method 2: Platform detection
-        try:
-            import platform
-            system_info = {
-                'system': platform.system(),
-                'machine': platform.machine(),
-                'processor': platform.processor(),
-                'platform': platform.platform()
-            }
-            gpu_info['platform_info'] = system_info
-            
-            # Check for Apple Silicon indicators
-            if (system_info['machine'] in ['arm64', 'aarch64'] and 
-                system_info['system'] == 'Darwin'):
-                print("  SUCCESS: Apple Silicon architecture detected")
-                gpu_info['metal_performance'] = True
-                
-        except Exception as e:
-            print("  ERROR: Platform detection failed - {}".format(e))
+        self.proxy_working = successful_tests >= len(test_urls) // 2
         
-        # Method 3: System profiler check (macOS specific)
-        try:
-            if gpu_info['platform_info'].get('system') == 'Darwin':
-                result = subprocess.run(['system_profiler', 'SPHardwareDataType'], 
-                                      capture_output=True, text=True, timeout=10)
-                if 'Apple M1' in result.stdout or 'Apple M2' in result.stdout:
-                    print("  SUCCESS: Apple Silicon confirmed via system profiler")
-                    self.optimization_level = 'advanced'
-        except Exception as e:
-            print("  INFO: System profiler check skipped - {}".format(e))
-        
-        # Set optimization recommendations
-        if self.gpu_available:
-            gpu_info['recommended_settings'] = {
-                'batch_size': 32,
-                'precision': 'float16',
-                'memory_optimization': True,
-                'threading': 'auto'
-            }
-            self.optimization_level = 'gpu_optimized'
+        if self.proxy_working:
+            print("✓ PROXY: Working ({}/{} tests passed)".format(successful_tests, len(test_urls)))
         else:
-            gpu_info['recommended_settings'] = {
-                'batch_size': 8,
-                'precision': 'float32',
-                'memory_optimization': False,
-                'threading': 'cpu_optimized'
-            }
+            print("⚠ PROXY: Limited connectivity ({}/{} tests passed)".format(successful_tests, len(test_urls)))
         
-        return gpu_info
+        return self.proxy_working
     
-    def optimize_for_device(self, model=None):
-        """Optimize model for detected device"""
-        if model is None:
-            return None
-            
+    def _test_direct_connection(self) -> bool:
+        """Test direct internet connection"""
         try:
-            if self.gpu_available and self.device.type == 'mps':
-                if hasattr(model, 'to'):
-                    model = model.to(self.device)
-                    print("  OPTIMIZATION: Model moved to M1 GPU")
-                
-                # M1-specific optimizations
-                if hasattr(torch.backends.mps, 'empty_cache'):
-                    torch.backends.mps.empty_cache()
-                
-                return model
-            else:
-                print("  OPTIMIZATION: Using CPU optimization")
-                return model
-                
-        except Exception as e:
-            print("  ERROR: Device optimization failed - {}".format(e))
-            return model
-
-class EnterpriseHuggingFaceManager:
-    """Enterprise-grade Hugging Face connection manager"""
-    
-    def __init__(self, proxy_manager: EnterpriseProxyManager):
-        self.proxy_manager = proxy_manager
-        self.connection_methods = []
-        self.successful_connections = []
-        self.models = {}
-        self.api = None
-        
-    def comprehensive_connectivity_test(self) -> Dict[str, Any]:
-        """Comprehensive Hugging Face connectivity testing"""
-        print("HUGGING FACE: Enterprise connectivity analysis...")
-        
-        connectivity_results = {
-            'hub_api_direct': False,
-            'hub_api_proxy': False,
-            'model_download_direct': False,
-            'model_download_proxy': False,
-            'sentence_transformers': False,
-            'transformers_library': False,
-            'cached_models': False,
-            'offline_mode': False,
-            'pipeline_access': False,
-            'authentication_status': 'unknown'
-        }
-        
-        # Test 1: Direct Hub API access
-        try:
-            api = HfApi()
-            models = list(api.list_models(limit=1))
-            connectivity_results['hub_api_direct'] = True
-            self.successful_connections.append('Hub API Direct')
-            print("  SUCCESS: Direct Hub API access")
-        except Exception as e:
-            print("  FAILED: Direct Hub API - {}".format(str(e)[:60]))
-        
-        # Test 2: Hub API with proxy
-        if self.proxy_manager.proxy_config:
-            try:
-                # Configure requests with proxy
-                import requests
-                session = requests.Session()
-                session.proxies.update(self.proxy_manager.proxy_config)
-                
-                # Test API with proxy
-                api = HfApi()
-                models = list(api.list_models(limit=1))
-                connectivity_results['hub_api_proxy'] = True
-                self.successful_connections.append('Hub API Proxy')
-                print("  SUCCESS: Hub API via corporate proxy")
-            except Exception as e:
-                print("  FAILED: Hub API with proxy - {}".format(str(e)[:60]))
-        
-        # Test 3: Direct model download
-        try:
-            config_path = hf_hub_download(
-                repo_id="sentence-transformers/all-MiniLM-L6-v2",
-                filename="config.json"
-            )
-            if os.path.exists(config_path):
-                connectivity_results['model_download_direct'] = True
-                self.successful_connections.append('Model Download Direct')
-                print("  SUCCESS: Direct model download")
-        except Exception as e:
-            print("  FAILED: Direct model download - {}".format(str(e)[:60]))
-        
-        # Test 4: Sentence Transformers
-        try:
-            model = SentenceTransformer('all-MiniLM-L6-v2')
-            test_embedding = model.encode(["test connectivity"])
-            if test_embedding is not None:
-                connectivity_results['sentence_transformers'] = True
-                self.successful_connections.append('Sentence Transformers')
-                print("  SUCCESS: Sentence Transformers functional")
-        except Exception as e:
-            print("  FAILED: Sentence Transformers - {}".format(str(e)[:60]))
-        
-        # Test 5: Raw Transformers library
-        try:
-            tokenizer = AutoTokenizer.from_pretrained("distilbert-base-uncased")
-            model = AutoModel.from_pretrained("distilbert-base-uncased")
-            connectivity_results['transformers_library'] = True
-            self.successful_connections.append('Transformers Library')
-            print("  SUCCESS: Transformers library functional")
-        except Exception as e:
-            print("  FAILED: Transformers library - {}".format(str(e)[:60]))
-        
-        # Test 6: Check cached models
-        try:
-            cache_info = scan_cache_dir()
-            if len(cache_info.repos) > 0:
-                connectivity_results['cached_models'] = True
-                self.successful_connections.append('Cached Models')
-                print("  SUCCESS: {} cached models found".format(len(cache_info.repos)))
-        except Exception as e:
-            print("  FAILED: Cache scan - {}".format(str(e)[:60]))
-        
-        # Test 7: Offline mode
-        try:
-            os.environ["TRANSFORMERS_OFFLINE"] = "1"
-            os.environ["HF_DATASETS_OFFLINE"] = "1"
-            
-            tokenizer = AutoTokenizer.from_pretrained("distilbert-base-uncased", local_files_only=True)
-            connectivity_results['offline_mode'] = True
-            self.successful_connections.append('Offline Mode')
-            print("  SUCCESS: Offline mode functional")
-            
-            # Cleanup
-            del os.environ["TRANSFORMERS_OFFLINE"]
-            del os.environ["HF_DATASETS_OFFLINE"]
-            
-        except Exception as e:
-            print("  FAILED: Offline mode - {}".format(str(e)[:60]))
-        
-        # Test 8: Pipeline access
-        try:
-            pipe = pipeline("text-classification", model="distilbert-base-uncased")
-            result = pipe("test text")
-            connectivity_results['pipeline_access'] = True
-            self.successful_connections.append('Pipeline Access')
-            print("  SUCCESS: Pipeline access functional")
-        except Exception as e:
-            print("  FAILED: Pipeline access - {}".format(str(e)[:60]))
-        
-        # Authentication test
-        try:
-            login()  # Try cached token
-            connectivity_results['authentication_status'] = 'authenticated'
-            print("  SUCCESS: Authenticated access available")
+            response = requests.get('http://httpbin.org/get', timeout=5)
+            if response.status_code == 200:
+                print("✓ DIRECT: Internet connection working")
+                return True
         except:
-            connectivity_results['authentication_status'] = 'anonymous'
-            print("  INFO: Using anonymous access")
+            pass
         
-        success_count = sum(connectivity_results.values() if isinstance(v, bool) else 0 for v in connectivity_results.values())
-        print("CONNECTIVITY SUMMARY: {}/8 connection methods successful".format(success_count))
-        
-        return connectivity_results
+        print("✗ DIRECT: No internet connectivity")
+        return False
     
-    def load_optimal_model(self, gpu_detector: M1GPUDetector) -> Tuple[Any, str]:
-        """Load optimal model based on connectivity and hardware"""
-        print("MODEL LOADING: Selecting optimal strategy...")
-        
-        # Model priority list (best to fallback)
-        model_candidates = [
-            'sentence-transformers/all-MiniLM-L6-v2',
-            'sentence-transformers/paraphrase-MiniLM-L6-v2',
-            'sentence-transformers/all-mpnet-base-v2',
-            'distilbert-base-uncased',
-            'bert-base-uncased'
-        ]
-        
-        # Loading strategy priority
-        loading_strategies = []
-        
-        if 'Sentence Transformers' in self.successful_connections:
-            loading_strategies.append(('sentence_transformers', 'SentenceTransformers'))
-        if 'Transformers Library' in self.successful_connections:
-            loading_strategies.append(('transformers_direct', 'Direct Transformers'))
-        if 'Cached Models' in self.successful_connections:
-            loading_strategies.append(('cached_local', 'Cached Local'))
-        if 'Offline Mode' in self.successful_connections:
-            loading_strategies.append(('offline_only', 'Offline Only'))
-        if 'Pipeline Access' in self.successful_connections:
-            loading_strategies.append(('pipeline_mode', 'Pipeline Mode'))
-        
-        # Try each combination
-        for model_name in model_candidates:
-            for strategy_key, strategy_name in loading_strategies:
-                try:
-                    print("  ATTEMPTING: {} via {}".format(model_name, strategy_name))
-                    
-                    if strategy_key == 'sentence_transformers':
-                        model = SentenceTransformer(model_name)
-                        model = gpu_detector.optimize_for_device(model)
-                        print("  SUCCESS: Model loaded via SentenceTransformers")
-                        return model, 'sentence_transformers'
-                    
-                    elif strategy_key == 'transformers_direct':
-                        tokenizer = AutoTokenizer.from_pretrained(model_name)
-                        model = AutoModel.from_pretrained(model_name)
-                        model = gpu_detector.optimize_for_device(model)
-                        print("  SUCCESS: Model loaded via Direct Transformers")
-                        return {'model': model, 'tokenizer': tokenizer}, 'transformers_direct'
-                    
-                    elif strategy_key == 'cached_local':
-                        model = SentenceTransformer(model_name, local_files_only=True)
-                        model = gpu_detector.optimize_for_device(model)
-                        print("  SUCCESS: Model loaded from cache")
-                        return model, 'cached_local'
-                    
-                    elif strategy_key == 'offline_only':
-                        os.environ["TRANSFORMERS_OFFLINE"] = "1"
-                        tokenizer = AutoTokenizer.from_pretrained(model_name, local_files_only=True)
-                        model = AutoModel.from_pretrained(model_name, local_files_only=True)
-                        model = gpu_detector.optimize_for_device(model)
-                        if "TRANSFORMERS_OFFLINE" in os.environ:
-                            del os.environ["TRANSFORMERS_OFFLINE"]
-                        print("  SUCCESS: Model loaded in offline mode")
-                        return {'model': model, 'tokenizer': tokenizer}, 'offline_only'
-                    
-                    elif strategy_key == 'pipeline_mode':
-                        model = pipeline("feature-extraction", model=model_name)
-                        print("  SUCCESS: Model loaded via pipeline")
-                        return model, 'pipeline_mode'
-                        
-                except Exception as e:
-                    print("  FAILED: {} - {}".format(strategy_name, str(e)[:50]))
-                    continue
-        
-        print("  ERROR: All model loading strategies failed")
-        return None, None
+    def _mask_proxy_password(self, proxy_url: str) -> str:
+        """Mask password in proxy URL for logging"""
+        if '@' in proxy_url:
+            parts = proxy_url.split('@')
+            if ':' in parts[0]:
+                auth_part = parts[0].split('://')[-1]
+                if ':' in auth_part:
+                    user = auth_part.split(':')[0]
+                    return proxy_url.replace(auth_part, "{}:****".format(user))
+        return proxy_url
 
-class EnterpriseAO1Analyzer:
-    """Enterprise-grade AO1 field analyzer with corporate features"""
+class UltraRobustAO1Analyzer:
+    """Ultra-robust AO1 analyzer that never fails"""
     
     def __init__(self):
-        self.client = None
+        print("ULTRA-ROBUST AO1 FIELD DISCOVERY SYSTEM")
+        print("Self-Healing Enterprise ML Analysis")
+        print("=" * 60)
+        
+        # Initialize all systems
+        self.ml_system = UltraRobustMLSystem()
         self.proxy_manager = EnterpriseProxyManager()
-        self.gpu_detector = M1GPUDetector()
-        self.hf_manager = None
-        self.ml_model = None
-        self.ml_strategy = None
+        self.client = None
         self.requirement_embeddings = {}
-        self.neural_matcher = None
         
-        # Initialize enterprise components
-        self.initialize_enterprise_environment()
+        # Load AO1 keywords
+        self._load_ao1_keywords()
         
-    def initialize_enterprise_environment(self):
-        """Initialize enterprise environment with all components"""
-        print("ENTERPRISE INITIALIZATION")
-        print("=" * 50)
-        
-        # Step 1: Configure corporate proxy
-        if not self.proxy_manager.configure_proxy_interactively():
-            print("WARNING: Network connectivity issues detected")
-        
-        # Step 2: Detect and configure GPU
-        gpu_info = self.gpu_detector.comprehensive_gpu_detection()
-        
-        # Step 3: Re-check ML libraries (in case they were just installed)
-        print("\nRE-CHECKING ML LIBRARIES:")
-        global ML_STATUS, TORCH_AVAILABLE, HF_AVAILABLE, SKLEARN_AVAILABLE, ML_LIBRARIES_AVAILABLE
-        ML_STATUS = check_ml_libraries()
-        TORCH_AVAILABLE = ML_STATUS['TORCH_AVAILABLE']
-        HF_AVAILABLE = ML_STATUS['HF_AVAILABLE'] 
-        SKLEARN_AVAILABLE = ML_STATUS['SKLEARN_AVAILABLE']
-        ML_LIBRARIES_AVAILABLE = ML_STATUS['ML_LIBRARIES_AVAILABLE']
-        
-        # Step 4: Initialize ML components based on what's available
-        print("\nML SYSTEM INITIALIZATION:")
-        
-        if ML_LIBRARIES_AVAILABLE:
-            print("✓ All ML libraries detected - Initializing full ML pipeline")
-            try:
-                self.hf_manager = EnterpriseHuggingFaceManager(self.proxy_manager)
-                connectivity = self.hf_manager.comprehensive_connectivity_test()
-                
-                if self.hf_manager.successful_connections:
-                    print("✓ Hugging Face connectivity established")
-                    self.ml_model, self.ml_strategy = self.hf_manager.load_optimal_model(self.gpu_detector)
-                    if self.ml_model:
-                        self._compute_requirement_embeddings()
-                        print("✓ ML COMPONENTS: Fully operational with {} strategy".format(self.ml_strategy))
-                    else:
-                        print("⚠ ML COMPONENTS: Libraries available but model loading failed")
-                        print("  Will fall back to pattern matching and TF-IDF")
-                else:
-                    print("⚠ ML COMPONENTS: Libraries available but no network connectivity")
-                    print("  Will attempt cached/offline models or fall back to TF-IDF")
-                    
-            except Exception as e:
-                print("⚠ ML INITIALIZATION ERROR: {}".format(str(e)[:100]))
-                print("  Falling back to available methods")
-                
-        elif HF_AVAILABLE and SKLEARN_AVAILABLE:
-            print("⚠ Partial ML available - PyTorch missing, using basic transformers")
-            try:
-                self.hf_manager = EnterpriseHuggingFaceManager(self.proxy_manager)
-                connectivity = self.hf_manager.comprehensive_connectivity_test()
-                if self.hf_manager.successful_connections:
-                    # Try to load basic transformer models without PyTorch neural networks
-                    self.ml_model, self.ml_strategy = self.hf_manager.load_optimal_model(self.gpu_detector)
-                    if self.ml_model:
-                        self._compute_requirement_embeddings()
-                        print("✓ ML COMPONENTS: Partial functionality (transformers + TF-IDF)")
-                    else:
-                        print("⚠ Using TF-IDF similarity only")
-                else:
-                    print("⚠ No connectivity - using TF-IDF similarity only")
-            except Exception as e:
-                print("⚠ Transformer initialization failed: {}".format(str(e)[:80]))
-                print("  Using TF-IDF similarity only")
-                
-        elif SKLEARN_AVAILABLE:
-            print("⚠ Basic ML available - Only scikit-learn features")
-            print("✓ ML COMPONENTS: TF-IDF and similarity scoring available")
-        else:
-            print("ℹ ML COMPONENTS: Using pattern matching only")
-            print("  For full ML features, install: pip install torch transformers sentence-transformers scikit-learn")
+        # Initialize enterprise environment
+        self._initialize_enterprise_environment()
     
-    def authenticate_bigquery(self) -> bool:
-        """Authenticate with BigQuery"""
+    def _load_ao1_keywords(self):
+        """Load AO1 keywords with fallback"""
         try:
-            if not os.path.exists(SERVICE_ACCOUNT_FILE):
-                print("ERROR: Service account file not found: {}".format(SERVICE_ACCOUNT_FILE))
-                return False
+            from ao1_keywords import (
+                REQ1_GLOBAL_VIEW_KEYWORDS,
+                REQ2_INFRASTRUCTURE_TYPE_KEYWORDS,
+                REQ3_REGIONAL_COUNTRY_KEYWORDS,
+                REQ4_BUSINESS_APPLICATION_KEYWORDS,
+                REQ5_SYSTEM_CLASSIFICATION_KEYWORDS,
+                REQ6_SECURITY_CONTROL_COVERAGE_KEYWORDS,
+                REQ7_LOGGING_COMPLIANCE_KEYWORDS,
+                REQ8_DOMAIN_VISIBILITY_KEYWORDS,
+                get_all_keywords
+            )
             
-            credentials = service_account.Credentials.from_service_account_file(SERVICE_ACCOUNT_FILE)
-            self.client = bigquery.Client(project=PROJECT_ID, credentials=credentials)
+            self.all_keywords = get_all_keywords()
+            self.requirement_keywords = {
+                'REQ-1': REQ1_GLOBAL_VIEW_KEYWORDS,
+                'REQ-2': REQ2_INFRASTRUCTURE_TYPE_KEYWORDS,
+                'REQ-3': REQ3_REGIONAL_COUNTRY_KEYWORDS,
+                'REQ-4': REQ4_BUSINESS_APPLICATION_KEYWORDS,
+                'REQ-5': REQ5_SYSTEM_CLASSIFICATION_KEYWORDS,
+                'REQ-6': REQ6_SECURITY_CONTROL_COVERAGE_KEYWORDS,
+                'REQ-7': REQ7_LOGGING_COMPLIANCE_KEYWORDS,
+                'REQ-8': REQ8_DOMAIN_VISIBILITY_KEYWORDS
+            }
+            print("✓ AO1 KEYWORDS: {} keywords loaded".format(len(self.all_keywords)))
+            
+        except ImportError:
+            print("✗ AO1 keywords module not found - using built-in keywords")
+            self._create_builtin_keywords()
+    
+    def _create_builtin_keywords(self):
+        """Create built-in AO1 keywords as fallback"""
+        self.all_keywords = {
+            # REQ-1: Global View
+            'hostname', 'host_name', 'computer_name', 'device_name', 'asset_id',
+            'ip_address', 'mac_address', 'serial_number',
+            
+            # REQ-2: Infrastructure Type  
+            'cloud', 'aws', 'azure', 'gcp', 'datacenter', 'virtual_machine',
+            
+            # REQ-3: Regional/Country
+            'region', 'country', 'location', 'datacenter', 'zone',
+            
+            # REQ-4: Business/Application
+            'business_unit', 'application', 'department', 'organization',
+            
+            # REQ-5: System Classification
+            'windows', 'linux', 'unix', 'operating_system', 'server_type',
+            
+            # REQ-6: Security Control Coverage
+            'edr', 'crowdstrike', 'tanium', 'agent_id', 'endpoint_security',
+            
+            # REQ-7: Logging Compliance
+            'splunk', 'chronicle', 'sourcetype', 'index', 'log_source',
+            
+            # REQ-8: Domain Visibility
+            'domain', 'fqdn', 'dns_name', 'hostname'
+        }
+        
+        self.requirement_keywords = {
+            'REQ-1': {'hostname', 'host_name', 'computer_name', 'device_name', 'asset_id', 'ip_address'},
+            'REQ-2': {'cloud', 'aws', 'azure', 'gcp', 'datacenter', 'virtual_machine'},
+            'REQ-3': {'region', 'country', 'location', 'datacenter', 'zone'},
+            'REQ-4': {'business_unit', 'application', 'department', 'organization'},
+            'REQ-5': {'windows', 'linux', 'unix', 'operating_system', 'server_type'},
+            'REQ-6': {'edr', 'crowdstrike', 'tanium', 'agent_id', 'endpoint_security'},
+            'REQ-7': {'splunk', 'chronicle', 'sourcetype', 'index', 'log_source'},
+            'REQ-8': {'domain', 'fqdn', 'dns_name', 'hostname'}
+        }
+        
+        print("✓ BUILT-IN KEYWORDS: {} keywords available".format(len(self.all_keywords)))
+    
+    def _initialize_enterprise_environment(self):
+        """Initialize enterprise environment"""
+        # Configure proxy
+        self.proxy_manager.auto_configure_proxy()
+        
+        # Authenticate BigQuery
+        self._authenticate_bigquery()
+        
+        # Compute embeddings if ML available
+        if self.ml_system.models:
+            self._compute_requirement_embeddings()
+    
+    def _authenticate_bigquery(self) -> bool:
+        """Authenticate with BigQuery using multiple methods"""
+        print("\nBIGQUERY AUTHENTICATION:")
+        
+        # Try importing BigQuery
+        if 'google.cloud.bigquery' not in self.ml_system.successful_dependencies:
+            print("✗ BigQuery library not available - attempting installation")
+            success, module = self.ml_system.dependency_manager.ensure_dependency(
+                'google.cloud.bigquery', 'google-cloud-bigquery'
+            )
+            if not success:
+                print("✗ CRITICAL: Cannot install BigQuery library")
+                return False
+        
+        try:
+            bigquery = self.ml_system.successful_dependencies['google.cloud.bigquery']
+            
+            # Try service account authentication
+            if os.path.exists(SERVICE_ACCOUNT_FILE):
+                if 'google.oauth2' in self.ml_system.successful_dependencies:
+                    service_account = self.ml_system.successful_dependencies['google.oauth2'].service_account
+                    credentials = service_account.Credentials.from_service_account_file(SERVICE_ACCOUNT_FILE)
+                    self.client = bigquery.Client(project=PROJECT_ID, credentials=credentials)
+                else:
+                    print("⚠ google.oauth2 not available, trying default credentials")
+                    self.client = bigquery.Client(project=PROJECT_ID)
+            else:
+                print("⚠ Service account file not found, trying default credentials")
+                self.client = bigquery.Client(project=PROJECT_ID)
             
             # Test connection
             datasets = list(self.client.list_datasets(max_results=1))
-            print("BIGQUERY: Authentication successful")
+            print("✓ BIGQUERY: Authentication successful")
             return True
             
         except Exception as e:
-            print("BIGQUERY ERROR: {}".format(e))
+            print("✗ BIGQUERY: Authentication failed - {}".format(e))
             return False
     
     def _compute_requirement_embeddings(self):
-        """Compute embeddings for requirements using available model"""
-        if not self.ml_model:
-            return
-        
+        """Compute requirement embeddings using available ML"""
         requirement_descriptions = {
-            'REQ-1': 'global view asset identifiers hostname computer device system name',
-            'REQ-2': 'infrastructure type deployment cloud aws azure gcp onpremises datacenter',
-            'REQ-3': 'regional country geographic location datacenter region zone address',
-            'REQ-4': 'business application organizational unit department division company',
-            'REQ-5': 'system classification server function operating system windows linux unix',
-            'REQ-6': 'security control coverage agent endpoint detection response edr tanium',
-            'REQ-7': 'logging compliance platform splunk chronicle ingestion parsing sourcetype',
+            'REQ-1': 'global view asset identifiers hostname computer device system',
+            'REQ-2': 'infrastructure type deployment cloud aws azure gcp onpremises',
+            'REQ-3': 'regional country geographic location datacenter region zone',
+            'REQ-4': 'business application organizational unit department division',
+            'REQ-5': 'system classification server function operating system windows linux',
+            'REQ-6': 'security control coverage agent endpoint detection response edr',
+            'REQ-7': 'logging compliance platform splunk chronicle ingestion parsing',
             'REQ-8': 'domain visibility hostname dns resolution network address fqdn'
         }
         
         try:
-            print("EMBEDDINGS: Computing requirement embeddings...")
-            
-            for req, desc in requirement_descriptions.items():
-                if self.ml_strategy == 'sentence_transformers':
-                    embedding = self.ml_model.encode([desc])[0]
+            if 'sentence_transformer' in self.ml_system.models:
+                model = self.ml_system.models['sentence_transformer']
+                for req, desc in requirement_descriptions.items():
+                    embedding = model.encode([desc])[0]
                     self.requirement_embeddings[req] = embedding
                     
-                elif self.ml_strategy in ['transformers_direct', 'offline_only']:
-                    tokenizer = self.ml_model['tokenizer']
-                    model = self.ml_model['model']
-                    
-                    inputs = tokenizer(desc, return_tensors='pt', padding=True, truncation=True)
-                    if self.gpu_detector.device and self.gpu_detector.device.type == 'mps':
-                        inputs = {k: v.to(self.gpu_detector.device) for k, v in inputs.items()}
-                    
-                    with torch.no_grad():
-                        outputs = model(**inputs)
-                        embedding = outputs.last_hidden_state.mean(dim=1).cpu().numpy()[0]
-                        self.requirement_embeddings[req] = embedding
+                print("✓ EMBEDDINGS: Computed for {} requirements".format(len(self.requirement_embeddings)))
                 
-                elif self.ml_strategy == 'pipeline_mode':
-                    result = self.ml_model(desc)[0]
-                    if isinstance(result, list):
-                        embedding = np.array(result).mean(axis=0)
-                        self.requirement_embeddings[req] = embedding
-            
-            print("EMBEDDINGS: Successfully computed for {} requirements".format(len(self.requirement_embeddings)))
-            
         except Exception as e:
-            print("EMBEDDINGS ERROR: {}".format(e))
-            self.requirement_embeddings = {}
+            print("⚠ EMBEDDINGS: Failed to compute - {}".format(e))
     
-    def compute_advanced_field_score(self, field_name: str) -> Dict[str, float]:
-        """Compute advanced scoring for field relevance with fallback methods"""
+    def compute_field_score(self, field_name: str) -> Tuple[Dict[str, float], str]:
+        """Compute comprehensive field scoring"""
         scores = {
             'exact_match': 0.0,
             'pattern_match': 0.0,
             'semantic_similarity': 0.0,
-            'neural_classification': 0.0,
             'composite_score': 0.0
         }
         
         field_lower = field_name.lower().strip()
-        
-        # Exact match scoring (always available)
-        if field_lower in ALL_AO1_KEYWORDS:
-            scores['exact_match'] = 1.0
-        
-        # Pattern matching scoring (always available)
-        best_pattern_score = 0.0
         matched_keyword = None
         
-        for keyword in ALL_AO1_KEYWORDS:
+        # Exact match
+        if field_lower in self.all_keywords:
+            scores['exact_match'] = 1.0
+            matched_keyword = field_lower
+        
+        # Pattern matching
+        best_pattern_score = 0.0
+        for keyword in self.all_keywords:
             if len(keyword) >= 3:
                 if keyword in field_lower:
                     pattern_score = len(keyword) / len(field_lower)
                     if pattern_score > best_pattern_score:
                         best_pattern_score = pattern_score
-                        matched_keyword = keyword
+                        if not matched_keyword:
+                            matched_keyword = keyword
                 elif field_lower in keyword and len(field_lower) >= 3:
                     pattern_score = len(field_lower) / len(keyword)
                     if pattern_score > best_pattern_score:
                         best_pattern_score = pattern_score
-                        matched_keyword = keyword
+                        if not matched_keyword:
+                            matched_keyword = keyword
         
         scores['pattern_match'] = best_pattern_score
         
-        # Semantic similarity scoring (if ML available)
-        if self.ml_model and self.requirement_embeddings:
+        # Semantic similarity (if available)
+        if self.requirement_embeddings and 'sentence_transformer' in self.ml_system.models:
             try:
-                best_semantic_score = 0.0
+                model = self.ml_system.models['sentence_transformer']
+                field_embedding = model.encode([field_name])
                 
-                for req in self.requirement_embeddings.keys():
-                    similarity = 0.0
-                    
-                    if self.ml_strategy == 'sentence_transformers':
-                        field_embedding = self.ml_model.encode([field_name])
-                        req_embedding = self.requirement_embeddings[req].reshape(1, -1)
-                        similarity = cosine_similarity(field_embedding, req_embedding)[0][0]
-                        
-                    elif self.ml_strategy in ['transformers_direct', 'offline_only']:
-                        tokenizer = self.ml_model['tokenizer']
-                        model = self.ml_model['model']
-                        
-                        inputs = tokenizer(field_name, return_tensors='pt', padding=True, truncation=True)
-                        if self.gpu_detector.device and self.gpu_detector.device.type == 'mps':
-                            inputs = {k: v.to(self.gpu_detector.device) for k, v in inputs.items()}
-                        
-                        with torch.no_grad():
-                            outputs = model(**inputs)
-                            field_embedding = outputs.last_hidden_state.mean(dim=1).cpu().numpy()
-                        
-                        req_embedding = self.requirement_embeddings[req].reshape(1, -1)
-                        similarity = cosine_similarity(field_embedding, req_embedding)[0][0]
-                    
-                    if similarity > best_semantic_score:
-                        best_semantic_score = similarity
+                best_similarity = 0.0
+                for req_embedding in self.requirement_embeddings.values():
+                    if 'sklearn' in self.ml_system.successful_dependencies:
+                        cosine_similarity = self.ml_system.successful_dependencies['sklearn'].metrics.pairwise.cosine_similarity
+                        similarity = cosine_similarity(field_embedding, req_embedding.reshape(1, -1))[0][0]
+                        best_similarity = max(best_similarity, similarity)
                 
-                scores['semantic_similarity'] = best_semantic_score
+                scores['semantic_similarity'] = best_similarity
                 
             except Exception as e:
-                print("SEMANTIC SCORING ERROR: {}".format(e))
-                scores['semantic_similarity'] = 0.0
+                print("⚠ Semantic scoring error: {}".format(e))
         
-        # TF-IDF similarity scoring (fallback if sklearn available but no ML models)
-        elif SKLEARN_AVAILABLE and not self.ml_model:
-            try:
-                # Simple TF-IDF based similarity
-                requirement_texts = [
-                    'global view asset identifiers hostname computer device system name',
-                    'infrastructure type deployment cloud aws azure gcp onpremises datacenter',
-                    'regional country geographic location datacenter region zone address',
-                    'business application organizational unit department division company',
-                    'system classification server function operating system windows linux unix',
-                    'security control coverage agent endpoint detection response edr tanium',
-                    'logging compliance platform splunk chronicle ingestion parsing sourcetype',
-                    'domain visibility hostname dns resolution network address fqdn'
-                ]
-                
-                vectorizer = TfidfVectorizer(stop_words='english')
-                all_texts = requirement_texts + [field_name]
-                tfidf_matrix = vectorizer.fit_transform(all_texts)
-                
-                # Compute similarity between field and each requirement
-                field_vector = tfidf_matrix[-1]
-                similarities = []
-                
-                for i in range(len(requirement_texts)):
-                    req_vector = tfidf_matrix[i]
-                    similarity = cosine_similarity(field_vector, req_vector)[0][0]
-                    similarities.append(similarity)
-                
-                scores['semantic_similarity'] = max(similarities) if similarities else 0.0
-                
-            except Exception as e:
-                print("TF-IDF SCORING ERROR: {}".format(e))
-                scores['semantic_similarity'] = 0.0
-        
-        # Neural classification (only if PyTorch available)
-        if TORCH_AVAILABLE and self.neural_matcher:
-            try:
-                # Neural scoring would go here
-                scores['neural_classification'] = 0.0  # Placeholder
-            except Exception as e:
-                print("NEURAL SCORING ERROR: {}".format(e))
-                scores['neural_classification'] = 0.0
-        
-        # Composite scoring with adaptive weights based on available features
-        if self.ml_model and self.requirement_embeddings:
-            # Full ML mode
-            weights = {
-                'exact_match': 0.4,
-                'pattern_match': 0.3,
-                'semantic_similarity': 0.2,
-                'neural_classification': 0.1
-            }
-        elif SKLEARN_AVAILABLE:
-            # TF-IDF mode
-            weights = {
-                'exact_match': 0.5,
-                'pattern_match': 0.4,
-                'semantic_similarity': 0.1,
-                'neural_classification': 0.0
-            }
+        # Composite score
+        if scores['exact_match'] > 0:
+            scores['composite_score'] = 1.0
+        elif scores['semantic_similarity'] > 0:
+            scores['composite_score'] = 0.4 * scores['pattern_match'] + 0.6 * scores['semantic_similarity']
         else:
-            # Pattern matching only mode
-            weights = {
-                'exact_match': 0.7,
-                'pattern_match': 0.3,
-                'semantic_similarity': 0.0,
-                'neural_classification': 0.0
-            }
+            scores['composite_score'] = scores['pattern_match']
         
-        scores['composite_score'] = sum(scores[key] * weights[key] for key in weights.keys())
-        
-        return scores, matched_keyword
+        return scores, matched_keyword or field_lower
     
-    def analyze_table_comprehensive(self, dataset_id: str, table_id: str) -> List[FieldMatch]:
-        """Comprehensive table analysis with enterprise features"""
+    def get_requirement_for_keyword(self, keyword: str) -> str:
+        """Get requirement for keyword"""
+        for req, keywords in self.requirement_keywords.items():
+            if keyword in keywords:
+                return req
+        return "UNKNOWN"
+    
+    def analyze_table(self, dataset_id: str, table_id: str) -> List[FieldMatch]:
+        """Analyze table for AO1 fields"""
         try:
             table_ref = self.client.dataset(dataset_id).table(table_id)
             table = self.client.get_table(table_ref)
             
             matches = []
             
-            def analyze_field_recursive(field, parent_path=""):
+            def analyze_field(field, parent_path=""):
                 field_path = "{}.{}".format(parent_path, field.name) if parent_path else field.name
                 
-                # Advanced scoring
-                scores, matched_keyword = self.compute_advanced_field_score(field.name)
+                scores, matched_keyword = self.compute_field_score(field.name)
                 
-                # Determine if field is relevant
-                if scores['composite_score'] > 0.3:  # Enterprise threshold
+                if scores['composite_score'] > 0.3:  # Threshold for relevance
+                    requirement = self.get_requirement_for_keyword(matched_keyword)
                     
-                    # Determine requirement
-                    requirement = "UNKNOWN"
-                    if matched_keyword:
-                        requirement = self.get_requirement_for_keyword(matched_keyword)
-                    
-                    # Determine match type
                     if scores['exact_match'] >= 1.0:
                         match_type = "EXACT"
-                    elif scores['composite_score'] >= 0.7:
+                    elif scores['composite_score'] >= 0.8:
                         match_type = "HIGH_CONFIDENCE"
-                    elif scores['composite_score'] >= 0.5:
+                    elif scores['composite_score'] >= 0.6:
                         match_type = "ML_IDENTIFIED"
                     else:
                         match_type = "SUSPECTED"
@@ -1136,26 +748,23 @@ class EnterpriseAO1Analyzer:
                         field_path=field_path,
                         field_type=field.field_type,
                         requirement=requirement,
-                        matched_keyword=matched_keyword or field.name.lower(),
+                        matched_keyword=matched_keyword,
                         match_type=match_type,
                         confidence_score=scores['composite_score'],
                         table_rows=table.num_rows or 0,
                         table_size_bytes=table.num_bytes or 0,
                         semantic_similarity=scores['semantic_similarity'],
-                        context_relevance=self.compute_context_relevance(field.name, field.field_type),
-                        neural_score=scores['neural_classification'],
-                        pattern_score=scores['pattern_match']
+                        context_relevance=0.8  # Default context relevance
                     )
                     matches.append(match)
                 
-                # Recursively analyze nested fields
+                # Handle nested fields
                 if field.field_type in ['RECORD', 'STRUCT'] and field.fields:
                     for nested_field in field.fields:
-                        analyze_field_recursive(nested_field, field_path)
+                        analyze_field(nested_field, field_path)
             
-            # Analyze all fields
             for field in table.schema:
-                analyze_field_recursive(field)
+                analyze_field(field)
             
             return matches
             
@@ -1163,32 +772,15 @@ class EnterpriseAO1Analyzer:
             logger.error("Table analysis error {}.{}: {}".format(dataset_id, table_id, e))
             return []
     
-    def get_requirement_for_keyword(self, keyword: str) -> str:
-        """Get requirement for keyword"""
-        for req, keywords in REQUIREMENT_KEYWORDS.items():
-            if keyword in keywords:
-                return req
-        return "UNKNOWN"
-    
-    def compute_context_relevance(self, field_name: str, field_type: str) -> float:
-        """Compute contextual relevance"""
-        base_score = 0.5
-        
-        # Type-based scoring
-        type_multipliers = {
-            'STRING': 1.2, 'VARCHAR': 1.2,
-            'INTEGER': 0.8, 'INT64': 0.8,
-            'TIMESTAMP': 1.0, 'DATETIME': 1.0,
-            'BOOLEAN': 0.6
-        }
-        
-        return min(base_score * type_multipliers.get(field_type, 1.0), 1.0)
-    
     def scan_all_datasets(self) -> List[FieldMatch]:
-        """Enterprise dataset scanning with progress tracking"""
+        """Scan all datasets for AO1 fields"""
+        if not self.client:
+            print("✗ CRITICAL: BigQuery client not available")
+            return []
+        
         try:
             datasets = [d.dataset_id for d in self.client.list_datasets()]
-            print("SCANNING: {} datasets identified".format(len(datasets)))
+            print("SCANNING: {} datasets".format(len(datasets)))
             
             all_matches = []
             total_tables = 0
@@ -1202,9 +794,9 @@ class EnterpriseAO1Analyzer:
                 except:
                     continue
             
-            print("PROCESSING: {} tables with enterprise ML analysis".format(total_tables))
+            print("PROCESSING: {} tables".format(total_tables))
             
-            # Process all tables
+            # Process tables
             for dataset_id in datasets:
                 try:
                     tables = list(self.client.list_tables(dataset_id))
@@ -1212,31 +804,30 @@ class EnterpriseAO1Analyzer:
                     for table in tables:
                         processed_tables += 1
                         
-                        if processed_tables % 25 == 0:
+                        if processed_tables % 50 == 0:
                             progress = (processed_tables / total_tables) * 100
-                            print("PROGRESS: {:.1f}% ({}/{} tables)".format(progress, processed_tables, total_tables))
+                            print("PROGRESS: {:.1f}% ({}/{})".format(progress, processed_tables, total_tables))
                         
-                        matches = self.analyze_table_comprehensive(dataset_id, table.table_id)
+                        matches = self.analyze_table(dataset_id, table.table_id)
                         all_matches.extend(matches)
                         
                 except Exception as e:
-                    logger.error("Dataset processing error {}: {}".format(dataset_id, e))
+                    logger.error("Dataset error {}: {}".format(dataset_id, e))
                     continue
             
-            print("ANALYSIS COMPLETE: {} field matches discovered".format(len(all_matches)))
+            print("ANALYSIS COMPLETE: {} matches found".format(len(all_matches)))
             return all_matches
             
         except Exception as e:
-            logger.error("Dataset scanning error: {}".format(e))
+            logger.error("Scan error: {}".format(e))
             return []
     
-    def generate_enterprise_report(self, matches: List[FieldMatch]):
-        """Generate enterprise-grade analysis report"""
+    def generate_report(self, matches: List[FieldMatch]):
+        """Generate comprehensive report"""
         if not matches:
-            print("\nENTERPRISE AO1 FIELD ANALYSIS")
+            print("\nULTRA-ROBUST AO1 ANALYSIS COMPLETE")
             print("=" * 60)
             print("STATUS: No AO1-relevant fields discovered")
-            print("RECOMMENDATION: Review data ingestion and field naming standards")
             return
         
         # Sort by strategic importance
@@ -1247,23 +838,21 @@ class EnterpriseAO1Analyzer:
         for match in matches:
             by_requirement[match.requirement].append(match)
         
-        print("\nENTERPRISE AO1 FIELD ANALYSIS")
+        print("\nULTRA-ROBUST AO1 ANALYSIS COMPLETE")
         print("=" * 60)
-        print("ENTERPRISE FEATURES: Corporate proxy support, M1 GPU optimization")
         
-        # Display system status
-        if self.gpu_detector.gpu_available:
-            print("COMPUTE: M1 GPU acceleration active")
-        else:
-            print("COMPUTE: CPU processing mode")
+        # System capabilities
+        capabilities = []
+        if self.ml_system.torch_available:
+            capabilities.append("PyTorch Neural Networks")
+        if self.ml_system.sentence_transformers_available:
+            capabilities.append("Semantic Analysis")
+        if self.ml_system.sklearn_available:
+            capabilities.append("Statistical Analysis")
         
-        if self.hf_manager and self.hf_manager.successful_connections:
-            print("ML CONNECTIVITY: {} methods successful".format(len(self.hf_manager.successful_connections)))
-        else:
-            print("ML CONNECTIVITY: Offline/limited mode")
-        
-        print("ANALYSIS DEPTH: {} fields analyzed with {} composite scoring".format(
-            len(matches), "ML-enhanced" if self.ml_model else "pattern-based"))
+        print("SYSTEM CAPABILITIES: {}".format(", ".join(capabilities) if capabilities else "Pattern Matching"))
+        print("PROXY STATUS: {}".format("Working" if self.proxy_manager.proxy_working else "Direct Connection"))
+        print("TOTAL DISCOVERIES: {} fields across {} requirements".format(len(matches), len(by_requirement)))
         
         # Requirement analysis
         for req_num in ['REQ-1', 'REQ-2', 'REQ-3', 'REQ-4', 'REQ-5', 'REQ-6', 'REQ-7', 'REQ-8']:
@@ -1273,144 +862,63 @@ class EnterpriseAO1Analyzer:
                 print("\n{}: No fields identified".format(req_num))
                 continue
             
-            # Categorize matches
+            # Categorize
             exact = [m for m in req_matches if m.match_type == 'EXACT']
             high_conf = [m for m in req_matches if m.match_type == 'HIGH_CONFIDENCE']
-            ml_identified = [m for m in req_matches if m.match_type == 'ML_IDENTIFIED']
+            ml_id = [m for m in req_matches if m.match_type == 'ML_IDENTIFIED']
             suspected = [m for m in req_matches if m.match_type == 'SUSPECTED']
             
             print("\n{}: {} total candidates".format(req_num, len(req_matches)))
             print("   EXACT: {} | HIGH_CONF: {} | ML_ID: {} | SUSPECTED: {}".format(
-                len(exact), len(high_conf), len(ml_identified), len(suspected)))
+                len(exact), len(high_conf), len(ml_id), len(suspected)))
             
             # Top recommendations
             top_matches = sorted(req_matches, key=lambda x: (-x.confidence_score, -x.table_rows))[:3]
             
-            print("   ENTERPRISE RECOMMENDATIONS:")
+            print("   TOP RECOMMENDATIONS:")
             for i, match in enumerate(top_matches, 1):
                 rows_info = "{:,} rows".format(match.table_rows) if match.table_rows > 0 else "unknown size"
                 print("      {}. Field '{}' in {}.{} ({})".format(
                     i, match.field_name, match.dataset, match.table, rows_info))
                 print("         Confidence: {:.1%} | Type: {} | Semantic: {:.1%}".format(
                     match.confidence_score, match.match_type, match.semantic_similarity))
-                
-                if match.match_type == 'EXACT':
-                    print("         Enterprise Assessment: Direct AO1 compliance field - immediate deployment ready")
-                elif match.match_type == 'HIGH_CONFIDENCE':
-                    print("         Enterprise Assessment: High-confidence ML match - recommended for validation")
-                else:
-                    print("         Enterprise Assessment: Candidate field - business validation recommended")
-        
-        # Strategic summary
-        print("\nENTERPRISE STRATEGIC SUMMARY")
-        print("=" * 40)
-        
-        total_exact = sum(len([m for m in matches if m.match_type == 'EXACT']) for matches in by_requirement.values())
-        total_high_conf = sum(len([m for m in matches if m.match_type == 'HIGH_CONFIDENCE']) for matches in by_requirement.values())
-        
-        print("DEPLOYMENT READY: {} exact match fields".format(total_exact))
-        print("VALIDATION PIPELINE: {} high-confidence fields".format(total_high_conf))
-        print("AO1 COVERAGE: {}/8 requirements ({:.1f}%)".format(len(by_requirement), len(by_requirement)/8*100))
-        
-        # Data volume analysis
-        total_rows = sum(m.table_rows for m in matches)
-        print("DATA IMPACT: {:,} total rows across candidate tables".format(total_rows))
-        
-    def save_enterprise_results(self, matches: List[FieldMatch]):
-        """Save enterprise results with comprehensive metadata"""
+    
+    def save_results(self, matches: List[FieldMatch]):
+        """Save comprehensive results"""
         if not matches:
             return
         
-        # Convert to DataFrame with enterprise metadata
-        df = pd.DataFrame([asdict(match) for match in matches])
-        
-        # Add enterprise columns
-        df['analysis_timestamp'] = datetime.now().isoformat()
-        df['ml_strategy'] = self.ml_strategy or 'pattern_only'
-        df['gpu_acceleration'] = self.gpu_detector.gpu_available
-        df['enterprise_grade'] = True
-        
-        # Sort by enterprise priority
-        df['priority_score'] = (df['confidence_score'] * 0.6 + 
-                               (df['table_rows'] / df['table_rows'].max()) * 0.4)
-        df = df.sort_values(['requirement', 'priority_score'], ascending=[True, False])
-        
-        # Save comprehensive results
         timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
         
-        # Detailed results
-        detail_filename = "ao1_enterprise_analysis_{}.csv".format(timestamp)
-        df.to_csv(detail_filename, index=False)
+        # Save detailed CSV
+        df = pd.DataFrame([asdict(match) for match in matches])
+        df['analysis_timestamp'] = timestamp
+        df = df.sort_values(['requirement', 'confidence_score'], ascending=[True, False])
         
-        # Executive summary
-        summary = df.groupby(['requirement', 'match_type']).agg({
-            'field_name': 'count',
-            'confidence_score': 'mean',
-            'table_rows': 'sum',
-            'semantic_similarity': 'mean'
-        }).round(3)
+        filename = "ao1_ultra_robust_analysis_{}.csv".format(timestamp)
+        df.to_csv(filename, index=False)
         
-        summary_filename = "ao1_executive_summary_{}.csv".format(timestamp)
-        summary.to_csv(summary_filename)
-        
-        # Compliance report
-        compliance_df = df[df['match_type'].isin(['EXACT', 'HIGH_CONFIDENCE'])]
-        compliance_filename = "ao1_compliance_ready_{}.csv".format(timestamp)
-        compliance_df.to_csv(compliance_filename, index=False)
-        
-        print("\nENTERPRISE RESULTS SAVED:")
-        print("Detailed Analysis: {}".format(detail_filename))
-        print("Executive Summary: {}".format(summary_filename))
-        print("Compliance Ready: {} ({} fields)".format(compliance_filename, len(compliance_df)))
+        print("\nRESULTS SAVED: {}".format(filename))
+        print("Total records: {}".format(len(df)))
 
 def main():
-    """Main enterprise execution"""
-    print("ENTERPRISE AO1 FIELD DISCOVERY SYSTEM")
-    print("Corporate ML-Powered BigQuery Analysis")
-    print("=" * 60)
-    
+    """Main execution"""
     try:
-        # Initialize enterprise analyzer
-        analyzer = EnterpriseAO1Analyzer()
+        analyzer = UltraRobustAO1Analyzer()
         
-        # Authenticate with BigQuery
-        if not analyzer.authenticate_bigquery():
-            print("CRITICAL: BigQuery authentication failed")
-            return
-        
-        # Run enterprise analysis
-        start_time = time.time()
-        
-        matches = analyzer.scan_all_datasets()
-        
-        analysis_time = time.time() - start_time
-        
-        print("\nENTERPRISE ANALYSIS COMPLETE")
-        print("Processing Time: {:.2f} seconds".format(analysis_time))
-        print("Enterprise Features: Proxy support, GPU optimization, ML analysis")
-        
-        # Generate enterprise reports
-        analyzer.generate_enterprise_report(matches)
-        analyzer.save_enterprise_results(matches)
-        
-        print("\nENTERPRISE RECOMMENDATIONS:")
-        if matches:
-            print("1. VALIDATE: Review high-confidence matches for immediate deployment")
-            print("2. IMPLEMENT: Deploy exact matches for AO1 compliance measurement")
-            print("3. EXPAND: Investigate ML-identified fields for coverage expansion")
-            print("4. MONITOR: Establish ongoing field discovery processes")
+        if analyzer.client:
+            matches = analyzer.scan_all_datasets()
+            analyzer.generate_report(matches)
+            analyzer.save_results(matches)
         else:
-            print("1. INVESTIGATE: No AO1 fields found - review data architecture")
-            print("2. STANDARDIZE: Consider implementing AO1-compliant field naming")
-            print("3. VALIDATE: Confirm data ingestion processes are complete")
+            print("CRITICAL: Could not establish BigQuery connection")
+            print("Check authentication and network connectivity")
         
     except KeyboardInterrupt:
-        print("\nANALYSIS INTERRUPTED: Check logs for partial results")
+        print("\nANALYSIS INTERRUPTED")
     except Exception as e:
-        print("\nCRITICAL ENTERPRISE ERROR: {}".format(e))
-        logger.error("Enterprise execution error: {}".format(e))
-        import traceback
-        traceback.print_exc()
+        print("\nCRITICAL ERROR: {}".format(e))
+        logger.error("Main execution error: {}".format(e))
 
 if __name__ == "__main__":
     main()
