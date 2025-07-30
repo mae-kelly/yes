@@ -216,66 +216,58 @@ class EnterpriseProxyManager:
             
             if configure_proxy == 'y':
                 print("\nPROXY CONFIGURATION")
-                print("Enter your corporate proxy details:")
+                print("Enter your corporate proxy environment variables:")
+                print("Example format: http://proxy.company.com:8080")
+                print("Example with auth: http://username:password@proxy.company.com:8080")
                 
-                # Ask for HTTP proxy
-                print("\nHTTP PROXY CONFIGURATION:")
-                http_proxy_host = input("HTTP proxy host (e.g., proxy.company.com): ").strip()
-                http_proxy_port = input("HTTP proxy port (e.g., 8080): ").strip()
+                # Ask for HTTP_PROXY
+                http_proxy = input("\nHTTP_PROXY: ").strip()
                 
-                # Ask for HTTPS proxy
-                print("\nHTTPS PROXY CONFIGURATION:")
-                use_same_https = input("Use same settings for HTTPS proxy? (y/n): ").lower().strip()
-                
-                if use_same_https == 'y':
-                    https_proxy_host = http_proxy_host
-                    https_proxy_port = http_proxy_port
-                else:
-                    https_proxy_host = input("HTTPS proxy host (e.g., proxy-ssl.company.com): ").strip()
-                    https_proxy_port = input("HTTPS proxy port (e.g., 8443): ").strip()
-                
-                # Check for authentication
-                needs_auth = input("\nDoes proxy require authentication? (y/n): ").lower().strip()
-                
-                username = ""
-                password = ""
-                if needs_auth == 'y':
-                    username = input("Username: ").strip()
-                    password = getpass.getpass("Password: ")
-                
-                # Build proxy URLs
-                if username and password:
-                    http_proxy_url = "http://{}:{}@{}:{}".format(username, password, http_proxy_host, http_proxy_port)
-                    https_proxy_url = "http://{}:{}@{}:{}".format(username, password, https_proxy_host, https_proxy_port)
-                else:
-                    http_proxy_url = "http://{}:{}".format(http_proxy_host, http_proxy_port)
-                    https_proxy_url = "http://{}:{}".format(https_proxy_host, https_proxy_port)
+                # Ask for HTTPS_PROXY
+                https_proxy = input("HTTPS_PROXY: ").strip()
                 
                 # Configure proxy settings
-                if http_proxy_host and http_proxy_port:
-                    self.proxy_config = {
-                        'http_proxy': http_proxy_url,
-                        'HTTP_PROXY': http_proxy_url
-                    }
-                    
-                    if https_proxy_host and https_proxy_port:
-                        self.proxy_config.update({
-                            'https_proxy': https_proxy_url,
-                            'HTTPS_PROXY': https_proxy_url
-                        })
-                    
-                    # Set environment variables
-                    for key, value in self.proxy_config.items():
-                        os.environ[key] = value
-                    
+                self.proxy_config = {}
+                
+                if http_proxy:
+                    self.proxy_config['HTTP_PROXY'] = http_proxy
+                    self.proxy_config['http_proxy'] = http_proxy
+                    os.environ['HTTP_PROXY'] = http_proxy
+                    os.environ['http_proxy'] = http_proxy
+                
+                if https_proxy:
+                    self.proxy_config['HTTPS_PROXY'] = https_proxy
+                    self.proxy_config['https_proxy'] = https_proxy
+                    os.environ['HTTPS_PROXY'] = https_proxy
+                    os.environ['https_proxy'] = https_proxy
+                
+                if http_proxy or https_proxy:
                     print("\nPROXY SETTINGS CONFIGURED:")
-                    print("  HTTP Proxy: {}:{}".format(http_proxy_host, http_proxy_port))
-                    print("  HTTPS Proxy: {}:{}".format(https_proxy_host, https_proxy_port))
-                    print("  Authentication: {}".format("Yes" if username else "No"))
+                    if http_proxy:
+                        # Mask password in display
+                        display_http = http_proxy
+                        if '@' in http_proxy and ':' in http_proxy.split('@')[0]:
+                            parts = http_proxy.split('@')
+                            auth_part = parts[0].split('://')[-1]
+                            if ':' in auth_part:
+                                user = auth_part.split(':')[0]
+                                display_http = http_proxy.replace(auth_part, "{}:****".format(user))
+                        print("  HTTP_PROXY: {}".format(display_http))
+                    
+                    if https_proxy:
+                        # Mask password in display
+                        display_https = https_proxy
+                        if '@' in https_proxy and ':' in https_proxy.split('@')[0]:
+                            parts = https_proxy.split('@')
+                            auth_part = parts[0].split('://')[-1]
+                            if ':' in auth_part:
+                                user = auth_part.split(':')[0]
+                                display_https = https_proxy.replace(auth_part, "{}:****".format(user))
+                        print("  HTTPS_PROXY: {}".format(display_https))
                     
                     return self.test_proxy_configuration()
                 else:
-                    print("ERROR: Invalid proxy configuration")
+                    print("ERROR: No proxy settings provided")
                     return False
         
         return True  # No proxy needed
