@@ -2029,12 +2029,22 @@ class AO1FieldAnalyzer:
         return recommendation
 
 
+def authenticate_bigquery():
+    """Authenticate with BigQuery using service account - EXACT COPY from original script"""
+    file_path = os.path.join(os.path.dirname(__file__))
+    SERVICE_ACCOUNT_FILE = os.path.join(file_path, "gcp_prod_key.json")
+    credentials = service_account.Credentials.from_service_account_file(SERVICE_ACCOUNT_FILE)
+    project = "prj-fisv-p-gcss-sas-d19dd0f1df"
+    client = bigquery.Client(project=project, credentials=credentials)
+    logger.info("Successfully authenticated with BigQuery for AO1 exploration")
+    return client
+
+
 class BigQueryScanner:
     """
     Advanced BigQuery scanning engine with original authentication method.
     
-    Uses the exact same authentication approach as the original working script
-    while maintaining all advanced analysis capabilities.
+    Uses the exact same authentication approach as the original working script.
     """
     
     def __init__(self, project_id: str = "prj-fisv-p-gcss-sas-d19dd0f1df"):
@@ -2046,35 +2056,15 @@ class BigQueryScanner:
         """
         Authenticate with BigQuery using the exact original method.
         
-        This matches the authentication from the original working script
-        to ensure compatibility and avoid any authentication issues.
-        
         Returns:
             True if authentication successful
         """
         try:
-            from google.cloud import bigquery
-            from google.oauth2 import service_account
-            
-            logger.info("Authenticating with BigQuery using original method")
-            
-            # Use exact same authentication as original script
-            file_path = os.path.join(os.path.dirname(__file__))
-            SERVICE_ACCOUNT_FILE = os.path.join(file_path, "gcp_prod_key.json")
-            
-            if os.path.exists(SERVICE_ACCOUNT_FILE):
-                credentials = service_account.Credentials.from_service_account_file(SERVICE_ACCOUNT_FILE)
-                self.client = bigquery.Client(project=self.project_id, credentials=credentials)
-                logger.info("Successfully authenticated with BigQuery using service account key")
-                self.authenticated = True
-                return True
-            else:
-                logger.error(f"Service account file not found: {SERVICE_ACCOUNT_FILE}")
-                return False
+            # Use the exact same function from the original script
+            self.client = authenticate_bigquery()
+            self.authenticated = True
+            return True
                 
-        except ImportError as e:
-            logger.error(f"BigQuery library not available: {e}")
-            return False
         except Exception as e:
             logger.error(f"BigQuery authentication failed: {e}")
             return False
