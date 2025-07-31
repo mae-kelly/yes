@@ -2945,3 +2945,4 @@ if __name__ == "__main__":
         logger.error(f"Fatal error: {e}")
         print(f"💥 Fatal error: {e}")
         exit(1)
+        g
