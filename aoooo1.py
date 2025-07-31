@@ -333,6 +333,8 @@ class SuperIntelligentScanner:
         datasets = await self._get_hyper_prioritized_datasets(max_datasets)
         matches = []
         
+        logger.info(f"Starting scan of {len(datasets)} prioritized datasets")
+        
         scan_stats = {
             'fields_processed': 0,
             'intelligence_matches': 0,
@@ -340,16 +342,20 @@ class SuperIntelligentScanner:
             'confidence_bands': Counter()
         }
         
-        for dataset in datasets:
+        for i, dataset in enumerate(datasets, 1):
             dataset_id = dataset.dataset_id
+            logger.info(f"Scanning dataset {i}/{len(datasets)}: {dataset_id}")
+            
             self.scan_memory[dataset_id] = {'table_patterns': Counter()}
             
             try:
                 tables = list(self.client.list_tables(dataset.reference))
+                logger.info(f"  Found {len(tables)} tables in {dataset_id}")
                 
-                for table in tables[:25]:
+                for j, table in enumerate(tables[:25], 1):
                     try:
                         table_ref = self.client.get_table(table.reference)
+                        logger.info(f"    Analyzing table {j}/25: {table_ref.table_id} ({len(table_ref.schema)} fields)")
                         
                         table_context = {
                             'table_name': table_ref.table_id,
@@ -359,6 +365,7 @@ class SuperIntelligentScanner:
                             'schema_complexity': len(table_ref.schema)
                         }
                         
+                        table_matches = 0
                         for field in table_ref.schema:
                             scan_stats['fields_processed'] += 1
                             
@@ -368,6 +375,7 @@ class SuperIntelligentScanner:
                             
                             if match and match.score > 0.25:
                                 matches.append(match)
+                                table_matches += 1
                                 scan_stats['intelligence_matches'] += 1
                                 scan_stats['semantic_depth_distribution'][match.semantic_depth] += 1
                                 
@@ -379,16 +387,22 @@ class SuperIntelligentScanner:
                                     scan_stats['confidence_bands']['LOW'] += 1
                                 
                                 self.scan_memory[dataset_id]['table_patterns'][table_ref.table_id] += 1
+                        
+                        if table_matches > 0:
+                            logger.info(f"      Found {table_matches} intelligent matches")
                                 
                     except Exception as e:
-                        logger.debug(f"Table analysis failed: {e}")
+                        logger.warning(f"    Table analysis failed for {table.table_id}: {e}")
                         continue
                         
             except Exception as e:
-                logger.warning(f"Dataset scan failed: {e}")
+                logger.warning(f"Dataset scan failed for {dataset_id}: {e}")
                 continue
+            
+            if matches:
+                logger.info(f"Dataset {dataset_id} complete: {scan_stats['intelligence_matches']} total matches so far")
         
-        logger.info(f"Hyper-intelligent analysis: {scan_stats['intelligence_matches']}/{scan_stats['fields_processed']} fields matched")
+        logger.info(f"Hyper-intelligent analysis complete: {scan_stats['intelligence_matches']}/{scan_stats['fields_processed']} fields matched")
         
         return sorted(matches, key=lambda x: (x.score, x.semantic_depth), reverse=True), scan_stats
     
