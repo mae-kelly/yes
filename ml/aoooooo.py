@@ -73,12 +73,24 @@ class PerformanceConfig:
 
 @dataclass
 class IntegrationConfig:
-    base_url: Optional[str] = None
-    api_key: Optional[str] = None
-    api_token: Optional[str] = None
     enabled: bool = False
     timeout: int = 30
     retry_attempts: int = 3
+
+@dataclass
+class CollibraConfig(IntegrationConfig):
+    base_url: Optional[str] = None
+    api_key: Optional[str] = None
+
+@dataclass
+class AlationConfig(IntegrationConfig):
+    base_url: Optional[str] = None
+    api_token: Optional[str] = None
+
+@dataclass
+class DataHubConfig(IntegrationConfig):
+    kafka_servers: Optional[str] = None
+    schema_registry: Optional[str] = None
 
 @dataclass
 class MonitoringConfig:
@@ -357,6 +369,12 @@ class ConfigurationManager:
         if errors:
             raise ConfigurationError(f"Configuration validation failed: {', '.join(errors)}")
         
+        integration_classes = {
+            'collibra': CollibraConfig,
+            'alation': AlationConfig,
+            'datahub': DataHubConfig
+        }
+        
         validated_config = {
             'bigquery': BigQueryConfig(**config['bigquery']),
             'redis': RedisConfig(**config['redis']),
@@ -365,7 +383,7 @@ class ConfigurationManager:
             'monitoring': MonitoringConfig(**config['monitoring']),
             'security': SecurityConfig(**config['security']),
             'integrations': {
-                name: IntegrationConfig(**integration_config)
+                name: integration_classes.get(name, IntegrationConfig)(**integration_config)
                 for name, integration_config in config['integrations'].items()
             }
         }
