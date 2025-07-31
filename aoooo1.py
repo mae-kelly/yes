@@ -1248,4 +1248,6 @@ if __name__ == "__main__":
                     self.requirement_keyword_map[req_name]['all_keywords'].update(keywords)
                     total_keywords += len(keywords)
         
+        logger.info(f"Built comprehensive keyword mappings: {total_keywords:,} total keywords across all requirements")
+        
         logger.info
