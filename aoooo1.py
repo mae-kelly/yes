@@ -512,7 +512,7 @@ class SuperIntelligentScanner:
             return [], {}
     
     async def _prioritize_tables_by_value_and_completeness(self, tables, dataset_id):
-        """Intelligently prioritize tables based on value AND requirement completeness"""
+        """Intelligently prioritize tables with OPTIMAL balance of rows, relevance, and completeness"""
         table_scores = []
         
         # AO1 requirement indicators for completeness analysis
@@ -531,124 +531,171 @@ class SuperIntelligentScanner:
             try:
                 table_ref = self.client.get_table(table.reference)
                 
-                # Calculate base value score (existing logic)
-                score = 0.0
+                # OPTIMAL SCORING ALGORITHM
+                base_score = 0.0
                 reasoning_parts = []
                 
-                # 1. Row count scoring
+                # 1. ROW COUNT SCORING (30% of total weight) - Logarithmic scale for better balance
                 row_count = table_ref.num_rows or 0
-                if row_count > 1000000:
-                    row_score = 50
-                    reasoning_parts.append("large dataset")
-                elif row_count > 100000:
-                    row_score = 40
-                    reasoning_parts.append("medium dataset")
-                elif row_count > 10000:
-                    row_score = 30
-                    reasoning_parts.append("small dataset")
-                elif row_count > 1000:
-                    row_score = 20
-                    reasoning_parts.append("tiny dataset")
+                if row_count > 0:
+                    # Logarithmic scoring prevents huge tables from dominating
+                    row_score = min(30 * (np.log10(row_count) / 8), 30)  # Cap at 30 points
+                    if row_count > 10000000:
+                        reasoning_parts.append(f"massive dataset({row_count:,})")
+                    elif row_count > 1000000:
+                        reasoning_parts.append(f"large dataset({row_count:,})")
+                    elif row_count > 100000:
+                        reasoning_parts.append(f"medium dataset({row_count:,})")
+                    elif row_count > 10000:
+                        reasoning_parts.append(f"small dataset({row_count:,})")
+                    else:
+                        reasoning_parts.append(f"tiny dataset({row_count:,})")
                 else:
-                    row_score = 5
-                    reasoning_parts.append("minimal data")
+                    row_score = 0
+                    reasoning_parts.append("no data")
                 
-                score += row_score
+                base_score += row_score
                 
-                # 2. NEW: REQUIREMENT COMPLETENESS ANALYSIS
+                # 2. REQUIREMENT COMPLETENESS SCORING (40% of total weight) - Most important factor
                 table_name_lower = table_ref.table_id.lower()
                 field_names_lower = [field.name.lower() for field in table_ref.schema]
                 combined_text = f"{table_name_lower} {' '.join(field_names_lower)}"
                 
                 requirement_coverage = 0
                 covered_requirements = []
+                requirement_strength = 0
                 
                 for req_name, indicators in requirement_indicators.items():
-                    req_score = 0
-                    for indicator in indicators:
-                        if indicator in combined_text:
-                            req_score += 1
+                    req_strength = 0
+                    matched_indicators = []
                     
-                    # If table has multiple indicators for this requirement, count it as covered
-                    if req_score >= 2 or (req_score >= 1 and any(indicator in table_name_lower for indicator in indicators)):
+                    for indicator in indicators:
+                        # Count occurrences of each indicator
+                        occurrences = combined_text.count(indicator)
+                        if occurrences > 0:
+                            req_strength += occurrences
+                            matched_indicators.append(indicator)
+                    
+                    # Strong requirement coverage needs multiple indicators or table name match
+                    if req_strength >= 3 or (req_strength >= 1 and any(indicator in table_name_lower for indicator in indicators)):
                         requirement_coverage += 1
+                        requirement_strength += req_strength
                         covered_requirements.append(req_name.split('_')[0])
                 
                 completeness_score = requirement_coverage
                 
-                # MAJOR BONUS for tables covering multiple requirements
-                if requirement_coverage >= 6:
-                    completeness_bonus = 100  # Huge bonus for comprehensive tables
-                    reasoning_parts.append(f"excellent coverage({requirement_coverage}/8 reqs)")
-                elif requirement_coverage >= 4:
-                    completeness_bonus = 60  # Good bonus for multi-requirement tables
-                    reasoning_parts.append(f"good coverage({requirement_coverage}/8 reqs)")
+                # SMART COMPLETENESS SCORING
+                if requirement_coverage >= 7:
+                    completeness_points = 40  # Perfect coverage
+                    reasoning_parts.append(f"excellent coverage({requirement_coverage}/8)")
+                elif requirement_coverage >= 5:
+                    completeness_points = 32  # Very good coverage
+                    reasoning_parts.append(f"very good coverage({requirement_coverage}/8)")
+                elif requirement_coverage >= 3:
+                    completeness_points = 20  # Good coverage
+                    reasoning_parts.append(f"good coverage({requirement_coverage}/8)")
                 elif requirement_coverage >= 2:
-                    completeness_bonus = 20  # Small bonus for some coverage
-                    reasoning_parts.append(f"partial coverage({requirement_coverage}/8 reqs)")
+                    completeness_points = 10  # Minimal coverage
+                    reasoning_parts.append(f"minimal coverage({requirement_coverage}/8)")
                 else:
-                    completeness_bonus = -20  # Penalty for incomplete tables
-                    reasoning_parts.append(f"poor coverage({requirement_coverage}/8 reqs)")
+                    completeness_points = -10  # Poor coverage penalty
+                    reasoning_parts.append(f"poor coverage({requirement_coverage}/8)")
                 
-                score += completeness_bonus
+                base_score += completeness_points
                 
-                # 3. Schema complexity
+                # 3. RELEVANCE DENSITY SCORING (20% of total weight) - Quality over quantity
                 field_count = len(table_ref.schema)
-                if field_count > 100:
-                    complexity_score = 25
+                if field_count > 0:
+                    # Relevance density = requirement strength per field
+                    relevance_density = requirement_strength / field_count
+                    density_score = min(relevance_density * 5, 20)  # Cap at 20 points
+                    
+                    if relevance_density > 0.5:
+                        reasoning_parts.append(f"high relevance density({relevance_density:.2f})")
+                    elif relevance_density > 0.2:
+                        reasoning_parts.append(f"medium relevance density({relevance_density:.2f})")
+                    else:
+                        reasoning_parts.append(f"low relevance density({relevance_density:.2f})")
+                else:
+                    density_score = 0
+                    reasoning_parts.append("no fields")
+                
+                base_score += density_score
+                
+                # 4. SCHEMA COMPLEXITY BONUS (10% of total weight) - More fields = more potential
+                if field_count > 200:
+                    complexity_score = 10
+                    reasoning_parts.append("very complex schema")
+                elif field_count > 100:
+                    complexity_score = 8
                     reasoning_parts.append("complex schema")
                 elif field_count > 50:
-                    complexity_score = 20
+                    complexity_score = 6
                     reasoning_parts.append("medium schema")
                 elif field_count > 20:
-                    complexity_score = 15
+                    complexity_score = 4
                     reasoning_parts.append("simple schema")
                 else:
-                    complexity_score = 5
+                    complexity_score = 2
                     reasoning_parts.append("minimal schema")
                 
-                score += complexity_score
+                base_score += complexity_score
                 
-                # 4. Recency bonus
+                # 5. PRODUCTION QUALITY MULTIPLIERS
+                production_multiplier = 1.0
+                
+                # Recency bonus/penalty
                 creation_time = table_ref.created
                 if creation_time:
                     from datetime import datetime, timezone
                     now = datetime.now(timezone.utc)
                     days_old = (now - creation_time).days
                     
-                    if days_old < 30:
-                        recency_score = 15
+                    if days_old < 90:
+                        production_multiplier *= 1.2
                         reasoning_parts.append("very recent")
                     elif days_old < 365:
-                        recency_score = 10
+                        production_multiplier *= 1.1
                         reasoning_parts.append("recent")
-                    elif days_old < 730:
-                        recency_score = 5
-                        reasoning_parts.append("somewhat old")
-                    else:
-                        recency_score = 0
+                    elif days_old > 1095:  # 3 years
+                        production_multiplier *= 0.9
                         reasoning_parts.append("old")
-                    
-                    score += recency_score
                 
-                # 5. Production/test penalties and bonuses
+                # Test/dev penalty
                 if any(term in table_name_lower for term in ['test', 'temp', 'tmp', 'dev', 'sandbox', 'backup']):
-                    score *= 0.2
-                    reasoning_parts.append("test/temp penalty")
+                    production_multiplier *= 0.1  # Severe penalty
+                    reasoning_parts.append("test/temp table")
                 
+                # Production bonus
                 if any(term in table_name_lower for term in ['prod', 'production', 'live', 'main']):
-                    score *= 1.3
-                    reasoning_parts.append("production bonus")
+                    production_multiplier *= 1.3
+                    reasoning_parts.append("production table")
+                
+                # Apply multiplier
+                final_score = base_score * production_multiplier
+                
+                # 6. PERFECT COMBO BONUS - Tables that excel in multiple dimensions
+                combo_bonus = 0
+                if (row_count > 100000 and requirement_coverage >= 4 and 
+                    relevance_density > 0.3 and field_count > 30):
+                    combo_bonus = 20
+                    reasoning_parts.append("PERFECT COMBO")
+                elif (row_count > 10000 and requirement_coverage >= 3 and 
+                      relevance_density > 0.2):
+                    combo_bonus = 10
+                    reasoning_parts.append("good combo")
+                
+                final_score += combo_bonus
                 
                 reasoning = "; ".join(reasoning_parts)
-                table_scores.append((table, score, completeness_score, reasoning))
+                table_scores.append((table, final_score, completeness_score, reasoning))
                 
             except Exception as e:
                 logger.warning(f"Failed to score table {table.table_id}: {e}")
-                table_scores.append((table, 5.0, 0.0, "scoring failed"))
+                table_scores.append((table, 1.0, 0.0, "scoring failed"))
         
-        # Sort by completeness first, then by value score
-        table_scores.sort(key=lambda x: (x[2], x[1]), reverse=True)
+        # Sort by OPTIMAL COMBINATION: completeness first, then final score
+        table_scores.sort(key=lambda x: (x[2] * 10 + x[1]), reverse=True)
         
         return table_scores
     
