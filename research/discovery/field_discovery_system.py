@@ -23,16 +23,20 @@ logger = logging.getLogger(__name__)
 class EnhancedFieldDiscoverySystem:
     def __init__(self, 
                  service_account_file: str = None,
-                 project_id: str = None,
+                 auth_project_id: str = None,
+                 target_project_id: str = None,
                  redis_host: str = "localhost",
                  redis_port: int = 6379):
         
         self.client = None
-        if BIGQUERY_AVAILABLE and service_account_file and project_id:
+        self.target_project_id = target_project_id or "prj-fisv-p-gcss-sas-dl9dd0f1df"
+        
+        if BIGQUERY_AVAILABLE and service_account_file and auth_project_id:
             try:
                 credentials = service_account.Credentials.from_service_account_file(service_account_file)
-                self.client = bigquery.Client(project=project_id, credentials=credentials)
-                logger.info(f"BigQuery client initialized for project: {project_id}")
+                self.client = bigquery.Client(project=auth_project_id, credentials=credentials)
+                logger.info(f"BigQuery client initialized for auth project: {auth_project_id}")
+                logger.info(f"Target project for discovery: {self.target_project_id}")
             except Exception as e:
                 logger.error(f"Failed to initialize BigQuery client: {e}")
         
@@ -50,7 +54,7 @@ class EnhancedFieldDiscoverySystem:
         }
     
     async def discover_fields(self, 
-                            target_project: str,
+                            target_project: str = None,
                             max_datasets: int = 20,
                             max_tables_per_dataset: int = 10,
                             confidence_threshold: float = 0.3) -> Tuple[List[EnhancedMatch], Dict[str, Any]]:
@@ -58,10 +62,13 @@ class EnhancedFieldDiscoverySystem:
         if not self.client:
             raise ValueError("BigQuery client not initialized")
         
+        # Use provided target project or default
+        project_to_scan = target_project or self.target_project_id
+        
         start_time = time.time()
         
         try:
-            datasets = await self._get_prioritized_datasets(target_project, max_datasets)
+            datasets = await self._get_prioritized_datasets(project_to_scan, max_datasets)
             
             all_matches = []
             discovery_stats = {

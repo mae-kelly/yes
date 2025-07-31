@@ -6,8 +6,9 @@ class ConfigurationManager:
     def get_production_config() -> Dict[str, Any]:
         return {
             'bigquery': {
-                'project_id': os.getenv('BIGQUERY_PROJECT_ID', 'your-project-id'),
-                'service_account_path': os.getenv('BIGQUERY_SERVICE_ACCOUNT_PATH', './service-account.json'),
+                'auth_project_id': os.getenv('BIGQUERY_AUTH_PROJECT_ID', 'chronicle-fisv'),
+                'target_project_id': os.getenv('BIGQUERY_TARGET_PROJECT_ID', 'prj-fisv-p-gcss-sas-dl9dd0f1df'),
+                'service_account_path': os.getenv('BIGQUERY_SERVICE_ACCOUNT_PATH', './gcp_prod_key.json'),
                 'query_timeout': 300,
                 'max_concurrent_queries': 10
             },
@@ -60,8 +61,11 @@ class ConfigurationManager:
     def validate_config(config: Dict[str, Any]) -> List[str]:
         errors = []
         
-        if not config.get('bigquery', {}).get('project_id'):
-            errors.append("BigQuery project_id is required")
+        if not config.get('bigquery', {}).get('auth_project_id'):
+            errors.append("BigQuery auth_project_id is required")
+        
+        if not config.get('bigquery', {}).get('target_project_id'):
+            errors.append("BigQuery target_project_id is required")
         
         if not config.get('bigquery', {}).get('service_account_path'):
             errors.append("BigQuery service account path is required")

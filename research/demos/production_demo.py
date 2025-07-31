@@ -295,7 +295,8 @@ async def example_usage():
     
     discovery_system = EnhancedFieldDiscoverySystem(
         service_account_file=config['bigquery']['service_account_path'],
-        project_id=config['bigquery']['project_id'],
+        auth_project_id=config['bigquery']['auth_project_id'],
+        target_project_id=config['bigquery']['target_project_id'],
         redis_host=config['redis']['host'],
         redis_port=config['redis']['port']
     )

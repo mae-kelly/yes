@@ -76,8 +76,9 @@ pip install -r requirements.txt
 2. **Configure Google Cloud credentials**:
 ```bash
 # Set environment variables
-export BIGQUERY_PROJECT_ID="your-project-id"
-export BIGQUERY_SERVICE_ACCOUNT_PATH="./path/to/service-account.json"
+export BIGQUERY_AUTH_PROJECT_ID="chronicle-fisv"
+export BIGQUERY_TARGET_PROJECT_ID="prj-fisv-p-gcss-sas-dl9dd0f1df"
+export BIGQUERY_SERVICE_ACCOUNT_PATH="./gcp_prod_key.json"
 
 # Optional: Redis configuration
 export REDIS_HOST="localhost"
@@ -125,13 +126,13 @@ from discovery.field_discovery_system import EnhancedFieldDiscoverySystem
 async def discover_fields():
     # Initialize system
     discovery_system = EnhancedFieldDiscoverySystem(
-        service_account_file="./service-account.json",
-        project_id="your-project-id"
+        service_account_file="./gcp_prod_key.json",
+        auth_project_id="chronicle-fisv",
+        target_project_id="prj-fisv-p-gcss-sas-dl9dd0f1df"
     )
     
-    # Run discovery
+    # Run discovery (target_project is optional since we set target_project_id)
     matches, stats = await discovery_system.discover_fields(
-        target_project="your-project-id",
         max_datasets=20,
         confidence_threshold=0.3
     )
