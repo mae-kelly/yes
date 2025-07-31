@@ -169,9 +169,12 @@ class EnhancedSemanticEngine:
             'temperature_scaling': 1.2
         }
     
-    def generate_morphological_variants(self, term: str) -> Set[str]:
+    def generate_morphological_variants(self, term: str, max_depth: int = 3) -> Set[str]:
         if term in self.morphology_cache:
             return self.morphology_cache[term]
+        
+        if max_depth <= 0:
+            return {term}
         
         variants = {term}
         base = term.lower()
@@ -192,7 +195,8 @@ class EnhancedSemanticEngine:
         
         if re.search(r'[a-z][A-Z]', term):
             snake = re.sub(r'([a-z0-9])([A-Z])', r'\1_\2', term).lower()
-            variants.update(self.generate_morphological_variants(snake))
+            if snake != term.lower() and snake not in self.morphology_cache:
+                variants.update(self.generate_morphological_variants(snake, max_depth - 1))
         
         abbreviations = {
             'identifier': ['id', 'ID', 'ident'], 'number': ['num', 'no', 'nbr', '#'],
@@ -205,19 +209,22 @@ class EnhancedSemanticEngine:
         }
         
         for full_word, abbrevs in abbreviations.items():
-            if full_word in base:
+            if full_word in base and max_depth > 1:
                 for abbrev in abbrevs:
                     abbreviated = base.replace(full_word, abbrev)
-                    variants.update(self.generate_morphological_variants(abbreviated))
+                    if abbreviated != term and abbreviated not in self.morphology_cache:
+                        variants.update(self.generate_morphological_variants(abbreviated, max_depth - 1))
             
             for abbrev in abbrevs:
-                if abbrev.lower() in base:
+                if abbrev.lower() in base and max_depth > 1:
                     expanded = base.replace(abbrev.lower(), full_word)
-                    variants.update(self.generate_morphological_variants(expanded))
+                    if expanded != term and expanded not in self.morphology_cache:
+                        variants.update(self.generate_morphological_variants(expanded, max_depth - 1))
         
-        if base.endswith('s') and len(base) > 3:
+        if base.endswith('s') and len(base) > 3 and max_depth > 1:
             singular = base[:-1]
-            variants.update(self.generate_morphological_variants(singular))
+            if singular != base and singular not in self.morphology_cache:
+                variants.update(self.generate_morphological_variants(singular, max_depth - 1))
         elif not base.endswith('s'):
             plural = base + 's'
             variants.add(plural)
