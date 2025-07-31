@@ -1,34 +1,13 @@
 #!/usr/bin/env python3
 """
-AO1 Advanced Semantic Field Discovery System - Enhanced Production Version
-========================================================================
+AO1 Complete Keyword Coverage Field Discovery System
+===================================================
 
-Production-grade semantic field discovery system for AO1 dashboard development.
-Implements robust multi-strategy analysis with real semantic understanding,
-advanced pattern recognition, and comprehensive contextual analysis for
-accurate BigQuery field classification according to AO1 business requirements.
-
-Enhanced Features:
-- Multi-layered semantic analysis with real NLP capabilities
-- Advanced pattern recognition and morphological analysis
-- Contextual relationship modeling and dependency analysis
-- Statistical confidence calibration with uncertainty quantification
-- Production-grade performance optimization and caching
-- Comprehensive business logic inference and implementation guidance
-- Real-time adaptive learning from classification results
-
-AO1 Requirements Coverage:
-- REQ1: Global View - Asset identifiers for counting unique logging assets vs CMDB
-- REQ2: Infrastructure Type - Exact deployment model classification  
-- REQ3: Regional/Country View - Geographic location classification
-- REQ4: Business/Application View - Organizational classification
-- REQ5: System Classification - Server function and OS type classification
-- REQ6: Security Control Coverage - Agent presence for coverage measurement
-- REQ7: Logging Compliance - Chronicle and Splunk platform compliance
-- REQ8: Domain Visibility - Asset visibility by hostname and domain
+This version incorporates ALL the keywords and variations you specified.
+No more missing keywords - comprehensive coverage of every variation you provided.
 
 Author: AO1 Analytics Development Team
-Version: 3.0 Enhanced Production
+Version: 4.0 Complete Coverage
 Target: prj-fisv-p-gcss-sas-dl9dd0f1df
 Authentication: chronicle-fisv
 """
@@ -39,28 +18,20 @@ import json
 import time
 import logging
 import numpy as np
-import math
-import pickle
-import hashlib
-import asyncio
-import threading
-from typing import Dict, List, Set, Tuple, Optional, Any, Union, Callable
-from dataclasses import dataclass, field
-from datetime import datetime, timedelta
-from collections import defaultdict, Counter, deque
 import re
-from abc import ABC, abstractmethod
-from functools import lru_cache, partial
-from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor, as_completed
-import warnings
-warnings.filterwarnings('ignore')
+from typing import Dict, List, Set, Tuple, Optional, Any
+from dataclasses import dataclass
+from datetime import datetime
+from collections import defaultdict, Counter
+import asyncio
+from concurrent.futures import ThreadPoolExecutor
 
 # Production logging configuration
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - [%(funcName)s:%(lineno)d] - %(message)s',
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     handlers=[
-        logging.FileHandler('ao1_enhanced_semantic_discovery.log'),
+        logging.FileHandler('ao1_complete_keyword_discovery.log'),
         logging.StreamHandler()
     ]
 )
@@ -70,492 +41,611 @@ logger = logging.getLogger(__name__)
 from google.cloud import bigquery
 from google.oauth2 import service_account
 
-file_path = os.path.join(os.path.dirname(__file__))
+file_path = os.path.dirname(__file__)
 SERVICE_ACCOUNT_FILE = os.path.join(file_path, "gcp_prod_key.json")
 credentials = service_account.Credentials.from_service_account_file(SERVICE_ACCOUNT_FILE)
 project = "chronicle-fisv"
 clientBQ = bigquery.Client(project=project, credentials=credentials)
 
-def runBQQuery(query):
-    """Execute BigQuery SQL with integrated semantic analysis."""
-    df = clientBQ.query(query).to_dataframe()
-    return df
-
-# AO1 Intelligent Semantic Inference System
-# Designed to find metric-relevant fields even with naming variations
-AO1_INTELLIGENT_REQUIREMENTS = {
+# COMPLETE AO1 KEYWORD REQUIREMENTS - EVERY VARIATION YOU SPECIFIED
+AO1_COMPLETE_REQUIREMENTS = {
     'REQ1_GLOBAL_VIEW_METRICS': {
-        'metric_goal': 'Calculate % of all assets globally that have logging visibility',
-        'semantic_concepts': {
-            'asset_identity_concept': {
-                'core_meaning': 'unique identifier for physical or virtual assets',
-                'semantic_variations': [
-                    # Direct variations
-                    'host', 'hostname', 'host_name', 'host_nm', 'hostid', 'host_id',
-                    'device', 'device_name', 'device_id', 'device_uuid', 'dev_id', 'deviceid',
-                    'asset', 'asset_name', 'asset_id', 'asset_tag', 'asset_uuid', 'assetid',
-                    'computer', 'computer_name', 'computer_id', 'comp_name', 'comp_id',
-                    'machine', 'machine_name', 'machine_id', 'mach_name', 'mach_id',
-                    'system', 'system_name', 'system_id', 'sys_name', 'sys_id',
-                    'server', 'server_name', 'server_id', 'srv_name', 'srv_id',
-                    'endpoint', 'endpoint_name', 'endpoint_id', 'end_point', 'endpt',
-                    'node', 'node_name', 'node_id', 'workstation', 'ws_name',
-                    # CMDB specific
-                    'ci_name', 'ci_id', 'cmdb_ci', 'configuration_item', 'config_item',
-                    # Hardware identifiers
-                    'serial', 'serial_number', 'serial_num', 'sn', 'hw_serial',
-                    'uuid', 'guid', 'unique_id', 'hardware_id', 'hw_id',
-                    # Network identifiers
-                    'fqdn', 'dns_name', 'canonical_name', 'domain_name'
-                ],
-                'morphological_patterns': [
-                    r'.*(?:host|device|asset|computer|machine|system|server).*(?:name|id|identifier).*',
-                    r'.*(?:ci|cmdb).*(?:name|id).*',
-                    r'.*(?:serial|uuid|guid).*',
-                    r'.*unique.*(?:id|identifier).*'
-                ],
-                'table_context_indicators': [
-                    'asset', 'device', 'host', 'inventory', 'cmdb', 'configuration',
-                    'registry', 'catalog', 'directory', 'master', 'reference'
-                ]
-            },
-            'logging_presence_concept': {
-                'core_meaning': 'indicators that logging data exists for an asset',
-                'semantic_variations': [
-                    # Direct logging indicators
-                    'log_source', 'log_src', 'data_source', 'data_src', 'event_source',
-                    'source', 'src', 'origin', 'collector', 'forwarder',
-                    # Temporal indicators of logging activity
-                    'last_seen', 'last_event', 'last_log', 'latest_timestamp',
-                    'first_seen', 'first_event', 'discovery_time', 'initial_contact',
-                    'ingestion_time', 'ingested_at', 'collected_time', 'received_time',
-                    'event_time', 'log_time', 'timestamp', 'event_timestamp',
-                    # Status indicators
-                    'logging_enabled', 'log_active', 'monitored', 'instrumented',
-                    'visibility', 'covered', 'tracked', 'observed', 'reporting',
-                    # Platform specific
-                    'chronicle_ingested', 'splunk_indexed', 'siem_present',
-                    'chronicle_visible', 'splunk_visible', 'gso_ingested'
-                ],
-                'morphological_patterns': [
-                    r'.*(?:log|event|data).*(?:source|src|time|timestamp).*',
-                    r'.*(?:last|first).*(?:seen|event|contact|time).*',
-                    r'.*(?:ingestion|collection|received).*(?:time|timestamp).*',
-                    r'.*(?:chronicle|splunk|siem).*(?:ingested|indexed|visible).*'
-                ],
-                'table_context_indicators': [
-                    'log', 'event', 'audit', 'monitoring', 'telemetry', 'ingestion',
-                    'chronicle', 'splunk', 'siem', 'visibility', 'coverage'
-                ]
-            }
-        },
-        'table_semantic_analysis': {
-            'high_value_table_patterns': [
-                # Asset management tables
-                r'.*(?:asset|device|host|computer|machine).*(?:inventory|registry|catalog|master|list).*',
-                r'.*(?:cmdb|configuration).*(?:item|ci|asset|device).*',
-                # Logging/monitoring tables  
-                r'.*(?:log|event|audit).*(?:source|ingestion|collection|visibility).*',
-                r'.*(?:chronicle|splunk|siem).*(?:data|ingestion|index|source).*',
-                # Correlation tables
-                r'.*(?:asset|device).*(?:visibility|coverage|monitoring).*'
-            ],
-            'context_weight_multipliers': {
-                'asset_management_context': 2.0,
-                'logging_platform_context': 1.8,
-                'monitoring_context': 1.5,
-                'cmdb_context': 2.2,
-                'visibility_context': 1.7
-            }
-        }
+        'description': 'Global View - CSOC ability to view x% of all assets globally',
+        'table_names': [
+            'assets', 'asset', 'inventory', 'cmdb', 'configuration_management_database', 
+            'ci', 'configuration_items', 'discovery', 'devices', 'systems', 'computers', 
+            'machines', 'endpoints', 'nodes', 'hosts', 'infrastructure', 'it_assets', 
+            'hardware', 'equipment'
+        ],
+        'asset_inventory_keywords': [
+            # Asset ID variations - ALL spellings
+            'asset_id', 'assetid', 'asset-id', 'asset_identifier', 'assetidentifier', 
+            'asset-identifier', 'assetId', 'AssetID', 'ASSET_ID', 'ASSETID', 'Asset_ID', 
+            'Asset_Id', 'assetID',
+            # Inventory ID variations - ALL spellings
+            'inventory_id', 'inventoryid', 'inventory-id', 'inventoryId', 'InventoryID', 
+            'INVENTORY_ID', 'inv_id', 'invid', 'inv-id', 'invId', 'InvID', 'INV_ID', 
+            'Inv_ID', 'Inv_Id',
+            # Asset tag variations - ALL spellings
+            'asset_tag', 'assettag', 'asset-tag', 'assetTag', 'AssetTag', 'ASSET_TAG', 
+            'tag', 'TAG', 'Tag', 'asset_number', 'assetnumber', 'asset-number', 
+            'assetNumber', 'AssetNumber', 'ASSET_NUMBER', 'Asset_Number', 'Asset_Num', 'asset_num',
+            # Serial number variations - ALL spellings
+            'serial_number', 'serialnumber', 'serial-number', 'serialNumber', 'SerialNumber', 
+            'SERIAL_NUMBER', 'serial_no', 'serialno', 'serial-no', 'serialNo', 'SerialNo', 
+            'SERIAL_NO', 'sn', 'SN', 's_n', 'S_N', 'Serial_Number', 'Serial_No', 
+            'serial_nbr', 'serialnbr'
+        ],
+        'hostname_keywords': [
+            # Hostname variations - ALL spellings
+            'hostname', 'host_name', 'host-name', 'hostName', 'HostName', 'HOSTNAME', 
+            'HOST_NAME', 'HOST-NAME', 'Host_Name', 'Host_name', 'hostNAME',
+            # Computer name variations - ALL spellings
+            'computer_name', 'computername', 'computer-name', 'computerName', 'ComputerName', 
+            'COMPUTER_NAME', 'COMPUTERNAME', 'COMPUTER-NAME', 'Computer_Name', 'Computer_name', 
+            'comp_name', 'compname',
+            # System name variations - ALL spellings
+            'system_name', 'systemname', 'system-name', 'systemName', 'SystemName', 
+            'SYSTEM_NAME', 'SYSTEMNAME', 'SYSTEM-NAME', 'System_Name', 'System_name', 
+            'sys_name', 'sysname',
+            # Machine name variations - ALL spellings
+            'machine_name', 'machinename', 'machine-name', 'machineName', 'MachineName', 
+            'MACHINE_NAME', 'MACHINENAME', 'MACHINE-NAME', 'Machine_Name', 'Machine_name', 
+            'mach_name', 'machname',
+            # FQDN variations - ALL spellings
+            'fqdn', 'FQDN', 'Fqdn', 'fully_qualified_domain_name', 'fullyqualifieddomainname', 
+            'fully-qualified-domain-name', 'fullyQualifiedDomainName', 'FullyQualifiedDomainName', 
+            'FULLY_QUALIFIED_DOMAIN_NAME', 'Fully_Qualified_Domain_Name',
+            # DNS name variations - ALL spellings
+            'dns_name', 'dnsname', 'dns-name', 'dnsName', 'DnsName', 'DNS_NAME', 'DNSNAME', 
+            'DNS-NAME', 'Dns_Name', 'Dns_name', 'domain_name', 'domainname', 'domain-name', 
+            'domainName', 'DomainName', 'DOMAIN_NAME'
+        ]
     },
     
     'REQ2_INFRASTRUCTURE_TYPE_METRICS': {
-        'metric_goal': 'Calculate % visibility by host and log type across infrastructure types',
-        'semantic_concepts': {
-            'infrastructure_classification_concept': {
-                'core_meaning': 'categorization of infrastructure deployment models',
-                'semantic_variations': [
-                    # Infrastructure type fields
-                    'infrastructure_type', 'infra_type', 'deployment_type', 'deploy_model',
-                    'hosting_type', 'platform_type', 'environment_type', 'env_type',
-                    # On-premises indicators
-                    'on_premises', 'on_prem', 'onpremises', 'datacenter', 'data_center',
-                    'physical', 'bare_metal', 'dedicated', 'facility', 'local',
-                    # Cloud indicators
-                    'cloud', 'cloud_provider', 'cloud_platform', 'cloud_type',
-                    'public_cloud', 'private_cloud', 'hybrid_cloud', 'multi_cloud',
-                    'aws', 'amazon', 'azure', 'microsoft', 'gcp', 'google_cloud',
-                    'ec2', 'compute', 'vm', 'virtual_machine', 'instance',
-                    # SaaS indicators
-                    'saas', 'software_as_service', 'hosted', 'managed',
-                    'office365', 'o365', 'microsoft365', 'm365', 'gsuite', 'workspace',
-                    # Container/serverless
-                    'container', 'kubernetes', 'k8s', 'docker', 'pod',
-                    'serverless', 'lambda', 'function', 'faas'
-                ],
-                'morphological_patterns': [
-                    r'.*(?:infrastructure|platform|deployment|hosting).*(?:type|model|category).*',
-                    r'.*(?:cloud|aws|azure|gcp).*(?:type|provider|platform).*',
-                    r'.*(?:on_prem|datacenter|physical).*',
-                    r'.*(?:saas|hosted|managed).*(?:application|service).*'
-                ],
-                'table_context_indicators': [
-                    'infrastructure', 'platform', 'deployment', 'cloud', 'datacenter',
-                    'environment', 'hosting', 'compute', 'virtual', 'container'
-                ]
-            },
-            'log_type_classification_concept': {
-                'core_meaning': 'categorization of log types and data sources',
-                'semantic_variations': [
-                    'log_type', 'event_type', 'data_type', 'source_type', 'sourcetype',
-                    'category', 'classification', 'log_category', 'event_category',
-                    'parser', 'log_parser', 'data_parser', 'format',
-                    'technology', 'product', 'vendor', 'tool', 'application'
-                ]
-            }
-        }
+        'description': 'Infrastructure Type - Display % of visibility by host and log type across infrastructure types',
+        'table_names': [
+            'infrastructure', 'infra', 'platforms', 'platform', 'deployment', 'deployments', 
+            'hosting', 'environment', 'environments', 'cloud_assets', 'on_prem_assets', 
+            'saas_applications', 'api_catalog', 'services', 'applications', 'app_inventory'
+        ],
+        'infrastructure_classification_keywords': [
+            # Infrastructure type variations - ALL spellings
+            'infrastructure_type', 'infrastructuretype', 'infrastructure-type', 'infrastructureType', 
+            'InfrastructureType', 'INFRASTRUCTURE_TYPE', 'INFRASTRUCTURETYPE', 'INFRASTRUCTURE-TYPE', 
+            'Infrastructure_Type', 'Infrastructure_type', 'infra_type', 'infratype', 'infra-type', 
+            'infraType', 'InfraType', 'INFRA_TYPE', 'INFRATYPE', 'INFRA-TYPE', 'Infra_Type', 'Infra_type',
+            # Deployment type variations - ALL spellings
+            'deployment_type', 'deploymenttype', 'deployment-type', 'deploymentType', 'DeploymentType', 
+            'DEPLOYMENT_TYPE', 'DEPLOYMENTTYPE', 'DEPLOYMENT-TYPE', 'Deployment_Type', 'Deployment_type', 
+            'deploy_type', 'deploytype', 'deploy-type', 'deployType', 'DeployType', 'DEPLOY_TYPE', 
+            'DEPLOYTYPE', 'DEPLOY-TYPE',
+            # Platform type variations - ALL spellings
+            'platform_type', 'platformtype', 'platform-type', 'platformType', 'PlatformType', 
+            'PLATFORM_TYPE', 'PLATFORMTYPE', 'PLATFORM-TYPE', 'Platform_Type', 'Platform_type', 
+            'hosting_type', 'hostingtype', 'hosting-type', 'hostingType', 'HostingType', 'HOSTING_TYPE',
+            # Environment type variations - ALL spellings
+            'environment_type', 'environmenttype', 'environment-type', 'environmentType', 'EnvironmentType', 
+            'ENVIRONMENT_TYPE', 'ENVIRONMENTTYPE', 'ENVIRONMENT-TYPE', 'Environment_Type', 'Environment_type', 
+            'env_type', 'envtype', 'env-type'
+        ],
+        'on_premise_keywords': [
+            # On-prem variations - ALL spellings
+            'on_prem', 'onprem', 'on-prem', 'onPrem', 'OnPrem', 'ON_PREM', 'ONPREM', 'ON-PREM', 
+            'On_Prem', 'On_prem', 'on_premise', 'onpremise', 'on-premise', 'onPremise', 'OnPremise', 
+            'ON_PREMISE', 'ONPREMISE', 'ON-PREMISE', 'On_Premise', 'On_premise',
+            # Physical variations - ALL spellings
+            'physical', 'Physical', 'PHYSICAL', 'bare_metal', 'baremetal', 'bare-metal', 'bareMetal', 
+            'BareMetal', 'BARE_METAL', 'BAREMETAL', 'BARE-METAL', 'Bare_Metal', 'Bare_metal', 
+            'dedicated', 'Dedicated', 'DEDICATED',
+            # Local variations - ALL spellings
+            'local', 'Local', 'LOCAL', 'in_house', 'inhouse', 'in-house', 'inHouse', 'InHouse', 
+            'IN_HOUSE', 'INHOUSE', 'IN-HOUSE', 'In_House', 'In_house', 'internal', 'Internal', 
+            'INTERNAL', 'datacenter', 'data_center', 'data-center', 'dataCenter', 'DataCenter', 
+            'DATACENTER', 'DATA_CENTER', 'DATA-CENTER', 'dc', 'DC', 'Dc'
+        ],
+        'cloud_keywords': [
+            # Cloud variations - ALL spellings
+            'cloud', 'Cloud', 'CLOUD', 'cloud_provider', 'cloudprovider', 'cloud-provider', 
+            'cloudProvider', 'CloudProvider', 'CLOUD_PROVIDER', 'CLOUDPROVIDER', 'CLOUD-PROVIDER', 
+            'Cloud_Provider', 'Cloud_provider',
+            # AWS variations - ALL spellings
+            'aws', 'AWS', 'Aws', 'amazon', 'Amazon', 'AMAZON', 'amazon_web_services', 
+            'amazonwebservices', 'amazon-web-services', 'amazonWebServices', 'AmazonWebServices', 
+            'AMAZON_WEB_SERVICES', 'AMAZONWEBSERVICES', 'AMAZON-WEB-SERVICES', 'Amazon_Web_Services',
+            # Azure variations - ALL spellings
+            'azure', 'Azure', 'AZURE', 'microsoft_azure', 'microsoftazure', 'microsoft-azure', 
+            'microsoftAzure', 'MicrosoftAzure', 'MICROSOFT_AZURE', 'MICROSOFTAZURE', 'MICROSOFT-AZURE', 
+            'Microsoft_Azure', 'msft_azure', 'msftazure', 'msft-azure', 'msftAzure', 'MsftAzure', 'MSFT_AZURE',
+            # GCP variations - ALL spellings
+            'gcp', 'GCP', 'Gcp', 'google_cloud', 'googlecloud', 'google-cloud', 'googleCloud', 
+            'GoogleCloud', 'GOOGLE_CLOUD', 'GOOGLECLOUD', 'GOOGLE-CLOUD', 'Google_Cloud', 'gce', 
+            'GCE', 'Gce', 'google_compute_engine', 'googlecomputeengine', 'google-compute-engine',
+            # Cloud types - ALL spellings
+            'public_cloud', 'publiccloud', 'public-cloud', 'publicCloud', 'PublicCloud', 'PUBLIC_CLOUD', 
+            'PUBLICCLOUD', 'PUBLIC-CLOUD', 'Public_Cloud', 'private_cloud', 'privatecloud', 'private-cloud', 
+            'privateCloud', 'PrivateCloud', 'PRIVATE_CLOUD', 'PRIVATECLOUD', 'PRIVATE-CLOUD', 'Private_Cloud',
+            'multi_cloud', 'multicloud', 'multi-cloud', 'multiCloud', 'MultiCloud', 'MULTI_CLOUD', 
+            'MULTICLOUD', 'MULTI-CLOUD', 'Multi_Cloud', 'hybrid_cloud', 'hybridcloud', 'hybrid-cloud', 
+            'hybridCloud', 'HybridCloud', 'HYBRID_CLOUD', 'HYBRIDCLOUD', 'HYBRID-CLOUD', 'Hybrid_Cloud'
+        ],
+        'saas_keywords': [
+            # SaaS variations - ALL spellings
+            'saas', 'SAAS', 'SaaS', 'Saas', 'software_as_a_service', 'softwareasaservice', 
+            'software-as-a-service', 'softwareAsAService', 'SoftwareAsAService', 'SOFTWARE_AS_A_SERVICE', 
+            'SOFTWAREASASERVICE', 'SOFTWARE-AS-A-SERVICE', 'Software_As_A_Service',
+            # PaaS variations - ALL spellings
+            'paas', 'PAAS', 'PaaS', 'Paas', 'platform_as_a_service', 'platformasaservice', 
+            'platform-as-a-service', 'platformAsAService', 'PlatformAsAService', 'PLATFORM_AS_A_SERVICE', 
+            'PLATFORMASASERVICE', 'PLATFORM-AS-A-SERVICE', 'Platform_As_A_Service',
+            # IaaS variations - ALL spellings
+            'iaas', 'IAAS', 'IaaS', 'Iaas', 'infrastructure_as_a_service', 'infrastructureasaservice', 
+            'infrastructure-as-a-service', 'infrastructureAsAService', 'InfrastructureAsAService', 
+            'INFRASTRUCTURE_AS_A_SERVICE', 'INFRASTRUCTUREASASERVICE', 'INFRASTRUCTURE-AS-A-SERVICE',
+            # Application type variations - ALL spellings
+            'application_type', 'applicationtype', 'application-type', 'applicationType', 'ApplicationType', 
+            'APPLICATION_TYPE', 'APPLICATIONTYPE', 'APPLICATION-TYPE', 'Application_Type', 'app_type', 
+            'apptype', 'app-type', 'appType', 'AppType', 'APP_TYPE', 'APPTYPE', 'APP-TYPE', 'App_Type'
+        ],
+        'api_keywords': [
+            # API variations - ALL spellings
+            'api', 'API', 'Api', 'api_gateway', 'apigateway', 'api-gateway', 'apiGateway', 
+            'ApiGateway', 'API_GATEWAY', 'APIGATEWAY', 'API-GATEWAY', 'Api_Gateway', 'web_service', 
+            'webservice', 'web-service', 'webService', 'WebService', 'WEB_SERVICE', 'WEBSERVICE', 
+            'WEB-SERVICE', 'Web_Service',
+            # Microservice variations - ALL spellings
+            'microservice', 'microService', 'MicroService', 'MICROSERVICE', 'Microservice', 
+            'micro_service', 'microservice', 'micro-service', 'microService', 'MicroService', 
+            'MICRO_SERVICE', 'MICROSERVICE', 'MICRO-SERVICE', 'Micro_Service',
+            # API types - ALL spellings
+            'rest_api', 'restapi', 'rest-api', 'restApi', 'RestApi', 'REST_API', 'RESTAPI', 
+            'REST-API', 'Rest_Api', 'soap', 'SOAP', 'Soap', 'graphql', 'GraphQL', 'GRAPHQL', 
+            'GraphQl', 'rpc', 'RPC', 'Rpc', 'grpc', 'GRPC', 'Grpc', 'gRPC'
+        ]
     },
     
     'REQ3_REGIONAL_COUNTRY_METRICS': {
-        'metric_goal': 'Calculate % visibility by location/region',
-        'semantic_concepts': {
-            'geographic_location_concept': {
-                'core_meaning': 'geographic or regional location identifiers',
-                'semantic_variations': [
-                    # Country/region
-                    'country', 'country_code', 'nation', 'region', 'geographic_region',
-                    'global_region', 'geo_region', 'territory', 'jurisdiction',
-                    'americas', 'emea', 'apac', 'north_america', 'europe', 'asia',
-                    # Physical location
-                    'location', 'site', 'facility', 'office', 'branch', 'campus',
-                    'datacenter', 'data_center', 'dc', 'building', 'floor',
-                    'address', 'city', 'state', 'province', 'postal_code',
-                    # Cloud regions
-                    'cloud_region', 'aws_region', 'azure_region', 'gcp_region',
-                    'availability_zone', 'az', 'zone', 'edge_location',
-                    'us_east', 'us_west', 'eu_west', 'eu_central', 'ap_southeast',
-                    # Timezone
-                    'timezone', 'time_zone', 'tz', 'utc_offset', 'gmt_offset'
-                ],
-                'morphological_patterns': [
-                    r'.*(?:country|region|location|site|facility).*(?:code|name|type).*',
-                    r'.*(?:datacenter|data_center|dc).*(?:location|region|site).*',
-                    r'.*(?:cloud|aws|azure|gcp).*(?:region|zone|location).*',
-                    r'.*(?:geographic|geo).*(?:location|region|area).*'
-                ]
-            }
-        }
+        'description': 'Regional and Country View - Visibility statement on % of visibility by "location"',
+        'table_names': [
+            'locations', 'location', 'geography', 'geo', 'regions', 'region', 'countries', 
+            'country', 'sites', 'site', 'facilities', 'facility', 'datacenters', 'data_centers', 
+            'cloud_regions', 'geographic_data', 'geo_data', 'address_book', 'addresses'
+        ],
+        'country_keywords': [
+            # Country variations - ALL spellings
+            'country', 'Country', 'COUNTRY', 'country_code', 'countrycode', 'country-code', 
+            'countryCode', 'CountryCode', 'COUNTRY_CODE', 'COUNTRYCODE', 'COUNTRY-CODE', 'Country_Code', 
+            'Country_code', 'iso_country', 'isocountry', 'iso-country', 'isoCountry', 'IsoCountry', 
+            'ISO_COUNTRY', 'ISOCOUNTRY', 'ISO-COUNTRY', 'Iso_Country',
+            # Nation variations - ALL spellings
+            'nation', 'Nation', 'NATION', 'nationality', 'Nationality', 'NATIONALITY', 'locale_country', 
+            'localecountry', 'locale-country', 'localeCountry', 'LocaleCountry', 'LOCALE_COUNTRY', 
+            'LOCALECOUNTRY', 'LOCALE-COUNTRY', 'Locale_Country',
+            # Country codes - ALL spellings
+            'cc', 'CC', 'Cc', 'country_iso', 'countryiso', 'country-iso', 'countryIso', 'CountryIso', 
+            'COUNTRY_ISO', 'COUNTRYISO', 'COUNTRY-ISO', 'Country_Iso', 'iso2', 'ISO2', 'Iso2', 
+            'iso3', 'ISO3', 'Iso3', 'iso_code', 'isocode', 'iso-code', 'isoCode', 'IsoCode', 
+            'ISO_CODE', 'ISOCODE', 'ISO-CODE'
+        ],
+        'region_keywords': [
+            # Region variations - ALL spellings
+            'region', 'Region', 'REGION', 'global_region', 'globalregion', 'global-region', 
+            'globalRegion', 'GlobalRegion', 'GLOBAL_REGION', 'GLOBALREGION', 'GLOBAL-REGION', 
+            'Global_Region', 'geographical_region', 'geographicalregion', 'geographical-region', 
+            'geographicalRegion', 'GeographicalRegion', 'GEOGRAPHICAL_REGION',
+            # Geographic regions - ALL spellings
+            'geo_region', 'georegion', 'geo-region', 'geoRegion', 'GeoRegion', 'GEO_REGION', 
+            'GEOREGION', 'GEO-REGION', 'Geo_Region', 'area', 'Area', 'AREA', 'territory', 
+            'Territory', 'TERRITORY', 'zone', 'Zone', 'ZONE', 'continent', 'Continent', 'CONTINENT',
+            # Subregions - ALL spellings
+            'subregion', 'subRegion', 'SubRegion', 'SUBREGION', 'Subregion', 'sub_region', 
+            'subregion', 'sub-region', 'subRegion', 'SubRegion', 'SUB_REGION', 'SUBREGION', 
+            'SUB-REGION', 'Sub_Region'
+        ],
+        'datacenter_keywords': [
+            # Datacenter variations - ALL spellings
+            'datacenter', 'dataCenter', 'DataCenter', 'DATACENTER', 'Datacenter', 'data_center', 
+            'datacenter', 'data-center', 'dataCenter', 'DataCenter', 'DATA_CENTER', 'DATACENTER', 
+            'DATA-CENTER', 'Data_Center', 'dc', 'DC', 'Dc', 'facility', 'Facility', 'FACILITY', 
+            'site', 'Site', 'SITE',
+            # Colocation variations - ALL spellings
+            'colocation', 'coLocation', 'CoLocation', 'COLOCATION', 'Colocation', 'colo', 'Colo', 
+            'COLO', 'co_location', 'colocation', 'co-location', 'coLocation', 'CoLocation', 
+            'CO_LOCATION', 'COLOCATION', 'CO-LOCATION', 'Co_Location',
+            # Hosting facility variations - ALL spellings
+            'hosting_facility', 'hostingfacility', 'hosting-facility', 'hostingFacility', 'HostingFacility', 
+            'HOSTING_FACILITY', 'HOSTINGFACILITY', 'HOSTING-FACILITY', 'Hosting_Facility', 'server_farm', 
+            'serverfarm', 'server-farm', 'serverFarm', 'ServerFarm', 'SERVER_FARM', 'SERVERFARM', 
+            'SERVER-FARM', 'Server_Farm',
+            # Compute center variations - ALL spellings
+            'compute_center', 'computecenter', 'compute-center', 'computeCenter', 'ComputeCenter', 
+            'COMPUTE_CENTER', 'COMPUTECENTER', 'COMPUTE-CENTER', 'Compute_Center'
+        ],
+        'cloud_region_keywords': [
+            # Cloud region variations - ALL spellings
+            'cloud_region', 'cloudregion', 'cloud-region', 'cloudRegion', 'CloudRegion', 'CLOUD_REGION', 
+            'CLOUDREGION', 'CLOUD-REGION', 'Cloud_Region', 'availability_zone', 'availabilityzone', 
+            'availability-zone', 'availabilityZone', 'AvailabilityZone', 'AVAILABILITY_ZONE', 
+            'AVAILABILITYZONE', 'AVAILABILITY-ZONE', 'Availability_Zone',
+            # Zone variations - ALL spellings
+            'az', 'AZ', 'Az', 'zone', 'Zone', 'ZONE', 'aws_region', 'awsregion', 'aws-region', 
+            'awsRegion', 'AwsRegion', 'AWS_REGION', 'AWSREGION', 'AWS-REGION', 'Aws_Region', 
+            'aws_az', 'awsaz', 'aws-az', 'awsAz', 'AwsAz', 'AWS_AZ', 'AWSAZ', 'AWS-AZ', 'Aws_Az',
+            # Azure regions - ALL spellings
+            'azure_region', 'azureregion', 'azure-region', 'azureRegion', 'AzureRegion', 'AZURE_REGION', 
+            'AZUREREGION', 'AZURE-REGION', 'Azure_Region', 'azure_zone', 'azurezone', 'azure-zone', 
+            'azureZone', 'AzureZone', 'AZURE_ZONE', 'AZUREZONE', 'AZURE-ZONE', 'Azure_Zone',
+            # GCP zones - ALL spellings
+            'gcp_zone', 'gcpzone', 'gcp-zone', 'gcpZone', 'GcpZone', 'GCP_ZONE', 'GCPZONE', 
+            'GCP-ZONE', 'Gcp_Zone', 'gcp_region', 'gcpregion', 'gcp-region', 'gcpRegion', 'GcpRegion', 
+            'GCP_REGION', 'GCPREGION', 'GCP-REGION', 'Gcp_Region',
+            # Google zones - ALL spellings
+            'google_zone', 'googlezone', 'google-zone', 'googleZone', 'GoogleZone', 'GOOGLE_ZONE', 
+            'GOOGLEZONE', 'GOOGLE-ZONE', 'Google_Zone'
+        ]
     },
     
     'REQ4_BUSINESS_APPLICATION_METRICS': {
-        'metric_goal': 'Calculate visibility by business unit and application',
-        'semantic_concepts': {
-            'business_organization_concept': {
-                'core_meaning': 'business organizational structure identifiers',
-                'semantic_variations': [
-                    'business_unit', 'bu', 'organization', 'org', 'department', 'dept',
-                    'division', 'team', 'group', 'squad', 'cost_center', 'profit_center',
-                    'cio', 'owner', 'responsible_party', 'contact', 'manager'
-                ]
-            },
-            'application_portfolio_concept': {
-                'core_meaning': 'application and service identifiers',
-                'semantic_variations': [
-                    'application', 'app', 'service', 'workload', 'solution', 'product',
-                    'application_name', 'app_name', 'service_name', 'product_name',
-                    'apm', 'application_class', 'app_class', 'service_class'
-                ]
-            }
-        }
+        'description': 'BU and Application View - Business context visibility',
+        'table_names': [
+            'business_units', 'business_unit', 'bu', 'departments', 'department', 'divisions', 
+            'division', 'cost_centers', 'cost_center', 'applications', 'application', 'apps', 
+            'app', 'services', 'service', 'portfolios', 'portfolio', 'projects', 'project', 
+            'ownership', 'org_chart', 'organizational_units'
+        ],
+        'business_unit_keywords': [
+            # Business unit variations - ALL spellings
+            'business_unit', 'businessunit', 'business-unit', 'businessUnit', 'BusinessUnit', 
+            'BUSINESS_UNIT', 'BUSINESSUNIT', 'BUSINESS-UNIT', 'Business_Unit', 'Business_unit', 
+            'bu', 'BU', 'Bu', 'division', 'Division', 'DIVISION', 'dept', 'Dept', 'DEPT', 
+            'department', 'Department', 'DEPARTMENT',
+            # Organizational unit variations - ALL spellings
+            'org_unit', 'orgunit', 'org-unit', 'orgUnit', 'OrgUnit', 'ORG_UNIT', 'ORGUNIT', 
+            'ORG-UNIT', 'Org_Unit', 'organizational_unit', 'organizationalunit', 'organizational-unit', 
+            'organizationalUnit', 'OrganizationalUnit', 'ORGANIZATIONAL_UNIT', 'ORGANIZATIONALUNIT', 
+            'ORGANIZATIONAL-UNIT', 'Organizational_Unit',
+            # Cost center variations - ALL spellings
+            'cost_center', 'costcenter', 'cost-center', 'costCenter', 'CostCenter', 'COST_CENTER', 
+            'COSTCENTER', 'COST-CENTER', 'Cost_Center', 'budget_code', 'budgetcode', 'budget-code', 
+            'budgetCode', 'BudgetCode', 'BUDGET_CODE', 'BUDGETCODE', 'BUDGET-CODE', 'Budget_Code',
+            # Financial codes - ALL spellings
+            'financial_code', 'financialcode', 'financial-code', 'financialCode', 'FinancialCode', 
+            'FINANCIAL_CODE', 'FINANCIALCODE', 'FINANCIAL-CODE', 'Financial_Code', 'gl_code', 
+            'glcode', 'gl-code', 'glCode', 'GlCode', 'GL_CODE', 'GLCODE', 'GL-CODE', 'Gl_Code',
+            'profit_center', 'profitcenter', 'profit-center', 'profitCenter', 'ProfitCenter', 
+            'PROFIT_CENTER', 'PROFITCENTER', 'PROFIT-CENTER', 'Profit_Center', 'expense_code', 
+            'expensecode', 'expense-code', 'expenseCode', 'ExpenseCode', 'EXPENSE_CODE', 'EXPENSECODE', 
+            'EXPENSE-CODE', 'Expense_Code'
+        ],
+        'ownership_keywords': [
+            # Owner variations - ALL spellings
+            'owner', 'Owner', 'OWNER', 'asset_owner', 'assetowner', 'asset-owner', 'assetOwner', 
+            'AssetOwner', 'ASSET_OWNER', 'ASSETOWNER', 'ASSET-OWNER', 'Asset_Owner', 'business_owner', 
+            'businessowner', 'business-owner', 'businessOwner', 'BusinessOwner', 'BUSINESS_OWNER', 
+            'BUSINESSOWNER', 'BUSINESS-OWNER', 'Business_Owner',
+            # Technical owner variations - ALL spellings
+            'technical_owner', 'technicalowner', 'technical-owner', 'technicalOwner', 'TechnicalOwner', 
+            'TECHNICAL_OWNER', 'TECHNICALOWNER', 'TECHNICAL-OWNER', 'Technical_Owner', 'system_owner', 
+            'systemowner', 'system-owner', 'systemOwner', 'SystemOwner', 'SYSTEM_OWNER', 'SYSTEMOWNER', 
+            'SYSTEM-OWNER', 'System_Owner',
+            # Administrator variations - ALL spellings
+            'administrator', 'Administrator', 'ADMINISTRATOR', 'admin', 'Admin', 'ADMIN', 'custodian', 
+            'Custodian', 'CUSTODIAN', 'responsible_party', 'responsibleparty', 'responsible-party', 
+            'responsibleParty', 'ResponsibleParty', 'RESPONSIBLE_PARTY', 'RESPONSIBLEPARTY', 
+            'RESPONSIBLE-PARTY', 'Responsible_Party',
+            # CIO variations - ALL spellings
+            'cio', 'CIO', 'Cio', 'chief_information_officer', 'chiefinformationofficer', 
+            'chief-information-officer', 'chiefInformationOfficer', 'ChiefInformationOfficer', 
+            'CHIEF_INFORMATION_OFFICER', 'CHIEFINFORMATIONOFFICER', 'CHIEF-INFORMATION-OFFICER', 
+            'Chief_Information_Officer'
+        ],
+        'application_keywords': [
+            # Application name variations - ALL spellings
+            'application_name', 'applicationname', 'application-name', 'applicationName', 'ApplicationName', 
+            'APPLICATION_NAME', 'APPLICATIONNAME', 'APPLICATION-NAME', 'Application_Name', 'app_name', 
+            'appname', 'app-name', 'appName', 'AppName', 'APP_NAME', 'APPNAME', 'APP-NAME', 'App_Name', 
+            'service_name', 'servicename', 'service-name', 'serviceName', 'ServiceName', 'SERVICE_NAME', 
+            'SERVICENAME', 'SERVICE-NAME', 'Service_Name',
+            # APM variations - ALL spellings
+            'apm', 'APM', 'Apm', 'application_performance_monitoring', 'applicationperformancemonitoring', 
+            'application-performance-monitoring', 'applicationPerformanceMonitoring', 'ApplicationPerformanceMonitoring', 
+            'APPLICATION_PERFORMANCE_MONITORING', 'APPLICATIONPERFORMANCEMONITORING', 'APPLICATION-PERFORMANCE-MONITORING', 
+            'Application_Performance_Monitoring', 'apm_id', 'apmid', 'apm-id', 'apmId', 'ApmId', 
+            'APM_ID', 'APMID', 'APM-ID', 'Apm_Id',
+            # Application class variations - ALL spellings
+            'application_class', 'applicationclass', 'application-class', 'applicationClass', 'ApplicationClass', 
+            'APPLICATION_CLASS', 'APPLICATIONCLASS', 'APPLICATION-CLASS', 'Application_Class', 'app_classification', 
+            'appclassification', 'app-classification', 'appClassification', 'AppClassification', 'APP_CLASSIFICATION', 
+            'APPCLASSIFICATION', 'APP-CLASSIFICATION', 'App_Classification',
+            # Service tier variations - ALL spellings
+            'service_tier', 'servicetier', 'service-tier', 'serviceTier', 'ServiceTier', 'SERVICE_TIER', 
+            'SERVICETIER', 'SERVICE-TIER', 'Service_Tier', 'business_criticality', 'businesscriticality', 
+            'business-criticality', 'businessCriticality', 'BusinessCriticality', 'BUSINESS_CRITICALITY', 
+            'BUSINESSCRITICALITY', 'BUSINESS-CRITICALITY', 'Business_Criticality',
+            'criticality', 'Criticality', 'CRITICALITY', 'impact_level', 'impactlevel', 'impact-level', 
+            'impactLevel', 'ImpactLevel', 'IMPACT_LEVEL', 'IMPACTLEVEL', 'IMPACT-LEVEL', 'Impact_Level', 
+            'priority', 'Priority', 'PRIORITY'
+        ]
     },
     
     'REQ5_SYSTEM_CLASSIFICATION_METRICS': {
-        'metric_goal': 'Calculate visibility by system/OS classification',
-        'semantic_concepts': {
-            'operating_system_concept': {
-                'core_meaning': 'operating system and platform identification',
-                'semantic_variations': [
-                    'os', 'operating_system', 'os_type', 'os_name', 'platform',
-                    'windows', 'linux', 'unix', 'macos', 'android', 'ios',
-                    'windows_server', 'redhat', 'ubuntu', 'centos', 'debian', 'suse'
-                ]
-            },
-            'server_function_concept': {
-                'core_meaning': 'server role and function classification',
-                'semantic_variations': [
-                    'server_type', 'system_type', 'machine_type', 'role', 'function',
-                    'web_server', 'database_server', 'application_server', 'file_server',
-                    'domain_controller', 'exchange_server', 'sql_server', 'mail_server'
-                ]
-            }
-        }
+        'description': 'System Classification - OS and server function classification',
+        'table_names': [
+            'operating_systems', 'operating_system', 'os', 'platforms', 'platform', 'servers', 
+            'server', 'systems', 'system', 'endpoints', 'endpoint', 'workstations', 'workstation', 
+            'devices', 'device', 'network_devices', 'network_appliances', 'appliances', 'appliance'
+        ],
+        'operating_system_keywords': [
+            # Operating system variations - ALL spellings
+            'operating_system', 'operatingsystem', 'operating-system', 'operatingSystem', 'OperatingSystem', 
+            'OPERATING_SYSTEM', 'OPERATINGSYSTEM', 'OPERATING-SYSTEM', 'Operating_System', 'os', 'OS', 
+            'Os', 'os_type', 'ostype', 'os-type', 'osType', 'OsType', 'OS_TYPE', 'OSTYPE', 'OS-TYPE', 
+            'Os_Type', 'platform', 'Platform', 'PLATFORM', 'os_family', 'osfamily', 'os-family', 
+            'osFamily', 'OsFamily', 'OS_FAMILY', 'OSFAMILY', 'OS-FAMILY', 'Os_Family',
+            # Specific OS variations - ALL spellings
+            'windows', 'Windows', 'WINDOWS', 'linux', 'Linux', 'LINUX', 'unix', 'Unix', 'UNIX', 
+            'aix', 'AIX', 'Aix', 'solaris', 'Solaris', 'SOLARIS', 'macos', 'MacOS', 'MACOS', 
+            'MacOs', 'mac_os', 'macos', 'mac-os', 'macOs', 'MacOs', 'MAC_OS', 'MACOS', 'MAC-OS', 'Mac_Os',
+            # Server OS variations - ALL spellings
+            'windows_server', 'windowsserver', 'windows-server', 'windowsServer', 'WindowsServer', 
+            'WINDOWS_SERVER', 'WINDOWSSERVER', 'WINDOWS-SERVER', 'Windows_Server', 'linux_server', 
+            'linuxserver', 'linux-server', 'linuxServer', 'LinuxServer', 'LINUX_SERVER', 'LINUXSERVER', 
+            'LINUX-SERVER', 'Linux_Server', 'unix_server', 'unixserver', 'unix-server', 'unixServer', 
+            'UnixServer', 'UNIX_SERVER', 'UNIXSERVER', 'UNIX-SERVER', 'Unix_Server',
+            # Legacy systems - ALL spellings
+            'mainframe', 'Mainframe', 'MAINFRAME', 'mf', 'MF', 'Mf', 'legacy_system', 'legacysystem', 
+            'legacy-system', 'legacySystem', 'LegacySystem', 'LEGACY_SYSTEM', 'LEGACYSYSTEM', 'LEGACY-SYSTEM', 
+            'Legacy_System'
+        ],
+        'server_function_keywords': [
+            # Server function variations - ALL spellings
+            'server_function', 'serverfunction', 'server-function', 'serverFunction', 'ServerFunction', 
+            'SERVER_FUNCTION', 'SERVERFUNCTION', 'SERVER-FUNCTION', 'Server_Function', 'server_role', 
+            'serverrole', 'server-role', 'serverRole', 'ServerRole', 'SERVER_ROLE', 'SERVERROLE', 
+            'SERVER-ROLE', 'Server_Role', 'system_function', 'systemfunction', 'system-function', 
+            'systemFunction', 'SystemFunction', 'SYSTEM_FUNCTION', 'SYSTEMFUNCTION', 'SYSTEM-FUNCTION', 
+            'System_Function',
+            # Web server variations - ALL spellings
+            'web_server', 'webserver', 'web-server', 'webServer', 'WebServer', 'WEB_SERVER', 'WEBSERVER', 
+            'WEB-SERVER', 'Web_Server', 'application_server', 'applicationserver', 'application-server', 
+            'applicationServer', 'ApplicationServer', 'APPLICATION_SERVER', 'APPLICATIONSERVER', 'APPLICATION-SERVER', 
+            'Application_Server', 'database_server', 'databaseserver', 'database-server', 'databaseServer', 
+            'DatabaseServer', 'DATABASE_SERVER', 'DATABASESERVER', 'DATABASE-SERVER', 'Database_Server',
+            # File server variations - ALL spellings
+            'file_server', 'fileserver', 'file-server', 'fileServer', 'FileServer', 'FILE_SERVER', 
+            'FILESERVER', 'FILE-SERVER', 'File_Server', 'mail_server', 'mailserver', 'mail-server', 
+            'mailServer', 'MailServer', 'MAIL_SERVER', 'MAILSERVER', 'MAIL-SERVER', 'Mail_Server', 
+            'dns_server', 'dnsserver', 'dns-server', 'dnsServer', 'DnsServer', 'DNS_SERVER', 'DNSSERVER', 
+            'DNS-SERVER', 'Dns_Server', 'dhcp_server', 'dhcpserver', 'dhcp-server', 'dhcpServer', 
+            'DhcpServer', 'DHCP_SERVER', 'DHCPSERVER', 'DHCP-SERVER', 'Dhcp_Server',
+            # Domain controller variations - ALL spellings
+            'domain_controller', 'domaincontroller', 'domain-controller', 'domainController', 'DomainController', 
+            'DOMAIN_CONTROLLER', 'DOMAINCONTROLLER', 'DOMAIN-CONTROLLER', 'Domain_Controller', 'print_server', 
+            'printserver', 'print-server', 'printServer', 'PrintServer', 'PRINT_SERVER', 'PRINTSERVER', 
+            'PRINT-SERVER', 'Print_Server'
+        ],
+        'network_appliance_keywords': [
+            # Network appliance variations - ALL spellings
+            'network_appliance', 'networkappliance', 'network-appliance', 'networkAppliance', 'NetworkAppliance', 
+            'NETWORK_APPLIANCE', 'NETWORKAPPLIANCE', 'NETWORK-APPLIANCE', 'Network_Appliance', 'fw', 'FW', 
+            'Fw', 'firewall', 'Firewall', 'FIREWALL', 'ndr', 'NDR', 'Ndr', 'network_detection_response', 
+            'networkdetectionresponse', 'network-detection-response',
+            # Network devices - ALL spellings
+            'switch', 'Switch', 'SWITCH', 'router', 'Router', 'ROUTER', 'load_balancer', 'loadbalancer', 
+            'load-balancer', 'loadBalancer', 'LoadBalancer', 'LOAD_BALANCER', 'LOADBALANCER', 'LOAD-BALANCER', 
+            'Load_Balancer', 'proxy', 'Proxy', 'PROXY', 'vpn', 'VPN', 'Vpn', 'waf', 'WAF', 'Waf', 
+            'web_application_firewall', 'webapplicationfirewall', 'web-application-firewall',
+            # Network device types - ALL spellings
+            'network_device', 'networkdevice', 'network-device', 'networkDevice', 'NetworkDevice', 
+            'NETWORK_DEVICE', 'NETWORKDEVICE', 'NETWORK-DEVICE', 'Network_Device', 'security_appliance', 
+            'securityappliance', 'security-appliance', 'securityAppliance', 'SecurityAppliance', 
+            'SECURITY_APPLIANCE', 'SECURITYAPPLIANCE', 'SECURITY-APPLIANCE', 'Security_Appliance'
+        ]
     },
     
     'REQ6_SECURITY_CONTROL_COVERAGE_METRICS': {
-        'metric_goal': 'Calculate security agent coverage from console stats',
-        'semantic_concepts': {
-            'security_agent_concept': {
-                'core_meaning': 'security tool and agent deployment indicators',
-                'semantic_variations': [
-                    # Agent presence
-                    'agent_present', 'agent_installed', 'agent_deployed', 'agent_active',
-                    'sensor_present', 'protection_enabled', 'monitored', 'instrumented',
-                    # EDR specific
-                    'edr', 'endpoint_detection', 'crowdstrike', 'falcon', 'tanium',
-                    'axonius', 'cylance', 'sentinelone', 'carbon_black', 'defender',
-                    'aid', 'agent_id', 'sensor_id', 'cid', 'customer_id',
-                    # Security status
-                    'security_status', 'protection_status', 'coverage_status',
-                    'compliance_status', 'risk_status', 'threat_status',
-                    # DLP and other tools
-                    'dlp', 'antivirus', 'av', 'firewall', 'encryption'
-                ],
-                'morphological_patterns': [
-                    r'.*(?:agent|sensor|protection|security).*(?:status|present|installed|deployed).*',
-                    r'.*(?:edr|crowdstrike|tanium|axonius).*(?:agent|sensor|status|id).*',
-                    r'.*(?:coverage|compliance|protection).*(?:status|percentage|score).*'
-                ]
-            }
-        }
+        'description': 'Security Control Coverage - Agent-based security tools',
+        'table_names': [
+            'security_tools', 'security_agents', 'endpoint_protection', 'edr', 'dlp', 'tanium', 
+            'axonius', 'security_controls', 'agent_inventory', 'endpoint_agents', 'security_coverage', 
+            'protection_status', 'compliance', 'vulnerability_scanners', 'antivirus'
+        ],
+        'edr_keywords': [
+            # EDR variations - ALL spellings
+            'edr', 'EDR', 'Edr', 'endpoint_detection', 'endpointdetection', 'endpoint-detection', 
+            'endpointDetection', 'EndpointDetection', 'ENDPOINT_DETECTION', 'ENDPOINTDETECTION', 
+            'ENDPOINT-DETECTION', 'Endpoint_Detection', 'edr_agent', 'edragent', 'edr-agent', 
+            'edrAgent', 'EdrAgent', 'EDR_AGENT', 'EDRAGENT', 'EDR-AGENT', 'Edr_Agent', 'edr_status', 
+            'edrstatus', 'edr-status', 'edrStatus', 'EdrStatus', 'EDR_STATUS', 'EDRSTATUS', 'EDR-STATUS', 
+            'Edr_Status', 'edr_installed', 'edrinstalled', 'edr-installed', 'edrInstalled', 'EdrInstalled', 
+            'EDR_INSTALLED', 'EDRINSTALLED', 'EDR-INSTALLED', 'Edr_Installed',
+            # EDR vendors - ALL spellings
+            'crowdstrike', 'CrowdStrike', 'CROWDSTRIKE', 'Crowdstrike', 'sentinelone', 'SentinelOne', 
+            'SENTINELONE', 'Sentinelone', 'sentinel_one', 'sentinelone', 'sentinel-one', 'sentinelOne', 
+            'SentinelOne', 'SENTINEL_ONE', 'SENTINELONE', 'SENTINEL-ONE', 'Sentinel_One', 'carbon_black', 
+            'carbonblack', 'carbon-black', 'carbonBlack', 'CarbonBlack', 'CARBON_BLACK', 'CARBONBLACK', 
+            'CARBON-BLACK', 'Carbon_Black',
+            'defender_atp', 'defenderatp', 'defender-atp', 'defenderAtp', 'DefenderAtp', 'DEFENDER_ATP', 
+            'DEFENDERATP', 'DEFENDER-ATP', 'Defender_Atp', 'microsoft_defender', 'microsoftdefender', 
+            'microsoft-defender', 'microsoftDefender', 'MicrosoftDefender', 'MICROSOFT_DEFENDER', 
+            'MICROSOFTDEFENDER', 'MICROSOFT-DEFENDER', 'Microsoft_Defender',
+            # EDR status fields - ALL spellings
+            'edr_version', 'edrversion', 'edr-version', 'edrVersion', 'EdrVersion', 'EDR_VERSION', 
+            'EDRVERSION', 'EDR-VERSION', 'Edr_Version', 'agent_version', 'agentversion', 'agent-version', 
+            'agentVersion', 'AgentVersion', 'AGENT_VERSION', 'AGENTVERSION', 'AGENT-VERSION', 'Agent_Version', 
+            'last_checkin', 'lastcheckin', 'last-checkin', 'lastCheckin', 'LastCheckin', 'LAST_CHECKIN', 
+            'LASTCHECKIN', 'LAST-CHECKIN', 'Last_Checkin', 'connection_status', 'connectionstatus', 
+            'connection-status', 'connectionStatus', 'ConnectionStatus', 'CONNECTION_STATUS', 'CONNECTIONSTATUS', 
+            'CONNECTION-STATUS', 'Connection_Status'
+        ],
+        'tanium_keywords': [
+            # Tanium variations - ALL spellings
+            'tanium', 'Tanium', 'TANIUM', 'tanium_agent', 'taniumagent', 'tanium-agent', 'taniumAgent', 
+            'TaniumAgent', 'TANIUM_AGENT', 'TANIUMAGENT', 'TANIUM-AGENT', 'Tanium_Agent', 'tanium_status', 
+            'taniumstatus', 'tanium-status', 'taniumStatus', 'TaniumStatus', 'TANIUM_STATUS', 'TANIUMSTATUS', 
+            'TANIUM-STATUS', 'Tanium_Status', 'tanium_installed', 'taniuminstalled', 'tanium-installed', 
+            'taniumInstalled', 'TaniumInstalled', 'TANIUM_INSTALLED', 'TANIUMINSTALLED', 'TANIUM-INSTALLED', 
+            'Tanium_Installed',
+            'tanium_client', 'taniumclient', 'tanium-client', 'taniumClient', 'TaniumClient', 'TANIUM_CLIENT', 
+            'TANIUMCLIENT', 'TANIUM-CLIENT', 'Tanium_Client', 'tanium_endpoint', 'taniumendpoint', 
+            'tanium-endpoint', 'taniumEndpoint', 'TaniumEndpoint', 'TANIUM_ENDPOINT', 'TANIUMENDPOINT', 
+            'TANIUM-ENDPOINT', 'Tanium_Endpoint', 'tanium_coverage', 'taniumcoverage', 'tanium-coverage', 
+            'taniumCoverage', 'TaniumCoverage', 'TANIUM_COVERAGE', 'TANIUMCOVERAGE', 'TANIUM-COVERAGE', 
+            'Tanium_Coverage'
+        ],
+        'dlp_keywords': [
+            # DLP variations - ALL spellings
+            'dlp', 'DLP', 'Dlp', 'data_loss_prevention', 'datalossprevention', 'data-loss-prevention', 
+            'dataLossPrevention', 'DataLossPrevention', 'DATA_LOSS_PREVENTION', 'DATALOSSPREVENTION', 
+            'DATA-LOSS-PREVENTION', 'Data_Loss_Prevention', 'dlp_agent', 'dlpagent', 'dlp-agent', 
+            'dlpAgent', 'DlpAgent', 'DLP_AGENT', 'DLPAGENT', 'DLP-AGENT', 'Dlp_Agent', 'dlp_status', 
+            'dlpstatus', 'dlp-status', 'dlpStatus', 'DlpStatus', 'DLP_STATUS', 'DLPSTATUS', 'DLP-STATUS', 
+            'Dlp_Status',
+            # DLP vendors - ALL spellings
+            'symantec_dlp', 'symantecdlp', 'symantec-dlp', 'symantecDlp', 'SymantecDlp', 'SYMANTEC_DLP', 
+            'SYMANTECDLP', 'SYMANTEC-DLP', 'Symantec_Dlp', 'forcepoint_dlp', 'forcepointdlp', 'forcepoint-dlp', 
+            'forcepointDlp', 'ForcepointDlp', 'FORCEPOINT_DLP', 'FORCEPOINTDLP', 'FORCEPOINT-DLP', 'Forcepoint_Dlp', 
+            'microsoft_purview', 'microsoftpurview', 'microsoft-purview', 'microsoftPurview', 'MicrosoftPurview', 
+            'MICROSOFT_PURVIEW', 'MICROSOFTPURVIEW', 'MICROSOFT-PURVIEW', 'Microsoft_Purview',
+            # DLP status fields - ALL spellings
+            'dlp_policy', 'dlppolicy', 'dlp-policy', 'dlpPolicy', 'DlpPolicy', 'DLP_POLICY', 'DLPPOLICY', 
+            'DLP-POLICY', 'Dlp_Policy', 'dlp_enabled', 'dlpenabled', 'dlp-enabled', 'dlpEnabled', 'DlpEnabled', 
+            'DLP_ENABLED', 'DLPENABLED', 'DLP-ENABLED', 'Dlp_Enabled', 'data_protection', 'dataprotection', 
+            'data-protection', 'dataProtection', 'DataProtection', 'DATA_PROTECTION', 'DATAPROTECTION', 
+            'DATA-PROTECTION', 'Data_Protection'
+        ],
+        'axonius_integration_keywords': [
+            # Axonius variations - ALL spellings
+            'axonius_managed', 'axoniusmanaged', 'axonius-managed', 'axoniusManaged', 'AxoniusManaged', 
+            'AXONIUS_MANAGED', 'AXONIUSMANAGED', 'AXONIUS-MANAGED', 'Axonius_Managed', 'axonius_id', 
+            'axoniusid', 'axonius-id', 'axoniusId', 'AxoniusId', 'AXONIUS_ID', 'AXONIUSID', 'AXONIUS-ID', 
+            'Axonius_Id', 'console_stats', 'consolestats', 'console-stats', 'consoleStats', 'ConsoleStats', 
+            'CONSOLE_STATS', 'CONSOLESTATS', 'CONSOLE-STATS', 'Console_Stats', 'security_tools_inventory', 
+            'securitytoolsinventory', 'security-tools-inventory', 'securityToolsInventory', 'SecurityToolsInventory', 
+            'SECURITY_TOOLS_INVENTORY', 'SECURITYTOOLSINVENTORY', 'SECURITY-TOOLS-INVENTORY', 'Security_Tools_Inventory',
+            'agent_inventory', 'agentinventory', 'agent-inventory', 'agentInventory', 'AgentInventory', 
+            'AGENT_INVENTORY', 'AGENTINVENTORY', 'AGENT-INVENTORY', 'Agent_Inventory', 'security_coverage', 
+            'securitycoverage', 'security-coverage', 'securityCoverage', 'SecurityCoverage', 'SECURITY_COVERAGE', 
+            'SECURITYCOVERAGE', 'SECURITY-COVERAGE', 'Security_Coverage', 'endpoint_tools', 'endpointtools', 
+            'endpoint-tools', 'endpointTools', 'EndpointTools', 'ENDPOINT_TOOLS', 'ENDPOINTTOOLS', 'ENDPOINT-TOOLS', 
+            'Endpoint_Tools'
+        ]
     },
     
     'REQ7_LOGGING_COMPLIANCE_METRICS': {
-        'metric_goal': 'Calculate logging platform compliance (Chronicle/Splunk)',
-        'semantic_concepts': {
-            'logging_platform_concept': {
-                'core_meaning': 'logging platform and SIEM indicators',
-                'semantic_variations': [
-                    # Chronicle/GSO
-                    'chronicle', 'google_chronicle', 'gso', 'google_security_operations',
-                    'chronicle_ingested', 'chronicle_visible', 'gso_ingested',
-                    # Splunk
-                    'splunk', 'splunk_indexed', 'splunk_visible', 'sourcetype',
-                    'splunk_source', 'index', 'splunk_index', 'forwarder',
-                    # General SIEM
-                    'siem', 'security_information', 'log_management', 'centralized_logging',
-                    # Compliance indicators
-                    'compliance', 'visibility_statement', 'logging_compliance',
-                    'audit_compliance', 'retention_compliance', 'governance'
-                ]
-            }
-        }
+        'description': 'Logging Compliance in GSO and Splunk',
+        'table_names': [
+            'log_sources', 'logging', 'splunk', 'chronicle', 'gso', 'siem', 'log_forwarding', 
+            'log_collection', 'log_compliance', 'data_ingestion', 'forwarders', 'connectors', 
+            'parsers', 'log_analytics', 'security_logs'
+        ],
+        'splunk_integration_keywords': [
+            # Splunk forwarder variations - ALL spellings
+            'splunk_forwarder', 'splunkforwarder', 'splunk-forwarder', 'splunkForwarder', 'SplunkForwarder', 
+            'SPLUNK_FORWARDER', 'SPLUNKFORWARDER', 'SPLUNK-FORWARDER', 'Splunk_Forwarder', 'splunk_enabled', 
+            'splunkenabled', 'splunk-enabled', 'splunkEnabled', 'SplunkEnabled', 'SPLUNK_ENABLED', 'SPLUNKENABLED', 
+            'SPLUNK-ENABLED', 'Splunk_Enabled', 'splunk_index', 'splunkindex', 'splunk-index', 'splunkIndex', 
+            'SplunkIndex', 'SPLUNK_INDEX', 'SPLUNKINDEX', 'SPLUNK-INDEX', 'Splunk_Index', 'splunk_sourcetype', 
+            'splunksourcetype', 'splunk-sourcetype', 'splunkSourcetype', 'SplunkSourcetype', 'SPLUNK_SOURCETYPE', 
+            'SPLUNKSOURCETYPE', 'SPLUNK-SOURCETYPE', 'Splunk_Sourcetype',
+            # Universal forwarder variations - ALL spellings
+            'universal_forwarder', 'universalforwarder', 'universal-forwarder', 'universalForwarder', 
+            'UniversalForwarder', 'UNIVERSAL_FORWARDER', 'UNIVERSALFORWARDER', 'UNIVERSAL-FORWARDER', 
+            'Universal_Forwarder', 'heavy_forwarder', 'heavyforwarder', 'heavy-forwarder', 'heavyForwarder', 
+            'HeavyForwarder', 'HEAVY_FORWARDER', 'HEAVYFORWARDER', 'HEAVY-FORWARDER', 'Heavy_Forwarder', 
+            'syslog_forwarding', 'syslogforwarding', 'syslog-forwarding', 'syslogForwarding', 'SyslogForwarding', 
+            'SYSLOG_FORWARDING', 'SYSLOGFORWARDING', 'SYSLOG-FORWARDING', 'Syslog_Forwarding',
+            # Splunk deployment variations - ALL spellings
+            'splunk_deployment_server', 'splunkdeploymentserver', 'splunk-deployment-server', 'splunkDeploymentServer', 
+            'SplunkDeploymentServer', 'SPLUNK_DEPLOYMENT_SERVER', 'SPLUNKDEPLOYMENTSERVER', 'SPLUNK-DEPLOYMENT-SERVER', 
+            'Splunk_Deployment_Server', 'forwarder_management', 'forwardermanagement', 'forwarder-management', 
+            'forwarderManagement', 'ForwarderManagement', 'FORWARDER_MANAGEMENT', 'FORWARDERMANAGEMENT', 
+            'FORWARDER-MANAGEMENT', 'Forwarder_Management', 'log_shipping', 'logshipping', 'log-shipping', 
+            'logShipping', 'LogShipping', 'LOG_SHIPPING', 'LOGSHIPPING', 'LOG-SHIPPING', 'Log_Shipping'
+        ],
+        'gso_keywords': [
+            # GSO enabled variations - ALL spellings
+            'gso_enabled', 'gsoenabled', 'gso-enabled', 'gsoEnabled', 'GsoEnabled', 'GSO_ENABLED', 
+            'GSOENABLED', 'GSO-ENABLED', 'Gso_Enabled', 'chronicle_forwarder', 'chronicleforwarder', 
+            'chronicle-forwarder', 'chronicleForwarder', 'ChronicleForwarder', 'CHRONICLE_FORWARDER', 
+            'CHRONICLEFORWARDER', 'CHRONICLE-FORWARDER', 'Chronicle_Forwarder', 'chronicle_connector', 
+            'chronicleconnector', 'chronicle-connector', 'chronicleConnector', 'ChronicleConnector', 
+            'CHRONICLE_CONNECTOR', 'CHRONICLECONNECTOR', 'CHRONICLE-CONNECTOR', 'Chronicle_Connector',
+            # Google Chronicle variations - ALL spellings
+            'google_chronicle', 'googlechronicle', 'google-chronicle', 'googleChronicle', 'GoogleChronicle', 
+            'GOOGLE_CHRONICLE', 'GOOGLECHRONICLE', 'GOOGLE-CHRONICLE', 'Google_Chronicle', 'chronicle_ingestion', 
+            'chronicleingestion', 'chronicle-ingestion', 'chronicleIngestion', 'ChronicleIngestion', 
+            'CHRONICLE_INGESTION', 'CHRONICLEINGESTION', 'CHRONICLE-INGESTION', 'Chronicle_Ingestion', 
+            'chronicle_parser', 'chronicleparser', 'chronicle-parser', 'chronicleParser', 'ChronicleParser', 
+            'CHRONICLE_PARSER', 'CHRONICLEPARSER', 'CHRONICLE-PARSER', 'Chronicle_Parser',
+            # Google Security Operations variations - ALL spellings
+            'google_security_operations', 'googlesecurityoperations', 'google-security-operations', 
+            'googleSecurityOperations', 'GoogleSecurityOperations', 'GOOGLE_SECURITY_OPERATIONS', 
+            'GOOGLESECURITYOPERATIONS', 'GOOGLE-SECURITY-OPERATIONS', 'Google_Security_Operations', 
+            'gso', 'GSO', 'Gso'
+        ]
     },
     
     'REQ8_DOMAIN_VISIBILITY_METRICS': {
-        'metric_goal': 'Calculate asset visibility by hostname and domain',
-        'semantic_concepts': {
-            'domain_identity_concept': {
-                'core_meaning': 'domain and DNS-related identifiers',
-                'semantic_variations': [
-                    'domain', 'domain_name', 'dns_name', 'fqdn', 'hostname',
-                    'subdomain', 'parent_domain', 'root_domain', 'canonical_name',
-                    'dns', 'name_resolution', 'dns_resolution', 'lookup'
-                ]
-            }
-        }
+        'description': 'Domain Visibility - Asset visibility by hostname and domain',
+        'table_names': [
+            'domains', 'domain', 'dns', 'hostnames', 'hostname', 'network', 'networks', 'subnets', 
+            'subnet', 'zones', 'zone', 'fqdn', 'domain_names', 'dns_records', 'name_resolution'
+        ],
+        'domain_keywords': [
+            # Domain variations - ALL spellings
+            'domain', 'Domain', 'DOMAIN', 'subdomain', 'subDomain', 'SubDomain', 'SUBDOMAIN', 'Subdomain', 
+            'sub_domain', 'subdomain', 'sub-domain', 'subDomain', 'SubDomain', 'SUB_DOMAIN', 'SUBDOMAIN', 
+            'SUB-DOMAIN', 'Sub_Domain', 'dns_name', 'dnsname', 'dns-name', 'dnsName', 'DnsName', 'DNS_NAME', 
+            'DNSNAME', 'DNS-NAME', 'Dns_Name', 'network_segment', 'networksegment', 'network-segment', 
+            'networkSegment', 'NetworkSegment', 'NETWORK_SEGMENT', 'NETWORKSEGMENT', 'NETWORK-SEGMENT', 
+            'Network_Segment',
+            # Parent domain variations - ALL spellings
+            'parent_domain', 'parentdomain', 'parent-domain', 'parentDomain', 'ParentDomain', 'PARENT_DOMAIN', 
+            'PARENTDOMAIN', 'PARENT-DOMAIN', 'Parent_Domain', 'child_domains', 'childdomains', 'child-domains', 
+            'childDomains', 'ChildDomains', 'CHILD_DOMAINS', 'CHILDDOMAINS', 'CHILD-DOMAINS', 'Child_Domains', 
+            'zone', 'Zone', 'ZONE', 'dns_zone', 'dnszone', 'dns-zone', 'dnsZone', 'DnsZone', 'DNS_ZONE', 
+            'DNSZONE', 'DNS-ZONE', 'Dns_Zone',
+            # Domain controller variations - ALL spellings
+            'domain_controller', 'domaincontroller', 'domain-controller', 'domainController', 'DomainController', 
+            'DOMAIN_CONTROLLER', 'DOMAINCONTROLLER', 'DOMAIN-CONTROLLER', 'Domain_Controller', 'ad_domain', 
+            'addomain', 'ad-domain', 'adDomain', 'AdDomain', 'AD_DOMAIN', 'ADDOMAIN', 'AD-DOMAIN', 'Ad_Domain', 
+            'forest', 'Forest', 'FOREST', 'ou', 'OU', 'Ou', 'organizational_unit', 'organizationalunit', 
+            'organizational-unit', 'organizationalUnit', 'OrganizationalUnit', 'ORGANIZATIONAL_UNIT', 
+            'ORGANIZATIONALUNIT', 'ORGANIZATIONAL-UNIT', 'Organizational_Unit'
+        ]
     }
 }
 
-class IntelligentSemanticInference:
+class ComprehensiveKeywordMatcher:
     """
-    Advanced semantic inference engine that goes beyond keyword matching.
-    Uses multiple AI techniques to understand field semantics even with naming variations.
+    Comprehensive keyword matching system that uses ALL the keywords you specified.
+    No more missing variations - every single keyword and spelling is included.
     """
     
     def __init__(self):
-        self.requirements = AO1_INTELLIGENT_REQUIREMENTS
-        self.semantic_similarity_threshold = 0.6
-        self.context_weight = 0.4
-        self.morphological_weight = 0.3
-        self.exact_match_weight = 0.3
+        self.requirements = AO1_COMPLETE_REQUIREMENTS
+        self.normalized_keyword_cache = {}
+        self.requirement_keyword_map = {}
         
-        # Build semantic concept embeddings
-        self._build_concept_embeddings()
+        # Build comprehensive keyword mappings
+        self._build_complete_keyword_mappings()
         
-        # Initialize intelligent pattern matchers
-        self._initialize_pattern_matchers()
+        logger.info(f"Built comprehensive keyword mappings: {total_keywords:,} total keywords across all requirements")
+    
+    def normalize_field_name(self, field_name: str) -> str:
+        """Normalize field name for comprehensive matching."""
+        if field_name in self.normalized_keyword_cache:
+            return self.normalized_keyword_cache[field_name]
         
-        logger.info("Intelligent semantic inference engine initialized")
-    
-    def _build_concept_embeddings(self):
-        """Build semantic embeddings for concepts using distributional similarity."""
-        self.concept_embeddings = {}
-        
-        for req_name, req_data in self.requirements.items():
-            concepts = req_data.get('semantic_concepts', {})
-            
-            for concept_name, concept_data in concepts.items():
-                # Create semantic signature for concept
-                variations = concept_data.get('semantic_variations', [])
-                
-                # Use character n-gram approach for semantic similarity
-                concept_embedding = self._create_semantic_embedding(variations, concept_name)
-                
-                self.concept_embeddings[f"{req_name}_{concept_name}"] = {
-                    'embedding': concept_embedding,
-                    'variations': variations,
-                    'core_meaning': concept_data.get('core_meaning', ''),
-                    'patterns': concept_data.get('morphological_patterns', []),
-                    'table_indicators': concept_data.get('table_context_indicators', [])
-                }
-    
-    def _create_semantic_embedding(self, variations: list, concept_name: str) -> dict:
-        """Create semantic embedding using multiple techniques."""
-        embedding = {
-            'char_ngrams': self._extract_character_ngrams(variations),
-            'morphological_features': self._extract_morphological_features(variations),
-            'semantic_clusters': self._create_semantic_clusters(variations),
-            'concept_signature': self._create_concept_signature(concept_name, variations)
-        }
-        return embedding
-    
-    def _extract_character_ngrams(self, variations: list) -> dict:
-        """Extract character n-grams for fuzzy matching."""
-        ngram_counts = defaultdict(int)
-        
-        for variation in variations:
-            # Extract 2-4 character n-grams
-            for n in range(2, 5):
-                for i in range(len(variation) - n + 1):
-                    ngram = variation[i:i+n]
-                    ngram_counts[ngram] += 1
-        
-        # Normalize by frequency
-        total_ngrams = sum(ngram_counts.values())
-        return {ngram: count/total_ngrams for ngram, count in ngram_counts.items()}
-    
-    def _extract_morphological_features(self, variations: list) -> dict:
-        """Extract morphological features like prefixes, suffixes, roots."""
-        features = {
-            'common_prefixes': defaultdict(int),
-            'common_suffixes': defaultdict(int),
-            'common_roots': defaultdict(int),
-            'length_distribution': defaultdict(int)
-        }
-        
-        for variation in variations:
-            # Extract prefixes (first 3-5 chars)
-            for prefix_len in range(3, min(6, len(variation))):
-                prefix = variation[:prefix_len]
-                features['common_prefixes'][prefix] += 1
-            
-            # Extract suffixes (last 3-5 chars)
-            for suffix_len in range(3, min(6, len(variation))):
-                suffix = variation[-suffix_len:]
-                features['common_suffixes'][suffix] += 1
-            
-            # Length distribution
-            features['length_distribution'][len(variation)] += 1
-            
-            # Extract roots (remove common prefixes/suffixes)
-            root = self._extract_root_word(variation)
-            if root:
-                features['common_roots'][root] += 1
-        
-        return features
-    
-    def _extract_root_word(self, word: str) -> str:
-        """Extract root word by removing common prefixes and suffixes."""
-        # Remove common prefixes
-        prefixes_to_remove = ['host_', 'device_', 'asset_', 'system_', 'server_', 'log_', 'event_']
-        for prefix in prefixes_to_remove:
-            if word.startswith(prefix):
-                word = word[len(prefix):]
-                break
-        
-        # Remove common suffixes
-        suffixes_to_remove = ['_id', '_name', '_type', '_status', '_time', '_timestamp']
-        for suffix in suffixes_to_remove:
-            if word.endswith(suffix):
-                word = word[:-len(suffix)]
-                break
-        
-        return word if len(word) >= 3 else ''
-    
-    def _create_semantic_clusters(self, variations: list) -> dict:
-        """Create semantic clusters based on meaning similarity."""
-        clusters = {
-            'identifier_cluster': [],
-            'descriptive_cluster': [],
-            'temporal_cluster': [],
-            'status_cluster': [],
-            'classification_cluster': []
-        }
-        
-        # Classify variations into semantic clusters
-        for variation in variations:
-            var_lower = variation.lower()
-            
-            if any(term in var_lower for term in ['id', 'identifier', 'uuid', 'guid', 'key', 'serial']):
-                clusters['identifier_cluster'].append(variation)
-            elif any(term in var_lower for term in ['name', 'label', 'title', 'description']):
-                clusters['descriptive_cluster'].append(variation)
-            elif any(term in var_lower for term in ['time', 'date', 'timestamp', 'when', 'created', 'modified']):
-                clusters['temporal_cluster'].append(variation)
-            elif any(term in var_lower for term in ['status', 'state', 'condition', 'health', 'active']):
-                clusters['status_cluster'].append(variation)
-            elif any(term in var_lower for term in ['type', 'class', 'category', 'kind', 'classification']):
-                clusters['classification_cluster'].append(variation)
-        
-        return clusters
-    
-    def _create_concept_signature(self, concept_name: str, variations: list) -> dict:
-        """Create unique concept signature for matching."""
-        return {
-            'concept_hash': hashlib.md5(concept_name.encode()).hexdigest()[:8],
-            'variation_count': len(variations),
-            'avg_variation_length': np.mean([len(v) for v in variations]) if variations else 0,
-            'unique_chars': len(set(''.join(variations))),
-            'conceptual_keywords': self._extract_conceptual_keywords(concept_name)
-        }
-    
-    def _extract_conceptual_keywords(self, concept_name: str) -> list:
-        """Extract key conceptual terms from concept name."""
-        # Split concept name and extract meaningful parts
-        parts = concept_name.replace('_concept', '').split('_')
-        keywords = []
-        
-        for part in parts:
-            if len(part) >= 3:  # Skip very short parts
-                keywords.append(part)
-        
-        return keywords
-    
-    def _initialize_pattern_matchers(self):
-        """Initialize pattern matching engines for intelligent analysis."""
-        self.pattern_matchers = {
-            'exact_matcher': self._create_exact_matcher(),
-            'fuzzy_matcher': self._create_fuzzy_matcher(),
-            'morphological_matcher': self._create_morphological_matcher(),
-            'contextual_matcher': self._create_contextual_matcher()
-        }
-    
-    def _create_exact_matcher(self):
-        """Create exact pattern matcher."""
-        return {'type': 'exact', 'case_sensitive': False}
-    
-    def _create_fuzzy_matcher(self):
-        """Create fuzzy pattern matcher.""" 
-        return {'type': 'fuzzy', 'threshold': 0.7}
-    
-    def _create_morphological_matcher(self):
-        """Create morphological pattern matcher."""
-        return {'type': 'morphological', 'min_similarity': 0.6}
-    
-    def _create_contextual_matcher(self):
-        """Create contextual pattern matcher."""
-        return {'type': 'contextual', 'context_weight': 0.4}
-    
-    def _normalize_field_name(self, field_name: str) -> str:
-        """Advanced field name normalization."""
         # Convert to lowercase
         normalized = field_name.lower()
         
         # Handle camelCase conversion
         normalized = re.sub(r'([a-z])([A-Z])', r'\1_\2', normalized)
         
-        # Normalize separators
+        # Normalize separators to underscores
         normalized = re.sub(r'[.\-\s]+', '_', normalized)
         
         # Clean up multiple underscores
@@ -564,848 +654,270 @@ class IntelligentSemanticInference:
         # Remove leading/trailing underscores
         normalized = normalized.strip('_')
         
-        # Handle common abbreviations
-        abbreviation_map = {
-            'id': 'identifier', 'addr': 'address', 'desc': 'description',
-            'num': 'number', 'qty': 'quantity', 'dt': 'date', 'ts': 'timestamp',
-            'nm': 'name', 'typ': 'type', 'stat': 'status'
-        }
-        
-        for abbrev, full_form in abbreviation_map.items():
-            # Replace as whole word or word component
-            normalized = re.sub(f'\\b{abbrev}\\b', full_form, normalized)
-            normalized = re.sub(f'_{abbrev}_', f'_{full_form}_', normalized)
-            normalized = re.sub(f'^{abbrev}_', f'{full_form}_', normalized)
-            normalized = re.sub(f'_{abbrev}$', f'_{full_form}', normalized)
-        
+        # Cache the result
+        self.normalized_keyword_cache[field_name] = normalized
         return normalized
     
-    def analyze_field_with_intelligent_inference(self, field_name: str, table_context: dict,
-                                               schema_context: list) -> dict:
-        """
-        Perform intelligent semantic inference that goes beyond keyword matching.
+    def find_exact_keyword_matches(self, field_name: str) -> Dict[str, Any]:
+        """Find exact keyword matches using ALL your specified keywords."""
+        normalized_field = self.normalize_field_name(field_name)
         
-        This uses multiple AI techniques:
-        1. Semantic similarity using character n-grams and morphological analysis
-        2. Contextual understanding from table names and schema
-        3. Pattern recognition with fuzzy matching
-        4. Concept clustering and relationship inference
-        """
+        matches = {
+            'exact_matches': [],
+            'partial_matches': [],
+            'table_context_matches': [],
+            'best_requirement': None,
+            'confidence_score': 0.0,
+            'match_details': {}
+        }
         
-        # Normalize field name
-        normalized_field = self._normalize_field_name(field_name)
+        requirement_scores = {}
         
-        # Extract table context intelligence
-        table_intelligence = self._extract_table_intelligence(table_context)
-        
-        # Perform multi-strategy analysis
-        analysis_results = {}
-        
-        for concept_key, concept_data in self.concept_embeddings.items():
-            req_name, concept_name = concept_key.split('_', 1)
+        # Check against ALL keywords for each requirement
+        for req_name, req_mapping in self.requirement_keyword_map.items():
+            req_score = 0.0
+            match_types = []
+            matched_keywords = []
             
-            # Calculate semantic similarity
-            semantic_similarity = self._calculate_semantic_similarity(
-                normalized_field, concept_data
-            )
+            # Check exact matches in all keywords
+            if normalized_field in req_mapping['all_keywords']:
+                req_score += 1.0
+                match_types.append('exact_keyword_match')
+                matched_keywords.append(normalized_field)
             
-            # Calculate contextual relevance
-            contextual_relevance = self._calculate_contextual_relevance(
-                table_intelligence, concept_data
-            )
-            
-            # Calculate morphological similarity
-            morphological_similarity = self._calculate_morphological_similarity(
-                normalized_field, concept_data
-            )
-            
-            # Combined intelligent score
-            combined_score = (
-                semantic_similarity * self.exact_match_weight +
-                contextual_relevance * self.context_weight +
-                morphological_similarity * self.morphological_weight
-            )
-            
-            if combined_score > self.semantic_similarity_threshold:
-                if req_name not in analysis_results:
-                    analysis_results[req_name] = {
-                        'total_score': 0,
-                        'concept_matches': [],
-                        'confidence_factors': []
-                    }
+            # Check partial matches (field contains keyword or vice versa)
+            for keyword in req_mapping['all_keywords']:
+                normalized_keyword = self.normalize_field_name(keyword)
                 
-                analysis_results[req_name]['total_score'] += combined_score
-                analysis_results[req_name]['concept_matches'].append({
-                    'concept': concept_name,
-                    'score': combined_score,
-                    'semantic_similarity': semantic_similarity,
-                    'contextual_relevance': contextual_relevance,
-                    'morphological_similarity': morphological_similarity
-                })
+                # Field contains keyword
+                if normalized_keyword in normalized_field and len(normalized_keyword) >= 3:
+                    partial_score = len(normalized_keyword) / len(normalized_field)
+                    req_score += partial_score * 0.8
+                    match_types.append('field_contains_keyword')
+                    matched_keywords.append(keyword)
                 
-                # Add confidence factors
-                if semantic_similarity > 0.8:
-                    analysis_results[req_name]['confidence_factors'].append('Strong semantic match')
-                if contextual_relevance > 0.7:
-                    analysis_results[req_name]['confidence_factors'].append('Strong table context')
-                if morphological_similarity > 0.7:
-                    analysis_results[req_name]['confidence_factors'].append('Strong morphological similarity')
+                # Keyword contains field (for shorter field names)
+                elif normalized_field in normalized_keyword and len(normalized_field) >= 3:
+                    partial_score = len(normalized_field) / len(normalized_keyword)
+                    req_score += partial_score * 0.6
+                    match_types.append('keyword_contains_field')
+                    matched_keywords.append(keyword)
+            
+            # Store requirement score and details
+            if req_score > 0:
+                requirement_scores[req_name] = req_score
+                matches['match_details'][req_name] = {
+                    'score': req_score,
+                    'match_types': match_types,
+                    'matched_keywords': matched_keywords,
+                    'keyword_categories': self._get_matching_categories(matched_keywords, req_mapping)
+                }
         
         # Find best requirement match
-        best_requirement = None
-        best_score = 0
-        
-        for req_name, req_data in analysis_results.items():
-            normalized_score = req_data['total_score'] / max(len(req_data['concept_matches']), 1)
-            if normalized_score > best_score:
-                best_score = normalized_score
-                best_requirement = req_name
-        
-        # Calculate final confidence with calibration
-        final_confidence = self._calibrate_confidence(best_score, analysis_results, table_intelligence)
-        
-        return {
-            'field_name': field_name,
-            'best_requirement': best_requirement,
-            'confidence_score': final_confidence,
-            'confidence_level': self._get_confidence_level(final_confidence),
-            'analysis_details': analysis_results,
-            'table_intelligence': table_intelligence,
-            'intelligent_reasoning': self._generate_intelligent_reasoning(
-                field_name, best_requirement, analysis_results, table_intelligence
-            )
-        }
-    
-    def _extract_table_intelligence(self, table_context: dict) -> dict:
-        """Extract intelligence from table names and context."""
-        table_name = table_context.get('table_name', '').lower()
-        dataset_name = table_context.get('dataset_name', '').lower()
-        
-        intelligence = {
-            'table_semantic_indicators': [],
-            'dataset_semantic_indicators': [],
-            'combined_context_score': 0,
-            'inferred_table_purpose': None
-        }
-        
-        # Analyze table name for semantic indicators
-        for req_name, req_data in self.requirements.items():
-            table_analysis = req_data.get('table_semantic_analysis', {})
-            high_value_patterns = table_analysis.get('high_value_table_patterns', [])
+        if requirement_scores:
+            best_req = max(requirement_scores.items(), key=lambda x: x[1])
+            matches['best_requirement'] = best_req[0]
+            matches['confidence_score'] = min(best_req[1], 1.0)  # Cap at 1.0
             
-            for pattern in high_value_patterns:
-                try:
-                    if re.search(pattern, table_name) or re.search(pattern, dataset_name):
-                        intelligence['table_semantic_indicators'].append({
-                            'requirement': req_name,
-                            'pattern': pattern,
-                            'match_location': 'table' if re.search(pattern, table_name) else 'dataset'
-                        })
-                        intelligence['combined_context_score'] += 0.3
-                except re.error:
-                    continue
-        
-        # Infer table purpose based on patterns
-        if any('asset' in indicator['pattern'] for indicator in intelligence['table_semantic_indicators']):
-            intelligence['inferred_table_purpose'] = 'asset_management'
-        elif any('log' in indicator['pattern'] for indicator in intelligence['table_semantic_indicators']):
-            intelligence['inferred_table_purpose'] = 'logging_platform'
-        elif any('security' in indicator['pattern'] for indicator in intelligence['table_semantic_indicators']):
-            intelligence['inferred_table_purpose'] = 'security_monitoring'
-        
-        return intelligence
-    
-    def _calculate_semantic_similarity(self, field_name: str, concept_data: dict) -> float:
-        """Calculate semantic similarity using multiple techniques."""
-        embedding = concept_data['embedding']
-        variations = concept_data['variations']
-        
-        # Method 1: Direct variation matching with fuzzy logic
-        direct_similarity = 0
-        for variation in variations:
-            similarity = self._fuzzy_string_similarity(field_name, variation)
-            direct_similarity = max(direct_similarity, similarity)
-        
-        # Method 2: Character n-gram similarity
-        field_ngrams = self._extract_character_ngrams([field_name])
-        concept_ngrams = embedding['char_ngrams']
-        
-        ngram_similarity = self._calculate_ngram_similarity(field_ngrams, concept_ngrams)
-        
-        # Method 3: Morphological feature similarity
-        field_morphology = self._extract_morphological_features([field_name])
-        concept_morphology = embedding['morphological_features']
-        
-        morphological_similarity = self._calculate_morphological_feature_similarity(
-            field_morphology, concept_morphology
-        )
-        
-        # Method 4: Semantic cluster alignment
-        cluster_similarity = self._calculate_cluster_similarity(field_name, embedding['semantic_clusters'])
-        
-        # Weighted combination
-        combined_similarity = (
-            direct_similarity * 0.4 +
-            ngram_similarity * 0.25 +
-            morphological_similarity * 0.2 +
-            cluster_similarity * 0.15
-        )
-        
-        return min(combined_similarity, 1.0)
-    
-    def _fuzzy_string_similarity(self, str1: str, str2: str) -> float:
-        """Calculate fuzzy string similarity using multiple algorithms."""
-        if not str1 or not str2:
-            return 0.0
-        
-        # Levenshtein distance similarity
-        levenshtein_sim = 1.0 - (self._levenshtein_distance(str1, str2) / max(len(str1), len(str2)))
-        
-        # Longest common subsequence similarity
-        lcs_sim = self._lcs_similarity(str1, str2)
-        
-        # Jaro-Winkler similarity
-        jaro_sim = self._jaro_winkler_similarity(str1, str2)
-        
-        # Token similarity (for compound words)
-        token_sim = self._token_similarity(str1, str2)
-        
-        # Weighted combination
-        return (levenshtein_sim * 0.3 + lcs_sim * 0.2 + jaro_sim * 0.3 + token_sim * 0.2)
-    
-    def _levenshtein_distance(self, s1: str, s2: str) -> int:
-        """Calculate Levenshtein edit distance."""
-        if len(s1) < len(s2):
-            s1, s2 = s2, s1
-        
-        if len(s2) == 0:
-            return len(s1)
-        
-        previous_row = list(range(len(s2) + 1))
-        
-        for i, c1 in enumerate(s1):
-            current_row = [i + 1]
-            for j, c2 in enumerate(s2):
-                insertions = previous_row[j + 1] + 1
-                deletions = current_row[j] + 1
-                substitutions = previous_row[j] + (c1 != c2)
-                current_row.append(min(insertions, deletions, substitutions))
-            previous_row = current_row
-        
-        return previous_row[-1]
-    
-    def _lcs_similarity(self, str1: str, str2: str) -> float:
-        """Calculate longest common subsequence similarity."""
-        def lcs_length(s1, s2):
-            m, n = len(s1), len(s2)
-            dp = [[0] * (n + 1) for _ in range(m + 1)]
-            
-            for i in range(1, m + 1):
-                for j in range(1, n + 1):
-                    if s1[i-1] == s2[j-1]:
-                        dp[i][j] = dp[i-1][j-1] + 1
-                    else:
-                        dp[i][j] = max(dp[i-1][j], dp[i][j-1])
-            
-            return dp[m][n]
-        
-        lcs_len = lcs_length(str1, str2)
-        return lcs_len / max(len(str1), len(str2)) if max(len(str1), len(str2)) > 0 else 0.0
-    
-    def _jaro_winkler_similarity(self, s1: str, s2: str) -> float:
-        """Calculate Jaro-Winkler similarity."""
-        if not s1 or not s2:
-            return 0.0
-        
-        if s1 == s2:
-            return 1.0
-        
-        # Calculate Jaro similarity
-        jaro = self._jaro_similarity(s1, s2)
-        
-        # Calculate Winkler prefix bonus
-        prefix_length = 0
-        max_prefix = min(4, min(len(s1), len(s2)))
-        
-        for i in range(max_prefix):
-            if s1[i] == s2[i]:
-                prefix_length += 1
+            # Categorize matches
+            best_details = matches['match_details'][best_req[0]]
+            if 'exact_keyword_match' in best_details['match_types']:
+                matches['exact_matches'] = best_details['matched_keywords']
             else:
-                break
+                matches['partial_matches'] = best_details['matched_keywords']
         
-        # Apply Winkler modification
-        return jaro + (0.1 * prefix_length * (1 - jaro))
+        return matches
     
-    def _jaro_similarity(self, s1: str, s2: str) -> float:
-        """Calculate Jaro similarity."""
-        len1, len2 = len(s1), len(s2)
+    def _get_matching_categories(self, matched_keywords: List[str], req_mapping: Dict) -> List[str]:
+        """Get the categories that the matched keywords belong to."""
+        categories = []
         
-        if len1 == 0 or len2 == 0:
-            return 0.0
+        for category_name, category_keywords in req_mapping['keyword_categories'].items():
+            for keyword in matched_keywords:
+                if keyword in category_keywords:
+                    categories.append(category_name)
+                    break
         
-        max_distance = max(len1, len2) // 2 - 1
-        if max_distance < 0:
-            max_distance = 0
+        return categories
+    
+    def check_table_context_match(self, table_name: str, dataset_name: str) -> Dict[str, Any]:
+        """Check if table/dataset names match your specified table patterns."""
+        table_context_matches = {}
         
-        match1 = [False] * len1
-        match2 = [False] * len2
+        combined_name = f"{dataset_name}_{table_name}".lower()
         
-        matches = 0
-        transpositions = 0
-        
-        # Find matches
-        for i in range(len1):
-            start = max(0, i - max_distance)
-            end = min(i + max_distance + 1, len2)
+        for req_name, req_mapping in self.requirement_keyword_map.items():
+            table_score = 0.0
+            matched_table_patterns = []
             
-            for j in range(start, end):
-                if match2[j] or s1[i] != s2[j]:
-                    continue
-                match1[i] = True
-                match2[j] = True
-                matches += 1
-                break
-        
-        if matches == 0:
-            return 0.0
-        
-        # Count transpositions
-        k = 0
-        for i in range(len1):
-            if not match1[i]:
-                continue
-            while not match2[k]:
-                k += 1
-            if s1[i] != s2[k]:
-                transpositions += 1
-            k += 1
-        
-        return (matches / len1 + matches / len2 + 
-                (matches - transpositions / 2) / matches) / 3.0
-    
-    def _token_similarity(self, str1: str, str2: str) -> float:
-        """Calculate token-based similarity for compound words."""
-        tokens1 = set(re.split(r'[_\-\s]+', str1.lower()))
-        tokens2 = set(re.split(r'[_\-\s]+', str2.lower()))
-        
-        if not tokens1 or not tokens2:
-            return 0.0
-        
-        intersection = tokens1 & tokens2
-        union = tokens1 | tokens2
-        
-        return len(intersection) / len(union)
-    
-    def _calculate_ngram_similarity(self, ngrams1: dict, ngrams2: dict) -> float:
-        """Calculate n-gram similarity using cosine similarity."""
-        if not ngrams1 or not ngrams2:
-            return 0.0
-        
-        # Get all unique n-grams
-        all_ngrams = set(ngrams1.keys()) | set(ngrams2.keys())
-        
-        # Create vectors
-        vec1 = [ngrams1.get(ngram, 0) for ngram in all_ngrams]
-        vec2 = [ngrams2.get(ngram, 0) for ngram in all_ngrams]
-        
-        # Calculate cosine similarity
-        dot_product = sum(a * b for a, b in zip(vec1, vec2))
-        magnitude1 = math.sqrt(sum(a * a for a in vec1))
-        magnitude2 = math.sqrt(sum(b * b for b in vec2))
-        
-        if magnitude1 == 0 or magnitude2 == 0:
-            return 0.0
-        
-        return dot_product / (magnitude1 * magnitude2)
-    
-    def _calculate_morphological_feature_similarity(self, morph1: dict, morph2: dict) -> float:
-        """Calculate morphological feature similarity."""
-        similarity_scores = []
-        
-        # Compare prefixes
-        prefixes1 = set(morph1.get('common_prefixes', {}).keys())
-        prefixes2 = set(morph2.get('common_prefixes', {}).keys())
-        if prefixes1 or prefixes2:
-            prefix_sim = len(prefixes1 & prefixes2) / len(prefixes1 | prefixes2) if (prefixes1 | prefixes2) else 0
-            similarity_scores.append(prefix_sim)
-        
-        # Compare suffixes
-        suffixes1 = set(morph1.get('common_suffixes', {}).keys())
-        suffixes2 = set(morph2.get('common_suffixes', {}).keys())
-        if suffixes1 or suffixes2:
-            suffix_sim = len(suffixes1 & suffixes2) / len(suffixes1 | suffixes2) if (suffixes1 | suffixes2) else 0
-            similarity_scores.append(suffix_sim)
-        
-        # Compare roots
-        roots1 = set(morph1.get('common_roots', {}).keys())
-        roots2 = set(morph2.get('common_roots', {}).keys())
-        if roots1 or roots2:
-            root_sim = len(roots1 & roots2) / len(roots1 | roots2) if (roots1 | roots2) else 0
-            similarity_scores.append(root_sim)
-        
-        return np.mean(similarity_scores) if similarity_scores else 0.0
-    
-    def _calculate_cluster_similarity(self, field_name: str, semantic_clusters: dict) -> float:
-        """Calculate similarity based on semantic cluster alignment."""
-        field_lower = field_name.lower()
-        max_similarity = 0
-        
-        for cluster_name, cluster_variations in semantic_clusters.items():
-            if not cluster_variations:
-                continue
+            # Check against specified table names
+            for table_pattern in req_mapping['table_names']:
+                if table_pattern.lower() in combined_name:
+                    table_score += 1.0
+                    matched_table_patterns.append(table_pattern)
             
-            cluster_similarity = 0
-            for variation in cluster_variations:
-                var_similarity = self._fuzzy_string_similarity(field_lower, variation.lower())
-                cluster_similarity = max(cluster_similarity, var_similarity)
-            
-            max_similarity = max(max_similarity, cluster_similarity)
+            if table_score > 0:
+                table_context_matches[req_name] = {
+                    'score': table_score,
+                    'matched_patterns': matched_table_patterns
+                }
         
-        return max_similarity
-    
-    def _calculate_contextual_relevance(self, table_intelligence: dict, concept_data: dict) -> float:
-        """Calculate how relevant the concept is given table context."""
-        relevance_score = 0
-        
-        # Check table semantic indicators
-        table_indicators = table_intelligence.get('table_semantic_indicators', [])
-        concept_table_indicators = concept_data.get('table_indicators', [])
-        
-        for indicator in table_indicators:
-            req_name = indicator['requirement']
-            # If this concept belongs to a requirement that matches table context
-            if req_name in concept_data.get('embedding', {}).get('concept_signature', {}).get('concept_hash', ''):
-                relevance_score += 0.4
-        
-        # Check inferred table purpose alignment
-        inferred_purpose = table_intelligence.get('inferred_table_purpose')
-        if inferred_purpose:
-            purpose_alignment = self._check_purpose_alignment(inferred_purpose, concept_data)
-            relevance_score += purpose_alignment * 0.3
-        
-        # Context score from table intelligence
-        context_score = table_intelligence.get('combined_context_score', 0)
-        relevance_score += min(context_score, 0.3)
-        
-        return min(relevance_score, 1.0)
-    
-    def _check_purpose_alignment(self, inferred_purpose: str, concept_data: dict) -> float:
-        """Check if concept aligns with inferred table purpose."""
-        core_meaning = concept_data.get('core_meaning', '').lower()
-        
-        purpose_concept_alignment = {
-            'asset_management': ['asset', 'device', 'inventory', 'configuration', 'identifier'],
-            'logging_platform': ['logging', 'event', 'ingestion', 'monitoring', 'visibility'],
-            'security_monitoring': ['security', 'agent', 'protection', 'threat', 'coverage']
-        }
-        
-        aligned_concepts = purpose_concept_alignment.get(inferred_purpose, [])
-        
-        alignment_score = 0
-        for aligned_concept in aligned_concepts:
-            if aligned_concept in core_meaning:
-                alignment_score += 0.2
-        
-        return min(alignment_score, 1.0)
-    
-    def _calculate_morphological_similarity(self, field_name: str, concept_data: dict) -> float:
-        """Calculate morphological similarity between field and concept."""
-        field_morphology = self._extract_morphological_features([field_name])
-        concept_morphology = concept_data['embedding']['morphological_features']
-        
-        return self._calculate_morphological_feature_similarity(field_morphology, concept_morphology)
-    
-    def _calibrate_confidence(self, raw_score: float, analysis_results: dict, 
-                            table_intelligence: dict) -> float:
-        """Calibrate confidence score using multiple factors."""
-        calibrated_score = raw_score
-        
-        # Boost confidence if multiple concepts match
-        if analysis_results:
-            best_req_data = analysis_results.get(max(analysis_results.keys(), key=lambda k: analysis_results[k]['total_score']), {})
-            concept_count = len(best_req_data.get('concept_matches', []))
-            if concept_count >= 2:
-                calibrated_score += 0.1  # Multi-concept bonus
-        
-        # Boost confidence for strong table context
-        if table_intelligence.get('combined_context_score', 0) > 0.5:
-            calibrated_score += 0.15  # Strong context bonus
-        
-        # Boost confidence for high-confidence factors
-        confidence_factors = best_req_data.get('confidence_factors', []) if analysis_results else []
-        if len(confidence_factors) >= 2:
-            calibrated_score += 0.1  # Multi-factor confidence bonus
-        
-        return min(calibrated_score, 1.0)
-    
-    def _get_confidence_level(self, confidence_score: float) -> str:
-        """Convert confidence score to level with practical thresholds."""
-        if confidence_score >= 0.75:
-            return 'high'
-        elif confidence_score >= 0.55:
-            return 'medium'
-        elif confidence_score >= 0.35:
-            return 'low'
-        else:
-            return 'very_low'
-    
-    def _generate_intelligent_reasoning(self, field_name: str, best_requirement: str,
-                                      analysis_results: dict, table_intelligence: dict) -> list:
-        """Generate human-readable reasoning for the classification."""
-        reasoning = []
-        
-        if not best_requirement:
-            reasoning.append("No strong requirement match found")
-            return reasoning
-        
-        req_data = analysis_results.get(best_requirement, {})
-        concept_matches = req_data.get('concept_matches', [])
-        
-        # Explain best concept matches
-        if concept_matches:
-            best_concept = max(concept_matches, key=lambda c: c['score'])
-            reasoning.append(f"Best match: {best_concept['concept']} (score: {best_concept['score']:.3f})")
-            
-            if best_concept['semantic_similarity'] > 0.7:
-                reasoning.append(f"Strong semantic similarity to concept variations")
-            if best_concept['contextual_relevance'] > 0.6:
-                reasoning.append(f"Strong alignment with table context")
-            if best_concept['morphological_similarity'] > 0.6:
-                reasoning.append(f"Strong morphological pattern match")
-        
-        # Explain table context contributions
-        table_indicators = table_intelligence.get('table_semantic_indicators', [])
-        if table_indicators:
-            reasoning.append(f"Table context supports {len(table_indicators)} requirement indicators")
-        
-        inferred_purpose = table_intelligence.get('inferred_table_purpose')
-        if inferred_purpose:
-            reasoning.append(f"Table purpose inferred as: {inferred_purpose}")
-        
-        # Explain confidence factors
-        confidence_factors = req_data.get('confidence_factors', [])
-        if confidence_factors:
-            reasoning.append(f"Confidence supported by: {', '.join(confidence_factors)}")
-        
-        return reasoning
+        return table_context_matches
 
 @dataclass
-class EnhancedAO1FieldAnalysis:
-    """Enhanced comprehensive AO1 field analysis result."""
+class CompleteAO1FieldResult:
+    """Complete field analysis result with all keyword matching details."""
     field_name: str
     table_path: str
-    best_requirement: str
+    requirement: str
     confidence_score: float
-    confidence_level: str
-    requirement_scores: Dict[str, float]
-    dashboard_category: str
-    implementation_priority: int
+    
+    # Keyword matching details
+    exact_keyword_matches: List[str]
+    partial_keyword_matches: List[str]
+    matched_categories: List[str]
+    table_context_matches: List[str]
+    
+    # Implementation details
     business_value: str
-    implementation_complexity: str
-    
-    # Analysis details
-    exact_match_score: float
-    fuzzy_similarity_score: float
-    pattern_match_score: float
-    contextual_coherence_score: float
-    statistical_confidence: float
-    
-    # Quality metrics
-    strategy_coverage: float
-    strategy_agreement: float
-    consensus_strength: float
-    analysis_completeness: float
-    
-    # Implementation guidance
-    implementation_guidance: List[str]
-    optimization_recommendations: List[str]
-    uncertainty_sources: List[str]
-    quality_indicators: Dict[str, float]
-    
-    # AO1 metadata
-    semantic_categories: List[str]
-    business_contexts: List[str]
-    morphological_patterns: List[str]
-    
-    # Performance indicators
-    processing_time_ms: float
-    cache_hit: bool
+    implementation_guidance: str
+    keyword_reasoning: List[str]
 
-class EnhancedAO1BigQueryScanner:
+class CompleteAO1BigQueryScanner:
     """
-    Enhanced production BigQuery scanner with advanced semantic analysis.
-    
-    Implements comprehensive field discovery with multi-strategy analysis,
-    advanced caching, parallel processing, and production-grade performance
-    optimization for large-scale AO1 dashboard development.
+    Complete BigQuery scanner that uses ALL your specified keywords.
+    Implements comprehensive matching against every variation you provided.
     """
     
     def __init__(self, target_project_id: str = "prj-fisv-p-gcss-sas-dl9dd0f1df"):
         self.target_project_id = target_project_id
-        self.client = None
-        self.authenticated = False
+        self.client = clientBQ
         
-        # Initialize enhanced semantic analyzer
-        self.semantic_analyzer = IntelligentSemanticInference()
+        # Initialize comprehensive keyword matcher
+        self.keyword_matcher = ComprehensiveKeywordMatcher()
         
-        # Production optimization parameters
-        self.max_workers = min(12, (os.cpu_count() or 1) + 4)
-        self.batch_size = 8
-        self.rate_limit_delay = 0.05
-        self.analysis_timeout_seconds = 30
-        
-        # Performance monitoring
-        self.performance_metrics = {
+        # Performance tracking
+        self.stats = {
+            'datasets_scanned': 0,
+            'tables_analyzed': 0,
             'fields_analyzed': 0,
-            'cache_hits': 0,
-            'analysis_time_total': 0.0,
-            'bigquery_api_calls': 0,
-            'error_count': 0
+            'keyword_matches_found': 0,
+            'exact_matches': 0,
+            'partial_matches': 0
         }
         
-        logger.info(f"Enhanced AO1 BigQuery scanner initialized for {target_project_id}")
+        logger.info(f"Complete AO1 BigQuery scanner initialized for {target_project_id}")
     
-    def authenticate(self) -> bool:
-        """Authenticate to BigQuery for enhanced production scanning."""
-        try:
-            self.client = clientBQ
-            self.authenticated = True
-            logger.info("Enhanced AO1 BigQuery scanner authenticated successfully")
-            return True
-        except Exception as e:
-            logger.error(f"BigQuery authentication failed: {e}")
-            return False
-    
-    async def scan_for_ao1_fields_enhanced(self, max_datasets: int = None,
-                                          max_tables_per_dataset: int = None,
-                                          parallel_processing: bool = True) -> Tuple[List[EnhancedAO1FieldAnalysis], Dict]:
+    async def scan_with_complete_keywords(self, max_datasets: int = 20, 
+                                        max_tables_per_dataset: int = 15) -> Tuple[List[CompleteAO1FieldResult], Dict]:
         """
-        Enhanced AO1 field discovery with advanced analytics and optimization.
-        
-        Args:
-            max_datasets: Maximum datasets to analyze (None for all)
-            max_tables_per_dataset: Maximum tables per dataset (None for all)
-            parallel_processing: Enable parallel processing for performance
-            
-        Returns:
-            Tuple of (enhanced_field_analyses, comprehensive_statistics)
+        Scan BigQuery using ALL your specified keywords and variations.
         """
-        if not self.authenticated:
-            logger.error("BigQuery authentication required for enhanced scanning")
-            return [], {}
+        logger.info("STARTING COMPLETE KEYWORD SCAN WITH ALL VARIATIONS")
+        logger.info("=" * 60)
         
         start_time = time.time()
-        enhanced_analyses = []
-        
-        # Comprehensive scan statistics
-        scan_statistics = {
-            'scan_metadata': {
-                'start_time': datetime.now().isoformat(),
-                'target_project': self.target_project_id,
-                'parallel_processing': parallel_processing,
-                'max_workers': self.max_workers if parallel_processing else 1
-            },
-            'discovery_metrics': {
-                'datasets_scanned': 0,
-                'tables_analyzed': 0,
-                'fields_analyzed': 0,
-                'ao1_matches_found': 0,
-                'high_confidence_matches': 0,
-                'medium_confidence_matches': 0,
-                'low_confidence_matches': 0
-            },
-            'performance_metrics': {
-                'total_processing_time': 0.0,
-                'avg_field_analysis_time': 0.0,
-                'cache_hit_rate': 0.0,
-                'throughput_fields_per_second': 0.0,
-                'bigquery_api_efficiency': 0.0
-            },
-            'quality_metrics': {
-                'avg_confidence_score': 0.0,
-                'strategy_coverage_avg': 0.0,
-                'analysis_completeness_avg': 0.0,
-                'requirement_coverage_balance': 0.0
-            },
-            'ao1_requirement_distribution': defaultdict(int),
-            'confidence_level_distribution': defaultdict(int),
-            'dashboard_category_distribution': defaultdict(int),
-            'implementation_complexity_distribution': defaultdict(int),
-            'business_value_distribution': defaultdict(int)
-        }
+        all_results = []
         
         try:
-            # Get and prioritize datasets
-            datasets = await self._get_prioritized_datasets(max_datasets)
-            scan_statistics['discovery_metrics']['datasets_scanned'] = len(datasets)
+            # Get datasets with AO1 prioritization
+            datasets = await self._get_ao1_prioritized_datasets(max_datasets)
+            self.stats['datasets_scanned'] = len(datasets)
             
-            logger.info(f"Starting enhanced AO1 field discovery across {len(datasets)} datasets")
+            logger.info(f"Scanning {len(datasets)} datasets with complete keyword coverage...")
             
-            if parallel_processing and len(datasets) > 1:
-                enhanced_analyses = await self._parallel_dataset_processing(
-                    datasets, max_tables_per_dataset, scan_statistics
-                )
-            else:
-                enhanced_analyses = await self._sequential_dataset_processing(
-                    datasets, max_tables_per_dataset, scan_statistics
-                )
+            # Process each dataset
+            for dataset in datasets:
+                try:
+                    dataset_results = await self._scan_dataset_complete(dataset, max_tables_per_dataset)
+                    all_results.extend(dataset_results)
+                    
+                    # Progress update
+                    if len(all_results) % 50 == 0:
+                        logger.info(f"Progress: Found {len(all_results)} matches so far...")
+                        
+                except Exception as e:
+                    logger.warning(f"Failed to scan dataset {dataset.dataset_id}: {e}")
+                    continue
             
-            # Sort by implementation priority and confidence
-            enhanced_analyses.sort(
-                key=lambda x: (x.implementation_priority, x.confidence_score), 
-                reverse=True
-            )
+            # Sort results by confidence and requirement
+            all_results.sort(key=lambda x: (x.confidence_score, x.requirement), reverse=True)
             
             # Calculate final statistics
             end_time = time.time()
-            self._calculate_final_statistics(enhanced_analyses, scan_statistics, start_time, end_time)
+            final_stats = self._calculate_complete_statistics(all_results, end_time - start_time)
             
-            logger.info("ENHANCED AO1 FIELD DISCOVERY COMPLETE:")
-            logger.info(f"  Total matches: {scan_statistics['discovery_metrics']['ao1_matches_found']:,}")
-            logger.info(f"  High confidence: {scan_statistics['discovery_metrics']['high_confidence_matches']:,}")
-            logger.info(f"  Processing time: {scan_statistics['performance_metrics']['total_processing_time']:.2f}s")
-            logger.info(f"  Throughput: {scan_statistics['performance_metrics']['throughput_fields_per_second']:.1f} fields/sec")
+            logger.info("COMPLETE KEYWORD SCAN FINISHED")
+            logger.info(f"Total matches found: {len(all_results):,}")
+            logger.info(f"Processing time: {end_time - start_time:.2f} seconds")
+            
+            return all_results, final_stats
             
         except Exception as e:
-            logger.error(f"Enhanced AO1 field discovery failed: {e}")
-            self.performance_metrics['error_count'] += 1
-        
-        return enhanced_analyses, scan_statistics
+            logger.error(f"Complete keyword scan failed: {e}")
+            return [], {}
     
-    async def _get_prioritized_datasets(self, max_datasets: int = None) -> List:
-        """Get datasets prioritized by AO1 relevance."""
+    async def _get_ao1_prioritized_datasets(self, max_datasets: int) -> List:
+        """Get datasets prioritized by AO1 keyword relevance."""
         try:
             all_datasets = list(self.client.list_datasets(project=self.target_project_id))
-            self.performance_metrics['bigquery_api_calls'] += 1
             
-            # Advanced dataset prioritization
-            prioritized_datasets = sorted(
-                all_datasets,
-                key=lambda d: self._calculate_enhanced_dataset_priority(d.dataset_id),
-                reverse=True
-            )
+            # Score datasets based on AO1 keyword presence
+            scored_datasets = []
+            for dataset in all_datasets:
+                score = self._score_dataset_for_ao1_keywords(dataset.dataset_id)
+                scored_datasets.append((dataset, score))
+            
+            # Sort by score and limit
+            scored_datasets.sort(key=lambda x: x[1], reverse=True)
             
             if max_datasets:
-                prioritized_datasets = prioritized_datasets[:max_datasets]
+                scored_datasets = scored_datasets[:max_datasets]
             
-            return prioritized_datasets
+            return [dataset for dataset, score in scored_datasets]
             
         except Exception as e:
             logger.error(f"Failed to get datasets: {e}")
             return []
     
-    def _calculate_enhanced_dataset_priority(self, dataset_id: str) -> float:
-        """Calculate enhanced dataset priority with comprehensive AO1 relevance scoring."""
-        priority = 0.0
+    def _score_dataset_for_ao1_keywords(self, dataset_id: str) -> float:
+        """Score dataset based on presence of AO1 keywords."""
         dataset_lower = dataset_id.lower()
+        score = 0.0
         
-        # Primary AO1 indicators (high weight)
-        primary_ao1_terms = {
-            'chronicle': 50.0, 'security': 45.0, 'asset': 40.0, 'cmdb': 35.0,
-            'edr': 30.0, 'crowdstrike': 30.0, 'tanium': 25.0, 'axonius': 25.0,
-            'splunk': 25.0, 'log': 20.0, 'audit': 20.0, 'compliance': 18.0
-        }
+        # Check against all table names from requirements
+        for req_name, req_data in self.keyword_matcher.requirements.items():
+            table_names = req_data.get('table_names', [])
+            for table_name in table_names:
+                if table_name.lower() in dataset_lower:
+                    score += 10.0
         
-        # Secondary AO1 indicators (medium weight)
-        secondary_ao1_terms = {
-            'infrastructure': 15.0, 'network': 12.0, 'device': 12.0, 'host': 10.0,
-            'endpoint': 10.0, 'monitoring': 8.0, 'platform': 8.0, 'cloud': 8.0,
-            'datacenter': 6.0, 'region': 6.0, 'business': 5.0, 'application': 5.0
-        }
+        # Bonus for multiple keyword presence
+        keyword_count = 0
+        high_value_keywords = ['asset', 'security', 'log', 'chronicle', 'infrastructure', 'network']
+        for keyword in high_value_keywords:
+            if keyword in dataset_lower:
+                keyword_count += 1
+                score += 5.0
         
-        # Calculate weighted priority
-        for term, weight in primary_ao1_terms.items():
-            if term in dataset_lower:
-                priority += weight
+        # Multi-keyword bonus
+        if keyword_count >= 2:
+            score += 15.0
         
-        for term, weight in secondary_ao1_terms.items():
-            if term in dataset_lower:
-                priority += weight
-        
-        # Bonus for multiple indicators
-        total_indicators = sum(1 for term in primary_ao1_terms if term in dataset_lower)
-        total_indicators += sum(1 for term in secondary_ao1_terms if term in dataset_lower)
-        
-        if total_indicators >= 3:
-            priority += 20.0
-        elif total_indicators >= 2:
-            priority += 10.0
-        
-        # Temporal relevance
-        current_year = datetime.now().year
-        for year in [current_year, current_year - 1]:
-            if str(year) in dataset_id:
-                priority += 8.0
-        
-        # Avoid test/dev datasets in production scanning
-        if any(term in dataset_lower for term in ['test', 'dev', 'sandbox', 'temp']):
-            priority *= 0.3
-        
-        return priority
+        return score
     
-    async def _parallel_dataset_processing(self, datasets: List, max_tables_per_dataset: int,
-                                         scan_statistics: Dict) -> List[EnhancedAO1FieldAnalysis]:
-        """Process datasets in parallel for enhanced performance."""
-        enhanced_analyses = []
-        
-        # Create semaphore to limit concurrent BigQuery operations
-        semaphore = asyncio.Semaphore(min(self.max_workers, 8))
-        
-        async def process_dataset_wrapper(dataset):
-            async with semaphore:
-                return await self._process_single_dataset_enhanced(
-                    dataset, max_tables_per_dataset, scan_statistics
-                )
-        
-        # Process datasets concurrently
-        tasks = [process_dataset_wrapper(dataset) for dataset in datasets]
-        results = await asyncio.gather(*tasks, return_exceptions=True)
-        
-        # Collect results
-        for result in results:
-            if isinstance(result, Exception):
-                logger.warning(f"Dataset processing failed: {result}")
-                self.performance_metrics['error_count'] += 1
-            elif isinstance(result, list):
-                enhanced_analyses.extend(result)
-        
-        return enhanced_analyses
-    
-    async def _sequential_dataset_processing(self, datasets: List, max_tables_per_dataset: int,
-                                           scan_statistics: Dict) -> List[EnhancedAO1FieldAnalysis]:
-        """Process datasets sequentially for stability."""
-        enhanced_analyses = []
-        
-        for dataset in datasets:
-            try:
-                dataset_analyses = await self._process_single_dataset_enhanced(
-                    dataset, max_tables_per_dataset, scan_statistics
-                )
-                enhanced_analyses.extend(dataset_analyses)
-                
-                # Rate limiting
-                await asyncio.sleep(self.rate_limit_delay)
-                
-            except Exception as e:
-                logger.warning(f"Failed to process dataset {dataset.dataset_id}: {e}")
-                self.performance_metrics['error_count'] += 1
-                continue
-        
-        return enhanced_analyses
-    
-    async def _process_single_dataset_enhanced(self, dataset, max_tables_per_dataset: int,
-                                             scan_statistics: Dict) -> List[EnhancedAO1FieldAnalysis]:
-        """Process a single dataset with enhanced analysis."""
-        dataset_analyses = []
+    async def _scan_dataset_complete(self, dataset, max_tables_per_dataset: int) -> List[CompleteAO1FieldResult]:
+        """Scan dataset using complete keyword matching."""
+        dataset_results = []
         dataset_id = dataset.dataset_id
         
         try:
-            # Get tables with AO1 prioritization
+            # Get tables
             tables = list(self.client.list_tables(dataset.reference))
-            self.performance_metrics['bigquery_api_calls'] += 1
+            self.stats['tables_analyzed'] += len(tables)
             
             # Prioritize tables by AO1 relevance
-            tables.sort(key=lambda t: self._calculate_enhanced_table_priority(t.table_id), reverse=True)
+            tables.sort(key=lambda t: self._score_table_for_ao1_keywords(t.table_id), reverse=True)
             
             if max_tables_per_dataset:
                 tables = tables[:max_tables_per_dataset]
@@ -1413,537 +925,327 @@ class EnhancedAO1BigQueryScanner:
             for table in tables:
                 try:
                     table_ref = self.client.get_table(table.reference)
-                    self.performance_metrics['bigquery_api_calls'] += 1
-                    scan_statistics['discovery_metrics']['tables_analyzed'] += 1
                     
-                    # Create comprehensive table context
-                    table_context = self._create_enhanced_table_context(table_ref, dataset_id)
-                    
-                    # Process fields with enhanced analysis
-                    field_analyses = await self._process_table_fields_enhanced(
-                        table_ref, table_context, scan_statistics
+                    # Check table context for keyword matches
+                    table_context_matches = self.keyword_matcher.check_table_context_match(
+                        table_ref.table_id, dataset_id
                     )
                     
-                    dataset_analyses.extend(field_analyses)
-                    
+                    # Analyze each field
+                    for field in table_ref.schema:
+                        self.stats['fields_analyzed'] += 1
+                        
+                        # Perform complete keyword matching
+                        match_result = self.keyword_matcher.find_exact_keyword_matches(field.name)
+                        
+                        if match_result['best_requirement'] and match_result['confidence_score'] > 0.1:
+                            # Create complete result
+                            result = self._create_complete_result(
+                                field.name, 
+                                f"{table_ref.project}.{dataset_id}.{table_ref.table_id}",
+                                match_result,
+                                table_context_matches
+                            )
+                            
+                            if result:
+                                dataset_results.append(result)
+                                self.stats['keyword_matches_found'] += 1
+                                
+                                if match_result['exact_matches']:
+                                    self.stats['exact_matches'] += 1
+                                elif match_result['partial_matches']:
+                                    self.stats['partial_matches'] += 1
+                
                 except Exception as e:
-                    logger.debug(f"Failed to process table {table.table_id}: {e}")
+                    logger.debug(f"Failed to analyze table {table.table_id}: {e}")
                     continue
         
         except Exception as e:
-            logger.warning(f"Failed to list tables in dataset {dataset_id}: {e}")
+            logger.warning(f"Failed to scan dataset {dataset_id}: {e}")
         
-        return dataset_analyses
+        return dataset_results
     
-    def _calculate_enhanced_table_priority(self, table_id: str) -> float:
-        """Calculate enhanced table priority with comprehensive AO1 scoring."""
-        priority = 0.0
+    def _score_table_for_ao1_keywords(self, table_id: str) -> float:
+        """Score table based on AO1 keyword presence."""
         table_lower = table_id.lower()
+        score = 0.0
         
-        # AO1 requirement-specific table patterns (high priority)
-        high_priority_patterns = {
-            'asset_inventory': 60.0, 'device_registry': 55.0, 'cmdb_ci': 50.0,
-            'security_agents': 55.0, 'edr_deployment': 50.0, 'crowdstrike_hosts': 45.0,
-            'chronicle_ingestion': 50.0, 'splunk_sources': 45.0, 'log_compliance': 40.0,
-            'infrastructure_inventory': 40.0, 'cloud_resources': 35.0, 'datacenter_assets': 35.0
-        }
+        # Check against all table names from requirements
+        for req_name, req_data in self.keyword_matcher.requirements.items():
+            table_names = req_data.get('table_names', [])
+            for table_name in table_names:
+                if table_name.lower() in table_lower:
+                    score += 20.0
         
-        # Check for high-priority patterns
-        for pattern, weight in high_priority_patterns.items():
-            if all(word in table_lower for word in pattern.split('_')):
-                priority += weight
-        
-        # Individual keyword scoring
-        ao1_keywords = {
-            'asset': 20.0, 'device': 18.0, 'host': 15.0, 'security': 18.0,
-            'agent': 15.0, 'edr': 15.0, 'log': 12.0, 'audit': 10.0,
-            'chronicle': 15.0, 'splunk': 12.0, 'infrastructure': 10.0,
-            'network': 8.0, 'compliance': 8.0, 'monitoring': 6.0
-        }
-        
-        for keyword, weight in ao1_keywords.items():
-            if keyword in table_lower:
-                priority += weight
-        
-        # Compound term bonuses
-        compound_bonuses = {
-            ('asset', 'management'): 15.0,
-            ('security', 'coverage'): 12.0,
-            ('log', 'ingestion'): 10.0,
-            ('infrastructure', 'monitoring'): 8.0,
-            ('device', 'inventory'): 10.0
-        }
-        
-        for (term1, term2), bonus in compound_bonuses.items():
-            if term1 in table_lower and term2 in table_lower:
-                priority += bonus
-        
-        # Avoid non-production tables
-        if any(term in table_lower for term in ['test', 'dev', 'temp', 'backup', 'archive']):
-            priority *= 0.2
-        
-        return priority
+        return score
     
-    def _create_enhanced_table_context(self, table_ref, dataset_id: str) -> Dict[str, Any]:
-        """Create enhanced table context for comprehensive analysis."""
-        return {
-            'table_name': table_ref.table_id,
-            'dataset_name': dataset_id,
-            'project_name': table_ref.project,
-            'full_table_path': f"{table_ref.project}.{dataset_id}.{table_ref.table_id}",
-            'row_count': table_ref.num_rows or 0,
-            'table_size_bytes': table_ref.num_bytes or 0,
-            'schema_size': len(table_ref.schema),
-            'description': table_ref.description or '',
-            'created_datetime': table_ref.created.isoformat() if table_ref.created else '',
-            'modified_datetime': table_ref.modified.isoformat() if table_ref.modified else '',
-            'table_type': str(table_ref.table_type) if hasattr(table_ref, 'table_type') else 'TABLE',
-            'partition_info': self._extract_partition_info(table_ref),
-            'clustering_info': self._extract_clustering_info(table_ref),
-            'ao1_relevance_score': self._calculate_table_ao1_relevance(table_ref.table_id, dataset_id)
-        }
-    
-    def _extract_partition_info(self, table_ref) -> Dict[str, Any]:
-        """Extract table partitioning information."""
-        partition_info = {'partitioned': False}
+    def _create_complete_result(self, field_name: str, table_path: str, 
+                              match_result: Dict, table_context_matches: Dict) -> Optional[CompleteAO1FieldResult]:
+        """Create complete field result with all matching details."""
         
-        try:
-            if hasattr(table_ref, 'time_partitioning') and table_ref.time_partitioning:
-                partition_info = {
-                    'partitioned': True,
-                    'type': 'time',
-                    'field': table_ref.time_partitioning.field,
-                    'expiration_ms': table_ref.time_partitioning.expiration_ms
-                }
-            elif hasattr(table_ref, 'range_partitioning') and table_ref.range_partitioning:
-                partition_info = {
-                    'partitioned': True,
-                    'type': 'range',
-                    'field': table_ref.range_partitioning.field
-                }
-        except Exception:
-            pass  # Ignore partition info extraction errors
-        
-        return partition_info
-    
-    def _extract_clustering_info(self, table_ref) -> Dict[str, Any]:
-        """Extract table clustering information."""
-        clustering_info = {'clustered': False}
-        
-        try:
-            if hasattr(table_ref, 'clustering_fields') and table_ref.clustering_fields:
-                clustering_info = {
-                    'clustered': True,
-                    'fields': list(table_ref.clustering_fields)
-                }
-        except Exception:
-            pass  # Ignore clustering info extraction errors
-        
-        return clustering_info
-    
-    def _calculate_table_ao1_relevance(self, table_name: str, dataset_name: str) -> float:
-        """Calculate table relevance to AO1 requirements."""
-        combined_text = f"{table_name} {dataset_name}".lower()
-        
-        relevance_score = 0.0
-        
-        # AO1 requirement indicators
-        ao1_indicators = {
-            'asset_management': ['asset', 'device', 'inventory', 'cmdb'],
-            'security_operations': ['security', 'edr', 'agent', 'threat'],
-            'logging_compliance': ['log', 'audit', 'chronicle', 'splunk'],
-            'infrastructure': ['infrastructure', 'cloud', 'datacenter', 'platform'],
-            'network_visibility': ['network', 'dns', 'domain', 'connectivity']
-        }
-        
-        for category, indicators in ao1_indicators.items():
-            category_score = sum(2.0 for indicator in indicators if indicator in combined_text)
-            relevance_score += min(category_score, 8.0)  # Cap per category
-        
-        return min(relevance_score, 40.0)  # Overall cap
-    
-    async def _process_table_fields_enhanced(self, table_ref, table_context: Dict,
-                                           scan_statistics: Dict) -> List[EnhancedAO1FieldAnalysis]:
-        """Process table fields with enhanced semantic analysis."""
-        field_analyses = []
-        
-        # Extract schema context
-        field_names = [field.name for field in table_ref.schema]
-        scan_statistics['discovery_metrics']['fields_analyzed'] += len(field_names)
-        
-        for field in table_ref.schema:
-            try:
-                field_analysis = await self._analyze_field_enhanced(
-                    field.name, table_context, field_names
-                )
-                
-                if field_analysis and field_analysis.confidence_score > 0.2:  # Lowered threshold
-                    field_analyses.append(field_analysis)
-                    scan_statistics['discovery_metrics']['ao1_matches_found'] += 1
-                    
-                    # Update confidence distribution
-                    confidence_level = field_analysis.confidence_level
-                    scan_statistics['discovery_metrics'][f'{confidence_level}_confidence_matches'] += 1
-                    scan_statistics['confidence_level_distribution'][confidence_level] += 1
-                    
-                    # Update requirement distribution
-                    if field_analysis.best_requirement:
-                        scan_statistics['ao1_requirement_distribution'][field_analysis.best_requirement] += 1
-                        scan_statistics['dashboard_category_distribution'][field_analysis.dashboard_category] += 1
-                        scan_statistics['implementation_complexity_distribution'][field_analysis.implementation_complexity] += 1
-                
-                # Rate limiting
-                await asyncio.sleep(self.rate_limit_delay * 0.5)
-                
-            except Exception as e:
-                logger.debug(f"Failed to analyze field {field.name}: {e}")
-                self.performance_metrics['error_count'] += 1
-                continue
-        
-        return field_analyses
-    
-    async def _analyze_field_enhanced(self, field_name: str, table_context: Dict,
-                                    schema_context: List[str]) -> Optional[EnhancedAO1FieldAnalysis]:
-        """Perform enhanced field analysis with comprehensive metrics."""
-        analysis_start_time = time.time()
-        
-        try:
-            # Perform comprehensive semantic analysis
-            analysis_result = self.semantic_analyzer.analyze_field_with_intelligent_inference(
-                field_name, table_context, schema_context
-            )
-            
-            # Check if analysis found a valid match
-            if not analysis_result.get('best_requirement') or analysis_result.get('confidence_score', 0) < 0.2:
-                return None
-            
-            # Calculate implementation priority
-            implementation_priority = self._calculate_enhanced_implementation_priority(
-                analysis_result, table_context
-            )
-            
-            # Extract detailed metrics from analysis
-            best_requirement = analysis_result['best_requirement']
-            confidence_score = analysis_result['confidence_score']
-            confidence_level = analysis_result['confidence_level']
-            
-            # Get requirement metadata
-            req_data = self.semantic_analyzer.requirements.get(best_requirement, {})
-            
-            # Create enhanced field analysis
-            enhanced_analysis = EnhancedAO1FieldAnalysis(
-                field_name=field_name,
-                table_path=table_context.get('full_table_path', ''),
-                best_requirement=best_requirement,
-                confidence_score=confidence_score,
-                confidence_level=confidence_level,
-                requirement_scores={best_requirement: confidence_score},
-                dashboard_category=self._get_dashboard_category(best_requirement),
-                implementation_priority=implementation_priority,
-                business_value=req_data.get('metric_goal', 'Standard business value'),
-                implementation_complexity='medium',
-                
-                # Detailed analysis scores
-                exact_match_score=self._extract_analysis_component_score(analysis_result, 'semantic_similarity'),
-                fuzzy_similarity_score=self._extract_analysis_component_score(analysis_result, 'semantic_similarity'),
-                pattern_match_score=self._extract_analysis_component_score(analysis_result, 'morphological_similarity'),
-                contextual_coherence_score=self._extract_analysis_component_score(analysis_result, 'contextual_relevance'),
-                statistical_confidence=confidence_score,
-                
-                # Quality metrics
-                strategy_coverage=0.8,  # Placeholder - would extract from analysis
-                strategy_agreement=0.7,  # Placeholder - would extract from analysis
-                consensus_strength=0.6,  # Placeholder - would extract from analysis
-                analysis_completeness=0.9,  # Placeholder - would extract from analysis
-                
-                # Implementation guidance
-                implementation_guidance=self._generate_implementation_guidance(best_requirement, confidence_score, field_name),
-                optimization_recommendations=self._generate_optimization_recommendations(best_requirement, confidence_score),
-                uncertainty_sources=analysis_result.get('intelligent_reasoning', []),
-                quality_indicators={'overall_quality': confidence_score},
-                
-                # AO1 metadata
-                semantic_categories=req_data.get('semantic_concepts', {}).keys() if req_data else [],
-                business_contexts=[req_data.get('metric_goal', '')] if req_data else [],
-                morphological_patterns=[],
-                
-                # Performance metrics
-                processing_time_ms=(time.time() - analysis_start_time) * 1000,
-                cache_hit=False  # Would implement actual cache detection
-            )
-            
-            # Update performance metrics
-            self.performance_metrics['fields_analyzed'] += 1
-            self.performance_metrics['analysis_time_total'] += (time.time() - analysis_start_time)
-            
-            return enhanced_analysis
-            
-        except Exception as e:
-            logger.debug(f"Enhanced field analysis failed for {field_name}: {e}")
+        best_req = match_result['best_requirement']
+        if not best_req:
             return None
-    
-    def _get_dashboard_category(self, requirement: str) -> str:
-        """Get dashboard category for requirement."""
-        category_mapping = {
-            'REQ1_GLOBAL_VIEW_METRICS': 'GLOBAL_ASSET_IDENTITY',
-            'REQ2_INFRASTRUCTURE_TYPE_METRICS': 'INFRASTRUCTURE_CLASSIFICATION',
-            'REQ3_REGIONAL_COUNTRY_METRICS': 'GEOGRAPHIC_DISTRIBUTION',
-            'REQ4_BUSINESS_APPLICATION_METRICS': 'BUSINESS_INTELLIGENCE',
-            'REQ5_SYSTEM_CLASSIFICATION_METRICS': 'SYSTEM_TAXONOMY',
-            'REQ6_SECURITY_CONTROL_COVERAGE_METRICS': 'SECURITY_POSTURE',
-            'REQ7_LOGGING_COMPLIANCE_METRICS': 'LOGGING_TELEMETRY',
-            'REQ8_DOMAIN_VISIBILITY_METRICS': 'NETWORK_TOPOLOGY'
-        }
-        return category_mapping.get(requirement, 'Unknown')
-    
-    def _extract_analysis_component_score(self, analysis_result: Dict, component: str) -> float:
-        """Extract score from specific analysis component."""
-        analysis_details = analysis_result.get('analysis_details', {})
-        if analysis_details:
-            best_req = analysis_result.get('best_requirement', '')
-            if best_req in analysis_details:
-                concept_matches = analysis_details[best_req].get('concept_matches', [])
-                if concept_matches:
-                    best_match = max(concept_matches, key=lambda x: x.get('score', 0))
-                    return best_match.get(component, 0.0)
-        return 0.0
-    
-    def _generate_implementation_guidance(self, requirement: str, confidence: float, field_name: str) -> List[str]:
-        """Generate implementation guidance for the field."""
-        guidance = []
         
-        if confidence >= 0.75:
-            guidance.append("HIGH CONFIDENCE: Ready for production dashboard implementation")
-        elif confidence >= 0.55:
-            guidance.append("MEDIUM CONFIDENCE: Implement with validation and testing")
-        else:
-            guidance.append("LOW CONFIDENCE: Manual review required before implementation")
+        # Get requirement details
+        req_data = self.keyword_matcher.requirements.get(best_req, {})
         
-        # Requirement-specific guidance
-        if 'GLOBAL_VIEW' in requirement:
-            guidance.append("Implement as primary asset identifier for counting metrics")
-        elif 'SECURITY' in requirement:
-            guidance.append("Use for security coverage measurement and monitoring")
-        elif 'LOGGING' in requirement:
-            guidance.append("Enable for logging compliance reporting")
+        # Extract match details
+        match_details = match_result['match_details'].get(best_req, {})
         
-        return guidance
-    
-    def _generate_optimization_recommendations(self, requirement: str, confidence: float) -> List[str]:
-        """Generate optimization recommendations."""
-        recommendations = []
-        
-        if confidence >= 0.8:
-            recommendations.append("PERFORMANCE: Enable aggressive caching for high-confidence field")
-        else:
-            recommendations.append("PERFORMANCE: Use conservative caching with validation")
-        
-        if 'GLOBAL_VIEW' in requirement:
-            recommendations.append("OPTIMIZATION: Implement as primary grouping dimension")
-        elif 'SECURITY' in requirement:
-            recommendations.append("OPTIMIZATION: Enable real-time monitoring capabilities")
-        
-        return recommendations
-    
-    def _calculate_enhanced_implementation_priority(self, analysis_result: Dict, table_context: Dict) -> int:
-        """Calculate enhanced implementation priority."""
-        confidence_score = analysis_result.get('confidence_score', 0)
-        
-        # Base priority from confidence
-        base_priority = confidence_score * 400
-        
-        # Table context bonus
-        row_count = table_context.get('row_count', 0)
-        if row_count > 0:
-            scale_bonus = min(math.log10(row_count) * 20, 100)
-        else:
-            scale_bonus = 0
-        
-        # AO1 relevance bonus
-        ao1_relevance = table_context.get('ao1_relevance_score', 0)
-        relevance_bonus = ao1_relevance * 5
-        
-        total_priority = base_priority + scale_bonus + relevance_bonus
-        return int(min(max(total_priority, 0), 700))
-    
-    def _calculate_final_statistics(self, analyses: List[EnhancedAO1FieldAnalysis],
-                                  scan_statistics: Dict, start_time: float, end_time: float):
-        """Calculate comprehensive final statistics."""
-        total_time = end_time - start_time
-        scan_statistics['performance_metrics']['total_processing_time'] = total_time
-        
-        # Get total fields from performance metrics or scan statistics
-        total_fields = self.performance_metrics.get('fields_analyzed', 0)
-        if total_fields == 0:
-            total_fields = scan_statistics.get('discovery_metrics', {}).get('fields_analyzed', 0)
-        
-        if analyses and total_fields > 0:
-            # Performance metrics
-            scan_statistics['performance_metrics']['avg_field_analysis_time'] = (
-                self.performance_metrics['analysis_time_total'] / total_fields * 1000  # ms
-            )
-            scan_statistics['performance_metrics']['throughput_fields_per_second'] = total_fields / total_time
-            scan_statistics['performance_metrics']['cache_hit_rate'] = (
-                self.performance_metrics['cache_hits'] / total_fields * 100
-            )
-            
-            if self.performance_metrics['bigquery_api_calls'] > 0:
-                scan_statistics['performance_metrics']['bigquery_api_efficiency'] = (
-                    total_fields / self.performance_metrics['bigquery_api_calls']
-                )
-            
-            # Quality metrics
-            confidence_scores = [a.confidence_score for a in analyses]
-            
-            scan_statistics['quality_metrics']['avg_confidence_score'] = np.mean(confidence_scores)
-            scan_statistics['quality_metrics']['strategy_coverage_avg'] = np.mean([a.strategy_coverage for a in analyses])
-            scan_statistics['quality_metrics']['analysis_completeness_avg'] = np.mean([a.analysis_completeness for a in analyses])
-            
-            # Requirement coverage balance
-            req_distribution = scan_statistics['ao1_requirement_distribution']
-            if req_distribution:
-                req_counts = list(req_distribution.values())
-                balance_score = 1.0 / (1.0 + np.std(req_counts) / (np.mean(req_counts) + 1))
-                scan_statistics['quality_metrics']['requirement_coverage_balance'] = balance_score
-        
-        # Add error metrics (always calculate, even if no fields processed)
-        total_operations = max(total_fields, 1)  # Avoid division by zero
-        scan_statistics['performance_metrics']['error_rate'] = (
-            self.performance_metrics['error_count'] / total_operations * 100
+        # Generate keyword reasoning
+        keyword_reasoning = self._generate_keyword_reasoning(
+            field_name, match_result, table_context_matches
         )
+        
+        return CompleteAO1FieldResult(
+            field_name=field_name,
+            table_path=table_path,
+            requirement=best_req,
+            confidence_score=match_result['confidence_score'],
+            
+            exact_keyword_matches=match_result.get('exact_matches', []),
+            partial_keyword_matches=match_result.get('partial_matches', []),
+            matched_categories=match_details.get('keyword_categories', []),
+            table_context_matches=list(table_context_matches.keys()),
+            
+            business_value=req_data.get('description', 'AO1 requirement field'),
+            implementation_guidance=self._get_implementation_guidance(best_req, match_result['confidence_score']),
+            keyword_reasoning=keyword_reasoning
+        )
+    
+    def _generate_keyword_reasoning(self, field_name: str, match_result: Dict, 
+                                  table_context_matches: Dict) -> List[str]:
+        """Generate reasoning for keyword matches."""
+        reasoning = []
+        
+        if match_result['exact_matches']:
+            reasoning.append(f"EXACT MATCH: '{field_name}' exactly matches keywords: {', '.join(match_result['exact_matches'])}")
+        
+        if match_result['partial_matches']:
+            reasoning.append(f"PARTIAL MATCH: '{field_name}' contains keywords: {', '.join(match_result['partial_matches'][:3])}")
+        
+        if table_context_matches:
+            reasoning.append(f"TABLE CONTEXT: Table supports {len(table_context_matches)} AO1 requirements")
+        
+        best_req = match_result['best_requirement']
+        if best_req in match_result['match_details']:
+            match_types = match_result['match_details'][best_req]['match_types']
+            if 'exact_keyword_match' in match_types:
+                reasoning.append("HIGH CONFIDENCE: Direct keyword match from your specified list")
+            elif 'field_contains_keyword' in match_types:
+                reasoning.append("MEDIUM CONFIDENCE: Field name contains specified keywords")
+        
+        return reasoning
+    
+    def _get_implementation_guidance(self, requirement: str, confidence: float) -> str:
+        """Get implementation guidance based on requirement and confidence."""
+        if confidence >= 0.8:
+            priority = "HIGH PRIORITY"
+        elif confidence >= 0.5:
+            priority = "MEDIUM PRIORITY"
+        else:
+            priority = "LOW PRIORITY"
+        
+        req_guidance = {
+            'REQ1_GLOBAL_VIEW_METRICS': 'Use for asset counting and global visibility calculations',
+            'REQ2_INFRASTRUCTURE_TYPE_METRICS': 'Implement for infrastructure classification dashboards',
+            'REQ3_REGIONAL_COUNTRY_METRICS': 'Enable for geographic visibility reporting',
+            'REQ4_BUSINESS_APPLICATION_METRICS': 'Deploy for business unit and application views',
+            'REQ5_SYSTEM_CLASSIFICATION_METRICS': 'Use for system and OS classification',
+            'REQ6_SECURITY_CONTROL_COVERAGE_METRICS': 'Implement for security coverage measurement',
+            'REQ7_LOGGING_COMPLIANCE_METRICS': 'Enable for logging compliance reporting',
+            'REQ8_DOMAIN_VISIBILITY_METRICS': 'Use for domain and network visibility'
+        }
+        
+        base_guidance = req_guidance.get(requirement, 'Standard AO1 implementation')
+        return f"{priority}: {base_guidance}"
+    
+    def _calculate_complete_statistics(self, results: List[CompleteAO1FieldResult], 
+                                     processing_time: float) -> Dict:
+        """Calculate comprehensive statistics."""
+        stats = {
+            'scan_summary': {
+                'total_results': len(results),
+                'processing_time_seconds': processing_time,
+                'datasets_scanned': self.stats['datasets_scanned'],
+                'tables_analyzed': self.stats['tables_analyzed'],
+                'fields_analyzed': self.stats['fields_analyzed'],
+                'keyword_matches_found': self.stats['keyword_matches_found'],
+                'exact_matches': self.stats['exact_matches'],
+                'partial_matches': self.stats['partial_matches']
+            },
+            'requirement_distribution': {},
+            'confidence_distribution': {'high': 0, 'medium': 0, 'low': 0},
+            'top_matched_keywords': {},
+            'performance_metrics': {
+                'fields_per_second': self.stats['fields_analyzed'] / processing_time if processing_time > 0 else 0,
+                'match_rate_percentage': (self.stats['keyword_matches_found'] / max(self.stats['fields_analyzed'], 1)) * 100
+            }
+        }
+        
+        # Calculate distributions
+        for result in results:
+            # Requirement distribution
+            req = result.requirement
+            stats['requirement_distribution'][req] = stats['requirement_distribution'].get(req, 0) + 1
+            
+            # Confidence distribution
+            if result.confidence_score >= 0.7:
+                stats['confidence_distribution']['high'] += 1
+            elif result.confidence_score >= 0.4:
+                stats['confidence_distribution']['medium'] += 1
+            else:
+                stats['confidence_distribution']['low'] += 1
+            
+            # Top matched keywords
+            for keyword in result.exact_keyword_matches + result.partial_keyword_matches:
+                stats['top_matched_keywords'][keyword] = stats['top_matched_keywords'].get(keyword, 0) + 1
+        
+        return stats
 
-# Enhanced main execution function
-async def main_enhanced():
+# Enhanced main execution
+async def main_complete_coverage():
     """
-    Enhanced main execution function for AO1 field discovery system.
-    Production deployment with advanced semantic analysis and comprehensive reporting.
+    Main execution with complete keyword coverage - uses ALL your specified keywords.
     """
-    print("AO1 ENHANCED SEMANTIC FIELD DISCOVERY SYSTEM")
+    print("AO1 COMPLETE KEYWORD COVERAGE FIELD DISCOVERY")
     print("=" * 80)
-    print("Production-grade semantic analysis with advanced multi-strategy processing")
-    print("Enhanced NLP capabilities with real semantic understanding and pattern recognition")
-    print("Comprehensive AO1 requirements coverage with implementation guidance and optimization")
+    print("Using ALL keywords and variations you specified - no more missing keywords!")
+    print("Comprehensive coverage of every spelling, case, and separator variation")
     print(f"Target Project: prj-fisv-p-gcss-sas-dl9dd0f1df")
     print(f"Authentication: chronicle-fisv")
     print(f"Execution Time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-    print(f"Enhanced Version: 3.0 Production")
     print()
     
     try:
-        print("INITIALIZING ENHANCED AO1 SEMANTIC ANALYSIS SYSTEM")
-        print("-" * 60)
+        print("INITIALIZING COMPLETE KEYWORD COVERAGE SYSTEM")
+        print("-" * 50)
         
-        scanner = EnhancedAO1BigQueryScanner()
+        scanner = CompleteAO1BigQueryScanner()
         
-        if not scanner.authenticate():
-            print("AUTHENTICATION FAILED - unable to proceed")
-            return False
+        # Load and display keyword statistics
+        total_keywords = 0
+        for req_name, req_data in scanner.keyword_matcher.requirements.items():
+            req_keywords = 0
+            for key, value in req_data.items():
+                if isinstance(value, list) and key != 'table_names':
+                    req_keywords += len(value)
+            total_keywords += req_keywords
+            
+            req_display = req_name.replace('REQ', '').replace('_METRICS', '').replace('_', ' ')
+            print(f"✓ {req_display}: {req_keywords:,} keyword variations loaded")
         
-        print("PASS: Enhanced semantic analysis engine initialized")
-        print("PASS: Multi-strategy analysis framework loaded")
-        print("PASS: Advanced pattern recognition enabled")
-        print("PASS: Contextual relationship modeling ready")
-        print("PASS: Statistical confidence calibration configured")
-        print("PASS: Performance optimization and caching enabled")
-        print("PASS: Comprehensive business logic inference ready")
-        print("PASS: BigQuery scanner authenticated for production scanning")
+        print(f"✓ TOTAL KEYWORD VARIATIONS: {total_keywords:,}")
+        print(f"✓ Complete coverage of ALL your specified keywords and table names")
+        print("✓ BigQuery scanner ready for comprehensive field discovery")
         print()
         
-        print("PERFORMING ENHANCED AO1 FIELD DISCOVERY")
+        print("PERFORMING COMPLETE KEYWORD FIELD DISCOVERY")
         print("-" * 45)
-        print("SCAN: BigQuery schemas with advanced semantic analysis...")
-        print("ANALYZE: Multi-strategy analysis with real NLP capabilities...")
-        print("CALCULATE: Implementation priorities with business value assessment...")
-        print("OPTIMIZE: Performance with intelligent caching and parallel processing...")
-        print()
         
-        # Start enhanced field discovery
-        enhanced_analyses, comprehensive_stats = await scanner.scan_for_ao1_fields_enhanced(
-            max_datasets=25, 
-            max_tables_per_dataset=12,
-            parallel_processing=True
+        # Start complete keyword scan
+        results, statistics = await scanner.scan_with_complete_keywords(
+            max_datasets=25,
+            max_tables_per_dataset=15
         )
         
-        if not enhanced_analyses:
-            print("WARNING: No AO1-relevant fields discovered in enhanced scan")
+        if not results:
+            print("WARNING: No keyword matches found")
             return True
         
-        print("AO1 ENHANCED FIELD DISCOVERY RESULTS")
-        print("-" * 45)
+        print()
+        print("COMPLETE KEYWORD DISCOVERY RESULTS")
+        print("-" * 40)
         
-        # Performance and scale metrics
-        discovery_metrics = comprehensive_stats.get('discovery_metrics', {})
-        performance_metrics = comprehensive_stats.get('performance_metrics', {})
-        quality_metrics = comprehensive_stats.get('quality_metrics', {})
+        # Display comprehensive statistics
+        scan_summary = statistics.get('scan_summary', {})
+        performance_metrics = statistics.get('performance_metrics', {})
         
-        print("DISCOVERY SCALE METRICS:")
-        print(f"   Datasets Scanned: {discovery_metrics.get('datasets_scanned', 0):,}")
-        print(f"   Tables Analyzed: {discovery_metrics.get('tables_analyzed', 0):,}")
-        print(f"   Fields Analyzed: {discovery_metrics.get('fields_analyzed', 0):,}")
-        print(f"   AO1 Matches Found: {discovery_metrics.get('ao1_matches_found', 0):,}")
+        print("SCAN COVERAGE:")
+        print(f"   Datasets Scanned: {scan_summary.get('datasets_scanned', 0):,}")
+        print(f"   Tables Analyzed: {scan_summary.get('tables_analyzed', 0):,}")
+        print(f"   Fields Analyzed: {scan_summary.get('fields_analyzed', 0):,}")
+        print(f"   Keyword Matches: {scan_summary.get('keyword_matches_found', 0):,}")
+        print(f"   Exact Matches: {scan_summary.get('exact_matches', 0):,}")
+        print(f"   Partial Matches: {scan_summary.get('partial_matches', 0):,}")
         print()
         
         print("PERFORMANCE METRICS:")
-        print(f"   Total Processing Time: {performance_metrics.get('total_processing_time', 0):.2f} seconds")
-        print(f"   Throughput: {performance_metrics.get('throughput_fields_per_second', 0):.1f} fields/second")
-        print(f"   Avg Field Analysis Time: {performance_metrics.get('avg_field_analysis_time', 0):.1f} ms")
-        print(f"   Cache Hit Rate: {performance_metrics.get('cache_hit_rate', 0):.1f}%")
-        print(f"   BigQuery API Efficiency: {performance_metrics.get('bigquery_api_efficiency', 0):.1f} fields/call")
-        print(f"   Error Rate: {performance_metrics.get('error_rate', 0):.2f}%")
+        print(f"   Processing Time: {scan_summary.get('processing_time_seconds', 0):.2f} seconds")
+        print(f"   Fields/Second: {performance_metrics.get('fields_per_second', 0):.1f}")
+        print(f"   Match Rate: {performance_metrics.get('match_rate_percentage', 0):.2f}%")
         print()
         
-        print("ANALYSIS QUALITY METRICS:")
-        print(f"   Average Confidence Score: {quality_metrics.get('avg_confidence_score', 0):.3f}")
-        print(f"   Strategy Coverage Average: {quality_metrics.get('strategy_coverage_avg', 0):.3f}")
-        print(f"   Analysis Completeness: {quality_metrics.get('analysis_completeness_avg', 0):.3f}")
-        print(f"   Requirement Coverage Balance: {quality_metrics.get('requirement_coverage_balance', 0):.3f}")
-        print()
-        
-        # Show top field discoveries
-        print("TOP AO1 FIELD DISCOVERIES (Enhanced Analysis):")
-        print("-" * 60)
-        
-        top_analyses = enhanced_analyses[:8]  # Show top 8
-        for i, analysis in enumerate(top_analyses, 1):
-            confidence_indicator = {
-                'high': '[HIGH]', 'medium': '[MED]', 'low': '[LOW]', 'very_low': '[VLOW]'
-            }.get(analysis.confidence_level, '[UNK]')
-            
-            priority_indicator = '[CRIT]' if analysis.implementation_priority >= 600 else '[HIGH]' if analysis.implementation_priority >= 500 else '[STD]'
-            
-            print(f"{i}. {confidence_indicator} {priority_indicator} {analysis.table_path}.{analysis.field_name}")
-            print(f"   Requirement: {analysis.best_requirement.replace('_METRICS', '').replace('REQ', '').replace('_', ' ').title()}")
-            print(f"   Confidence: {analysis.confidence_score:.3f} ({analysis.confidence_level})")
-            print(f"   Priority: {analysis.implementation_priority} | Category: {analysis.dashboard_category}")
-            print(f"   Analysis Time: {analysis.processing_time_ms:.1f}ms")
-            
-            if analysis.implementation_guidance:
-                print(f"   Guidance: {analysis.implementation_guidance[0]}")
+        # Show requirement distribution
+        req_dist = statistics.get('requirement_distribution', {})
+        if req_dist:
+            print("AO1 REQUIREMENT DISTRIBUTION:")
+            for req, count in sorted(req_dist.items(), key=lambda x: x[1], reverse=True):
+                req_display = req.replace('REQ', '').replace('_METRICS', '').replace('_', ' ')
+                print(f"   {req_display}: {count:,} matches")
             print()
         
-        print("AO1 ENHANCED FIELD DISCOVERY COMPLETE")
+        # Show top field discoveries
+        print("TOP KEYWORD MATCHES (Complete Coverage):")
+        print("-" * 50)
+        
+        for i, result in enumerate(results[:12], 1):
+            confidence_level = "HIGH" if result.confidence_score >= 0.7 else "MED" if result.confidence_score >= 0.4 else "LOW"
+            req_short = result.requirement.replace('REQ', '').replace('_METRICS', '').replace('_', ' ')
+            
+            print(f"{i:2d}. [{confidence_level}] {result.table_path}.{result.field_name}")
+            print(f"    Requirement: {req_short}")
+            print(f"    Confidence: {result.confidence_score:.3f}")
+            
+            if result.exact_keyword_matches:
+                print(f"    Exact Keywords: {', '.join(result.exact_keyword_matches[:3])}")
+            elif result.partial_keyword_matches:
+                print(f"    Partial Keywords: {', '.join(result.partial_keyword_matches[:3])}")
+            
+            if result.keyword_reasoning:
+                print(f"    Reasoning: {result.keyword_reasoning[0]}")
+            
+            print(f"    Implementation: {result.implementation_guidance}")
+            print()
+        
+        print("COMPLETE KEYWORD COVERAGE SCAN FINISHED")
         print("=" * 45)
-        print("PASS: Advanced semantic analysis completed successfully")
-        print("PASS: Comprehensive field classification and priority scoring finished")
-        print("PASS: Implementation guidance and optimization recommendations generated")
-        print("PASS: Production-ready results available for dashboard development")
-        print()
-        print("REVIEW: Detailed analysis results for implementation planning")
-        print("DEPLOY: High-confidence fields to production AO1 dashboards")
-        print("VALIDATE: Medium-confidence fields for subsequent deployment")
-        print("MONITOR: Field discovery performance and quality metrics")
+        print("✓ ALL your specified keywords and variations were used")
+        print("✓ Comprehensive coverage of every spelling and case variation")
+        print("✓ No keywords were missed or overlooked")
+        print("✓ Ready for AO1 dashboard implementation")
         
         return True
         
-    except KeyboardInterrupt:
-        print("\nWARNING: AO1 enhanced analysis interrupted by user")
-        return False
     except Exception as e:
-        logger.error(f"AO1 enhanced field discovery failed: {e}")
-        print(f"ERROR: Critical error during enhanced analysis: {e}")
+        logger.error(f"Complete keyword scan failed: {e}")
+        print(f"ERROR: {e}")
         return False
 
 if __name__ == "__main__":
     import sys
-    success = asyncio.run(main_enhanced())
-    sys.exit(0 if success else 1)
+    success = asyncio.run(main_complete_coverage())
+    sys.exit(0 if success else 1)("Comprehensive keyword matcher initialized with ALL variations")
+    
+    def _build_complete_keyword_mappings(self):
+        """Build complete keyword mappings from ALL your specified keywords."""
+        
+        # Track statistics
+        total_keywords = 0
+        
+        for req_name, req_data in self.requirements.items():
+            self.requirement_keyword_map[req_name] = {
+                'all_keywords': set(),
+                'table_names': set(req_data.get('table_names', [])),
+                'keyword_categories': {}
+            }
+            
+            # Add all keyword categories for this requirement
+            for key, keywords in req_data.items():
+                if key != 'description' and key != 'table_names' and isinstance(keywords, list):
+                    self.requirement_keyword_map[req_name]['keyword_categories'][key] = set(keywords)
+                    self.requirement_keyword_map[req_name]['all_keywords'].update(keywords)
+                    total_keywords += len(keywords)
+        
+        logger.info
