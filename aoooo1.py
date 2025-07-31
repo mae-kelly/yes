@@ -633,6 +633,13 @@ class ComprehensiveKeywordMatcher:
         self._build_complete_keyword_mappings()
         
         logger.info(f"Built comprehensive keyword mappings: {total_keywords:,} total keywords across all requirements")
+        
+        # Add normalized versions of all keywords for better matching
+        for req_name in self.requirement_keyword_map:
+            normalized_keywords = set()
+            for keyword in self.requirement_keyword_map[req_name]['all_keywords']:
+                normalized_keywords.add(self.normalize_field_name(keyword))
+            self.requirement_keyword_map[req_name]['normalized_keywords'] = normalized_keywords
     
     def normalize_field_name(self, field_name: str) -> str:
         """Normalize field name for comprehensive matching."""
