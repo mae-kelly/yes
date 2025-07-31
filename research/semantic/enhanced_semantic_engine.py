@@ -20,10 +20,11 @@ class EnhancedSemanticEngine:
                 'primary': ['asset', 'device', 'host', 'machine', 'computer', 'endpoint', 'node', 'system'],
                 'identifiers': ['id', 'identifier', 'uuid', 'guid', 'tag', 'number', 'serial', 'key', 'name'],
                 'formats': ['hostname', 'fqdn', 'mac_address', 'ip_address'],
+                'global_unique': ['global', 'unique'],
                 'compound_rules': [
                     ('primary', 'identifiers'),
                     ('primary', 'formats'),
-                    (['global', 'unique'], 'identifiers')
+                    ('global_unique', 'identifiers')
                 ],
                 'semantic_weight': 1.0,
                 'business_priority': 10,
@@ -56,9 +57,10 @@ class EnhancedSemanticEngine:
                 'modifiers': ['code', 'iso', 'geo', 'geographic', 'zone'],
                 'cloud_specific': ['availability_zone', 'aws_region', 'azure_region', 'gcp_zone'],
                 'administrative': ['state', 'province', 'city', 'address'],
+                'empty_group': [],
                 'compound_rules': [
                     ('primary', 'modifiers'),
-                    ('cloud_specific', []),
+                    ('cloud_specific', 'empty_group'),
                     ('administrative', 'modifiers')
                 ],
                 'semantic_weight': 0.8,
@@ -316,26 +318,32 @@ class EnhancedSemanticEngine:
         patterns = set()
         
         for key, terms in concept_data.items():
-            if key in ['compound_rules', 'semantic_weight', 'business_priority', 'validation_patterns']:
+            if key in ['compound_rules', 'semantic_weight', 'business_priority', 'validation_patterns', 'expanded_patterns']:
                 continue
             if isinstance(terms, list):
                 for term in terms:
-                    patterns.update(self.generate_morphological_variants(term))
+                    if isinstance(term, str):
+                        patterns.update(self.generate_morphological_variants(term))
         
         for rule in concept_data.get('compound_rules', []):
             group1_key, group2_key = rule
             group1 = concept_data.get(group1_key, [])
             group2 = concept_data.get(group2_key, []) if isinstance(group2_key, str) else group2_key
             
+            # Ensure group2 is a list
+            if not isinstance(group2, list):
+                group2 = list(group2) if group2 else []
+            
             if isinstance(group1, list) and isinstance(group2, list):
                 for term1, term2 in product(group1, group2):
-                    compound_patterns = [
-                        f"{term1}_{term2}", f"{term2}_{term1}",
-                        f"{term1}{term2}", f"{term2}{term1}",
-                        f"{term1}-{term2}", f"{term2}-{term1}"
-                    ]
-                    for compound in compound_patterns:
-                        patterns.update(self.generate_morphological_variants(compound))
+                    if isinstance(term1, str) and isinstance(term2, str):
+                        compound_patterns = [
+                            f"{term1}_{term2}", f"{term2}_{term1}",
+                            f"{term1}{term2}", f"{term2}{term1}",
+                            f"{term1}-{term2}", f"{term2}-{term1}"
+                        ]
+                        for compound in compound_patterns:
+                            patterns.update(self.generate_morphological_variants(compound))
         
         concept_data['expanded_patterns'] = patterns
         return patterns
