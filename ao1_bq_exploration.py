@@ -1,4 +1,28 @@
-#!/usr/bin/env python3
+# AO1 Metric-Focused Requirements Specification - Targets specific measurable outcomes
+AO1_METRIC_FOCUSED_REQUIREMENTS = {
+    'REQ1_GLOBAL_VIEW_METRICS': {
+        'metric_definition': 'Calculate % of all assets globally that have logging visibility',
+        'required_calculations': [
+            'COUNT(DISTINCT hostname) FROM logging_sources',
+            'COUNT(DISTINCT hostname) FROM cmdb_assets', 
+            'Visibility % = logging_assets / total_assets * 100'
+        ],
+        'essential_field_patterns': {
+            # Asset counting fields (numerator and denominator)
+            'asset_identifiers': {
+                'hostname', 'host_name', 'computer_name', 'device_name', 'system_name',
+                'asset_id', 'device_id', 'cmdb_ci_name', 'ci_name', 'asset_tag',
+                'serial_number', 'hardware_id', 'unique_id', 'endpoint_id'
+            },
+            # Logging presence indicators
+            'logging_indicators': {
+                'log_source', 'data_source', 'event_source', 'ingestion_timestamp',
+                'collected_timestamp', 'last_seen', 'logging_enabled', 'log_present',
+                'chronicle_ingested', 'splunk_indexed', 'siem_visibility'
+            },
+            # CMDB correlation fields
+            'cmdb_correlation': {
+                'cmdb_ci', 'configuration_item', 'asset_inventory#!/usr/bin/env python3
 """
 AO1 Advanced Semantic Field Discovery System - Enhanced Production Version
 ========================================================================
@@ -2730,25 +2754,25 @@ async def main_enhanced():
         scanner = EnhancedAO1BigQueryScanner()
         
         if not scanner.authenticate():
-            print("❌ Authentication failed - unable to proceed")
+            print("AUTHENTICATION FAILED - unable to proceed")
             return False
         
-        print("✅ Enhanced semantic analysis engine initialized")
-        print("✅ Multi-strategy analysis framework loaded")
-        print("✅ Advanced pattern recognition enabled")
-        print("✅ Contextual relationship modeling ready")
-        print("✅ Statistical confidence calibration configured")
-        print("✅ Performance optimization and caching enabled")
-        print("✅ Comprehensive business logic inference ready")
-        print("✅ BigQuery scanner authenticated for production scanning")
+        print("PASS: Enhanced semantic analysis engine initialized")
+        print("PASS: Multi-strategy analysis framework loaded")
+        print("PASS: Advanced pattern recognition enabled")
+        print("PASS: Contextual relationship modeling ready")
+        print("PASS: Statistical confidence calibration configured")
+        print("PASS: Performance optimization and caching enabled")
+        print("PASS: Comprehensive business logic inference ready")
+        print("PASS: BigQuery scanner authenticated for production scanning")
         print()
         
         print("PERFORMING ENHANCED AO1 FIELD DISCOVERY")
         print("-" * 45)
-        print("🔍 Scanning BigQuery schemas with advanced semantic analysis...")
-        print("🧠 Applying multi-strategy analysis with real NLP capabilities...")
-        print("📊 Calculating implementation priorities with business value assessment...")
-        print("⚡ Optimizing performance with intelligent caching and parallel processing...")
+        print("SCAN: BigQuery schemas with advanced semantic analysis...")
+        print("ANALYZE: Multi-strategy analysis with real NLP capabilities...")
+        print("CALCULATE: Implementation priorities with business value assessment...")
+        print("OPTIMIZE: Performance with intelligent caching and parallel processing...")
         print()
         
         # Start enhanced field discovery
@@ -2759,7 +2783,7 @@ async def main_enhanced():
         )
         
         if not enhanced_analyses:
-            print("⚠️  No AO1-relevant fields discovered in enhanced scan")
+            print("WARNING: No AO1-relevant fields discovered in enhanced scan")
             return True
         
         print("AO1 ENHANCED FIELD DISCOVERY RESULTS")
@@ -2770,14 +2794,14 @@ async def main_enhanced():
         performance_metrics = comprehensive_stats.get('performance_metrics', {})
         quality_metrics = comprehensive_stats.get('quality_metrics', {})
         
-        print("📈 DISCOVERY SCALE METRICS:")
+        print("DISCOVERY SCALE METRICS:")
         print(f"   Datasets Scanned: {discovery_metrics.get('datasets_scanned', 0):,}")
         print(f"   Tables Analyzed: {discovery_metrics.get('tables_analyzed', 0):,}")
         print(f"   Fields Analyzed: {discovery_metrics.get('fields_analyzed', 0):,}")
         print(f"   AO1 Matches Found: {discovery_metrics.get('ao1_matches_found', 0):,}")
         print()
         
-        print("⚡ PERFORMANCE METRICS:")
+        print("PERFORMANCE METRICS:")
         print(f"   Total Processing Time: {performance_metrics.get('total_processing_time', 0):.2f} seconds")
         print(f"   Throughput: {performance_metrics.get('throughput_fields_per_second', 0):.1f} fields/second")
         print(f"   Avg Field Analysis Time: {performance_metrics.get('avg_field_analysis_time', 0):.1f} ms")
@@ -2786,7 +2810,7 @@ async def main_enhanced():
         print(f"   Error Rate: {performance_metrics.get('error_rate', 0):.2f}%")
         print()
         
-        print("🎯 ANALYSIS QUALITY METRICS:")
+        print("ANALYSIS QUALITY METRICS:")
         print(f"   Average Confidence Score: {quality_metrics.get('avg_confidence_score', 0):.3f}")
         print(f"   Strategy Coverage Average: {quality_metrics.get('strategy_coverage_avg', 0):.3f}")
         print(f"   Analysis Completeness: {quality_metrics.get('analysis_completeness_avg', 0):.3f}")
@@ -2795,7 +2819,7 @@ async def main_enhanced():
         
         # Confidence distribution
         confidence_dist = comprehensive_stats.get('confidence_level_distribution', {})
-        print("📊 CONFIDENCE LEVEL DISTRIBUTION:")
+        print("CONFIDENCE LEVEL DISTRIBUTION:")
         for level in ['high', 'medium', 'low', 'very_low']:
             count = confidence_dist.get(level, 0)
             percentage = (count / len(enhanced_analyses) * 100) if enhanced_analyses else 0
@@ -2804,7 +2828,7 @@ async def main_enhanced():
         
         # AO1 requirement coverage
         req_distribution = comprehensive_stats.get('ao1_requirement_distribution', {})
-        print("🎯 AO1 REQUIREMENTS COVERAGE:")
+        print("AO1 REQUIREMENTS COVERAGE:")
         total_requirements = len(scanner.semantic_analyzer.requirements)
         covered_requirements = len(req_distribution)
         coverage_percentage = (covered_requirements / total_requirements * 100) if total_requirements > 0 else 0
@@ -2820,7 +2844,7 @@ async def main_enhanced():
         
         # Dashboard category distribution
         dashboard_dist = comprehensive_stats.get('dashboard_category_distribution', {})
-        print("📋 DASHBOARD CATEGORY DISTRIBUTION:")
+        print("DASHBOARD CATEGORY DISTRIBUTION:")
         for category, count in sorted(dashboard_dist.items(), key=lambda x: x[1], reverse=True):
             percentage = (count / len(enhanced_analyses) * 100) if enhanced_analyses else 0
             print(f"   {category}: {count} fields ({percentage:.1f}%)")
@@ -2835,28 +2859,28 @@ async def main_enhanced():
             'Low (<300)': len([a for a in enhanced_analyses if a.implementation_priority < 300])
         }
         
-        print("🚀 IMPLEMENTATION PRIORITY DISTRIBUTION:")
+        print("IMPLEMENTATION PRIORITY DISTRIBUTION:")
         for priority_range, count in priority_ranges.items():
             percentage = (count / len(enhanced_analyses) * 100) if enhanced_analyses else 0
             print(f"   {priority_range}: {count} fields ({percentage:.1f}%)")
         print()
         
         # Top field discoveries with enhanced details
-        print("🏆 TOP AO1 FIELD DISCOVERIES (Enhanced Analysis):")
+        print("TOP AO1 FIELD DISCOVERIES (Enhanced Analysis):")
         print("-" * 60)
         
         top_analyses = enhanced_analyses[:8]  # Show top 8
         for i, analysis in enumerate(top_analyses, 1):
-            confidence_emoji = {
-                'high': '🟢', 'medium': '🟡', 'low': '🟠', 'very_low': '🔴'
-            }.get(analysis.confidence_level, '⚪')
+            confidence_indicator = {
+                'high': '[HIGH]', 'medium': '[MED]', 'low': '[LOW]', 'very_low': '[VLOW]'
+            }.get(analysis.confidence_level, '[UNK]')
             
-            priority_emoji = '🔥' if analysis.implementation_priority >= 600 else '⭐' if analysis.implementation_priority >= 500 else '📋'
+            priority_indicator = '[CRIT]' if analysis.implementation_priority >= 600 else '[HIGH]' if analysis.implementation_priority >= 500 else '[STD]'
             
-            print(f"{i}. {confidence_emoji} {priority_emoji} {analysis.table_path}.{analysis.field_name}")
-            print(f"   📊 Requirement: {analysis.best_requirement.replace('REQ', '').replace('_', ' ').title()}")
-            print(f"   🎯 Confidence: {analysis.confidence_score:.3f} ({analysis.confidence_level})")
-            print(f"   🚀 Priority: {analysis.implementation_priority} | Category: {analysis.dashboard_category}")
+            print(f"{i}. {confidence_indicator} {priority_indicator} {analysis.table_path}.{analysis.field_name}")
+            print(f"   Requirement: {analysis.best_requirement.replace('REQ', '').replace('_', ' ').title()}")
+            print(f"   Confidence: {analysis.confidence_score:.3f} ({analysis.confidence_level})")
+            print(f"   Priority: {analysis.implementation_priority} | Category: {analysis.dashboard_category}")
             
             # Show strategy breakdown
             strategy_scores = []
@@ -2870,7 +2894,7 @@ async def main_enhanced():
                 strategy_scores.append(f"Context: {analysis.contextual_coherence_score:.2f}")
             
             if strategy_scores:
-                print(f"   🔍 Strategy Scores: {' | '.join(strategy_scores)}")
+                print(f"   Strategy Scores: {' | '.join(strategy_scores)}")
             
             # Show key quality indicators
             quality_indicators = []
@@ -2882,25 +2906,25 @@ async def main_enhanced():
                 quality_indicators.append("Complete Analysis")
             
             if quality_indicators:
-                print(f"   ✅ Quality: {', '.join(quality_indicators)}")
+                print(f"   Quality: {', '.join(quality_indicators)}")
             
             # Show top implementation guidance
             if analysis.implementation_guidance:
                 top_guidance = analysis.implementation_guidance[0]
                 if len(top_guidance) > 80:
                     top_guidance = top_guidance[:77] + "..."
-                print(f"   💡 Guidance: {top_guidance}")
+                print(f"   Guidance: {top_guidance}")
             
             # Show morphological patterns if available
             if analysis.morphological_patterns:
                 patterns = analysis.morphological_patterns[:2]  # Show top 2
-                print(f"   🔬 Patterns: {', '.join(patterns)}")
+                print(f"   Patterns: {', '.join(patterns)}")
             
-            print(f"   ⏱️  Analysis Time: {analysis.processing_time_ms:.1f}ms | Cache Hit: {'Yes' if analysis.cache_hit else 'No'}")
+            print(f"   Analysis Time: {analysis.processing_time_ms:.1f}ms | Cache Hit: {'Yes' if analysis.cache_hit else 'No'}")
             print()
         
         # Advanced analytics insights
-        print("🧠 ADVANCED ANALYTICS INSIGHTS:")
+        print("ADVANCED ANALYTICS INSIGHTS:")
         print("-" * 35)
         
         # Strategy effectiveness analysis
@@ -2911,7 +2935,7 @@ async def main_enhanced():
             'contextual_analysis': [a.contextual_coherence_score for a in enhanced_analyses if a.contextual_coherence_score > 0]
         }
         
-        print("📈 Strategy Effectiveness:")
+        print("Strategy Effectiveness:")
         for strategy, scores in strategy_scores.items():
             if scores:
                 avg_score = np.mean(scores)
@@ -2923,26 +2947,26 @@ async def main_enhanced():
         business_value_fields = len([a for a in enhanced_analyses if 'Critical' in a.business_value])
         implementation_ready = len([a for a in enhanced_analyses if a.confidence_level in ['high', 'medium']])
         
-        print("💼 Business Value Analysis:")
+        print("Business Value Analysis:")
         print(f"   Critical Business Value Fields: {business_value_fields}")
         print(f"   Implementation Ready Fields: {implementation_ready}")
         print(f"   High-Priority Deployable: {len([a for a in enhanced_analyses if a.implementation_priority >= 500 and a.confidence_level in ['high', 'medium']])}")
         print()
         
         # Recommendations for next steps
-        print("🎯 RECOMMENDED NEXT STEPS:")
+        print("RECOMMENDED NEXT STEPS:")
         print("-" * 25)
         
         high_confidence_count = len([a for a in enhanced_analyses if a.confidence_level == 'high'])
         medium_confidence_count = len([a for a in enhanced_analyses if a.confidence_level == 'medium'])
         
         if high_confidence_count >= 10:
-            print("✅ IMMEDIATE ACTION: Deploy high-confidence fields to production dashboards")
-            print(f"   → {high_confidence_count} fields ready for immediate implementation")
+            print("IMMEDIATE ACTION: Deploy high-confidence fields to production dashboards")
+            print(f"   -> {high_confidence_count} fields ready for immediate implementation")
         
         if medium_confidence_count >= 15:
-            print("🔄 SHORT TERM: Validate and deploy medium-confidence fields")
-            print(f"   → {medium_confidence_count} fields require validation before deployment")
+            print("SHORT TERM: Validate and deploy medium-confidence fields")
+            print(f"   -> {medium_confidence_count} fields require validation before deployment")
         
         critical_gaps = []
         for req_name in scanner.semantic_analyzer.requirements.keys():
@@ -2950,36 +2974,36 @@ async def main_enhanced():
                 critical_gaps.append(req_name.replace('REQ', '').replace('_', ' ').title())
         
         if critical_gaps:
-            print("⚠️  ATTENTION: Critical requirement gaps identified")
-            print(f"   → Missing coverage for: {', '.join(critical_gaps[:3])}")
+            print("ATTENTION: Critical requirement gaps identified")
+            print(f"   -> Missing coverage for: {', '.join(critical_gaps[:3])}")
             if len(critical_gaps) > 3:
-                print(f"   → And {len(critical_gaps) - 3} additional requirements")
+                print(f"   -> And {len(critical_gaps) - 3} additional requirements")
         
-        print("🔍 OPTIMIZATION: Review low-confidence fields for manual classification")
-        print("📊 MONITORING: Implement field discovery monitoring and alerting")
-        print("🚀 SCALE: Consider expanding scan to additional datasets and projects")
+        print("OPTIMIZATION: Review low-confidence fields for manual classification")
+        print("MONITORING: Implement field discovery monitoring and alerting")
+        print("SCALE: Consider expanding scan to additional datasets and projects")
         print()
         
         print("AO1 ENHANCED FIELD DISCOVERY COMPLETE")
         print("=" * 45)
-        print("✅ Advanced semantic analysis completed successfully")
-        print("✅ Comprehensive field classification and priority scoring finished")
-        print("✅ Implementation guidance and optimization recommendations generated")
-        print("✅ Production-ready results available for dashboard development")
+        print("PASS: Advanced semantic analysis completed successfully")
+        print("PASS: Comprehensive field classification and priority scoring finished")
+        print("PASS: Implementation guidance and optimization recommendations generated")
+        print("PASS: Production-ready results available for dashboard development")
         print()
-        print("📋 Review detailed analysis results for implementation planning")
-        print("🚀 Deploy high-confidence fields to production AO1 dashboards")
-        print("🔄 Validate medium-confidence fields for subsequent deployment")
-        print("📊 Monitor field discovery performance and quality metrics")
+        print("REVIEW: Detailed analysis results for implementation planning")
+        print("DEPLOY: High-confidence fields to production AO1 dashboards")
+        print("VALIDATE: Medium-confidence fields for subsequent deployment")
+        print("MONITOR: Field discovery performance and quality metrics")
         
         return True
         
     except KeyboardInterrupt:
-        print("\n⚠️  AO1 enhanced analysis interrupted by user")
+        print("\nWARNING: AO1 enhanced analysis interrupted by user")
         return False
     except Exception as e:
         logger.error(f"AO1 enhanced field discovery failed: {e}")
-        print(f"❌ Critical error during enhanced analysis: {e}")
+        print(f"ERROR: Critical error during enhanced analysis: {e}")
         return False
 
 # Additional utility functions for production deployment
