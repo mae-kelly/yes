@@ -13,7 +13,27 @@ AO1_METRIC_FOCUSED_REQUIREMENTS = {
                 'hostname', 'host_name', 'computer_name', 'device_name', 'system_name',
                 'asset_id', 'device_id', 'cmdb_ci_name', 'ci_name', 'asset_tag',
                 'serial_number', 'hardware_id', 'unique_id', 'endpoint_id'
-            },
+            }
+        },
+        'query_templates': [
+            'SELECT COUNT(DISTINCT {asset_identifier}) as total_assets FROM {cmdb_table}',
+            'SELECT COUNT(DISTINCT {asset_identifier}) as logging_assets FROM {logging_table} WHERE {logging_indicator} IS NOT NULL',
+            'SELECT (logging_assets / total_assets * 100) as visibility_percentage'
+        ],
+        'table_semantic_analysis': {
+            'high_value_table_patterns': [
+                r'.*(?:asset|device|host|computer|machine).*(?:inventory|registry|catalog|master|list).*',
+                r'.*(?:cmdb|configuration).*(?:item|ci|asset|device).*',
+                r'.*(?:log|event|audit).*(?:source|ingestion|collection|visibility).*',
+                r'.*(?:chronicle|splunk|siem).*(?:data|ingestion|index|source).*'
+            ],
+            'context_weight_multipliers': {
+                'asset_management_context': 2.0,
+                'logging_platform_context': 1.8,
+                'cmdb_context': 2.2,
+                'visibility_context': 1.7
+            }
+        },
             # Logging presence indicators
             'logging_indicators': {
                 'log_source', 'data_source', 'event_source', 'ingestion_timestamp',
@@ -22,7 +42,9 @@ AO1_METRIC_FOCUSED_REQUIREMENTS = {
             },
             # CMDB correlation fields
             'cmdb_correlation': {
-                'cmdb_ci', 'configuration_item', 'asset_inventory#!/usr/bin/env python3
+                'cmdb_ci', 'configuration_item', 'asset_inventory', 'inventory_item',
+                'discovery_source', 'asset_database', 'configuration_database'
+            }#!/usr/bin/env python3
 """
 AO1 Advanced Semantic Field Discovery System - Enhanced Production Version
 ========================================================================
