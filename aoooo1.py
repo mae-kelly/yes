@@ -22,6 +22,8 @@ SERVICE_ACCOUNT_FILE = os.path.join(os.path.dirname(__file__), "gcp_prod_key.jso
 credentials = service_account.Credentials.from_service_account_file(SERVICE_ACCOUNT_FILE)
 client = bigquery.Client(project="chronicle-fisv", credentials=credentials)
 
+TARGET_PROJECT = "prj-fisv-p-gcss-sas-dl9dd0f1df"
+
 @dataclass
 class Match:
     field: str
@@ -33,8 +35,8 @@ class Match:
 
 class NeuralSemanticEngine:
     def __init__(self):
-        self.concept_graph = self._build_concept_graph()
         self.morphology_cache = {}
+        self.concept_graph = self._build_concept_graph()
         self.semantic_clusters = self._create_semantic_clusters()
         self.context_embeddings = self._build_context_embeddings()
         
@@ -392,7 +394,7 @@ class SuperIntelligentScanner:
         return sorted(matches, key=lambda x: (x.score, x.semantic_depth), reverse=True), scan_stats
     
     async def _get_hyper_prioritized_datasets(self, max_count):
-        all_datasets = list(self.client.list_datasets())
+        all_datasets = list(self.client.list_datasets(project=TARGET_PROJECT))
         
         neural_priorities = {
             'chronicle': 100, 'security': 90, 'asset': 85, 'log': 80, 'audit': 75,
