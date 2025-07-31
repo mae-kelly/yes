@@ -330,84 +330,124 @@ class SuperIntelligentScanner:
         self.scan_memory = defaultdict(dict)
         
     async def hyper_intelligent_scan(self, max_datasets=35):
-        datasets = await self._get_hyper_prioritized_datasets(max_datasets)
-        matches = []
+        logger.info("Starting hyper-intelligent scan...")
         
-        logger.info(f"Starting scan of {len(datasets)} prioritized datasets")
-        
-        scan_stats = {
-            'fields_processed': 0,
-            'intelligence_matches': 0,
-            'semantic_depth_distribution': Counter(),
-            'confidence_bands': Counter()
-        }
-        
-        for i, dataset in enumerate(datasets, 1):
-            dataset_id = dataset.dataset_id
-            logger.info(f"Scanning dataset {i}/{len(datasets)}: {dataset_id}")
-            
-            self.scan_memory[dataset_id] = {'table_patterns': Counter()}
-            
-            try:
-                tables = list(self.client.list_tables(dataset.reference))
-                logger.info(f"  Found {len(tables)} tables in {dataset_id}")
+        try:
+            datasets = await self._get_hyper_prioritized_datasets(max_datasets)
+            if not datasets:
+                logger.error("No datasets found!")
+                return [], {}
                 
-                for j, table in enumerate(tables[:25], 1):
-                    try:
-                        table_ref = self.client.get_table(table.reference)
-                        logger.info(f"    Analyzing table {j}/25: {table_ref.table_id} ({len(table_ref.schema)} fields)")
-                        
-                        table_context = {
-                            'table_name': table_ref.table_id,
-                            'dataset_name': dataset_id,
-                            'full_path': f"{table_ref.project}.{dataset_id}.{table_ref.table_id}",
-                            'row_count': table_ref.num_rows or 0,
-                            'schema_complexity': len(table_ref.schema)
-                        }
-                        
-                        table_matches = 0
-                        for field in table_ref.schema:
-                            scan_stats['fields_processed'] += 1
-                            
-                            match = self.intelligence.analyze_with_amplification(
-                                field.name, table_context
-                            )
-                            
-                            if match and match.score > 0.25:
-                                matches.append(match)
-                                table_matches += 1
-                                scan_stats['intelligence_matches'] += 1
-                                scan_stats['semantic_depth_distribution'][match.semantic_depth] += 1
-                                
-                                if match.score >= 0.8:
-                                    scan_stats['confidence_bands']['HIGH'] += 1
-                                elif match.score >= 0.5:
-                                    scan_stats['confidence_bands']['MEDIUM'] += 1
-                                else:
-                                    scan_stats['confidence_bands']['LOW'] += 1
-                                
-                                self.scan_memory[dataset_id]['table_patterns'][table_ref.table_id] += 1
-                        
-                        if table_matches > 0:
-                            logger.info(f"      Found {table_matches} intelligent matches")
-                                
-                    except Exception as e:
-                        logger.warning(f"    Table analysis failed for {table.table_id}: {e}")
-                        continue
-                        
-            except Exception as e:
-                logger.warning(f"Dataset scan failed for {dataset_id}: {e}")
-                continue
+            matches = []
             
-            if matches:
-                logger.info(f"Dataset {dataset_id} complete: {scan_stats['intelligence_matches']} total matches so far")
-        
-        logger.info(f"Hyper-intelligent analysis complete: {scan_stats['intelligence_matches']}/{scan_stats['fields_processed']} fields matched")
-        
-        return sorted(matches, key=lambda x: (x.score, x.semantic_depth), reverse=True), scan_stats
+            logger.info(f"Beginning analysis of {len(datasets)} prioritized datasets")
+            
+            scan_stats = {
+                'fields_processed': 0,
+                'intelligence_matches': 0,
+                'semantic_depth_distribution': Counter(),
+                'confidence_bands': Counter()
+            }
+            
+            for i, dataset in enumerate(datasets, 1):
+                dataset_id = dataset.dataset_id
+                logger.info(f"[{i}/{len(datasets)}] Processing dataset: {dataset_id}")
+                
+                self.scan_memory[dataset_id] = {'table_patterns': Counter()}
+                
+                try:
+                    logger.info(f"  Listing tables in {dataset_id}...")
+                    tables = list(self.client.list_tables(dataset.reference))
+                    logger.info(f"  Found {len(tables)} tables")
+                    
+                    if not tables:
+                        logger.info(f"  No tables in {dataset_id}, skipping")
+                        continue
+                    
+                    tables_to_process = tables[:25]
+                    logger.info(f"  Processing {len(tables_to_process)} tables")
+                    
+                    for j, table in enumerate(tables_to_process, 1):
+                        try:
+                            logger.info(f"    [{j}/{len(tables_to_process)}] Getting schema for {table.table_id}...")
+                            table_ref = self.client.get_table(table.reference)
+                            logger.info(f"    Table {table_ref.table_id}: {len(table_ref.schema)} fields, {table_ref.num_rows or 0} rows")
+                            
+                            table_context = {
+                                'table_name': table_ref.table_id,
+                                'dataset_name': dataset_id,
+                                'full_path': f"{table_ref.project}.{dataset_id}.{table_ref.table_id}",
+                                'row_count': table_ref.num_rows or 0,
+                                'schema_complexity': len(table_ref.schema)
+                            }
+                            
+                            table_matches = 0
+                            logger.info(f"    Analyzing {len(table_ref.schema)} fields...")
+                            
+                            for k, field in enumerate(table_ref.schema):
+                                if k % 20 == 0 and k > 0:
+                                    logger.info(f"      Processed {k}/{len(table_ref.schema)} fields...")
+                                
+                                scan_stats['fields_processed'] += 1
+                                
+                                try:
+                                    match = self.intelligence.analyze_with_amplification(
+                                        field.name, table_context
+                                    )
+                                    
+                                    if match and match.score > 0.25:
+                                        matches.append(match)
+                                        table_matches += 1
+                                        scan_stats['intelligence_matches'] += 1
+                                        scan_stats['semantic_depth_distribution'][match.semantic_depth] += 1
+                                        
+                                        if match.score >= 0.8:
+                                            scan_stats['confidence_bands']['HIGH'] += 1
+                                        elif match.score >= 0.5:
+                                            scan_stats['confidence_bands']['MEDIUM'] += 1
+                                        else:
+                                            scan_stats['confidence_bands']['LOW'] += 1
+                                        
+                                        self.scan_memory[dataset_id]['table_patterns'][table_ref.table_id] += 1
+                                        
+                                        if table_matches <= 5:  # Log first few matches
+                                            logger.info(f"      MATCH: {field.name} -> {match.req} (score: {match.score:.3f})")
+                                        
+                                except Exception as e:
+                                    logger.warning(f"      Failed to analyze field {field.name}: {e}")
+                                    continue
+                            
+                            logger.info(f"    Completed {table_ref.table_id}: {table_matches} matches found")
+                                    
+                        except Exception as e:
+                            logger.warning(f"    Failed to process table {table.table_id}: {e}")
+                            continue
+                            
+                except Exception as e:
+                    logger.error(f"  Failed to process dataset {dataset_id}: {e}")
+                    continue
+                
+                logger.info(f"[{i}/{len(datasets)}] Dataset {dataset_id} complete. Total matches: {scan_stats['intelligence_matches']}")
+                
+                if scan_stats['fields_processed'] % 1000 == 0:
+                    logger.info(f"PROGRESS: {scan_stats['fields_processed']} fields processed, {scan_stats['intelligence_matches']} matches found")
+            
+            logger.info(f"Scan complete! Final stats: {scan_stats['intelligence_matches']}/{scan_stats['fields_processed']} fields matched")
+            
+            return sorted(matches, key=lambda x: (x.score, x.semantic_depth), reverse=True), scan_stats
+            
+        except Exception as e:
+            logger.error(f"Hyper-intelligent scan failed: {e}")
+            return [], {}
     
     async def _get_hyper_prioritized_datasets(self, max_count):
-        all_datasets = list(self.client.list_datasets(project=TARGET_PROJECT))
+        logger.info(f"Getting datasets from project: {TARGET_PROJECT}")
+        try:
+            all_datasets = list(self.client.list_datasets(project=TARGET_PROJECT))
+            logger.info(f"Found {len(all_datasets)} total datasets")
+        except Exception as e:
+            logger.error(f"Failed to list datasets: {e}")
+            return []
         
         neural_priorities = {
             'chronicle': 100, 'security': 90, 'asset': 85, 'log': 80, 'audit': 75,
@@ -443,7 +483,13 @@ class SuperIntelligentScanner:
             scored_datasets.append((dataset, final_score))
         
         scored_datasets.sort(key=lambda x: x[1], reverse=True)
-        return [d for d, s in scored_datasets[:max_count]]
+        selected = [d for d, s in scored_datasets[:max_count]]
+        
+        logger.info(f"Selected top {len(selected)} datasets for analysis:")
+        for i, (dataset, score) in enumerate(scored_datasets[:max_count], 1):
+            logger.info(f"  {i}. {dataset.dataset_id} (score: {score})")
+        
+        return selected
 
 async def main():
     print("🧠 SUPER-INTELLIGENT AO1 FIELD DISCOVERY")
