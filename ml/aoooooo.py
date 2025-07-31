@@ -222,30 +222,30 @@ class UltimateConnectionHandler:
     def connect_ultimate(self, target_url: str = "https://huggingface.co", 
                         model_name: str = "all-MiniLM-L6-v2") -> Tuple[bool, Any, str]:
         
-        logger.info(f"🚀 ULTIMATE CONNECTION ATTEMPT")
-        logger.info(f"Available methods: {len(self.connection_methods)}")
+        logger.info("ULTIMATE CONNECTION ATTEMPT")
+        logger.info("Available methods: %d", len(self.connection_methods))
         
         for i, method in enumerate(self.connection_methods, 1):
             method_name = method.__name__.replace('_method_', '').replace('_', ' ').title()
             
             try:
-                logger.info(f"[{i:3d}/100] Attempting: {method_name}")
+                logger.info("[%03d/100] Attempting: %s", i, method_name)
                 result = self._run_with_timeout(method, (target_url, model_name), timeout=30)
                 
                 if result and result[0]:
-                    logger.info(f"✅ SUCCESS: {method_name}")
+                    logger.info("SUCCESS: %s", method_name)
                     self.success_methods.append((i, method_name, result))
                     return True, result[1], method_name
                 else:
                     self.failed_methods.append((i, method_name))
                     
             except Exception as e:
-                logger.debug(f"💥 EXCEPTION: {method_name} - {str(e)[:100]}")
+                logger.debug("EXCEPTION: %s - %s", method_name, str(e)[:100])
                 self.failed_methods.append((i, method_name, str(e)))
                 
             time.sleep(0.01)
         
-        logger.error("🔥 ALL 100 METHODS FAILED")
+        logger.error("ALL 100 METHODS FAILED")
         return False, None, "ALL_METHODS_FAILED"
     
     def _run_with_timeout(self, func, args, timeout):
@@ -264,7 +264,7 @@ class UltimateConnectionHandler:
         thread.join(timeout)
         
         if thread.is_alive():
-            raise TimeoutError(f"Method timed out after {timeout}s")
+            raise TimeoutError("Method timed out after %ds" % timeout)
         
         if exception[0]:
             raise exception[0]
@@ -463,7 +463,7 @@ trusted-host = *
         for host in proxy_hosts[:3]:
             for port in proxy_ports[:3]:
                 try:
-                    proxy_url = f"http://{host}:{port}"
+                    proxy_url = "http://%s:%d" % (host, port)
                     proxies = {'http': proxy_url, 'https': proxy_url}
                     
                     response = requests.get(url, proxies=proxies, timeout=5)
@@ -531,7 +531,7 @@ trusted-host = *
             sock.settimeout(10)
             sock.connect((host, port))
             
-            request = f"GET {parsed.path or '/'} HTTP/1.1\r\nHost: {host}\r\nConnection: close\r\n\r\n"
+            request = "GET %s HTTP/1.1\r\nHost: %s\r\nConnection: close\r\n\r\n" % (parsed.path or '/', host)
             sock.send(request.encode())
             
             response = b""
@@ -875,35 +875,35 @@ trusted-host = *
         return True, self._create_ultimate_fallback_model()
     
     def _method_97_carrier_pigeon_protocol(self, url: str, model: str) -> Tuple[bool, Any]:
-        logger.info("🐦 Deploying carrier pigeons...")
+        logger.info("Deploying carrier pigeons...")
         time.sleep(0.1)
         return True, self._create_ultimate_fallback_model()
     
     def _method_98_smoke_signal_encoding(self, url: str, model: str) -> Tuple[bool, Any]:
-        logger.info("💨 Generating smoke signals...")
+        logger.info("Generating smoke signals...")
         time.sleep(0.1)
         return True, self._create_ultimate_fallback_model()
     
     def _method_99_quantum_entanglement_communication(self, url: str, model: str) -> Tuple[bool, Any]:
-        logger.info("🔬 Attempting quantum entanglement communication...")
-        logger.info("⚛️ Preparing quantum bits...")
-        logger.info("🌌 Entangling particles across spacetime...")
-        logger.info("❌ Quantum decoherence detected. Method failed.")
+        logger.info("Attempting quantum entanglement communication...")
+        logger.info("Preparing quantum bits...")
+        logger.info("Entangling particles across spacetime...")
+        logger.info("Quantum decoherence detected. Method failed.")
         return False, None
     
     def _method_100_interdimensional_portal(self, url: str, model: str) -> Tuple[bool, Any]:
-        logger.info("🌀 Opening interdimensional portal...")
-        logger.info("🔮 Calibrating reality distortion field...")
-        logger.info("🚪 Portal stabilization at 23.7%...")
-        logger.info("⚡ Attempting cross-dimensional data transfer...")
-        logger.info("🌟 Portal collapsed. Reverting to fallback model.")
+        logger.info("Opening interdimensional portal...")
+        logger.info("Calibrating reality distortion field...")
+        logger.info("Portal stabilization at 23.7%...")
+        logger.info("Attempting cross-dimensional data transfer...")
+        logger.info("Portal collapsed. Reverting to fallback model.")
         
         return True, self._create_ultimate_fallback_model()
     
     def _create_ultimate_fallback_model(self):
         class UltimateFallbackModel:
             def __init__(self):
-                logger.info("🎯 ULTIMATE FALLBACK MODEL ACTIVATED")
+                logger.info("ULTIMATE FALLBACK MODEL ACTIVATED")
                 
             def encode(self, sentences, **kwargs):
                 if isinstance(sentences, str):
@@ -1185,7 +1185,7 @@ class FuzzySemanticMatcher:
                 'confidence': float(similarities[best_idx])
             }
         except Exception as e:
-            logger.debug(f"Semantic similarity calculation failed: {e}")
+            logger.debug("Semantic similarity calculation failed: %s", str(e))
             return self._fallback_semantic_similarity(column_name, target_category)
     
     def _fallback_semantic_similarity(self, column_name: str, target_category: str) -> Dict[str, Any]:
@@ -1359,7 +1359,7 @@ class AdvancedSemanticEngine:
     def _calculate_context_match(self, table_context: Dict[str, Any], concept_name: str) -> float:
         table_name = table_context.get('table_name', '').lower()
         dataset_name = table_context.get('dataset_name', '').lower()
-        combined = f"{dataset_name}_{table_name}"
+        combined = "%s_%s" % (dataset_name, table_name)
         
         context_keywords = {
             'asset_identity': ['asset', 'inventory', 'cmdb', 'device', 'host'],
@@ -1533,22 +1533,22 @@ class IntelligenceAmplifier:
         score_breakdown = analysis['score_breakdown']
         
         if score_breakdown['fuzzy'] > 0.8:
-            reasoning.append(f"high_fuzzy_match({score_breakdown['fuzzy']:.3f})")
+            reasoning.append("high_fuzzy_match(%.3f)" % score_breakdown['fuzzy'])
         
         if score_breakdown['semantic'] > 0.8:
-            reasoning.append(f"strong_semantic_similarity({score_breakdown['semantic']:.3f})")
+            reasoning.append("strong_semantic_similarity(%.3f)" % score_breakdown['semantic'])
         
         if score_breakdown['pattern'] > 0.7:
-            reasoning.append(f"pattern_match({score_breakdown['pattern']:.3f})")
+            reasoning.append("pattern_match(%.3f)" % score_breakdown['pattern'])
         
         if score_breakdown['context'] > 0.6:
-            reasoning.append(f"context_alignment({score_breakdown['context']:.3f})")
+            reasoning.append("context_alignment(%.3f)" % score_breakdown['context'])
         
         if score_breakdown['content'] > 0.7:
-            reasoning.append(f"content_validation({score_breakdown['content']:.3f})")
+            reasoning.append("content_validation(%.3f)" % score_breakdown['content'])
         
-        reasoning.append(f"business_priority({analysis['business_priority']})")
-        reasoning.append(f"confidence_level({analysis['confidence_level']})")
+        reasoning.append("business_priority(%d)" % analysis['business_priority'])
+        reasoning.append("confidence_level(%s)" % analysis['confidence_level'])
         
         return reasoning
 
@@ -1597,7 +1597,7 @@ class SuperIntelligentScanner:
         
         matches.sort(key=lambda x: (x.score, x.semantic_depth, x.confidence_breakdown.get('final', 0)), reverse=True)
         
-        logger.info(f"Advanced scan complete: {scan_stats['intelligence_matches']}/{scan_stats['fields_processed']} fields matched")
+        logger.info("Advanced scan complete: %d/%d fields matched", scan_stats['intelligence_matches'], scan_stats['fields_processed'])
         
         return matches, scan_stats
     
@@ -1620,7 +1620,7 @@ class SuperIntelligentScanner:
                     scan_stats['intelligence_matches'] += dataset_stats.get('intelligence_matches', 0)
                     
                 except Exception as e:
-                    logger.warning(f"Dataset {dataset.dataset_id} scan failed: {e}")
+                    logger.warning("Dataset %s scan failed: %s", dataset.dataset_id, str(e))
         
         return matches
     
@@ -1636,7 +1636,7 @@ class SuperIntelligentScanner:
                 scan_stats['intelligence_matches'] += dataset_stats.get('intelligence_matches', 0)
                 
             except Exception as e:
-                logger.warning(f"Dataset {dataset.dataset_id} scan failed: {e}")
+                logger.warning("Dataset %s scan failed: %s", dataset.dataset_id, str(e))
         
         return matches
     
@@ -1655,7 +1655,7 @@ class SuperIntelligentScanner:
                     table_context = {
                         'table_name': table_ref.table_id,
                         'dataset_name': dataset_id,
-                        'full_path': f"{table_ref.project}.{dataset_id}.{table_ref.table_id}",
+                        'full_path': "%s.%s.%s" % (table_ref.project, dataset_id, table_ref.table_id),
                         'row_count': table_ref.num_rows or 0,
                         'schema_complexity': len(table_ref.schema),
                         'days_since_update': self._calculate_days_since_update(table_ref)
@@ -1675,22 +1675,22 @@ class SuperIntelligentScanner:
                             stats['intelligence_matches'] += 1
                             
                 except Exception as e:
-                    logger.debug(f"Table {table.table_id} analysis failed: {e}")
+                    logger.debug("Table %s analysis failed: %s", table.table_id, str(e))
                     continue
                     
         except Exception as e:
-            logger.warning(f"Dataset {dataset_id} scan failed: {e}")
+            logger.warning("Dataset %s scan failed: %s", dataset_id, str(e))
         
         return matches, stats
     
     def _get_sample_values(self, table_ref: Any, column_name: str, sample_size: int = 100) -> Optional[List[str]]:
         try:
-            query = f"""
-            SELECT DISTINCT {column_name}
-            FROM `{table_ref.project}.{table_ref.dataset_id}.{table_ref.table_id}`
-            WHERE {column_name} IS NOT NULL
-            LIMIT {sample_size}
-            """
+            query = """
+            SELECT DISTINCT %s
+            FROM `%s.%s.%s`
+            WHERE %s IS NOT NULL
+            LIMIT %d
+            """ % (column_name, table_ref.project, table_ref.dataset_id, table_ref.table_id, column_name, sample_size)
             
             query_job = self.client.query(query)
             results = query_job.result()
@@ -1698,7 +1698,7 @@ class SuperIntelligentScanner:
             return [str(row[0]) for row in results if row[0] is not None]
             
         except Exception as e:
-            logger.debug(f"Failed to get sample values for {column_name}: {e}")
+            logger.debug("Failed to get sample values for %s: %s", column_name, str(e))
             return None
     
     def _calculate_days_since_update(self, table_ref: Any) -> int:
@@ -1714,7 +1714,7 @@ class SuperIntelligentScanner:
         try:
             all_datasets = list(self.client.list_datasets(project=self.config.target_project))
         except Exception as e:
-            logger.error(f"Failed to list datasets: {e}")
+            logger.error("Failed to list datasets: %s", str(e))
             return []
         
         neural_priorities = {
@@ -1763,14 +1763,14 @@ class UltimateBigQueryLauncher:
         self.scanner_ready = False
         
     async def launch_ultimate_scanner(self):
-        print("🚀 ULTIMATE BIGQUERY SCANNER LAUNCHER")
+        print("ULTIMATE BIGQUERY SCANNER LAUNCHER")
         print("=" * 80)
         print("Guaranteed to work in ANY environment!")
-        print("- Corporate networks ✓")
-        print("- Air-gapped systems ✓") 
-        print("- Proxy/firewall restrictions ✓")
-        print("- SSL certificate issues ✓")
-        print("- Interdimensional portals ✓")
+        print("- Corporate networks")
+        print("- Air-gapped systems") 
+        print("- Proxy/firewall restrictions")
+        print("- SSL certificate issues")
+        print("- Interdimensional portals")
         print("")
         
         await self._phase_1_environment_setup()
@@ -1779,16 +1779,16 @@ class UltimateBigQueryLauncher:
         await self._phase_4_execute_scan()
         
     async def _phase_1_environment_setup(self):
-        print("📋 PHASE 1: ENVIRONMENT SETUP")
+        print("PHASE 1: ENVIRONMENT SETUP")
         print("-" * 40)
         
         python_version = sys.version_info
-        print(f"🐍 Python version: {python_version.major}.{python_version.minor}.{python_version.micro}")
+        print("Python version: %d.%d.%d" % (python_version.major, python_version.minor, python_version.micro))
         
         required_dirs = ['./cache', './logs', './models', './temp']
         for dir_path in required_dirs:
             Path(dir_path).mkdir(exist_ok=True)
-            print(f"📁 Created directory: {dir_path}")
+            print("Created directory: %s" % dir_path)
         
         compatibility_env = {
             'PYTHONIOENCODING': 'utf-8',
@@ -1802,14 +1802,14 @@ class UltimateBigQueryLauncher:
         }
         
         os.environ.update(compatibility_env)
-        print("🔧 Environment variables configured")
+        print("Environment variables configured")
         
         await self._import_dependencies()
         
-        print("✅ Environment setup complete\n")
+        print("Environment setup complete\n")
     
     async def _import_dependencies(self):
-        print("📦 Importing dependencies...")
+        print("Importing dependencies...")
         
         core_imports = {
             'google.cloud.bigquery': 'BigQuery client',
@@ -1821,18 +1821,18 @@ class UltimateBigQueryLauncher:
         for module, description in core_imports.items():
             try:
                 __import__(module)
-                print(f"  ✅ {description}: OK")
+                print("  %s: OK" % description)
             except ImportError as e:
-                print(f"  ❌ {description}: FAILED - {e}")
-                print(f"     Installing {module}...")
+                print("  %s: FAILED - %s" % (description, str(e)))
+                print("     Installing %s..." % module)
                 try:
                     subprocess.run([
                         sys.executable, '-m', 'pip', 'install', 
                         module.split('.')[0], '--quiet'
                     ], check=True, timeout=60)
-                    print(f"  ✅ {description}: Installed successfully")
+                    print("  %s: Installed successfully" % description)
                 except Exception:
-                    print(f"  ⚠️  {description}: Using fallback implementation")
+                    print("  %s: Using fallback implementation" % description)
         
         ml_imports = {
             'sentence_transformers': 'Sentence transformers',
@@ -1841,62 +1841,62 @@ class UltimateBigQueryLauncher:
             'fuzzywuzzy': 'Fuzzy string matching'
         }
         
-        print("\n📦 ML Dependencies (optional):")
+        print("\nML Dependencies (optional):")
         for module, description in ml_imports.items():
             try:
                 __import__(module)
-                print(f"  ✅ {description}: Available")
+                print("  %s: Available" % description)
             except ImportError:
-                print(f"  ⚠️  {description}: Not available (will use fallbacks)")
+                print("  %s: Not available (will use fallbacks)" % description)
     
     async def _phase_2_connection_testing(self):
-        print("🌐 PHASE 2: ULTIMATE CONNECTION TESTING")
+        print("PHASE 2: ULTIMATE CONNECTION TESTING")
         print("-" * 40)
         
         try:
             handler = UltimateConnectionHandler()
             
-            print("🔧 Testing connection methods (this may take a moment)...")
+            print("Testing connection methods (this may take a moment)...")
             success, model, method = handler.connect_ultimate()
             
             if success:
-                print(f"✅ Connection successful using: {method}")
+                print("Connection successful using: %s" % method)
                 self.connection_success = True
                 
                 if hasattr(model, 'encode'):
                     test_result = model.encode(["test", "connection"])
-                    print(f"✅ Model test successful: Generated {len(test_result)} embeddings")
+                    print("Model test successful: Generated %d embeddings" % len(test_result))
                     self.model_loaded = True
                 else:
-                    print("✅ Basic connection successful (using fallback)")
+                    print("Basic connection successful (using fallback)")
                 
             else:
-                print("⚠️  Using offline fallback mode")
+                print("Using offline fallback mode")
                 self.connection_success = False
             
         except ImportError:
-            print("⚠️  Ultimate connector not available, using basic methods")
+            print("Ultimate connector not available, using basic methods")
             await self._basic_connection_test()
         
-        print(f"📊 Connection Status:")
-        print(f"  - Internet connectivity: {'✅' if self.connection_success else '❌'}")
-        print(f"  - ML models available: {'✅' if self.model_loaded else '❌'}")
+        print("Connection Status:")
+        print("  - Internet connectivity: %s" % ("YES" if self.connection_success else "NO"))
+        print("  - ML models available: %s" % ("YES" if self.model_loaded else "NO"))
         print("")
     
     async def _basic_connection_test(self):
         try:
             response = requests.get('https://httpbin.org/get', timeout=10, verify=False)
             if response.status_code == 200:
-                print("✅ Basic internet connectivity confirmed")
+                print("Basic internet connectivity confirmed")
                 self.connection_success = True
             else:
-                print("❌ Internet connectivity failed")
+                print("Internet connectivity failed")
         except Exception as e:
-            print(f"❌ Connection test failed: {e}")
-            print("🔄 Switching to offline mode")
+            print("Connection test failed: %s" % str(e))
+            print("Switching to offline mode")
     
     async def _phase_3_scanner_configuration(self):
-        print("⚙️  PHASE 3: SCANNER CONFIGURATION")
+        print("PHASE 3: SCANNER CONFIGURATION")
         print("-" * 40)
         
         credential_paths = [
@@ -1910,13 +1910,13 @@ class UltimateBigQueryLauncher:
         credentials_found = False
         for path in credential_paths:
             if path and os.path.exists(path):
-                print(f"✅ Found GCP credentials: {path}")
+                print("Found GCP credentials: %s" % path)
                 os.environ['GOOGLE_APPLICATION_CREDENTIALS'] = path
                 credentials_found = True
                 break
         
         if not credentials_found:
-            print("⚠️  No GCP credentials found. Please set up authentication:")
+            print("No GCP credentials found. Please set up authentication:")
             print("   1. Download service account key from GCP Console")
             print("   2. Save as 'gcp_prod_key.json' in current directory")
             print("   3. Or set GOOGLE_APPLICATION_CREDENTIALS environment variable")
@@ -1932,13 +1932,13 @@ class UltimateBigQueryLauncher:
             'target_project': self._detect_target_project()
         }
         
-        print("🔧 Scanner configuration:")
+        print("Scanner configuration:")
         for key, value in scanner_config.items():
-            print(f"  - {key}: {value}")
+            print("  - %s: %s" % (key, str(value)))
         
         self.scanner_config = scanner_config
         self.scanner_ready = True
-        print("✅ Scanner configuration complete\n")
+        print("Scanner configuration complete\n")
     
     def _detect_target_project(self):
         project_sources = [
@@ -1950,18 +1950,18 @@ class UltimateBigQueryLauncher:
         
         for project in project_sources:
             if project:
-                print(f"🎯 Target project: {project}")
+                print("Target project: %s" % project)
                 return project
         
-        print("⚠️  No target project specified")
+        print("No target project specified")
         return None
     
     async def _phase_4_execute_scan(self):
-        print("🔍 PHASE 4: EXECUTING BIGQUERY SCAN")
+        print("PHASE 4: EXECUTING BIGQUERY SCAN")
         print("-" * 40)
         
         if not self.scanner_ready:
-            print("❌ Scanner not ready. Please complete previous phases.")
+            print("Scanner not ready. Please complete previous phases.")
             return
         
         try:
@@ -1974,10 +1974,10 @@ class UltimateBigQueryLauncher:
                 target_project=self.scanner_config['target_project']
             )
             
-            print("🚀 Initializing ultra-intelligent scanner...")
+            print("Initializing ultra-intelligent scanner...")
             scanner = SuperIntelligentScanner(config)
             
-            print("🧠 Executing hyper-intelligent analysis...")
+            print("Executing hyper-intelligent analysis...")
             start_time = time.time()
             
             matches, stats = await scanner.hyper_intelligent_scan()
@@ -1987,60 +1987,60 @@ class UltimateBigQueryLauncher:
             await self._display_results(matches, stats, scan_duration)
             
         except ImportError as e:
-            print(f"❌ Scanner import failed: {e}")
-            print("📄 Please ensure enhanced_bq_scanner.py is available")
+            print("Scanner import failed: %s" % str(e))
+            print("Please ensure enhanced_bq_scanner.py is available")
         except Exception as e:
-            print(f"💥 Scan execution failed: {e}")
+            print("Scan execution failed: %s" % str(e))
             import traceback
             traceback.print_exc()
     
     async def _display_results(self, matches, stats, duration):
-        print("\n🎉 SCAN COMPLETE!")
+        print("\nSCAN COMPLETE!")
         print("=" * 80)
         
-        print(f"⏱️  Scan duration: {duration:.2f} seconds")
-        print(f"📊 Fields processed: {stats.get('fields_processed', 0):,}")
-        print(f"🎯 Intelligent matches: {len(matches)}")
-        print(f"📈 Match rate: {len(matches)/max(stats.get('fields_processed', 1), 1)*100:.1f}%")
+        print("Scan duration: %.2f seconds" % duration)
+        print("Fields processed: %d" % stats.get('fields_processed', 0))
+        print("Intelligent matches: %d" % len(matches))
+        print("Match rate: %.1f%%" % (len(matches)/max(stats.get('fields_processed', 1), 1)*100))
         
         if stats.get('processing_time', 0) > 0:
-            print(f"⚡ Processing speed: {stats['fields_processed']/stats['processing_time']:.1f} fields/sec")
+            print("Processing speed: %.1f fields/sec" % (stats['fields_processed']/stats['processing_time']))
         
         print("")
         
         if matches:
-            print("🏆 TOP INTELLIGENT DISCOVERIES:")
+            print("TOP INTELLIGENT DISCOVERIES:")
             print("-" * 60)
             
             for i, match in enumerate(matches[:15], 1):
-                confidence_icon = "🧠" if match.score >= 0.9 else "🎯" if match.score >= 0.7 else "💡"
-                depth_indicator = "⚡" * min(match.semantic_depth, 3)
+                confidence_icon = "HIGH" if match.score >= 0.9 else "MED" if match.score >= 0.7 else "LOW"
+                depth_indicator = "*" * min(match.semantic_depth, 3)
                 
-                print(f"{i:2d}. {confidence_icon}{depth_indicator} {match.table}.{match.field}")
-                print(f"    🎯 Requirement: {match.req}")
-                print(f"    📊 Score: {match.score:.3f} | Depth: {match.semantic_depth}")
+                print("%2d. [%s]%s %s.%s" % (i, confidence_icon, depth_indicator, match.table, match.field))
+                print("    Requirement: %s" % match.req)
+                print("    Score: %.3f | Depth: %d" % (match.score, match.semantic_depth))
                 
                 if match.reasoning:
-                    print(f"    🔍 Evidence: {' | '.join(match.reasoning[:2])}")
+                    print("    Evidence: %s" % ' | '.join(match.reasoning[:2]))
                 print("")
             
             req_counts = defaultdict(int)
             for match in matches:
                 req_counts[match.req] += 1
             
-            print("📋 REQUIREMENT MAPPING SUMMARY:")
+            print("REQUIREMENT MAPPING SUMMARY:")
             print("-" * 40)
             for req, count in sorted(req_counts.items(), key=lambda x: x[1], reverse=True):
-                print(f"  {req}: {count} matches")
+                print("  %s: %d matches" % (req, count))
         
         else:
-            print("❌ No matches found. Consider:")
+            print("No matches found. Consider:")
             print("  1. Checking target project configuration")
             print("  2. Verifying dataset accessibility")
             print("  3. Adjusting confidence thresholds")
         
-        print("\n🎯 SCAN ANALYSIS COMPLETE")
-        print("Ready for dashboard deployment! 🚀")
+        print("\nSCAN ANALYSIS COMPLETE")
+        print("Ready for dashboard deployment!")
 
 async def main():
     try:
@@ -2048,13 +2048,13 @@ async def main():
         await launcher.launch_ultimate_scanner()
         
     except KeyboardInterrupt:
-        print("\n⚠️  Scan interrupted by user")
+        print("\nScan interrupted by user")
     except Exception as e:
-        print(f"\n💥 Launcher failed: {e}")
+        print("\nLauncher failed: %s" % str(e))
         import traceback
         traceback.print_exc()
         
-        print("\n🔧 TROUBLESHOOTING SUGGESTIONS:")
+        print("\nTROUBLESHOOTING SUGGESTIONS:")
         print("1. Run: pip install google-cloud-bigquery pandas numpy scikit-learn")
         print("2. Set up GCP credentials")
         print("3. Check network connectivity")
