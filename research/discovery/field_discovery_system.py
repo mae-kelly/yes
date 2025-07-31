@@ -78,7 +78,8 @@ class EnhancedFieldDiscoverySystem:
                 'high_confidence_matches': 0,
                 'requirement_coverage': Counter(),
                 'confidence_distribution': Counter(),
-                'processing_errors': []
+                'processing_errors': [],
+                'target_project': project_to_scan  # Track which project we're scanning
             }
             
             for dataset in datasets:
@@ -122,16 +123,18 @@ class EnhancedFieldDiscoverySystem:
             logger.error(f"Field discovery failed: {e}")
             raise
     
-    async def _get_prioritized_datasets(self, project_id: str, max_count: int) -> List[Any]:
-        cache_key = f"datasets_{project_id}_{max_count}"
+    async def _get_prioritized_datasets(self, target_project_id: str, max_count: int) -> List[Any]:
+        cache_key = f"datasets_{target_project_id}_{max_count}"
         cached_result = self.cache_manager.get(cache_key)
         if cached_result:
             self.performance_metrics['cache_hits'] += 1
             return cached_result
         
         try:
-            all_datasets = list(self.client.list_datasets(project=project_id))
+            logger.info(f"Listing datasets from TARGET project: {target_project_id}")
+            all_datasets = list(self.client.list_datasets(project=target_project_id))
             self.performance_metrics['api_calls'] += 1
+            logger.info(f"Found {len(all_datasets)} datasets in target project {target_project_id}")
             
             neural_priorities = {
                 'chronicle': 100, 'security': 90, 'asset': 85, 'log': 80, 'audit': 75,
@@ -169,12 +172,16 @@ class EnhancedFieldDiscoverySystem:
             scored_datasets.sort(key=lambda x: x[1], reverse=True)
             selected_datasets = [d for d, s in scored_datasets[:max_count]]
             
+            logger.info(f"Selected top {len(selected_datasets)} datasets from TARGET project {target_project_id}:")
+            for i, (dataset, score) in enumerate(scored_datasets[:max_count], 1):
+                logger.info(f"  {i}. {dataset.dataset_id} (score: {score})")
+            
             self.cache_manager.set(cache_key, selected_datasets, ttl=1800)
             
             return selected_datasets
             
         except Exception as e:
-            logger.error(f"Failed to get datasets for project {project_id}: {e}")
+            logger.error(f"Failed to get datasets for TARGET project {target_project_id}: {e}")
             raise
     
     async def _process_dataset(self, 

@@ -364,9 +364,9 @@ async def example_usage():
             
             print(f"✅ {catalog.title()} integration configured")
     
-    if mock_matches:
+    if matches:
         print(f"\n📤 Syncing discoveries to enterprise catalogs...")
-        sync_results = await integration_manager.sync_discoveries_to_catalogs(mock_matches)
+        sync_results = await integration_manager.sync_discoveries_to_catalogs(matches)
         
         for catalog, result in sync_results.items():
             status = "✅" if result.get('status') == 'success' else "⚠️"
