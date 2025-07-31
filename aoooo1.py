@@ -109,7 +109,6 @@ class NeuralSemanticEngine:
         
         return patterns
     
-    @lru_cache(maxsize=10000)
     def _generate_morphological_variants(self, term):
         if term in self.morphology_cache:
             return self.morphology_cache[term]
