@@ -34,8 +34,9 @@ class EnhancedFieldDiscoverySystem:
         if BIGQUERY_AVAILABLE and service_account_file and auth_project_id:
             try:
                 credentials = service_account.Credentials.from_service_account_file(service_account_file)
-                self.client = bigquery.Client(project=auth_project_id, credentials=credentials)
-                logger.info(f"BigQuery client initialized for auth project: {auth_project_id}")
+                # Don't set a default project on the client - we'll specify it per operation
+                self.client = bigquery.Client(credentials=credentials)
+                logger.info(f"BigQuery client initialized with credentials (no default project)")
                 logger.info(f"Target project for discovery: {self.target_project_id}")
             except Exception as e:
                 logger.error(f"Failed to initialize BigQuery client: {e}")
@@ -131,10 +132,20 @@ class EnhancedFieldDiscoverySystem:
             return cached_result
         
         try:
-            logger.info(f"Listing datasets from TARGET project: {target_project_id}")
+            logger.info(f"EXPLICITLY listing datasets from TARGET project: {target_project_id}")
+            logger.info(f"NOT using chronicle-fisv - using: {target_project_id}")
+            
+            # Explicitly specify the project in the API call
             all_datasets = list(self.client.list_datasets(project=target_project_id))
             self.performance_metrics['api_calls'] += 1
-            logger.info(f"Found {len(all_datasets)} datasets in target project {target_project_id}")
+            
+            logger.info(f"SUCCESS: Found {len(all_datasets)} datasets in TARGET project: {target_project_id}")
+            if all_datasets:
+                logger.info(f"First few datasets from {target_project_id}:")
+                for i, dataset in enumerate(all_datasets[:3]):
+                    logger.info(f"  - {dataset.dataset_id} (from project: {dataset.project})")
+            else:
+                logger.warning(f"No datasets found in {target_project_id} - check permissions!")
             
             neural_priorities = {
                 'chronicle': 100, 'security': 90, 'asset': 85, 'log': 80, 'audit': 75,
@@ -193,8 +204,10 @@ class EnhancedFieldDiscoverySystem:
         matches = []
         
         try:
+            # Explicitly specify the target project for table listing
             tables = self.circuit_breaker.call(list, self.client.list_tables(dataset.reference))
             self.performance_metrics['api_calls'] += 1
+            logger.info(f"Processing dataset {dataset.dataset_id} from project {dataset.project}")
             
             if not tables:
                 return matches
@@ -233,8 +246,11 @@ class EnhancedFieldDiscoverySystem:
         matches = []
         
         try:
+            # Explicitly get table from the correct project
             table_ref = self.circuit_breaker.call(self.client.get_table, table.reference)
             self.performance_metrics['api_calls'] += 1
+            
+            logger.info(f"Analyzing table {table_ref.table_id} from project {table_ref.project} (should be {self.target_project_id})")
             
             table_context = {
                 'table_name': table_ref.table_id,
