@@ -737,8 +737,9 @@ class AO1IntelligentDiscovery:
                         LIMIT 1000
                         """
                         
-                        job = client.query(sample_query, job_config=bigquery.QueryJobConfig(maximum_bytes_billed=None))
-                        results = list(job.result())
+                        with client_manager.get_client() as client:
+                            job = client.query(sample_query, job_config=bigquery.QueryJobConfig(maximum_bytes_billed=None))
+                            results = list(job.result())
                         
                         for row in results:
                             if row[0] and len(str(row[0]).strip()) >= 3:
