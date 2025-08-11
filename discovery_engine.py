@@ -48,8 +48,6 @@ class PrettyLogger:
     def table(table_name: str, endpoints_found: int = 0):
         if endpoints_found > 0:
             print(f"   ･ﾟ✧ ◞ ♡   Found {endpoints_found} endpoints in: {table_name}")
-        else:
-            print(f"   ｡･:*:･ﾟ★   Analyzing: {table_name}")
     
     @staticmethod
     def endpoint_merge(endpoint: str, table_count: int):
@@ -75,13 +73,18 @@ class DiscoveryEngine:
         PrettyLogger.info(f"Initializing brilliant discovery for project: {project_id}")
         
         self.client_manager = BigQueryClientManager(project_id)
-        self.chronicle_client_manager = BigQueryClientManager("chronicle-fisv")
+        self.chronicle_client_manager = None
         
         if not self.client_manager.test_connection():
             raise ConnectionError("Failed to authenticate with BigQuery")
         
-        if not self.chronicle_client_manager.test_connection():
-            PrettyLogger.warning("Chronicle project authentication failed - continuing without Chronicle data")
+        try:
+            self.chronicle_client_manager = BigQueryClientManager("chronicle-fisv")
+            if not self.chronicle_client_manager.test_connection():
+                PrettyLogger.warning("Chronicle project authentication failed - continuing without Chronicle data")
+                self.chronicle_client_manager = None
+        except Exception as e:
+            PrettyLogger.warning(f"Chronicle authentication failed: {e}")
             self.chronicle_client_manager = None
         
         PrettyLogger.success("BigQuery authentication successful")
@@ -93,7 +96,7 @@ class DiscoveryEngine:
         self.signal_handler = SignalHandler()
         
         self.db_path = self.config.get('database_path', 'ao1_visibility_cmdb.db')
-        self.max_workers = self.config.get('max_workers', min(8, mp.cpu_count()))
+        self.max_workers = min(4, self.config.get('max_workers', 4))
         
         self.critical_sources = {
             'cmdb': {
@@ -125,9 +128,9 @@ class DiscoveryEngine:
                 'project': 'chronicle-fisv',
                 'dataset': 'datalake',
                 'table': 'events',
-                'endpoint_column': 'hostname',
-                'region_column': 'region',
-                'environment_column': 'environment'
+                'endpoint_column': 'principal.hostname',
+                'region_column': 'network.ip_geo_artifact.location.region',
+                'environment_column': 'metadata.description'
             }
         }
         
@@ -144,7 +147,7 @@ class DiscoveryEngine:
         self.conn = duckdb.connect(self.db_path)
         
         self.conn.execute("""
-        CREATE TABLE IF NOT EXISTS ao1_master_inventory (
+        CREATE TABLE IF NOT EXISTS ao1_asset_inventory (
             hostname VARCHAR PRIMARY KEY,
             fqdn VARCHAR,
             ip_addresses TEXT,
@@ -187,7 +190,7 @@ class DiscoveryEngine:
         """)
         
         self.conn.execute("""
-        CREATE TABLE IF NOT EXISTS brilliance_analytics (
+        CREATE TABLE IF NOT EXISTS ao1_table_analytics (
             table_path VARCHAR PRIMARY KEY,
             dataset_name VARCHAR,
             table_name VARCHAR,
@@ -250,7 +253,8 @@ class DiscoveryEngine:
             await self._save_emergency_checkpoint()
             raise
         finally:
-            self.conn.close()
+            if hasattr(self, 'conn') and self.conn:
+                self.conn.close()
     
     async def _resume_from_checkpoint(self, checkpoint: Dict[str, Any]):
         self.processed_datasets = set(checkpoint.get('processed_datasets', []))
@@ -268,31 +272,44 @@ class DiscoveryEngine:
         
         for source_name, source_config in self.critical_sources.items():
             try:
-                client_manager = self.chronicle_client_manager if source_config['project'] == 'chronicle-fisv' else self.client_manager
+                await asyncio.sleep(random.uniform(1, 3))
                 
-                if client_manager is None:
-                    PrettyLogger.warning(f"Skipping {source_name} - client not available")
-                    continue
+                if source_config['project'] == 'chronicle-fisv':
+                    if self.chronicle_client_manager is None:
+                        PrettyLogger.warning(f"Skipping {source_name} - Chronicle client not available")
+                        continue
+                    client_manager = self.chronicle_client_manager
+                else:
+                    client_manager = self.client_manager
                 
                 endpoints_found = await self._load_critical_source(source_name, source_config, client_manager)
                 PrettyLogger.critical_source(source_name, endpoints_found)
                 
+                await asyncio.sleep(2)
+                
             except Exception as e:
                 PrettyLogger.error(f"Failed to load critical source {source_name}: {e}")
+                await asyncio.sleep(5)
     
     async def _load_critical_source(self, source_name: str, config: Dict[str, Any], client_manager: BigQueryClientManager) -> int:
         table_path = f"{config['project']}.{config['dataset']}.{config['table']}"
         
         try:
+            await asyncio.sleep(random.uniform(0.5, 1.5))
+            
             with client_manager.get_client() as client:
-                table_ref = client.get_table(table_path)
-                available_columns = [field.name for field in table_ref.schema]
+                try:
+                    table_ref = client.get_table(table_path)
+                    available_columns = [field.name for field in table_ref.schema]
+                except Exception as e:
+                    PrettyLogger.error(f"Failed to get table schema for {source_name}: {e}")
+                    return 0
                 
                 if config['endpoint_column'] not in available_columns:
                     PrettyLogger.warning(f"Endpoint column {config['endpoint_column']} not found in {source_name}")
                     return 0
                 
-                select_parts = [f"UPPER(TRIM(CAST(`{config['endpoint_column']}` AS STRING))) as hostname"]
+                select_parts = [f"UPPER(TRIM(CAST({config['endpoint_column']} AS STRING))) as hostname"]
                 
                 for col_key, col_name in [
                     ('region_column', 'global_region'),
@@ -300,21 +317,24 @@ class DiscoveryEngine:
                     ('type_column', 'system_classification')
                 ]:
                     if col_key in config and config[col_key] in available_columns:
-                        select_parts.append(f"CAST(`{config[col_key]}` AS STRING) as {col_name}")
+                        select_parts.append(f"CAST({config[col_key]} AS STRING) as {col_name}")
                 
                 is_partitioned = table_ref.time_partitioning is not None
                 partition_filter = ""
                 
                 if is_partitioned and table_ref.time_partitioning.field:
                     partition_col = table_ref.time_partitioning.field
-                    partition_filter = f"WHERE {partition_col} >= DATE_SUB(CURRENT_DATE(), INTERVAL 30 DAY)"
+                    partition_filter = f"WHERE {partition_col} >= DATE_SUB(CURRENT_DATE(), INTERVAL 7 DAY)"
                 
                 query = f"""
                 SELECT DISTINCT {', '.join(select_parts)}
                 FROM `{table_path}`
                 {partition_filter}
-                {" AND " if partition_filter else "WHERE"} `{config['endpoint_column']}` IS NOT NULL
-                    AND LENGTH(TRIM(CAST(`{config['endpoint_column']}` AS STRING))) >= 3
+                {" AND " if partition_filter else "WHERE"} {config['endpoint_column']} IS NOT NULL
+                    AND LENGTH(TRIM(CAST({config['endpoint_column']} AS STRING))) >= 3
+                    AND {config['endpoint_column']} NOT LIKE '%@%'
+                    AND {config['endpoint_column']} NOT LIKE 'http%'
+                LIMIT 50000
                 """
                 
                 endpoints_found = await self._execute_and_store_endpoints(query, source_name, table_path, client_manager)
@@ -327,8 +347,12 @@ class DiscoveryEngine:
     async def _discover_all_datasets_brilliantly(self):
         PrettyLogger.info("Discovering all datasets with brilliant analysis")
         
-        with self.client_manager.get_client() as client:
-            all_datasets = list(client.list_datasets(project=self.project_id))
+        try:
+            with self.client_manager.get_client() as client:
+                all_datasets = list(client.list_datasets(project=self.project_id))
+        except Exception as e:
+            PrettyLogger.error(f"Failed to list datasets: {e}")
+            return
             
         filtered_datasets = [d for d in all_datasets if d.dataset_id not in self.processed_datasets]
         
@@ -351,7 +375,7 @@ class DiscoveryEngine:
                 await task
                 self.progress.update_stats(datasets_processed=1)
                 
-                if i % 5 == 0:
+                if i % 3 == 0:
                     PrettyLogger.progress(i+1, len(filtered_datasets), "datasets")
                 
                 if self.progress.should_checkpoint():
@@ -360,10 +384,11 @@ class DiscoveryEngine:
             except Exception as e:
                 PrettyLogger.error(f"Dataset processing failed: {e}")
                 self.progress.update_stats(datasets_failed=1)
+                await asyncio.sleep(3)
     
     async def _process_dataset_brilliantly(self, dataset_id: str):
         try:
-            await asyncio.sleep(random.uniform(0.1, 0.5))
+            await asyncio.sleep(random.uniform(1.0, 3.0))
             
             with self.client_manager.get_client() as client:
                 dataset_ref = client.dataset(dataset_id, project=self.project_id)
@@ -376,7 +401,8 @@ class DiscoveryEngine:
                 
                 PrettyLogger.dataset(dataset_id, len(self.processed_datasets) + 1, self.progress.get_stats().datasets_total)
                 
-                for table_ref in all_tables:
+                table_tasks = []
+                for table_ref in all_tables[:10]:
                     if self.signal_handler.shutdown_requested:
                         break
                     
@@ -385,21 +411,21 @@ class DiscoveryEngine:
                     if table_full_path in self.processed_tables:
                         continue
                     
-                    try:
-                        endpoints_found = await self._analyze_table_brilliantly(table_full_path, dataset_id, table_ref.table_id)
-                        
-                        if endpoints_found > 0:
-                            PrettyLogger.table(f"{dataset_id}.{table_ref.table_id}", endpoints_found)
-                        
-                        with self._processing_lock:
-                            self.processed_tables.add(table_full_path)
-                        self.progress.update_stats(tables_processed=1)
-                        
-                        await asyncio.sleep(0.1)
-                        
-                    except Exception as e:
-                        PrettyLogger.error(f"Table analysis failed {table_full_path}: {str(e)[:100]}")
+                    table_tasks.append(self._analyze_table_brilliantly(table_full_path, dataset_id, table_ref.table_id))
+                
+                results = await asyncio.gather(*table_tasks, return_exceptions=True)
+                
+                for i, result in enumerate(results):
+                    if isinstance(result, Exception):
+                        PrettyLogger.error(f"Table analysis failed: {str(result)[:100]}")
                         self.progress.update_stats(tables_failed=1)
+                    else:
+                        endpoints_found = result
+                        if endpoints_found > 0:
+                            table_name = f"{dataset_id}.{all_tables[i].table_id}"
+                            PrettyLogger.table(table_name, endpoints_found)
+                        
+                        self.progress.update_stats(tables_processed=1)
                 
                 with self._processing_lock:
                     self.processed_datasets.add(dataset_id)
@@ -411,9 +437,19 @@ class DiscoveryEngine:
     async def _analyze_table_brilliantly(self, table_path: str, dataset_id: str, table_id: str) -> int:
         start_time = time.time()
         
+        with self._processing_lock:
+            if table_path in self.processed_tables:
+                return 0
+            self.processed_tables.add(table_path)
+        
         try:
+            await asyncio.sleep(random.uniform(0.5, 2.0))
+            
             with self.client_manager.get_client() as client:
-                table_ref = client.get_table(table_path)
+                try:
+                    table_ref = client.get_table(table_path)
+                except Exception as e:
+                    return 0
                 
                 is_partitioned = table_ref.time_partitioning is not None
                 partition_filter = ""
@@ -421,56 +457,63 @@ class DiscoveryEngine:
                 
                 if is_partitioned and table_ref.time_partitioning.field:
                     partition_column = table_ref.time_partitioning.field
-                    partition_filter = f"WHERE {partition_column} >= DATE_SUB(CURRENT_DATE(), INTERVAL 7 DAY)"
+                    partition_filter = f"WHERE {partition_column} >= DATE_SUB(CURRENT_DATE(), INTERVAL 3 DAY)"
                 
                 endpoints_found = 0
                 endpoint_columns = []
                 
-                for field in table_ref.schema:
-                    if field.field_type == 'STRING' and not self.signal_handler.shutdown_requested:
-                        try:
-                            sample_query = f"""
-                            SELECT `{field.name}`
-                            FROM `{table_path}`
-                            {partition_filter}
-                            {" AND " if partition_filter else "WHERE"} `{field.name}` IS NOT NULL
-                                AND LENGTH(TRIM(CAST(`{field.name}` AS STRING))) >= 3
-                            LIMIT 15
-                            """
-                            
-                            job = client.query(sample_query)
-                            samples = [str(row[0]) for row in job.result() if row[0] is not None]
-                            
-                            if samples:
-                                match_result = self.matcher.analyze_column(field.name, samples)
-                                if match_result and match_result[0] == 'endpoint' and match_result[1] > 0.4:
-                                    endpoint_columns.append(field.name)
-                                    
-                                    endpoint_query = f"""
-                                    SELECT DISTINCT
-                                        UPPER(TRIM(CAST(`{field.name}` AS STRING))) as hostname
-                                    FROM `{table_path}`
-                                    {partition_filter}
-                                    {" AND " if partition_filter else "WHERE"} `{field.name}` IS NOT NULL
-                                        AND LENGTH(TRIM(CAST(`{field.name}` AS STRING))) >= 3
-                                        AND `{field.name}` NOT LIKE '%@%'
-                                        AND `{field.name}` NOT LIKE 'http%'
-                                    """
-                                    
-                                    endpoint_job = client.query(endpoint_query)
-                                    endpoints = list(endpoint_job.result())
-                                    
-                                    for row in endpoints:
-                                        if row[0] and len(str(row[0]).strip()) >= 3:
-                                            await self._brilliant_endpoint_merge({
-                                                'hostname': str(row[0]).upper().strip(),
-                                                'found_in_tables': table_path,
-                                                'source_dataset': dataset_id
-                                            })
-                                            endpoints_found += 1
+                string_fields = [field for field in table_ref.schema if field.field_type == 'STRING'][:3]
+                
+                for field in string_fields:
+                    if self.signal_handler.shutdown_requested:
+                        break
                         
-                        except Exception:
-                            continue
+                    try:
+                        sample_query = f"""
+                        SELECT {field.name}
+                        FROM `{table_path}`
+                        {partition_filter}
+                        {" AND " if partition_filter else "WHERE"} {field.name} IS NOT NULL
+                            AND LENGTH(TRIM(CAST({field.name} AS STRING))) >= 3
+                        LIMIT 10
+                        """
+                        
+                        job = client.query(sample_query)
+                        samples = [str(row[0]) for row in job.result() if row[0] is not None]
+                        
+                        if samples:
+                            match_result = self.matcher.analyze_column(field.name, samples)
+                            if match_result and match_result[0] == 'endpoint' and match_result[1] > 0.4:
+                                endpoint_columns.append(field.name)
+                                
+                                endpoint_query = f"""
+                                SELECT DISTINCT
+                                    UPPER(TRIM(CAST({field.name} AS STRING))) as hostname
+                                FROM `{table_path}`
+                                {partition_filter}
+                                {" AND " if partition_filter else "WHERE"} {field.name} IS NOT NULL
+                                    AND LENGTH(TRIM(CAST({field.name} AS STRING))) >= 3
+                                    AND {field.name} NOT LIKE '%@%'
+                                    AND {field.name} NOT LIKE 'http%'
+                                LIMIT 1000
+                                """
+                                
+                                endpoint_job = client.query(endpoint_query)
+                                endpoints = list(endpoint_job.result())
+                                
+                                for row in endpoints:
+                                    if row[0] and len(str(row[0]).strip()) >= 3:
+                                        await self._brilliant_endpoint_merge({
+                                            'hostname': str(row[0]).upper().strip(),
+                                            'found_in_tables': table_path,
+                                            'source_dataset': dataset_id
+                                        })
+                                        endpoints_found += 1
+                        
+                        await asyncio.sleep(0.5)
+                    
+                    except Exception:
+                        continue
                 
                 processing_time = time.time() - start_time
                 brilliance_score = self._calculate_brilliance_score(endpoints_found, len(endpoint_columns), processing_time)
@@ -509,7 +552,7 @@ class DiscoveryEngine:
         
         existing = self.conn.execute(
             """SELECT found_in_tables, global_region, environment, system_classification, 
-               source_count FROM ao1_master_inventory WHERE hostname = ?""",
+               source_count FROM ao1_asset_inventory WHERE hostname = ?""",
             (hostname,)
         ).fetchone()
         
@@ -533,7 +576,7 @@ class DiscoveryEngine:
                 update_values.append(hostname)
                 
                 self.conn.execute(f"""
-                    UPDATE ao1_master_inventory 
+                    UPDATE ao1_asset_inventory 
                     SET {', '.join(update_fields)}, last_updated = CURRENT_TIMESTAMP
                     WHERE hostname = ?
                 """, update_values)
@@ -546,17 +589,18 @@ class DiscoveryEngine:
                     PrettyLogger.endpoint_merge(hostname, new_source_count)
         else:
             flags = {}
-            if 'cmdb' in endpoint_data.get('found_in_tables', ''):
+            table_str = endpoint_data.get('found_in_tables', '').lower()
+            if 'v_dim_endpoint' in table_str:
                 flags['found_in_cmdb'] = True
-            if 'crowdstrike' in endpoint_data.get('found_in_tables', '').lower():
+            if 'v_dim_endpointagent' in table_str or 'crowdstrike' in table_str:
                 flags['has_crowdstrike'] = True
-            if 'splunk' in endpoint_data.get('found_in_tables', '').lower():
+            if 'v_spl_endpoint_log' in table_str or 'splunk' in table_str:
                 flags['in_splunk'] = True
-            if 'chronicle' in endpoint_data.get('found_in_tables', '').lower():
+            if 'chronicle' in table_str or 'events' in table_str:
                 flags['in_chronicle'] = True
             
             self.conn.execute("""
-            INSERT INTO ao1_master_inventory (
+            INSERT INTO ao1_asset_inventory (
                 hostname, found_in_tables, global_region, environment, system_classification,
                 found_in_cmdb, has_crowdstrike, in_splunk, in_chronicle, source_count,
                 discovery_timestamp, last_updated
@@ -612,7 +656,7 @@ class DiscoveryEngine:
     async def _store_table_analytics(self, table_info: Dict[str, Any]):
         try:
             self.conn.execute("""
-            INSERT OR REPLACE INTO brilliance_analytics (
+            INSERT OR REPLACE INTO ao1_table_analytics (
                 table_path, dataset_name, table_name, row_count, size_bytes,
                 endpoints_discovered, endpoint_columns, is_partitioned, partition_column,
                 brilliance_score, processing_time_seconds, discovered_at
@@ -648,7 +692,7 @@ class DiscoveryEngine:
                 SUM(CASE WHEN has_crowdstrike THEN 1 ELSE 0 END) as crowdstrike_covered,
                 SUM(CASE WHEN found_in_cmdb THEN 1 ELSE 0 END) as cmdb_covered,
                 AVG(source_count) as avg_source_count
-            FROM ao1_master_inventory
+            FROM ao1_asset_inventory
             """).fetchone()
             
             if result and result[0] > 0:
@@ -688,7 +732,7 @@ class DiscoveryEngine:
     
     def _count_endpoints(self) -> int:
         try:
-            result = self.conn.execute("SELECT COUNT(*) FROM ao1_master_inventory").fetchone()
+            result = self.conn.execute("SELECT COUNT(*) FROM ao1_asset_inventory").fetchone()
             return result[0] if result else 0
         except Exception:
             return 0
@@ -712,7 +756,7 @@ class DiscoveryEngine:
                 AVG(brilliance_score) as avg_brilliance_score,
                 MAX(brilliance_score) as max_brilliance_score,
                 SUM(processing_time_seconds) as total_processing_time
-            FROM brilliance_analytics
+            FROM ao1_table_analytics
             """).fetchone()
             
             if result:
@@ -748,7 +792,7 @@ class DiscoveryEngine:
                 (SUM(CASE WHEN in_splunk OR in_chronicle THEN 1 ELSE 0 END) * 100.0 / COUNT(*)) as global_visibility_pct,
                 AVG(source_count) as avg_sources_per_asset,
                 MAX(source_count) as max_sources_per_asset
-            FROM ao1_master_inventory;
+            FROM ao1_asset_inventory;
             """,
             
             'ao1_infrastructure_breakdown': """
@@ -757,7 +801,7 @@ class DiscoveryEngine:
                 COUNT(*) as asset_count,
                 (SUM(CASE WHEN in_splunk OR in_chronicle THEN 1 ELSE 0 END) * 100.0 / COUNT(*)) as visibility_pct,
                 (SUM(CASE WHEN has_crowdstrike THEN 1 ELSE 0 END) * 100.0 / COUNT(*)) as security_coverage_pct
-            FROM ao1_master_inventory
+            FROM ao1_asset_inventory
             GROUP BY system_classification
             ORDER BY visibility_pct DESC;
             """,
@@ -768,7 +812,7 @@ class DiscoveryEngine:
                 COUNT(*) as asset_count,
                 (SUM(CASE WHEN in_splunk OR in_chronicle THEN 1 ELSE 0 END) * 100.0 / COUNT(*)) as visibility_pct,
                 AVG(source_count) as avg_sources_per_asset
-            FROM ao1_master_inventory
+            FROM ao1_asset_inventory
             WHERE global_region IS NOT NULL AND global_region != ''
             GROUP BY global_region
             ORDER BY visibility_pct DESC;
@@ -778,8 +822,8 @@ class DiscoveryEngine:
             SELECT 
                 source_count,
                 COUNT(*) as asset_count,
-                (COUNT(*) * 100.0 / (SELECT COUNT(*) FROM ao1_master_inventory)) as percentage
-            FROM ao1_master_inventory
+                (COUNT(*) * 100.0 / (SELECT COUNT(*) FROM ao1_asset_inventory)) as percentage
+            FROM ao1_asset_inventory
             GROUP BY source_count
             ORDER BY source_count DESC;
             """,
@@ -798,7 +842,7 @@ class DiscoveryEngine:
                     WHEN source_count = 1 THEN 'Single Source Risk'
                     ELSE 'Partial Coverage'
                 END as gap_severity
-            FROM ao1_master_inventory
+            FROM ao1_asset_inventory
             WHERE NOT (in_splunk AND in_chronicle AND has_crowdstrike AND found_in_cmdb)
             ORDER BY 
                 CASE gap_severity 
@@ -819,7 +863,7 @@ class DiscoveryEngine:
                 brilliance_score,
                 processing_time_seconds,
                 endpoint_columns
-            FROM brilliance_analytics
+            FROM ao1_table_analytics
             WHERE endpoints_discovered > 0
             ORDER BY brilliance_score DESC, endpoints_discovered DESC
             LIMIT 50;

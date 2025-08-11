@@ -5,7 +5,8 @@ ENV PYTHONUNBUFFERED=1 \
     PIP_NO_CACHE_DIR=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1 \
     PYTORCH_ENABLE_MPS_FALLBACK=1 \
-    PYTORCH_MPS_HIGH_WATERMARK_RATIO=0.0
+    PYTORCH_MPS_HIGH_WATERMARK_RATIO=0.0 \
+    TORCH_USE_CUDA_DSA=1
 
 RUN apt-get update && apt-get install -y \
     build-essential \
@@ -16,6 +17,7 @@ RUN apt-get update && apt-get install -y \
     liblapack-dev \
     libopenblas-dev \
     gfortran \
+    pkg-config \
     && rm -rf /var/lib/apt/lists/*
 
 RUN curl https://dl.google.com/dl/cloudsdk/channels/rapid/downloads/google-cloud-sdk-450.0.0-linux-arm.tar.gz > /tmp/google-cloud-sdk.tar.gz && \
@@ -50,6 +52,9 @@ set -e
 
 export PYTORCH_ENABLE_MPS_FALLBACK=1
 export PYTORCH_MPS_HIGH_WATERMARK_RATIO=0.0
+export TORCH_USE_CUDA_DSA=1
+export OMP_NUM_THREADS=4
+export MKL_NUM_THREADS=4
 
 if [[ "$1" == "--dry-run" || "$DRY_RUN" == "true" ]]; then
     echo "Running in dry-run mode with M1 optimization"
@@ -95,8 +100,8 @@ ENTRYPOINT ["/app/entrypoint.sh"]
 CMD ["--help"]
 
 LABEL maintainer="Development Team" \
-      version="1.0.0" \
-      description="AO1 Discovery System with M1 GPU Support" \
+      version="2.0.0" \
+      description="AO1 Discovery System with M1 Apple Silicon Support" \
       architecture="arm64"
 
 FROM production as development

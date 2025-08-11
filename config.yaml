@@ -1,4 +1,4 @@
-max_workers: 8
+max_workers: 4
 cache_dir: ".cache"
 cache_ttl_hours: 24
 enable_memory_cache: true
@@ -40,6 +40,9 @@ bigquery_settings:
   max_results_per_page: 10000
   use_query_cache: false
   dry_run_first: false
+  connection_pool_size: 2
+  max_retries: 3
+  retry_delay_seconds: 5
 
 logging:
   level: "INFO"
@@ -59,9 +62,16 @@ recovery:
   max_checkpoint_age_hours: 24
 
 resource_limits:
-  max_memory_usage_gb: 8
-  max_disk_cache_gb: 10
-  connection_pool_size: 5
+  max_memory_usage_gb: 6
+  max_disk_cache_gb: 8
+  connection_pool_size: 2
+
+m1_optimizations:
+  enable_metal_performance_shaders: true
+  use_apple_silicon_acceleration: true
+  optimize_memory_usage: true
+  torch_backend: "mps"
+  max_parallel_operations: 4
 
 advanced:
   enable_ml_classification: false

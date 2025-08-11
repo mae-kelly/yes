@@ -19,17 +19,18 @@ except ImportError:
 logger = logging.getLogger(__name__)
 
 class BigQueryClientPool:
-    def __init__(self, project_id: str, pool_size: int = 5):
+    def __init__(self, project_id: str, pool_size: int = 3):
         if not BIGQUERY_AVAILABLE:
             raise ImportError("google-cloud-bigquery is required")
             
         self.project_id = project_id
         self.pool_size = pool_size
-        self._pool = queue.Queue(maxsize=pool_size)
+        self._clients = []
+        self._available = queue.Queue(maxsize=pool_size)
         self._pool_lock = threading.Lock()
         self._creation_lock = threading.Lock()
         self._last_creation = {}
-        self._min_creation_interval = 2.0
+        self._min_creation_interval = 3.0
         
         self._initialize_pool()
     
@@ -57,9 +58,10 @@ class BigQueryClientPool:
                             project=self.project_id, 
                             credentials=credentials,
                             default_query_job_config=bigquery.QueryJobConfig(
-                                use_query_cache=True,
-                                job_timeout_ms=180000,
-                                maximum_bytes_billed=None
+                                use_query_cache=False,
+                                job_timeout_ms=300000,
+                                maximum_bytes_billed=None,
+                                use_legacy_sql=False
                             )
                         )
                         list(client.list_datasets(max_results=1))
@@ -73,9 +75,10 @@ class BigQueryClientPool:
                 client = bigquery.Client(
                     project=self.project_id,
                     default_query_job_config=bigquery.QueryJobConfig(
-                        use_query_cache=True,
-                        job_timeout_ms=180000,
-                        maximum_bytes_billed=None
+                        use_query_cache=False,
+                        job_timeout_ms=300000,
+                        maximum_bytes_billed=None,
+                        use_legacy_sql=False
                     )
                 )
                 list(client.list_datasets(max_results=1))
@@ -90,38 +93,52 @@ class BigQueryClientPool:
         for i in range(self.pool_size):
             try:
                 client = self._create_single_client()
-                self._pool.put(client, block=False)
+                self._clients.append(client)
+                self._available.put(client, block=False)
                 logger.debug(f"Created client {i+1}/{self.pool_size}")
-                time.sleep(0.5)
+                time.sleep(1.0)
             except Exception as e:
                 logger.error(f"Failed to create client {i+1}: {e}")
                 if i == 0:
                     raise
     
     @contextmanager
-    def get_client(self, timeout: float = 30.0):
+    def get_client(self, timeout: float = 60.0):
         client = None
+        start_time = time.time()
+        
         try:
-            client = self._pool.get(timeout=timeout)
+            while time.time() - start_time < timeout:
+                try:
+                    client = self._available.get(timeout=5.0)
+                    break
+                except queue.Empty:
+                    time.sleep(random.uniform(0.5, 2.0))
+                    continue
+            
+            if client is None:
+                logger.warning("All clients busy, creating temporary client")
+                temp_client = self._create_single_client()
+                yield temp_client
+                return
+            
             yield client
-        except queue.Empty:
-            logger.warning("Connection pool timeout, creating temporary client")
-            temp_client = self._create_single_client()
-            yield temp_client
+            
         except Exception as e:
-            if "Connection pool is full" in str(e) or "ConnectionError" in str(e):
+            logger.error(f"Client error: {e}")
+            if "Connection pool is full" in str(e) or "ConnectionError" in str(e) or "HttpError" in str(e):
                 logger.warning("Connection error detected, creating fresh client")
-                time.sleep(random.uniform(1, 3))
+                time.sleep(random.uniform(2, 5))
                 fresh_client = self._create_single_client()
                 yield fresh_client
             else:
                 raise
         finally:
-            if client is not None:
+            if client is not None and client in self._clients:
                 try:
-                    self._pool.put(client, block=False)
+                    self._available.put(client, block=False)
                 except queue.Full:
-                    logger.debug("Pool full, discarding client")
+                    pass
     
     def test_connection(self) -> bool:
         try:
@@ -136,7 +153,7 @@ class BigQueryClientPool:
 class BigQueryClientManager:
     def __init__(self, project_id: str):
         self.project_id = project_id
-        self.pool = BigQueryClientPool(project_id, pool_size=8)
+        self.pool = BigQueryClientPool(project_id, pool_size=2)
         logger.info(f"Connected to BigQuery project: {project_id}")
     
     @contextmanager
