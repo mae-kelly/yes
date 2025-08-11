@@ -1,249 +1,403 @@
 #!/usr/bin/env python3
 
 import re
-from typing import List, Optional, Tuple, Dict
+import ipaddress
+from typing import List, Optional, Tuple, Dict, Set
+from collections import Counter
+import statistics
 
-class ContentBasedMatcher:
+class IntelligentContentMatcher:
     def __init__(self):
-        self.patterns = {
-            'endpoint': ['host', 'endpoint', 'computer', 'device', 'server', 'machine', 'asset', 'node', 'system', 'workstation'],
-            'fqdn': ['fqdn', 'dns', 'domain', 'qualified', 'full', 'canonical'],
-            'ip': ['ip', 'address', 'addr', 'ipaddr'],
-            'domain': ['domain', 'dns', 'namespace', 'zone'],
-            'region': ['region', 'geo', 'location', 'site', 'area', 'zone', 'datacenter', 'center', 'country'],
-            'environment': ['env', 'environment', 'stage', 'tier', 'level'],
-            'os': ['os', 'operating', 'platform', 'system'],
-            'app': ['app', 'application', 'service', 'software'],
-            'type': ['type', 'category', 'class', 'kind', 'classification'],
-            'scope': ['scope', 'pci', 'compliance'],
-            'security': ['security', 'agent', 'edr', 'av', 'antivirus'],
-            'network': ['network', 'net', 'subnet', 'vlan', 'vpc'],
-            'infrastructure': ['infrastructure', 'infra', 'platform', 'cloud', 'aws', 'azure', 'gcp'],
-            'business': ['business', 'unit', 'org', 'organization', 'department', 'team'],
-            'owner': ['owner', 'responsible', 'contact', 'admin', 'manager'],
-            'status': ['status', 'state', 'active', 'enabled', 'online'],
-            'version': ['version', 'ver', 'release', 'build'],
-            'cost': ['cost', 'billing', 'charge', 'price'],
-            'criticality': ['critical', 'priority', 'importance', 'tier'],
-            'compliance': ['compliance', 'regulation', 'policy', 'standard'],
-            'performance': ['cpu', 'memory', 'disk', 'performance', 'utilization'],
-            'configuration': ['config', 'setting', 'parameter', 'property']
+        self.semantic_patterns = {
+            'hostname': {
+                'keywords': ['host', 'endpoint', 'computer', 'device', 'server', 'machine', 'asset', 'node', 'system', 'workstation', 'name'],
+                'validators': ['_validate_hostname'],
+                'priority': 100
+            },
+            'fqdn': {
+                'keywords': ['fqdn', 'dns', 'domain', 'qualified', 'full', 'canonical'],
+                'validators': ['_validate_fqdn'],
+                'priority': 95
+            },
+            'ip_address': {
+                'keywords': ['ip', 'address', 'addr', 'ipaddr', 'inet'],
+                'validators': ['_validate_ip'],
+                'priority': 90
+            },
+            'mac_address': {
+                'keywords': ['mac', 'ethernet', 'physical', 'hardware'],
+                'validators': ['_validate_mac'],
+                'priority': 85
+            },
+            'region': {
+                'keywords': ['region', 'geo', 'location', 'site', 'area', 'zone', 'datacenter', 'center', 'country', 'locale'],
+                'validators': ['_validate_region'],
+                'priority': 80
+            },
+            'environment': {
+                'keywords': ['env', 'environment', 'stage', 'tier', 'level'],
+                'validators': ['_validate_environment'],
+                'priority': 75
+            },
+            'operating_system': {
+                'keywords': ['os', 'operating', 'platform', 'system'],
+                'validators': ['_validate_os'],
+                'priority': 70
+            },
+            'application': {
+                'keywords': ['app', 'application', 'service', 'software', 'program'],
+                'validators': ['_validate_application'],
+                'priority': 65
+            },
+            'business_unit': {
+                'keywords': ['business', 'unit', 'org', 'organization', 'department', 'team', 'division'],
+                'validators': ['_validate_business_unit'],
+                'priority': 60
+            },
+            'infrastructure_type': {
+                'keywords': ['type', 'category', 'class', 'kind', 'classification', 'infra', 'infrastructure'],
+                'validators': ['_validate_infrastructure'],
+                'priority': 55
+            },
+            'status': {
+                'keywords': ['status', 'state', 'active', 'enabled', 'online', 'condition'],
+                'validators': ['_validate_status'],
+                'priority': 50
+            }
         }
-        self._validation_cache = {}
+        
+        self.validation_cache = {}
+        self.column_analysis_cache = {}
     
-    def analyze_column(self, column_name: str, sample_values: List[str]) -> Optional[Tuple[str, float]]:
-        cache_key = f"{column_name}:{hash(tuple(sample_values[:5]))}"
-        if cache_key in self._validation_cache:
-            return self._validation_cache[cache_key]
+    def analyze_column_intelligently(self, column_name: str, sample_values: List[str]) -> Optional[Tuple[str, float, Dict[str, any]]]:
+        cache_key = f"{column_name}:{hash(tuple(sample_values[:10]))}"
+        if cache_key in self.column_analysis_cache:
+            return self.column_analysis_cache[cache_key]
         
-        skip_patterns = ['id', 'key', 'count', 'total', 'sum', 'avg', 'created', 'updated', 'modified', 'deleted', 'flag', 'bool']
-        column_lower = column_name.lower()
+        if self._should_skip_column(column_name):
+            self.column_analysis_cache[cache_key] = None
+            return None
         
-        if any(skip in column_lower for skip in skip_patterns):
-            result = None
-        else:
-            best_match = None
-            best_score = 0.0
+        cleaned_values = self._clean_sample_values(sample_values)
+        if len(cleaned_values) < 2:
+            self.column_analysis_cache[cache_key] = None
+            return None
+        
+        best_match = None
+        best_score = 0.0
+        best_metadata = {}
+        
+        for field_type, config in self.semantic_patterns.items():
+            semantic_score = self._calculate_semantic_score(column_name, config['keywords'])
+            if semantic_score < 0.1:
+                continue
             
-            for field_type, keywords in self.patterns.items():
-                score = self._calculate_match_score(column_lower, keywords)
-                if score > best_score and score >= 0.2:
-                    if self._validate_sample_data(field_type, sample_values):
-                        best_match = field_type
-                        best_score = score
+            validation_score = self._validate_content_intelligently(field_type, cleaned_values, config['validators'])
+            if validation_score < 0.3:
+                continue
             
-            result = (best_match, best_score) if best_match else None
+            combined_score = (semantic_score * 0.4) + (validation_score * 0.6)
+            
+            if combined_score > best_score:
+                best_match = field_type
+                best_score = combined_score
+                best_metadata = {
+                    'semantic_score': semantic_score,
+                    'validation_score': validation_score,
+                    'sample_analysis': self._analyze_sample_patterns(cleaned_values),
+                    'data_quality': self._assess_data_quality(cleaned_values)
+                }
         
-        self._validation_cache[cache_key] = result
+        result = (best_match, best_score, best_metadata) if best_match else None
+        self.column_analysis_cache[cache_key] = result
         return result
     
-    def analyze_all_columns(self, columns: List[str]) -> Dict[str, List[str]]:
-        categorized_columns = {}
+    def find_optimal_hostname_column(self, columns_with_samples: Dict[str, List[str]]) -> Optional[Tuple[str, float]]:
+        candidates = []
         
-        for column in columns:
-            column_lower = column.lower()
+        for column_name, samples in columns_with_samples.items():
+            analysis = self.analyze_column_intelligently(column_name, samples)
             
-            for field_type, keywords in self.patterns.items():
-                for keyword in keywords:
-                    if keyword in column_lower:
-                        if field_type not in categorized_columns:
-                            categorized_columns[field_type] = []
-                        if column not in categorized_columns[field_type]:
-                            categorized_columns[field_type].append(column)
-                        break
+            if analysis and analysis[0] in ['hostname', 'fqdn']:
+                field_type, confidence, metadata = analysis
+                
+                hostname_specific_score = self._calculate_hostname_specificity(column_name, samples)
+                
+                final_score = confidence * hostname_specific_score
+                candidates.append((column_name, final_score, metadata))
         
-        return categorized_columns
+        if not candidates:
+            return None
+        
+        candidates.sort(key=lambda x: x[1], reverse=True)
+        return candidates[0][0], candidates[0][1]
     
-    def find_best_hostname_column(self, columns: List[str]) -> Optional[str]:
-        hostname_patterns = ['hostname', 'host_name', 'endpoint', 'computer', 'device', 'server', 'machine']
-        
-        exact_matches = []
-        partial_matches = []
-        
-        for column in columns:
-            column_lower = column.lower()
-            
-            for pattern in hostname_patterns:
-                if pattern == column_lower:
-                    exact_matches.append((column, 1.0))
-                elif pattern in column_lower:
-                    score = len(pattern) / len(column_lower)
-                    partial_matches.append((column, score))
-        
-        if exact_matches:
-            return max(exact_matches, key=lambda x: x[1])[0]
-        elif partial_matches:
-            return max(partial_matches, key=lambda x: x[1])[0]
-        
-        return None
-    
-    def extract_network_info(self, text: str) -> Dict[str, List[str]]:
-        if not text:
+    def extract_network_intelligence(self, text: str) -> Dict[str, List[str]]:
+        if not text or len(str(text).strip()) < 3:
             return {}
         
-        text_str = str(text)
+        text_str = str(text).strip()
         network_info = {}
         
-        ip_pattern = r'\b(?:[0-9]{1,3}\.){3}[0-9]{1,3}\b'
-        ips = re.findall(ip_pattern, text_str)
+        ips = self._extract_ip_addresses(text_str)
         if ips:
-            network_info['ip_addresses'] = list(set(ips))
+            network_info['ip_addresses'] = ips
         
-        mac_pattern = r'\b(?:[0-9A-Fa-f]{2}[:-]){5}[0-9A-Fa-f]{2}\b'
-        macs = re.findall(mac_pattern, text_str)
+        macs = self._extract_mac_addresses(text_str)
         if macs:
-            network_info['mac_addresses'] = list(set(macs))
+            network_info['mac_addresses'] = macs
         
-        domain_pattern = r'\b[a-zA-Z0-9][a-zA-Z0-9\-\.]*\.[a-zA-Z]{2,}\b'
-        domains = re.findall(domain_pattern, text_str)
+        domains = self._extract_domains(text_str)
         if domains:
-            network_info['domains'] = list(set([d for d in domains if '.' in d and len(d) > 4]))
+            network_info['domains'] = domains
+        
+        hostnames = self._extract_hostnames(text_str)
+        if hostnames:
+            network_info['hostnames'] = hostnames
         
         return network_info
     
-    def _calculate_match_score(self, column_name: str, keywords: List[str]) -> float:
-        clean_column = re.sub(r'[_\-\s]', '', column_name)
+    def intelligently_categorize_all_columns(self, all_columns: List[str], sample_data: Dict[str, List[str]] = None) -> Dict[str, List[Tuple[str, float]]]:
+        categorized = {}
+        
+        for column in all_columns:
+            samples = sample_data.get(column, []) if sample_data else []
+            analysis = self.analyze_column_intelligently(column, samples)
+            
+            if analysis:
+                field_type, confidence, metadata = analysis
+                
+                if field_type not in categorized:
+                    categorized[field_type] = []
+                
+                categorized[field_type].append((column, confidence))
+        
+        for field_type in categorized:
+            categorized[field_type].sort(key=lambda x: x[1], reverse=True)
+        
+        return categorized
+    
+    def _should_skip_column(self, column_name: str) -> bool:
+        skip_patterns = [
+            r'\bid\b', r'\bkey\b', r'\bcount\b', r'\btotal\b', r'\bsum\b', r'\bavg\b',
+            r'\bcreated\b', r'\bupdated\b', r'\bmodified\b', r'\bdeleted\b',
+            r'\bflag\b', r'\bbool\b', r'\bindex\b', r'\border\b', r'\brank\b',
+            r'\bversion\b', r'\btimestamp\b', r'\bdate\b', r'\btime\b'
+        ]
+        
+        column_lower = column_name.lower()
+        return any(re.search(pattern, column_lower) for pattern in skip_patterns)
+    
+    def _clean_sample_values(self, sample_values: List[str]) -> List[str]:
+        cleaned = []
+        for value in sample_values:
+            if value is None:
+                continue
+            
+            str_value = str(value).strip()
+            if not str_value or str_value.upper() in ['NULL', 'N/A', 'UNKNOWN', 'NONE', 'EMPTY', '', 'NAN']:
+                continue
+            
+            if len(str_value) > 0 and len(str_value) < 1000:
+                cleaned.append(str_value)
+        
+        return cleaned[:50]
+    
+    def _calculate_semantic_score(self, column_name: str, keywords: List[str]) -> float:
+        column_clean = re.sub(r'[_\-\s]', '', column_name.lower())
         
         best_score = 0.0
+        
         for keyword in keywords:
-            clean_keyword = re.sub(r'[_\-\s]', '', keyword)
+            keyword_clean = re.sub(r'[_\-\s]', '', keyword.lower())
             
-            if clean_keyword == clean_column:
+            if keyword_clean == column_clean:
                 return 1.0
             
-            if clean_keyword in clean_column:
-                score = len(clean_keyword) / len(clean_column)
+            if keyword_clean in column_clean:
+                score = len(keyword_clean) / len(column_clean)
                 best_score = max(best_score, score)
             
-            if clean_column in clean_keyword and len(clean_column) >= 3:
-                score = len(clean_column) / len(clean_keyword)
-                best_score = max(best_score, score)
+            if column_clean in keyword_clean and len(column_clean) >= 3:
+                score = len(column_clean) / len(keyword_clean)
+                best_score = max(best_score, score * 0.8)
             
-            if clean_column.startswith(clean_keyword) or clean_column.endswith(clean_keyword):
-                score = len(clean_keyword) / len(clean_column)
-                best_score = max(best_score, score)
+            if column_clean.startswith(keyword_clean) or column_clean.endswith(keyword_clean):
+                score = len(keyword_clean) / len(column_clean)
+                best_score = max(best_score, score * 0.9)
         
-        return best_score
+        return min(best_score, 1.0)
     
-    def _validate_sample_data(self, field_type: str, sample_values: List[str]) -> bool:
-        if not sample_values or len(sample_values) < 2:
-            return False
+    def _validate_content_intelligently(self, field_type: str, values: List[str], validators: List[str]) -> float:
+        if not values:
+            return 0.0
         
         valid_count = 0
-        total_samples = min(len(sample_values), 10)
+        total_count = min(len(values), 20)
         
-        for value in sample_values[:total_samples]:
-            if not value:
-                continue
+        for value in values[:total_count]:
+            is_valid = False
             
-            value_str = str(value).strip()
-            if len(value_str) < 1:
-                continue
+            for validator_name in validators:
+                validator_func = getattr(self, validator_name, None)
+                if validator_func and validator_func(value):
+                    is_valid = True
+                    break
             
-            if field_type == 'endpoint':
-                if self._looks_like_hostname(value_str):
-                    valid_count += 1
-            elif field_type == 'fqdn':
-                if self._looks_like_fqdn(value_str):
-                    valid_count += 1
-            elif field_type == 'ip':
-                if self._looks_like_ip(value_str):
-                    valid_count += 1
-            elif field_type == 'domain':
-                if self._looks_like_domain(value_str):
-                    valid_count += 1
-            elif field_type == 'region':
-                if self._looks_like_region(value_str):
-                    valid_count += 1
-            elif field_type == 'environment':
-                if self._looks_like_environment(value_str):
-                    valid_count += 1
-            elif field_type in ['network', 'infrastructure', 'business', 'security']:
-                if self._looks_like_categorical_text(value_str):
-                    valid_count += 1
-            else:
-                if self._looks_like_general_text(value_str):
-                    valid_count += 1
+            if is_valid:
+                valid_count += 1
         
-        threshold = 0.3 if total_samples >= 5 else 0.4
-        return (valid_count / total_samples) >= threshold
+        return valid_count / total_count if total_count > 0 else 0.0
     
-    def _looks_like_hostname(self, value: str) -> bool:
+    def _calculate_hostname_specificity(self, column_name: str, samples: List[str]) -> float:
+        specificity_score = 1.0
+        
+        column_lower = column_name.lower()
+        
+        if 'hostname' in column_lower:
+            specificity_score += 0.5
+        elif 'host' in column_lower:
+            specificity_score += 0.3
+        elif 'endpoint' in column_lower:
+            specificity_score += 0.3
+        elif 'computer' in column_lower:
+            specificity_score += 0.2
+        
+        hostname_like_count = sum(1 for sample in samples[:10] if self._validate_hostname(sample))
+        if len(samples) > 0:
+            hostname_ratio = hostname_like_count / min(len(samples), 10)
+            specificity_score *= hostname_ratio
+        
+        return min(specificity_score, 2.0)
+    
+    def _analyze_sample_patterns(self, values: List[str]) -> Dict[str, any]:
+        if not values:
+            return {}
+        
+        lengths = [len(v) for v in values]
+        
+        patterns = {
+            'avg_length': statistics.mean(lengths),
+            'min_length': min(lengths),
+            'max_length': max(lengths),
+            'unique_count': len(set(values)),
+            'uniqueness_ratio': len(set(values)) / len(values),
+            'common_prefixes': self._find_common_prefixes(values),
+            'common_suffixes': self._find_common_suffixes(values),
+            'contains_numbers': sum(1 for v in values if any(c.isdigit() for c in v)),
+            'contains_special_chars': sum(1 for v in values if any(not c.isalnum() for c in v))
+        }
+        
+        return patterns
+    
+    def _assess_data_quality(self, values: List[str]) -> Dict[str, any]:
+        if not values:
+            return {'score': 0.0}
+        
+        quality_metrics = {
+            'completeness': len(values) / max(len(values), 1),
+            'consistency': len(set(len(v) for v in values)) <= 3,
+            'uniqueness': len(set(values)) / len(values),
+            'validity': sum(1 for v in values if len(v.strip()) > 0) / len(values)
+        }
+        
+        overall_score = sum(quality_metrics.values()) / len(quality_metrics)
+        
+        return {
+            'score': overall_score,
+            'metrics': quality_metrics
+        }
+    
+    def _find_common_prefixes(self, values: List[str], min_length: int = 2) -> List[str]:
+        if len(values) < 2:
+            return []
+        
+        prefix_counts = Counter()
+        
+        for value in values:
+            for i in range(min_length, min(len(value) + 1, 6)):
+                prefix = value[:i]
+                prefix_counts[prefix] += 1
+        
+        common_prefixes = [prefix for prefix, count in prefix_counts.items() 
+                          if count >= max(2, len(values) * 0.3)]
+        
+        return sorted(common_prefixes, key=len, reverse=True)[:5]
+    
+    def _find_common_suffixes(self, values: List[str], min_length: int = 2) -> List[str]:
+        if len(values) < 2:
+            return []
+        
+        suffix_counts = Counter()
+        
+        for value in values:
+            for i in range(min_length, min(len(value) + 1, 6)):
+                suffix = value[-i:]
+                suffix_counts[suffix] += 1
+        
+        common_suffixes = [suffix for suffix, count in suffix_counts.items() 
+                          if count >= max(2, len(values) * 0.3)]
+        
+        return sorted(common_suffixes, key=len, reverse=True)[:5]
+    
+    def _validate_hostname(self, value: str) -> bool:
         if not isinstance(value, str) or len(value) < 2 or len(value) > 253:
             return False
         
-        if any(char in value for char in ['@', '/', '\\', ' ', '\t']):
+        if any(char in value for char in ['@', '/', '\\', ' ', '\t', '\n']):
+            return False
+        
+        if value.count('.') > 5:
             return False
         
         hostname_patterns = [
             r'^[a-zA-Z0-9][a-zA-Z0-9\-]*[a-zA-Z0-9]$',
-            r'^[a-zA-Z0-9][a-zA-Z0-9\-\.]*[a-zA-Z0-9]$'
+            r'^[a-zA-Z0-9][a-zA-Z0-9\-\.]*[a-zA-Z0-9]$',
+            r'^[a-zA-Z0-9]+$'
         ]
         
-        if any(re.match(pattern, value) for pattern in hostname_patterns):
+        if any(re.match(pattern, value, re.IGNORECASE) for pattern in hostname_patterns):
             return True
         
-        common_patterns = ['srv', 'web', 'app', 'db', 'sql', 'prod', 'dev', 'test', 'win', 'linux', 'server']
+        hostname_indicators = ['srv', 'web', 'app', 'db', 'sql', 'win', 'linux', 'server', 'host', 'vm', 'node']
         value_lower = value.lower()
-        if any(pattern in value_lower for pattern in common_patterns):
+        if any(indicator in value_lower for indicator in hostname_indicators):
             return True
         
         return False
     
-    def _looks_like_fqdn(self, value: str) -> bool:
-        if not isinstance(value, str) or len(value) < 4:
+    def _validate_fqdn(self, value: str) -> bool:
+        if not isinstance(value, str) or len(value) < 4 or len(value) > 253:
             return False
         
         if value.count('.') < 1:
             return False
         
         fqdn_pattern = r'^[a-zA-Z0-9][a-zA-Z0-9\-\.]*\.[a-zA-Z]{2,}$'
-        return bool(re.match(fqdn_pattern, value))
+        return bool(re.match(fqdn_pattern, value, re.IGNORECASE))
     
-    def _looks_like_ip(self, value: str) -> bool:
+    def _validate_ip(self, value: str) -> bool:
         if not isinstance(value, str):
             return False
         
-        ip_pattern = r'^(\d{1,3}\.){3}\d{1,3}$'
-        if re.match(ip_pattern, value):
-            try:
-                octets = value.split('.')
-                return all(0 <= int(octet) <= 255 for octet in octets)
-            except ValueError:
-                return False
-        return False
+        try:
+            ipaddress.ip_address(value.strip())
+            return True
+        except (ValueError, ipaddress.AddressValueError):
+            return False
     
-    def _looks_like_domain(self, value: str) -> bool:
-        if not isinstance(value, str) or len(value) < 4:
+    def _validate_mac(self, value: str) -> bool:
+        if not isinstance(value, str):
             return False
         
-        if '.' not in value:
-            return False
+        mac_patterns = [
+            r'^([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})$',
+            r'^([0-9A-Fa-f]{4}\.){2}([0-9A-Fa-f]{4})$'
+        ]
         
-        domain_pattern = r'^[a-zA-Z0-9][a-zA-Z0-9\-\.]*\.[a-zA-Z]{2,}$'
-        return bool(re.match(domain_pattern, value))
+        return any(re.match(pattern, value.strip()) for pattern in mac_patterns)
     
-    def _looks_like_region(self, value: str) -> bool:
+    def _validate_region(self, value: str) -> bool:
         if not isinstance(value, str) or len(value) < 2 or len(value) > 100:
             return False
         
@@ -254,28 +408,114 @@ class ContentBasedMatcher:
             r'^[A-Z]{2,3}\d*$'
         ]
         
-        return any(re.match(pattern, value, re.IGNORECASE) for pattern in region_patterns)
+        return any(re.match(pattern, value.strip(), re.IGNORECASE) for pattern in region_patterns)
     
-    def _looks_like_environment(self, value: str) -> bool:
+    def _validate_environment(self, value: str) -> bool:
         if not isinstance(value, str):
             return False
         
-        env_values = ['prod', 'production', 'dev', 'development', 'test', 'testing', 
-                     'stage', 'staging', 'qa', 'uat', 'sit', 'preprod', 'demo', 'sandbox']
+        env_values = [
+            'prod', 'production', 'dev', 'development', 'test', 'testing',
+            'stage', 'staging', 'qa', 'uat', 'sit', 'preprod', 'demo', 'sandbox',
+            'int', 'integration', 'perf', 'performance', 'load', 'stress'
+        ]
         
-        return value.lower() in env_values
+        return value.lower().strip() in env_values
     
-    def _looks_like_categorical_text(self, value: str) -> bool:
+    def _validate_os(self, value: str) -> bool:
+        if not isinstance(value, str) or len(value) < 3:
+            return False
+        
+        os_indicators = [
+            'windows', 'linux', 'unix', 'macos', 'centos', 'ubuntu', 'redhat',
+            'debian', 'suse', 'aix', 'solaris', 'freebsd', 'win', 'rhel'
+        ]
+        
+        value_lower = value.lower()
+        return any(indicator in value_lower for indicator in os_indicators)
+    
+    def _validate_application(self, value: str) -> bool:
         if not isinstance(value, str) or len(value) < 2 or len(value) > 200:
             return False
         
         if value.isdigit():
             return False
         
-        return value.replace(' ', '').replace('-', '').replace('_', '').isalnum()
+        return len(value.strip()) > 1 and not value.strip().isspace()
     
-    def _looks_like_general_text(self, value: str) -> bool:
-        if not isinstance(value, str) or len(value) < 1 or len(value) > 500:
+    def _validate_business_unit(self, value: str) -> bool:
+        if not isinstance(value, str) or len(value) < 2 or len(value) > 100:
             return False
         
-        return len(value.strip()) > 0
+        return value.replace(' ', '').replace('-', '').replace('_', '').isalnum()
+    
+    def _validate_infrastructure(self, value: str) -> bool:
+        if not isinstance(value, str) or len(value) < 2:
+            return False
+        
+        infra_types = [
+            'physical', 'virtual', 'cloud', 'container', 'vm', 'bare', 'metal',
+            'aws', 'azure', 'gcp', 'vmware', 'hyper', 'kvm', 'xen', 'docker'
+        ]
+        
+        value_lower = value.lower()
+        return any(infra_type in value_lower for infra_type in infra_types)
+    
+    def _validate_status(self, value: str) -> bool:
+        if not isinstance(value, str):
+            return False
+        
+        status_values = [
+            'active', 'inactive', 'enabled', 'disabled', 'online', 'offline',
+            'running', 'stopped', 'up', 'down', 'healthy', 'unhealthy',
+            'available', 'unavailable', 'ok', 'error', 'warning'
+        ]
+        
+        return value.lower().strip() in status_values
+    
+    def _extract_ip_addresses(self, text: str) -> List[str]:
+        ip_pattern = r'\b(?:[0-9]{1,3}\.){3}[0-9]{1,3}\b'
+        potential_ips = re.findall(ip_pattern, text)
+        
+        valid_ips = []
+        for ip in potential_ips:
+            try:
+                ipaddress.ip_address(ip)
+                valid_ips.append(ip)
+            except (ValueError, ipaddress.AddressValueError):
+                continue
+        
+        return list(set(valid_ips))
+    
+    def _extract_mac_addresses(self, text: str) -> List[str]:
+        mac_patterns = [
+            r'\b(?:[0-9A-Fa-f]{2}[:-]){5}[0-9A-Fa-f]{2}\b',
+            r'\b(?:[0-9A-Fa-f]{4}\.){2}[0-9A-Fa-f]{4}\b'
+        ]
+        
+        macs = []
+        for pattern in mac_patterns:
+            macs.extend(re.findall(pattern, text))
+        
+        return list(set(macs))
+    
+    def _extract_domains(self, text: str) -> List[str]:
+        domain_pattern = r'\b[a-zA-Z0-9][a-zA-Z0-9\-\.]*\.[a-zA-Z]{2,}\b'
+        potential_domains = re.findall(domain_pattern, text)
+        
+        valid_domains = []
+        for domain in potential_domains:
+            if '.' in domain and len(domain) > 4 and not domain.replace('.', '').isdigit():
+                valid_domains.append(domain.lower())
+        
+        return list(set(valid_domains))
+    
+    def _extract_hostnames(self, text: str) -> List[str]:
+        words = re.findall(r'\b[a-zA-Z0-9][a-zA-Z0-9\-]*[a-zA-Z0-9]\b', text)
+        
+        hostnames = []
+        for word in words:
+            if self._validate_hostname(word) and len(word) >= 3:
+                hostnames.append(word.upper())
+        
+        return list(set(hostnames))
