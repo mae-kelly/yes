@@ -6,74 +6,122 @@ from typing import List, Optional, Tuple, Dict
 class ContentBasedMatcher:
     def __init__(self):
         self.patterns = {
-            'hostname': ['host', 'endpoint', 'computer', 'device', 'server', 'machine', 'asset', 'node', 'system', 'name'],
-            'fqdn': ['fqdn', 'full', 'qualified', 'domain', 'dns', 'canonical', 'complete'],
-            'ip_address': ['ip', 'address', 'addr', 'ipv4', 'ipv6', 'network'],
-            'infrastructure_type': ['infra', 'infrastructure', 'type', 'category', 'class', 'tier', 'platform'],
-            'system_classification': ['classification', 'class', 'type', 'category', 'kind', 'role', 'function'],
-            'region': ['region', 'geo', 'location', 'site', 'area', 'zone', 'datacenter', 'center', 'country', 'locale'],
-            'country': ['country', 'nation', 'territory', 'state', 'province'],
-            'data_center': ['datacenter', 'data_center', 'dc', 'facility', 'site', 'center', 'location'],
-            'cloud_region': ['cloud', 'aws', 'azure', 'gcp', 'region', 'availability', 'zone'],
-            'business_unit': ['business', 'unit', 'bu', 'org', 'organization', 'department', 'division'],
-            'environment': ['env', 'environment', 'stage', 'tier', 'level', 'deployment'],
-            'operating_system': ['os', 'operating', 'system', 'platform', 'version'],
-            'application': ['app', 'application', 'service', 'software', 'program'],
+            'endpoint': ['host', 'endpoint', 'computer', 'device', 'server', 'machine', 'asset', 'node', 'system', 'workstation'],
+            'fqdn': ['fqdn', 'dns', 'domain', 'qualified', 'full', 'canonical'],
+            'ip': ['ip', 'address', 'addr', 'ipaddr'],
+            'domain': ['domain', 'dns', 'namespace', 'zone'],
+            'region': ['region', 'geo', 'location', 'site', 'area', 'zone', 'datacenter', 'center', 'country'],
+            'environment': ['env', 'environment', 'stage', 'tier', 'level'],
+            'os': ['os', 'operating', 'platform', 'system'],
+            'app': ['app', 'application', 'service', 'software'],
+            'type': ['type', 'category', 'class', 'kind', 'classification'],
+            'scope': ['scope', 'pci', 'compliance'],
+            'security': ['security', 'agent', 'edr', 'av', 'antivirus'],
+            'network': ['network', 'net', 'subnet', 'vlan', 'vpc'],
+            'infrastructure': ['infrastructure', 'infra', 'platform', 'cloud', 'aws', 'azure', 'gcp'],
+            'business': ['business', 'unit', 'org', 'organization', 'department', 'team'],
             'owner': ['owner', 'responsible', 'contact', 'admin', 'manager'],
-            'status': ['status', 'state', 'condition', 'health', 'active'],
-            'compliance': ['compliance', 'compliant', 'pci', 'sox', 'hipaa', 'gdpr'],
-            'security': ['security', 'agent', 'edr', 'av', 'antivirus', 'protection'],
-            'network': ['network', 'subnet', 'vlan', 'segment', 'cidr'],
-            'port': ['port', 'service', 'protocol', 'tcp', 'udp'],
-            'last_seen': ['last', 'seen', 'updated', 'modified', 'timestamp', 'date'],
-            'created': ['created', 'added', 'inserted', 'established', 'provisioned'],
-            'criticality': ['critical', 'criticality', 'importance', 'priority', 'severity'],
-            'cost_center': ['cost', 'center', 'billing', 'charge', 'account'],
-            'vendor': ['vendor', 'manufacturer', 'make', 'brand', 'supplier'],
-            'model': ['model', 'type', 'series', 'variant', 'sku'],
-            'serial': ['serial', 'number', 'id', 'identifier', 'asset_tag'],
-            'cpu': ['cpu', 'processor', 'core', 'vcpu', 'compute'],
-            'memory': ['memory', 'ram', 'gb', 'mb', 'storage'],
-            'disk': ['disk', 'storage', 'drive', 'volume', 'capacity'],
-            'virtualization': ['virtual', 'vm', 'hypervisor', 'vmware', 'hyper'],
-            'cluster': ['cluster', 'group', 'pool', 'farm', 'collection'],
-            'backup': ['backup', 'restore', 'recovery', 'snapshot', 'archive'],
-            'monitoring': ['monitor', 'alert', 'snmp', 'agent', 'probe'],
-            'patch_level': ['patch', 'update', 'version', 'build', 'release'],
-            'license': ['license', 'licensing', 'key', 'activation', 'subscription']
+            'status': ['status', 'state', 'active', 'enabled', 'online'],
+            'version': ['version', 'ver', 'release', 'build'],
+            'cost': ['cost', 'billing', 'charge', 'price'],
+            'criticality': ['critical', 'priority', 'importance', 'tier'],
+            'compliance': ['compliance', 'regulation', 'policy', 'standard'],
+            'performance': ['cpu', 'memory', 'disk', 'performance', 'utilization'],
+            'configuration': ['config', 'setting', 'parameter', 'property']
         }
         self._validation_cache = {}
     
-    def analyze_column_intelligent(self, column_name: str, sample_values: List[str]) -> Optional[Tuple[str, float, Dict[str, Any]]]:
-        cache_key = f"{column_name}:{hash(tuple(sample_values))}"
+    def analyze_column(self, column_name: str, sample_values: List[str]) -> Optional[Tuple[str, float]]:
+        cache_key = f"{column_name}:{hash(tuple(sample_values[:5]))}"
         if cache_key in self._validation_cache:
             return self._validation_cache[cache_key]
         
-        skip_patterns = ['id', 'key', 'count', 'total', 'flag', 'ind', 'flg']
+        skip_patterns = ['id', 'key', 'count', 'total', 'sum', 'avg', 'created', 'updated', 'modified', 'deleted', 'flag', 'bool']
         column_lower = column_name.lower()
         
-        if any(skip in column_lower for skip in skip_patterns if len(skip) >= 3):
+        if any(skip in column_lower for skip in skip_patterns):
             result = None
         else:
             best_match = None
             best_score = 0.0
-            metadata = {}
             
             for field_type, keywords in self.patterns.items():
-                score = self._calculate_intelligent_score(column_lower, keywords)
-                if score > best_score and score >= 0.25:
-                    validation_result = self._validate_sample_data_intelligent(field_type, sample_values)
-                    if validation_result['is_valid']:
+                score = self._calculate_match_score(column_lower, keywords)
+                if score > best_score and score >= 0.2:
+                    if self._validate_sample_data(field_type, sample_values):
                         best_match = field_type
                         best_score = score
-                        metadata = validation_result['metadata']
             
-            result = (best_match, best_score, metadata) if best_match else None
+            result = (best_match, best_score) if best_match else None
         
         self._validation_cache[cache_key] = result
         return result
     
-    def _calculate_intelligent_score(self, column_name: str, keywords: List[str]) -> float:
+    def analyze_all_columns(self, columns: List[str]) -> Dict[str, List[str]]:
+        categorized_columns = {}
+        
+        for column in columns:
+            column_lower = column.lower()
+            
+            for field_type, keywords in self.patterns.items():
+                for keyword in keywords:
+                    if keyword in column_lower:
+                        if field_type not in categorized_columns:
+                            categorized_columns[field_type] = []
+                        if column not in categorized_columns[field_type]:
+                            categorized_columns[field_type].append(column)
+                        break
+        
+        return categorized_columns
+    
+    def find_best_hostname_column(self, columns: List[str]) -> Optional[str]:
+        hostname_patterns = ['hostname', 'host_name', 'endpoint', 'computer', 'device', 'server', 'machine']
+        
+        exact_matches = []
+        partial_matches = []
+        
+        for column in columns:
+            column_lower = column.lower()
+            
+            for pattern in hostname_patterns:
+                if pattern == column_lower:
+                    exact_matches.append((column, 1.0))
+                elif pattern in column_lower:
+                    score = len(pattern) / len(column_lower)
+                    partial_matches.append((column, score))
+        
+        if exact_matches:
+            return max(exact_matches, key=lambda x: x[1])[0]
+        elif partial_matches:
+            return max(partial_matches, key=lambda x: x[1])[0]
+        
+        return None
+    
+    def extract_network_info(self, text: str) -> Dict[str, List[str]]:
+        if not text:
+            return {}
+        
+        text_str = str(text)
+        network_info = {}
+        
+        ip_pattern = r'\b(?:[0-9]{1,3}\.){3}[0-9]{1,3}\b'
+        ips = re.findall(ip_pattern, text_str)
+        if ips:
+            network_info['ip_addresses'] = list(set(ips))
+        
+        mac_pattern = r'\b(?:[0-9A-Fa-f]{2}[:-]){5}[0-9A-Fa-f]{2}\b'
+        macs = re.findall(mac_pattern, text_str)
+        if macs:
+            network_info['mac_addresses'] = list(set(macs))
+        
+        domain_pattern = r'\b[a-zA-Z0-9][a-zA-Z0-9\-\.]*\.[a-zA-Z]{2,}\b'
+        domains = re.findall(domain_pattern, text_str)
+        if domains:
+            network_info['domains'] = list(set([d for d in domains if '.' in d and len(d) > 4]))
+        
+        return network_info
+    
+    def _calculate_match_score(self, column_name: str, keywords: List[str]) -> float:
         clean_column = re.sub(r'[_\-\s]', '', column_name)
         
         best_score = 0.0
@@ -91,25 +139,20 @@ class ContentBasedMatcher:
                 score = len(clean_column) / len(clean_keyword)
                 best_score = max(best_score, score)
             
-            if any(part in clean_column for part in clean_keyword.split('_')):
-                score = 0.7
+            if clean_column.startswith(clean_keyword) or clean_column.endswith(clean_keyword):
+                score = len(clean_keyword) / len(clean_column)
                 best_score = max(best_score, score)
         
         return best_score
     
-    def _validate_sample_data_intelligent(self, field_type: str, sample_values: List[str]) -> Dict[str, Any]:
+    def _validate_sample_data(self, field_type: str, sample_values: List[str]) -> bool:
         if not sample_values or len(sample_values) < 2:
-            return {'is_valid': False, 'metadata': {}}
+            return False
         
         valid_count = 0
-        metadata = {
-            'sample_count': len(sample_values),
-            'unique_values': len(set(sample_values)),
-            'patterns': [],
-            'data_quality': 'unknown'
-        }
+        total_samples = min(len(sample_values), 10)
         
-        for value in sample_values[:20]:
+        for value in sample_values[:total_samples]:
             if not value:
                 continue
             
@@ -117,67 +160,39 @@ class ContentBasedMatcher:
             if len(value_str) < 1:
                 continue
             
-            is_valid = False
-            
-            if field_type == 'hostname':
-                is_valid = self._validate_hostname(value_str)
+            if field_type == 'endpoint':
+                if self._looks_like_hostname(value_str):
+                    valid_count += 1
             elif field_type == 'fqdn':
-                is_valid = self._validate_fqdn(value_str)
-            elif field_type == 'ip_address':
-                is_valid = self._validate_ip_address(value_str)
-            elif field_type == 'infrastructure_type':
-                is_valid = self._validate_infrastructure_type(value_str)
-            elif field_type == 'system_classification':
-                is_valid = self._validate_system_classification(value_str)
+                if self._looks_like_fqdn(value_str):
+                    valid_count += 1
+            elif field_type == 'ip':
+                if self._looks_like_ip(value_str):
+                    valid_count += 1
+            elif field_type == 'domain':
+                if self._looks_like_domain(value_str):
+                    valid_count += 1
             elif field_type == 'region':
-                is_valid = self._validate_region(value_str)
-            elif field_type == 'country':
-                is_valid = self._validate_country(value_str)
-            elif field_type == 'data_center':
-                is_valid = self._validate_data_center(value_str)
-            elif field_type == 'cloud_region':
-                is_valid = self._validate_cloud_region(value_str)
-            elif field_type == 'business_unit':
-                is_valid = self._validate_business_unit(value_str)
+                if self._looks_like_region(value_str):
+                    valid_count += 1
             elif field_type == 'environment':
-                is_valid = self._validate_environment(value_str)
-            elif field_type == 'operating_system':
-                is_valid = self._validate_operating_system(value_str)
-            elif field_type == 'application':
-                is_valid = self._validate_application(value_str)
-            elif field_type == 'status':
-                is_valid = self._validate_status(value_str)
-            elif field_type == 'compliance':
-                is_valid = self._validate_compliance(value_str)
-            elif field_type == 'criticality':
-                is_valid = self._validate_criticality(value_str)
+                if self._looks_like_environment(value_str):
+                    valid_count += 1
+            elif field_type in ['network', 'infrastructure', 'business', 'security']:
+                if self._looks_like_categorical_text(value_str):
+                    valid_count += 1
             else:
-                is_valid = self._validate_general_text(value_str)
-            
-            if is_valid:
-                valid_count += 1
-                if value_str not in metadata['patterns']:
-                    metadata['patterns'].append(value_str)
+                if self._looks_like_general_text(value_str):
+                    valid_count += 1
         
-        validation_ratio = (valid_count / len(sample_values)) if sample_values else 0
-        metadata['validation_ratio'] = validation_ratio
-        
-        if validation_ratio >= 0.8:
-            metadata['data_quality'] = 'excellent'
-        elif validation_ratio >= 0.6:
-            metadata['data_quality'] = 'good'
-        elif validation_ratio >= 0.4:
-            metadata['data_quality'] = 'fair'
-        else:
-            metadata['data_quality'] = 'poor'
-        
-        return {
-            'is_valid': validation_ratio >= 0.3,
-            'metadata': metadata
-        }
+        threshold = 0.3 if total_samples >= 5 else 0.4
+        return (valid_count / total_samples) >= threshold
     
-    def _validate_hostname(self, value: str) -> bool:
+    def _looks_like_hostname(self, value: str) -> bool:
         if not isinstance(value, str) or len(value) < 2 or len(value) > 253:
+            return False
+        
+        if any(char in value for char in ['@', '/', '\\', ' ', '\t']):
             return False
         
         hostname_patterns = [
@@ -188,113 +203,60 @@ class ContentBasedMatcher:
         if any(re.match(pattern, value) for pattern in hostname_patterns):
             return True
         
-        common_prefixes = ['srv', 'web', 'app', 'db', 'sql', 'prod', 'dev', 'test', 'win', 'linux']
-        common_suffixes = ['server', 'srv', 'host', 'node', '01', '02', '03']
-        
+        common_patterns = ['srv', 'web', 'app', 'db', 'sql', 'prod', 'dev', 'test', 'win', 'linux', 'server']
         value_lower = value.lower()
-        has_prefix = any(value_lower.startswith(prefix) for prefix in common_prefixes)
-        has_suffix = any(value_lower.endswith(suffix) for suffix in common_suffixes)
+        if any(pattern in value_lower for pattern in common_patterns):
+            return True
         
-        return has_prefix or has_suffix or re.match(r'^[a-zA-Z0-9\-_]+$', value)
+        return False
     
-    def _validate_fqdn(self, value: str) -> bool:
+    def _looks_like_fqdn(self, value: str) -> bool:
+        if not isinstance(value, str) or len(value) < 4:
+            return False
+        
+        if value.count('.') < 1:
+            return False
+        
+        fqdn_pattern = r'^[a-zA-Z0-9][a-zA-Z0-9\-\.]*\.[a-zA-Z]{2,}$'
+        return bool(re.match(fqdn_pattern, value))
+    
+    def _looks_like_ip(self, value: str) -> bool:
+        if not isinstance(value, str):
+            return False
+        
+        ip_pattern = r'^(\d{1,3}\.){3}\d{1,3}$'
+        if re.match(ip_pattern, value):
+            try:
+                octets = value.split('.')
+                return all(0 <= int(octet) <= 255 for octet in octets)
+            except ValueError:
+                return False
+        return False
+    
+    def _looks_like_domain(self, value: str) -> bool:
         if not isinstance(value, str) or len(value) < 4:
             return False
         
         if '.' not in value:
             return False
         
-        fqdn_pattern = r'^[a-zA-Z0-9][a-zA-Z0-9\-\.]*\.[a-zA-Z]{2,}$'
-        return bool(re.match(fqdn_pattern, value))
+        domain_pattern = r'^[a-zA-Z0-9][a-zA-Z0-9\-\.]*\.[a-zA-Z]{2,}$'
+        return bool(re.match(domain_pattern, value))
     
-    def _validate_ip_address(self, value: str) -> bool:
-        if not isinstance(value, str):
-            return False
-        
-        ipv4_pattern = r'^(\d{1,3}\.){3}\d{1,3}$'
-        if re.match(ipv4_pattern, value):
-            try:
-                octets = value.split('.')
-                return all(0 <= int(octet) <= 255 for octet in octets)
-            except ValueError:
-                return False
-        
-        ipv6_pattern = r'^([0-9a-fA-F]{1,4}:){7}[0-9a-fA-F]{1,4}$'
-        return bool(re.match(ipv6_pattern, value))
-    
-    def _validate_infrastructure_type(self, value: str) -> bool:
-        if not isinstance(value, str) or len(value) < 2:
-            return False
-        
-        infra_types = ['physical', 'virtual', 'cloud', 'container', 'on-prem', 'on-premise', 
-                      'saas', 'paas', 'iaas', 'hybrid', 'edge', 'aws', 'azure', 'gcp']
-        
-        return value.lower() in infra_types or any(itype in value.lower() for itype in infra_types)
-    
-    def _validate_system_classification(self, value: str) -> bool:
-        if not isinstance(value, str) or len(value) < 2:
-            return False
-        
-        classifications = ['server', 'workstation', 'laptop', 'desktop', 'mobile', 'tablet',
-                          'database', 'web', 'application', 'file', 'print', 'domain',
-                          'network', 'security', 'backup', 'storage', 'virtualization']
-        
-        return any(cls in value.lower() for cls in classifications)
-    
-    def _validate_region(self, value: str) -> bool:
-        if not isinstance(value, str) or len(value) < 2 or len(value) > 50:
+    def _looks_like_region(self, value: str) -> bool:
+        if not isinstance(value, str) or len(value) < 2 or len(value) > 100:
             return False
         
         region_patterns = [
             r'^[a-zA-Z][a-zA-Z\s\-_]+$',
-            r'^[A-Z]{2,3}[-_]?[A-Z]{2,4}[-_]?\d*$',
-            r'^(us|eu|ap|ca|sa)[-_](east|west|central|north|south)[-_]?\d*$'
+            r'^[A-Z]{2,4}[-_]?[A-Z]{2,4}[-_]?\d*$',
+            r'^(us|eu|ap|ca|sa)[-_](east|west|central|north|south)[-_]?\d*$',
+            r'^[A-Z]{2,3}\d*$'
         ]
         
         return any(re.match(pattern, value, re.IGNORECASE) for pattern in region_patterns)
     
-    def _validate_country(self, value: str) -> bool:
-        if not isinstance(value, str) or len(value) < 2:
-            return False
-        
-        countries = ['us', 'usa', 'united states', 'uk', 'united kingdom', 'canada', 'germany',
-                    'france', 'japan', 'china', 'india', 'australia', 'brazil', 'mexico']
-        
-        return value.lower() in countries or len(value) == 2 and value.isalpha()
-    
-    def _validate_data_center(self, value: str) -> bool:
-        if not isinstance(value, str) or len(value) < 2:
-            return False
-        
-        dc_patterns = [
-            r'^dc\d+$',
-            r'^datacenter\d+$',
-            r'^[a-zA-Z]{2,4}\d+$',
-            r'^[a-zA-Z]+[-_]dc[-_]?\d*$'
-        ]
-        
-        return any(re.match(pattern, value, re.IGNORECASE) for pattern in dc_patterns)
-    
-    def _validate_cloud_region(self, value: str) -> bool:
-        if not isinstance(value, str) or len(value) < 2:
-            return False
-        
-        cloud_regions = ['us-east-1', 'us-west-2', 'eu-west-1', 'ap-southeast-1',
-                        'eastus', 'westus', 'northeurope', 'southeastasia']
-        
-        return value.lower() in cloud_regions or any(provider in value.lower() 
-                                                   for provider in ['aws', 'azure', 'gcp'])
-    
-    def _validate_business_unit(self, value: str) -> bool:
-        if not isinstance(value, str) or len(value) < 2:
-            return False
-        
-        bu_types = ['it', 'finance', 'hr', 'sales', 'marketing', 'operations', 'engineering',
-                   'security', 'legal', 'compliance', 'audit', 'procurement']
-        
-        return any(bu in value.lower() for bu in bu_types) or re.match(r'^[a-zA-Z\s&\-_]+$', value)
-    
-    def _validate_environment(self, value: str) -> bool:
+    def _looks_like_environment(self, value: str) -> bool:
         if not isinstance(value, str):
             return False
         
@@ -303,53 +265,17 @@ class ContentBasedMatcher:
         
         return value.lower() in env_values
     
-    def _validate_operating_system(self, value: str) -> bool:
-        if not isinstance(value, str) or len(value) < 2:
+    def _looks_like_categorical_text(self, value: str) -> bool:
+        if not isinstance(value, str) or len(value) < 2 or len(value) > 200:
             return False
         
-        os_types = ['windows', 'linux', 'unix', 'macos', 'centos', 'ubuntu', 'redhat',
-                   'debian', 'suse', 'aix', 'solaris', 'freebsd']
-        
-        return any(os_type in value.lower() for os_type in os_types)
-    
-    def _validate_application(self, value: str) -> bool:
-        if not isinstance(value, str) or len(value) < 2:
+        if value.isdigit():
             return False
         
-        app_types = ['web', 'database', 'email', 'file', 'print', 'backup', 'monitoring',
-                    'security', 'crm', 'erp', 'cms', 'api', 'service']
-        
-        return any(app in value.lower() for app in app_types) or re.match(r'^[a-zA-Z0-9\s\-_\.]+$', value)
+        return value.replace(' ', '').replace('-', '').replace('_', '').isalnum()
     
-    def _validate_status(self, value: str) -> bool:
-        if not isinstance(value, str):
-            return False
-        
-        status_values = ['active', 'inactive', 'online', 'offline', 'running', 'stopped',
-                        'enabled', 'disabled', 'up', 'down', 'healthy', 'unhealthy']
-        
-        return value.lower() in status_values
-    
-    def _validate_compliance(self, value: str) -> bool:
-        if not isinstance(value, str):
-            return False
-        
-        compliance_values = ['pci', 'sox', 'hipaa', 'gdpr', 'compliant', 'non-compliant',
-                           'yes', 'no', 'true', 'false', 'exempt']
-        
-        return value.lower() in compliance_values
-    
-    def _validate_criticality(self, value: str) -> bool:
-        if not isinstance(value, str):
-            return False
-        
-        criticality_values = ['high', 'medium', 'low', 'critical', 'important', 'normal',
-                             '1', '2', '3', '4', '5', 'tier1', 'tier2', 'tier3']
-        
-        return value.lower() in criticality_values
-    
-    def _validate_general_text(self, value: str) -> bool:
+    def _looks_like_general_text(self, value: str) -> bool:
         if not isinstance(value, str) or len(value) < 1 or len(value) > 500:
             return False
         
-        return value.replace(' ', '').replace('-', '').replace('_', '').replace('.', '').isalnum()
+        return len(value.strip()) > 0
