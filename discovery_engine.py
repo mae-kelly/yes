@@ -10,7 +10,7 @@ from typing import Dict, List, Any, Tuple, Set
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from dataclasses import asdict
-import random
+import threading
 
 from gcp_client import BigQueryClientManager
 from content_matcher import ContentBasedMatcher
@@ -41,8 +41,8 @@ class DiscoveryEngine:
         self.signal_handler = SignalHandler()
         
         self.db_path = self.config.get('database_path', 'universal_cmdb.db')
-        self.max_workers = self.config.get('max_workers', min(32, mp.cpu_count() + 4))
-        self.batch_size = self.config.get('batch_size', 1000)
+        self.max_workers = self.config.get('max_workers', min(16, mp.cpu_count()))
+        self.batch_size = self.config.get('batch_size', 500)
         
         self.core_tables = {
             'cmdb': f'{project_id}.SAS_BI.V_DIM_ENDPOINT',
@@ -51,9 +51,13 @@ class DiscoveryEngine:
         }
         
         self.skip_patterns = {
-            'datasets': ['temp', 'test', 'staging', 'backup', 'archive', 'logs'],
-            'tables': ['temp_', 'test_', 'staging_', 'backup_', 'archive_', 'log_', 'audit_']
+            'datasets': ['temp', 'test', 'staging', 'backup', 'archive'],
+            'tables': ['temp_', 'test_', 'staging_', 'backup_', 'archive_']
         }
+        
+        self.processed_datasets = set()
+        self.processed_tables = set()
+        self._processing_lock = threading.Lock()
         
         self._setup_logging()
         self._setup_database()
@@ -140,7 +144,7 @@ class DiscoveryEngine:
     
     async def discover_all_endpoints(self) -> Tuple[Dict[str, Any], Dict[str, str]]:
         start_time = time.time()
-        logger.info("Starting endpoint discovery")
+        logger.info("Starting comprehensive endpoint discovery")
         
         project_info = self.client_manager.get_project_info()
         if project_info:
@@ -155,7 +159,7 @@ class DiscoveryEngine:
                 logger.info("Starting fresh discovery")
             
             await self._load_core_tables()
-            await self._discover_all_tables_parallel()
+            await self._discover_all_datasets_and_tables()
             
             stats = self.progress.get_stats()
             queries = self._create_analysis_queries()
@@ -190,17 +194,17 @@ class DiscoveryEngine:
             self.conn.close()
     
     async def _resume_from_checkpoint(self, checkpoint: Dict[str, Any]):
-        processed_datasets = set(checkpoint.get('processed_datasets', []))
-        processed_tables = set(checkpoint.get('processed_tables', []))
+        self.processed_datasets = set(checkpoint.get('processed_datasets', []))
+        self.processed_tables = set(checkpoint.get('processed_tables', []))
         
         self.progress.set_stats(
-            datasets_processed=len(processed_datasets),
-            tables_processed=len(processed_tables),
+            datasets_processed=len(self.processed_datasets),
+            tables_processed=len(self.processed_tables),
             endpoints_discovered=checkpoint.get('endpoints_discovered', 0),
             bigquery_bytes_processed=checkpoint.get('bigquery_bytes_processed', 0)
         )
         
-        logger.info(f"Resumed: {len(processed_datasets)} datasets, {len(processed_tables)} tables processed")
+        logger.info(f"Resumed: {len(self.processed_datasets)} datasets, {len(self.processed_tables)} tables processed")
     
     async def _load_core_tables(self):
         logger.info("Loading core CMDB tables")
@@ -295,21 +299,25 @@ class DiscoveryEngine:
                 valid_columns = []
                 for field in table_ref.schema:
                     if field.field_type in ['STRING', 'INTEGER', 'FLOAT']:
-                        sample_query = f"""
-                        SELECT `{field.name}`
-                        FROM `{table_path}`
-                        WHERE `{field.name}` IS NOT NULL
-                        LIMIT 15
-                        """
-                        
-                        job = client.query(sample_query)
-                        samples = [str(row[0]) for row in job.result() if row[0] is not None]
-                        
-                        if samples:
-                            match_result = self.matcher.analyze_column(field.name, samples)
-                            if match_result:
-                                field_type, confidence = match_result
-                                valid_columns.append((field.name, field_type, confidence))
+                        try:
+                            sample_query = f"""
+                            SELECT `{field.name}`
+                            FROM `{table_path}`
+                            WHERE `{field.name}` IS NOT NULL
+                            LIMIT 15
+                            """
+                            
+                            job = client.query(sample_query)
+                            samples = [str(row[0]) for row in job.result() if row[0] is not None]
+                            
+                            if samples:
+                                match_result = self.matcher.analyze_column(field.name, samples)
+                                if match_result:
+                                    field_type, confidence = match_result
+                                    valid_columns.append((field.name, field_type, confidence))
+                        except Exception as col_e:
+                            logger.debug(f"Failed to sample column {field.name}: {col_e}")
+                            continue
                 
                 return valid_columns
                 
@@ -317,74 +325,200 @@ class DiscoveryEngine:
             logger.error(f"Failed to discover columns for {table_path}: {e}")
             return []
     
-    async def _discover_all_tables_parallel(self):
-        logger.info("Starting parallel table discovery")
+    async def _discover_all_datasets_and_tables(self):
+        logger.info("Starting comprehensive discovery of ALL datasets and tables")
         
         with self.client_manager.get_client() as client:
-            datasets = list(client.list_datasets(project=self.project_id))
-            datasets = [d for d in datasets if not self._should_skip_dataset(d.dataset_id)]
+            all_datasets = list(client.list_datasets(project=self.project_id))
+            logger.info(f"Found {len(all_datasets)} total datasets in project")
             
-            self.progress.set_stats(datasets_total=len(datasets))
+            self.progress.set_stats(datasets_total=len(all_datasets))
             
+            dataset_futures = []
             with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
-                futures = []
-                
-                for dataset in datasets:
+                for dataset in all_datasets:
                     if self.signal_handler.shutdown_requested:
                         break
-                        
-                    future = executor.submit(self._process_dataset, dataset.dataset_id)
-                    futures.append(future)
+                    
+                    if dataset.dataset_id in self.processed_datasets:
+                        logger.info(f"Skipping already processed dataset: {dataset.dataset_id}")
+                        continue
+                    
+                    logger.info(f"Queuing dataset for processing: {dataset.dataset_id}")
+                    future = executor.submit(self._process_complete_dataset, dataset.dataset_id)
+                    dataset_futures.append((future, dataset.dataset_id))
                 
-                for future in as_completed(futures):
+                for future, dataset_id in dataset_futures:
                     if self.signal_handler.shutdown_requested:
                         break
                     
                     try:
                         result = future.result()
+                        with self._processing_lock:
+                            self.processed_datasets.add(dataset_id)
                         self.progress.update_stats(datasets_processed=1)
+                        logger.info(f"Completed processing dataset: {dataset_id}")
                         
                         if self.progress.should_checkpoint():
                             await self._save_checkpoint()
                             
                     except Exception as e:
-                        logger.error(f"Dataset processing failed: {e}")
+                        logger.error(f"Dataset processing failed for {dataset_id}: {e}")
                         self.progress.update_stats(datasets_failed=1)
     
-    def _process_dataset(self, dataset_id: str):
+    def _process_complete_dataset(self, dataset_id: str):
+        logger.info(f"Processing ALL tables in dataset: {dataset_id}")
+        
         try:
             with self.client_manager.get_client() as client:
                 dataset_ref = client.dataset(dataset_id, project=self.project_id)
-                tables = list(client.list_tables(dataset_ref))
+                all_tables = list(client.list_tables(dataset_ref))
+                logger.info(f"Found {len(all_tables)} tables in dataset {dataset_id}")
                 
-                for table_ref in tables:
+                for table_ref in all_tables:
                     if self.signal_handler.shutdown_requested:
                         break
                     
-                    if self._should_skip_table(table_ref.table_id):
-                        self.progress.update_stats(tables_skipped=1)
+                    table_full_path = f"{self.project_id}.{dataset_id}.{table_ref.table_id}"
+                    
+                    if table_full_path in self.processed_tables:
+                        logger.debug(f"Skipping already processed table: {table_full_path}")
                         continue
                     
                     try:
-                        self._process_single_table(f"{self.project_id}.{dataset_id}.{table_ref.table_id}")
+                        logger.info(f"Processing table: {table_full_path}")
+                        self._process_single_table_complete(table_full_path, dataset_id, table_ref.table_id)
+                        
+                        with self._processing_lock:
+                            self.processed_tables.add(table_full_path)
                         self.progress.update_stats(tables_processed=1)
+                        
+                        time.sleep(0.1)
+                        
                     except Exception as e:
-                        logger.error(f"Table processing failed {table_ref.table_id}: {e}")
+                        logger.error(f"Table processing failed {table_full_path}: {e}")
                         self.progress.update_stats(tables_failed=1)
+                        
         except Exception as e:
             logger.error(f"Dataset processing failed {dataset_id}: {e}")
             raise
     
-    def _process_single_table(self, table_path: str):
-        cache_key = f"table_columns:{table_path}"
-        table_columns = self.cache.get(cache_key)
-        
-        if table_columns is None:
-            table_columns = []
-            self.cache.set(cache_key, table_columns, ttl_hours=48)
-            self.progress.update_stats(cache_misses=1)
-        else:
-            self.progress.update_stats(cache_hits=1)
+    def _process_single_table_complete(self, table_path: str, dataset_id: str, table_id: str):
+        try:
+            cache_key = f"table_analysis:{table_path}"
+            cached_result = self.cache.get(cache_key)
+            
+            if cached_result is not None:
+                logger.debug(f"Using cached analysis for {table_path}")
+                self.progress.update_stats(cache_hits=1)
+                return cached_result
+            
+            with self.client_manager.get_client() as client:
+                table_ref = client.get_table(table_path)
+                
+                table_info = {
+                    'table_path': table_path,
+                    'dataset_name': dataset_id,
+                    'table_name': table_id,
+                    'row_count': table_ref.num_rows or 0,
+                    'size_bytes': table_ref.num_bytes or 0,
+                    'endpoint_field': '',
+                    'domain_field': '',
+                    'other_field': '',
+                    'discovery_score': 0.0
+                }
+                
+                logger.debug(f"Analyzing table schema: {table_path}")
+                
+                for field in table_ref.schema:
+                    if field.field_type == 'STRING':
+                        try:
+                            sample_query = f"""
+                            SELECT `{field.name}`
+                            FROM `{table_path}`
+                            WHERE `{field.name}` IS NOT NULL
+                            LIMIT 10
+                            """
+                            
+                            job = client.query(sample_query)
+                            samples = [str(row[0]) for row in job.result() if row[0] is not None]
+                            
+                            if samples:
+                                match_result = self.matcher.analyze_column(field.name, samples)
+                                if match_result:
+                                    field_type, confidence = match_result
+                                    table_info['discovery_score'] = max(table_info['discovery_score'], confidence)
+                                    
+                                    if field_type == 'endpoint' and not table_info['endpoint_field']:
+                                        table_info['endpoint_field'] = field.name
+                                        
+                                        endpoint_query = f"""
+                                        SELECT DISTINCT
+                                            UPPER(TRIM(CAST(`{field.name}` AS STRING))) as endpoint_name
+                                        FROM `{table_path}`
+                                        WHERE `{field.name}` IS NOT NULL
+                                            AND LENGTH(TRIM(CAST(`{field.name}` AS STRING))) >= 3
+                                        LIMIT {self.batch_size}
+                                        """
+                                        
+                                        endpoint_job = client.query(endpoint_query)
+                                        endpoint_results = list(endpoint_job.result())
+                                        
+                                        if endpoint_results:
+                                            batch_data = []
+                                            for row in endpoint_results:
+                                                if row[0]:
+                                                    batch_data.append({
+                                                        'endpoint_name': str(row[0]).upper().strip(),
+                                                        'source_table': table_path,
+                                                        'source_dataset': dataset_id,
+                                                        'original_cmdb': False,
+                                                        'original_splunk': False,
+                                                        'original_crowdstrike': False
+                                                    })
+                                            
+                                            if batch_data:
+                                                self._store_endpoint_batch(batch_data)
+                                                self.progress.update_stats(endpoints_discovered=len(batch_data))
+                                                logger.info(f"Found {len(batch_data)} endpoints in {table_path}")
+                                    
+                                    elif field_type == 'domain' and not table_info['domain_field']:
+                                        table_info['domain_field'] = field.name
+                        
+                        except Exception as field_e:
+                            logger.debug(f"Failed to analyze field {field.name} in {table_path}: {field_e}")
+                            continue
+                
+                self._store_table_info(table_info)
+                self.cache.set(cache_key, table_info, ttl_hours=24)
+                self.progress.update_stats(cache_misses=1)
+                
+                return table_info
+                
+        except Exception as e:
+            logger.error(f"Failed to process table {table_path}: {e}")
+            return None
+    
+    def _store_table_info(self, table_info: Dict[str, Any]):
+        try:
+            self.conn.execute("""
+            INSERT OR REPLACE INTO discovered_table (
+                table_path, dataset_name, table_name, row_count, size_bytes,
+                endpoint_field, domain_field, other_field, discovery_score, discovered_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+            """, (
+                table_info['table_path'],
+                table_info['dataset_name'],
+                table_info['table_name'],
+                table_info['row_count'],
+                table_info['size_bytes'],
+                table_info['endpoint_field'],
+                table_info['domain_field'],
+                table_info['other_field'],
+                table_info['discovery_score']
+            ))
+        except Exception as e:
+            logger.error(f"Failed to store table info: {e}")
     
     async def _execute_and_store_batch(self, query: str, field_mapping: Dict[str, str], source: str, **flags):
         try:
@@ -429,12 +563,13 @@ class DiscoveryEngine:
                 
                 self.conn.execute("""
                 INSERT OR REPLACE INTO universal_endpoint (
-                    endpoint_name, source_table, original_cmdb, original_splunk, original_crowdstrike,
+                    endpoint_name, source_table, source_dataset, original_cmdb, original_splunk, original_crowdstrike,
                     region, environment, endpoint_type, discovery_timestamp
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
                 """, (
                     endpoint['endpoint_name'],
                     endpoint.get('source_table', ''),
+                    endpoint.get('source_dataset', ''),
                     endpoint.get('original_cmdb', False),
                     endpoint.get('original_splunk', False),
                     endpoint.get('original_crowdstrike', False),
@@ -445,20 +580,11 @@ class DiscoveryEngine:
         except Exception as e:
             logger.error(f"Failed to store endpoint batch: {e}")
     
-    def _should_skip_dataset(self, dataset_id: str) -> bool:
-        dataset_lower = dataset_id.lower()
-        return any(pattern in dataset_lower for pattern in self.skip_patterns['datasets'])
-    
-    def _should_skip_table(self, table_id: str) -> bool:
-        table_lower = table_id.lower()
-        return any(table_lower.startswith(pattern) or table_lower.endswith(pattern.strip('_')) 
-                  for pattern in self.skip_patterns['tables'])
-    
     async def _save_checkpoint(self):
         stats = self.progress.get_stats()
         checkpoint_data = {
-            'processed_datasets': [],
-            'processed_tables': [],
+            'processed_datasets': list(self.processed_datasets),
+            'processed_tables': list(self.processed_tables),
             'endpoints_discovered': stats.endpoints_discovered,
             'bigquery_bytes_processed': stats.bigquery_bytes_processed,
             'datasets_processed': stats.datasets_processed,
@@ -523,6 +649,7 @@ class DiscoveryEngine:
                 original_splunk,
                 original_crowdstrike,
                 source_table,
+                source_dataset,
                 region,
                 environment,
                 endpoint_type,
@@ -558,6 +685,7 @@ class DiscoveryEngine:
             SELECT 
                 endpoint_name,
                 source_table,
+                source_dataset,
                 region,
                 environment,
                 endpoint_type,
@@ -567,13 +695,28 @@ class DiscoveryEngine:
             ORDER BY confidence_score DESC;
             """,
             
+            'dataset_summary': """
+            SELECT 
+                dataset_name,
+                COUNT(*) as table_count,
+                SUM(row_count) as total_rows,
+                SUM(size_bytes) as total_bytes,
+                AVG(discovery_score) as avg_discovery_score
+            FROM discovered_table
+            GROUP BY dataset_name
+            ORDER BY avg_discovery_score DESC;
+            """,
+            
             'processing_analysis': """
             SELECT 
                 table_path,
                 row_count,
                 size_bytes,
+                endpoint_field,
+                domain_field,
                 discovery_score
             FROM discovered_table
+            WHERE discovery_score > 0
             ORDER BY discovery_score DESC;
             """
         }

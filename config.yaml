@@ -1,41 +1,25 @@
-max_workers: 32
-batch_size: 1000
-max_tables_per_dataset: 200
+max_workers: 16
+batch_size: 500
+max_tables_per_dataset: 99999
 
-skip_large_tables: true
-max_table_size_gb: 50
+skip_large_tables: false
+max_table_size_gb: 999999
 
 cache_dir: ".cache"
-cache_ttl_hours: 48
+cache_ttl_hours: 24
 enable_memory_cache: true
 
 database_path: "universal_cmdb.db"
 enable_checkpointing: true
-checkpoint_interval_minutes: 5
+checkpoint_interval_minutes: 2
 
-confidence_threshold: 0.3
-sample_validation_threshold: 0.4
+confidence_threshold: 0.2
+sample_validation_threshold: 0.3
 prioritize_core_datasets: true
 
 skip_patterns:
-  datasets:
-    - "temp"
-    - "test"
-    - "staging"
-    - "backup"
-    - "archive"
-    - "logs"
-    - "audit"
-  tables:
-    - "temp_"
-    - "test_"
-    - "staging_"
-    - "backup_"
-    - "archive_"
-    - "log_"
-    - "audit_"
-    - "_temp"
-    - "_test"
+  datasets: []
+  tables: []
 
 dataset_priorities:
   SAS_BI: 100
@@ -54,7 +38,7 @@ parallel_table_processing: true
 graceful_failure_handling: true
 
 content_analysis:
-  max_sample_size: 15
+  max_sample_size: 10
   validation_patterns:
     hostname:
       - "^[a-zA-Z0-9][a-zA-Z0-9\\-]*[a-zA-Z0-9]$"
@@ -96,7 +80,7 @@ advanced:
   enable_ml_classification: false
   enable_graph_analysis: false
   enable_anomaly_detection: false
-  ml_confidence_threshold: 0.7
+  ml_confidence_threshold: 0.5
 
 debug:
   enable_debug_mode: false
