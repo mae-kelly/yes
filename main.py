@@ -11,7 +11,11 @@ from pathlib import Path
 from datetime import datetime
 import signal
 
-from intelligent_discovery_engine import IntelligentAO1Discovery
+try:
+    from enhanced_discovery_engine import SuperIntelligentAO1Discovery
+except ImportError:
+    from discovery_engine import IntelligentAO1Discovery as SuperIntelligentAO1Discovery
+
 from config_loader import ConfigLoader
 
 logging.basicConfig(level=logging.WARNING, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -21,7 +25,14 @@ class IntelligentAO1Runner:
     def __init__(self, project_id: str, config_file: str = None):
         self.project_id = project_id
         self.config = ConfigLoader.load_config(config_file)
-        self.engine = IntelligentAO1Discovery(project_id, self.config)
+        
+        try:
+            self.engine = SuperIntelligentAO1Discovery(project_id, self.config)
+        except Exception as e:
+            print(f"   ⚠°｡⋆⸜ ♡   Falling back to basic intelligent discovery: {e}")
+            from discovery_engine import IntelligentAO1Discovery
+            self.engine = IntelligentAO1Discovery(project_id, self.config)
+        
         self.shutdown_requested = False
         
         signal.signal(signal.SIGINT, self._signal_handler)
@@ -33,11 +44,15 @@ class IntelligentAO1Runner:
         if hasattr(self.engine, 'signal_handler'):
             self.engine.signal_handler.shutdown_requested = True
     
-    async def execute_intelligent_discovery(self) -> tuple[Dict[str, Any], Dict[str, str]]:
+    async def execute_intelligent_discovery(self):
         start_time = time.time()
         
         try:
-            stats, queries = await self.engine.execute_intelligent_discovery()
+            if hasattr(self.engine, 'execute_super_intelligent_discovery'):
+                stats, queries = await self.engine.execute_super_intelligent_discovery()
+            else:
+                stats, queries = await self.engine.execute_intelligent_discovery()
+                
             processing_time = time.time() - start_time
             stats['total_processing_time'] = processing_time
             return stats, queries
@@ -45,26 +60,27 @@ class IntelligentAO1Runner:
             print(f"   ✗°｡⋆⸜ ♡   Intelligent discovery failed: {e}")
             return {'error': str(e)}, {}
         finally:
-            self.engine.close()
+            if hasattr(self.engine, 'close'):
+                self.engine.close()
 
 def parse_arguments():
     parser = argparse.ArgumentParser(description="Intelligent AO1 Log Visibility Measurement System")
     
     parser.add_argument('--project', '-p', required=True, help='GCP Project ID')
     parser.add_argument('--config', '-c', help='Configuration file')
-    parser.add_argument('--max-memory', type=int, default=512, help='Max memory cache (MB)')
-    parser.add_argument('--max-disk', type=int, default=5, help='Max disk cache (GB)')
+    parser.add_argument('--max-memory', type=int, default=1024, help='Max memory cache (MB)')
+    parser.add_argument('--max-disk', type=int, default=10, help='Max disk cache (GB)')
     parser.add_argument('--dry-run', action='store_true', help='Estimate scope with intelligence')
     parser.add_argument('--output-dir', default='output', help='Output directory')
     parser.add_argument('--cache-dir', default='.cache', help='Intelligent cache directory')
     parser.add_argument('--database', default='ao1_intelligent_cmdb.db', help='Intelligent database file')
-    parser.add_argument('--intelligence-level', choices=['basic', 'advanced', 'expert'], default='advanced', help='Intelligence analysis level')
+    parser.add_argument('--intelligence-level', choices=['basic', 'advanced', 'expert', 'super'], default='expert', help='Intelligence analysis level')
     parser.add_argument('--debug', action='store_true', help='Enable debug mode with verbose output')
-    parser.add_argument('--timeout', type=int, default=300, help='Timeout per operation in seconds')
+    parser.add_argument('--timeout', type=int, default=600, help='Timeout per operation in seconds')
     
     return parser.parse_args()
 
-async def estimate_intelligent_scope(project_id: str, config: Dict[str, Any]):
+async def estimate_intelligent_scope(project_id: str, config: dict):
     print("   ⋆｡‧˚ʚ♡ɞ˚‧｡⋆   Intelligent scope estimation with deep analysis...")
     
     try:
@@ -83,15 +99,17 @@ async def estimate_intelligent_scope(project_id: str, config: Dict[str, Any]):
                 'hostname_capable_tables': 0,
                 'estimated_endpoints': 0,
                 'data_richness_scores': [],
-                'intelligence_recommendations': []
+                'intelligence_recommendations': [],
+                'ml_feasibility': False,
+                'network_analysis_potential': False
             }
             
-            for dataset in datasets[:10]:
+            for dataset in datasets[:15]:
                 try:
                     dataset_ref = client.dataset(dataset.dataset_id, project=project_id)
                     tables = list(client.list_tables(dataset_ref))
                     
-                    for table_ref in tables[:5]:
+                    for table_ref in tables[:10]:
                         try:
                             full_table = client.get_table(table_ref)
                             
@@ -100,7 +118,7 @@ async def estimate_intelligent_scope(project_id: str, config: Dict[str, Any]):
                             
                             all_columns = [field.name for field in full_table.schema]
                             
-                            sample_query = f"SELECT * FROM `{project_id}.{dataset.dataset_id}.{table_ref.table_id}` LIMIT 3"
+                            sample_query = f"SELECT * FROM `{project_id}.{dataset.dataset_id}.{table_ref.table_id}` LIMIT 5"
                             try:
                                 sample_job = client.query(sample_query)
                                 sample_results = list(sample_job.result())
@@ -132,6 +150,15 @@ async def estimate_intelligent_scope(project_id: str, config: Dict[str, Any]):
                             if data_richness > 0.2:
                                 intelligent_analysis['intelligent_tables'] += 1
                                 intelligent_analysis['data_richness_scores'].append(data_richness)
+                                
+                                if data_richness > 0.4 and has_hostname:
+                                    intelligent_analysis['ml_feasibility'] = True
+                                
+                                network_indicators = sum(1 for col in all_columns 
+                                                        if any(net_term in col.lower() 
+                                                              for net_term in ['ip', 'mac', 'network', 'subnet']))
+                                if network_indicators > 2:
+                                    intelligent_analysis['network_analysis_potential'] = True
                             
                         except Exception:
                             continue
@@ -139,29 +166,34 @@ async def estimate_intelligent_scope(project_id: str, config: Dict[str, Any]):
                 except Exception:
                     continue
             
-            if intelligent_analysis['estimated_endpoints'] > 5000:
-                intelligent_analysis['intelligence_recommendations'].append("Excellent endpoint coverage detected")
-            elif intelligent_analysis['estimated_endpoints'] > 1000:
-                intelligent_analysis['intelligence_recommendations'].append("Good endpoint coverage expected")
+            if intelligent_analysis['estimated_endpoints'] > 10000:
+                intelligent_analysis['intelligence_recommendations'].append("Excellent endpoint coverage detected - comprehensive discovery possible")
+            elif intelligent_analysis['estimated_endpoints'] > 2000:
+                intelligent_analysis['intelligence_recommendations'].append("Good endpoint coverage expected - advanced analytics feasible")
             else:
-                intelligent_analysis['intelligence_recommendations'].append("Limited endpoint data - check permissions")
+                intelligent_analysis['intelligence_recommendations'].append("Limited endpoint data - basic discovery recommended")
             
             if intelligent_analysis['data_richness_scores']:
                 avg_richness = sum(intelligent_analysis['data_richness_scores']) / len(intelligent_analysis['data_richness_scores'])
-                if avg_richness > 0.5:
-                    intelligent_analysis['intelligence_recommendations'].append("High data richness - comprehensive discovery possible")
-                elif avg_richness > 0.3:
-                    intelligent_analysis['intelligence_recommendations'].append("Moderate data richness - selective enrichment recommended")
+                if avg_richness > 0.6:
+                    intelligent_analysis['intelligence_recommendations'].append("High data richness - multi-dimensional analysis enabled")
+                elif avg_richness > 0.4:
+                    intelligent_analysis['intelligence_recommendations'].append("Moderate data richness - selective intelligence recommended")
                 else:
-                    intelligent_analysis['intelligence_recommendations'].append("Low data richness - basic discovery only")
+                    intelligent_analysis['intelligence_recommendations'].append("Low data richness - basic intelligence only")
+            
+            if intelligent_analysis['ml_feasibility']:
+                intelligent_analysis['intelligence_recommendations'].append("ML entity matching capabilities available")
+            
+            if intelligent_analysis['network_analysis_potential']:
+                intelligent_analysis['intelligence_recommendations'].append("Network topology analysis enabled")
             
             try:
                 chronicle_client = BigQueryClientManager("chronicle-fisv")
                 with chronicle_client.get_client() as chronicle:
-                    chronicle_table = chronicle.get_table("chronicle-fisv.datalake.events")
-                    chronicle_endpoints = int((chronicle_table.num_rows or 0) * 0.05)
-                    intelligent_analysis['estimated_endpoints'] += chronicle_endpoints
-                    intelligent_analysis['intelligence_recommendations'].append("Chronicle integration available")
+                    chronicle_datasets = list(chronicle.list_datasets())
+                    intelligent_analysis['estimated_endpoints'] += len(chronicle_datasets) * 3000
+                    intelligent_analysis['intelligence_recommendations'].append("Chronicle integration available for security enrichment")
             except:
                 intelligent_analysis['intelligence_recommendations'].append("Chronicle unavailable - primary project only")
             
@@ -170,6 +202,8 @@ async def estimate_intelligent_scope(project_id: str, config: Dict[str, Any]):
             print(f"   ✧･ﾟ: *✧･ﾟ:*   Intelligent tables: {intelligent_analysis['intelligent_tables']:,}")
             print(f"   ✧･ﾟ: *✧･ﾟ:*   Hostname-capable tables: {intelligent_analysis['hostname_capable_tables']:,}")
             print(f"   ✧･ﾟ: *✧･ﾟ:*   Estimated endpoints: {intelligent_analysis['estimated_endpoints']:,}")
+            print(f"   ✧･ﾟ: *✧･ﾟ:*   ML feasibility: {'Yes' if intelligent_analysis['ml_feasibility'] else 'No'}")
+            print(f"   ✧･ﾟ: *✧･ﾟ:*   Network analysis potential: {'Yes' if intelligent_analysis['network_analysis_potential'] else 'No'}")
             
             if intelligent_analysis['data_richness_scores']:
                 avg_richness = sum(intelligent_analysis['data_richness_scores']) / len(intelligent_analysis['data_richness_scores'])
@@ -226,7 +260,7 @@ async def main():
     print(f"   ⋆｡‧˚ʚ♡ɞ˚‧｡⋆   Project: {args.project}")
     print(f"   ⋆｡‧˚ʚ♡ɞ˚‧｡⋆   Intelligence Level: {args.intelligence_level}")
     print(f"   ⋆｡‧˚ʚ♡ɞ˚‧｡⋆   Database: {args.database}")
-    print(f"   ⋆｡‧˚ʚ♡ɞ˚‧｡⋆   Memory Cache: {args.max_memory}MB")
+    print(f"   ⋆｡‧˚ʚ♡ɞ˚‧ ｡°❀   Memory Cache: {args.max_memory}MB")
     print(f"   ⋆｡‧˚ʚ♡ɞ˚‧｡⋆   Disk Cache: {args.max_disk}GB")
     
     try:
@@ -243,10 +277,12 @@ async def main():
             
             print(f"   ❀°｡ ‧˚♡ ˚‧ ｡°❀   Intelligent scope estimate saved: {estimate_file}")
             
-            if estimate['estimated_endpoints'] > 1000:
-                print("   ❀°｡ ‧˚♡ ˚‧ ｡°❀   Ready for intelligent discovery. Run without --dry-run to proceed.")
+            if estimate['estimated_endpoints'] > 5000:
+                print("   ❀°｡ ‧˚♡ ˚‧ ｡°❀   Excellent scale for intelligent discovery. Run without --dry-run to proceed.")
+            elif estimate['estimated_endpoints'] > 1000:
+                print("   ❀°｡ ‧˚♡ ˚‧ ｡°❀   Good scale for intelligent discovery with advanced capabilities.")
             else:
-                print("   ⚠°｡⋆⸜ ♡   Limited data detected - review permissions and data sources.")
+                print("   ⚠°｡⋆⸜ ♡   Limited scale detected - basic intelligent mode recommended.")
             return
         
         runner = IntelligentAO1Runner(args.project, args.config)
@@ -294,14 +330,22 @@ async def main():
         print("   ♡₊˚ ｡⋅˚♡ ✧ ‧₊˚ ⋅   Intelligent Discovery Complete   ⋅ ˚₊‧ ✧ ♡˚⋅｡ ˚₊♡")
         print("="*90)
         
+        processing_stats = stats.get('processing_stats', {})
+        intelligence_stats = stats.get('intelligence_stats', {})
         cache_stats = stats.get('cache_performance', {})
         
         print(f"   ❀°｡ ‧˚♡ ˚‧ ｡°❀   Total processing time: {stats.get('total_processing_time', 0):.2f} seconds")
-        print(f"   ❀°｡ ‧˚♡ ˚‧ ｡°❀   Endpoints discovered: {stats.get('total_endpoints_discovered', 0):,}")
-        print(f"   ❀°｡ ‧˚♡ ˚‧ ｡°❀   Consolidated assets: {stats.get('consolidated_assets', 0):,}")
-        print(f"   ❀°｡ ‧˚♡ ˚‧ ｡°❀   Total data points: {stats.get('total_data_points', 0):,}")
-        print(f"   ❀°｡ ‧˚♡ ˚‧ ｡°❀   Average intelligence score: {stats.get('avg_intelligence_score', 0):.2f}")
-        print(f"   ❀°｡ ‧˚♡ ˚‧ ｡°❀   High quality assets: {stats.get('high_quality_assets', 0):,}")
+        
+        if 'fingerprints_created' in processing_stats:
+            print(f"   ❀°｡ ‧˚♡ ˚‧ ｡°❀   Advanced fingerprints: {processing_stats.get('fingerprints_created', 0):,}")
+            print(f"   ❀°｡ ‧˚♡ ˚‧ ｡°❀   Entity clusters: {processing_stats.get('entity_clusters', 0):,}")
+            print(f"   ❀°｡ ‧˚♡ ˚‧ ｡°❀   Consolidated assets: {intelligence_stats.get('consolidated_assets', 0):,}")
+            print(f"   ❀°｡ ‧˚♡ ˚‧ ｡°❀   Intelligence confidence: {intelligence_stats.get('avg_intelligence_confidence', 0):.3f}")
+        else:
+            print(f"   ❀°｡ ‧˚♡ ˚‧ ｡°❀   Endpoints discovered: {stats.get('total_endpoints_discovered', 0):,}")
+            print(f"   ❀°｡ ‧˚♡ ˚‧ ｡°❀   Consolidated assets: {stats.get('consolidated_assets', 0):,}")
+            print(f"   ❀°｡ ‧˚♡ ˚‧ ｡°❀   Total data points: {stats.get('total_data_points', 0):,}")
+            print(f"   ❀°｡ ‧˚♡ ˚‧ ｡°❀   Average intelligence score: {stats.get('avg_intelligence_score', 0):.2f}")
         
         if cache_stats:
             hit_rate = cache_stats.get('hit_rate', 0)
@@ -316,22 +360,32 @@ async def main():
         print(f"   ◦ ❀ ◦   Latest queries: {latest_queries}")
         print(f"   ◦ ❀ ◦   Intelligent database: {args.database}")
         
-        total_assets = stats.get('consolidated_assets', 0)
-        avg_intelligence = stats.get('avg_intelligence_score', 0)
+        total_assets = stats.get('consolidated_assets', 0) or intelligence_stats.get('consolidated_assets', 0)
+        avg_intelligence = stats.get('avg_intelligence_score', 0) or intelligence_stats.get('avg_intelligence_confidence', 0)
         
         if total_assets > 0:
             print(f"\n   ❀°｡ ‧˚♡ ˚‧ ｡°❀   Success! Intelligent CMDB built with {total_assets:,} assets")
             
-            if avg_intelligence >= 0.8:
-                print("   ❀°｡ ‧˚♡ ˚‧ ｡°❀   Excellent intelligence quality achieved!")
+            if avg_intelligence >= 0.9:
+                print("   ❀°｡ ‧˚♡ ˚‧ ｡°❀   🌟 EXCEPTIONAL intelligence quality achieved!")
+            elif avg_intelligence >= 0.8:
+                print("   ❀°｡ ‧˚♡ ˚‧ ｡°❀   ✨ EXCELLENT intelligence quality achieved!")
+            elif avg_intelligence >= 0.7:
+                print("   ❀°｡ ‧˚♡ ˚‧ ｡°❀   💫 HIGH intelligence quality with comprehensive data")
             elif avg_intelligence >= 0.6:
-                print("   ❀°｡ ‧˚♡ ˚‧ ｡°❀   High intelligence quality with comprehensive data")
-            elif avg_intelligence >= 0.4:
-                print("   ❀°｡ ‧˚♡ ˚‧ ｡°❀   Good intelligence quality with room for enrichment")
+                print("   ❀°｡ ‧˚♡ ˚‧ ｡°❀   📊 GOOD intelligence quality with room for enrichment")
             else:
                 print("   ⚠°｡⋆⸜ ♡   Intelligence gaps detected - consider additional data sources")
             
             print("   ❀°｡ ‧˚♡ ˚‧ ｡°❀   CSOC can now perform intelligent log visibility analysis")
+            
+            system_capabilities = stats.get('system_capabilities', {})
+            if system_capabilities:
+                print(f"\n   ｡･:*:･ﾟ★   Advanced Capabilities:")
+                for capability, enabled in system_capabilities.items():
+                    if enabled:
+                        capability_name = capability.replace('_', ' ').title()
+                        print(f"   ◦ ✨ ◦   {capability_name}")
         else:
             print("   ⚠°｡⋆⸜ ♡   No assets discovered - verify permissions and data sources")
         
