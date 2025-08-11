@@ -508,9 +508,18 @@ class AO1IntelligentDiscovery:
                 PrettyLogger.info(f"Executing discovery query for {source_name}")
                 
                 try:
-                    results = list(client_manager.execute_query_unlimited(discovery_query))
+                    with client_manager.get_client() as client:
+                        job_config = bigquery.QueryJobConfig(
+                            use_query_cache=False,
+                            job_timeout_ms=600000,
+                            maximum_bytes_billed=None,
+                            use_legacy_sql=False,
+                            dry_run=False
+                        )
+                        job = client.query(discovery_query, job_config=job_config)
+                        results = list(job.result())
                 except Exception as e:
-                    PrettyLogger.warning(f"Query failed with cost limits, trying simplified query: {e}")
+                    PrettyLogger.warning(f"Query failed, trying simplified query: {e}")
                     
                     simplified_query = f"""
                     SELECT DISTINCT UPPER(TRIM(CAST(`{hostname_field}` AS STRING))) as hostname
@@ -518,10 +527,19 @@ class AO1IntelligentDiscovery:
                     {date_filter}
                     {" AND " if date_filter else "WHERE"} `{hostname_field}` IS NOT NULL
                         AND LENGTH(TRIM(CAST(`{hostname_field}` AS STRING))) >= 3
-                    LIMIT 10000
+                    LIMIT 5000
                     """
                     
-                    results = list(client_manager.execute_query_unlimited(simplified_query))
+                    with client_manager.get_client() as client:
+                        job_config = bigquery.QueryJobConfig(
+                            use_query_cache=False,
+                            job_timeout_ms=300000,
+                            maximum_bytes_billed=None,
+                            use_legacy_sql=False,
+                            dry_run=False
+                        )
+                        job = client.query(simplified_query, job_config=job_config)
+                        results = list(job.result())
                 
                 if not results:
                     PrettyLogger.warning(f"No endpoints found in {source_name}")
