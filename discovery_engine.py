@@ -509,14 +509,7 @@ class AO1IntelligentDiscovery:
                 
                 try:
                     with client_manager.get_client() as client:
-                        job_config = bigquery.QueryJobConfig(
-                            use_query_cache=False,
-                            job_timeout_ms=600000,
-                            maximum_bytes_billed=None,
-                            use_legacy_sql=False,
-                            dry_run=False
-                        )
-                        job = client.query(discovery_query, job_config=job_config)
+                        job = client.query(discovery_query)
                         results = list(job.result())
                 except Exception as e:
                     PrettyLogger.warning(f"Primary query failed, trying simplified query: {e}")
@@ -532,14 +525,7 @@ class AO1IntelligentDiscovery:
                     
                     try:
                         with client_manager.get_client() as client:
-                            job_config = bigquery.QueryJobConfig(
-                                use_query_cache=False,
-                                job_timeout_ms=300000,
-                                maximum_bytes_billed=None,
-                                use_legacy_sql=False,
-                                dry_run=False
-                            )
-                            job = client.query(simplified_query, job_config=job_config)
+                            job = client.query(simplified_query)
                             results = list(job.result())
                     except Exception as e2:
                         PrettyLogger.error(f"Both queries failed for {source_name}: {e2}")
@@ -760,13 +746,7 @@ class AO1IntelligentDiscovery:
                         """
                         
                         with client_manager.get_client() as client:
-                            job_config = bigquery.QueryJobConfig(
-                                use_query_cache=False,
-                                job_timeout_ms=120000,
-                                maximum_bytes_billed=None,
-                                use_legacy_sql=False
-                            )
-                            job = client.query(sample_query, job_config=job_config)
+                            job = client.query(sample_query)
                             results = list(job.result())
                         
                         for row in results:
