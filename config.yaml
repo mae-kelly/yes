@@ -1,11 +1,11 @@
-max_workers: 12
+max_workers: 8
 cache_dir: ".cache"
 cache_ttl_hours: 24
 enable_memory_cache: true
 
 database_path: "ao1_visibility_cmdb.db"
 enable_checkpointing: true
-checkpoint_interval_minutes: 2
+checkpoint_interval_minutes: 1
 
 confidence_threshold: 0.2
 sample_validation_threshold: 0.3
@@ -17,15 +17,16 @@ skip_patterns:
 
 dataset_priorities:
   SAS_BI: 100
-  CMDB: 95
-  CSIRT: 90
-  SECURITY: 85
-  AXONIUS: 85
-  CROWDSTRIKE: 80
-  SPLUNK: 80
-  MONITORING: 75
-  COMPLIANCE: 70
-  NETWORK: 65
+  datalake: 95
+  CMDB: 90
+  CSIRT: 85
+  SECURITY: 80
+  AXONIUS: 75
+  CROWDSTRIKE: 70
+  SPLUNK: 65
+  MONITORING: 60
+  COMPLIANCE: 55
+  NETWORK: 50
 
 parallel_dataset_processing: true
 parallel_table_processing: true
@@ -37,7 +38,7 @@ content_analysis:
 bigquery_settings:
   query_timeout_seconds: 300
   max_results_per_page: 10000
-  use_query_cache: true
+  use_query_cache: false
   dry_run_first: false
 
 logging:
@@ -60,7 +61,7 @@ recovery:
 resource_limits:
   max_memory_usage_gb: 8
   max_disk_cache_gb: 10
-  connection_pool_size: 20
+  connection_pool_size: 5
 
 advanced:
   enable_ml_classification: false
