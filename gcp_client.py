@@ -6,7 +6,8 @@ import time
 import threading
 import queue
 from contextlib import contextmanager
-from typing import Optional
+from typing import Optional, Dict
+import random
 
 try:
     from google.cloud import bigquery
@@ -17,29 +18,29 @@ except ImportError:
 
 logger = logging.getLogger(__name__)
 
-class BigQueryClientManager:
-    def __init__(self, project_id: str):
+class BigQueryClientPool:
+    def __init__(self, project_id: str, pool_size: int = 5):
         if not BIGQUERY_AVAILABLE:
             raise ImportError("google-cloud-bigquery is required")
             
         self.project_id = project_id
-        self._client_pool = queue.Queue(maxsize=5)
+        self.pool_size = pool_size
+        self._pool = queue.Queue(maxsize=pool_size)
         self._pool_lock = threading.Lock()
-        self._client_creation_delay = 2.0
-        self._last_client_creation = 0
+        self._creation_lock = threading.Lock()
+        self._last_creation = {}
+        self._min_creation_interval = 2.0
         
-        for _ in range(3):
-            client = self._create_single_client()
-            self._client_pool.put(client)
-        
-        logger.info(f"Initialized BigQuery client pool with 3 clients for project: {project_id}")
+        self._initialize_pool()
     
     def _create_single_client(self) -> bigquery.Client:
-        with self._pool_lock:
-            current_time = time.time()
-            time_since_last = current_time - self._last_client_creation
-            if time_since_last < self._client_creation_delay:
-                time.sleep(self._client_creation_delay - time_since_last)
+        thread_id = threading.get_ident()
+        current_time = time.time()
+        
+        with self._creation_lock:
+            last_time = self._last_creation.get(thread_id, 0)
+            if current_time - last_time < self._min_creation_interval:
+                time.sleep(self._min_creation_interval - (current_time - last_time))
             
             credential_paths = [
                 os.path.join(os.path.dirname(__file__), "gcp_prod_key.json"),
@@ -56,13 +57,13 @@ class BigQueryClientManager:
                             project=self.project_id, 
                             credentials=credentials,
                             default_query_job_config=bigquery.QueryJobConfig(
-                                use_query_cache=False,
-                                job_timeout_ms=300000,
+                                use_query_cache=True,
+                                job_timeout_ms=180000,
                                 maximum_bytes_billed=None
                             )
                         )
                         list(client.list_datasets(max_results=1))
-                        self._last_client_creation = time.time()
+                        self._last_creation[thread_id] = time.time()
                         return client
                     except Exception as e:
                         logger.debug(f"Service account {path} failed: {e}")
@@ -72,48 +73,55 @@ class BigQueryClientManager:
                 client = bigquery.Client(
                     project=self.project_id,
                     default_query_job_config=bigquery.QueryJobConfig(
-                        use_query_cache=False,
-                        job_timeout_ms=300000,
+                        use_query_cache=True,
+                        job_timeout_ms=180000,
                         maximum_bytes_billed=None
                     )
                 )
                 list(client.list_datasets(max_results=1))
-                self._last_client_creation = time.time()
+                self._last_creation[thread_id] = time.time()
                 return client
             except Exception as e:
                 logger.error(f"All authentication methods failed: {e}")
                 raise
     
+    def _initialize_pool(self):
+        logger.info(f"Initializing BigQuery client pool with {self.pool_size} clients")
+        for i in range(self.pool_size):
+            try:
+                client = self._create_single_client()
+                self._pool.put(client, block=False)
+                logger.debug(f"Created client {i+1}/{self.pool_size}")
+                time.sleep(0.5)
+            except Exception as e:
+                logger.error(f"Failed to create client {i+1}: {e}")
+                if i == 0:
+                    raise
+    
     @contextmanager
-    def get_client(self):
+    def get_client(self, timeout: float = 30.0):
         client = None
         try:
-            client = self._client_pool.get(timeout=30)
+            client = self._pool.get(timeout=timeout)
             yield client
         except queue.Empty:
-            logger.warning("Client pool exhausted, creating temporary client")
+            logger.warning("Connection pool timeout, creating temporary client")
             temp_client = self._create_single_client()
-            try:
-                yield temp_client
-            finally:
-                temp_client.close()
+            yield temp_client
         except Exception as e:
             if "Connection pool is full" in str(e) or "ConnectionError" in str(e):
-                logger.warning("Connection pool issue, creating new client")
-                time.sleep(3)
-                new_client = self._create_single_client()
-                try:
-                    yield new_client
-                finally:
-                    new_client.close()
+                logger.warning("Connection error detected, creating fresh client")
+                time.sleep(random.uniform(1, 3))
+                fresh_client = self._create_single_client()
+                yield fresh_client
             else:
                 raise
         finally:
-            if client:
+            if client is not None:
                 try:
-                    self._client_pool.put_nowait(client)
+                    self._pool.put(client, block=False)
                 except queue.Full:
-                    client.close()
+                    logger.debug("Pool full, discarding client")
     
     def test_connection(self) -> bool:
         try:
@@ -124,8 +132,22 @@ class BigQueryClientManager:
         except Exception as e:
             logger.error(f"BigQuery connection test failed: {e}")
             return False
+
+class BigQueryClientManager:
+    def __init__(self, project_id: str):
+        self.project_id = project_id
+        self.pool = BigQueryClientPool(project_id, pool_size=8)
+        logger.info(f"Connected to BigQuery project: {project_id}")
     
-    def get_project_info(self) -> dict:
+    @contextmanager
+    def get_client(self):
+        with self.pool.get_client() as client:
+            yield client
+    
+    def test_connection(self) -> bool:
+        return self.pool.test_connection()
+    
+    def get_project_info(self) -> Dict[str, str]:
         try:
             with self.get_client() as client:
                 return {
@@ -140,11 +162,3 @@ class BigQueryClientManager:
                 'friendly_name': f"Project: {self.project_id}",
                 'description': "Project info unavailable"
             }
-    
-    def close_all(self):
-        while not self._client_pool.empty():
-            try:
-                client = self._client_pool.get_nowait()
-                client.close()
-            except queue.Empty:
-                break
