@@ -2,12 +2,8 @@
 
 import os
 import logging
-import time
-import threading
-import queue
 from contextlib import contextmanager
 from typing import Optional
-import gc
 
 try:
     from google.cloud import bigquery
@@ -22,121 +18,107 @@ class BigQueryClientManager:
     def __init__(self, project_id: str):
         if not BIGQUERY_AVAILABLE:
             raise ImportError("google-cloud-bigquery is required")
-            
+
         self.project_id = project_id
-        self._client_pool = queue.Queue(maxsize=5)
-        self._pool_lock = threading.Lock()
-        self._total_clients = 0
-        self._max_clients = 3
-        self._client_timeout = 30
-        
+        self.client = None
+
         try:
-            for _ in range(2):
-                client = self._create_fresh_client()
-                self._client_pool.put(client)
-                self._total_clients += 1
-            logger.info(f"Initialized connection pool with {self._total_clients} clients")
+            self.client = self._create_client()
+            logger.info(f"Connected to BigQuery project: {project_id}")
         except Exception as e:
-            logger.error(f"Failed to initialize BigQuery client pool: {e}")
+            logger.error(f"Failed to initialize BigQuery client: {e}")
             raise
-    
-    def _create_fresh_client(self) -> bigquery.Client:
+
+    def _create_client(self) -> bigquery.Client:
+        # Original authentication order - exactly as before
         credential_paths = [
+            # 1. First check for gcp_prod_key.json in current directory (original way)
             os.path.join(os.path.dirname(__file__), "gcp_prod_key.json"),
-            "gcp_prod_key.json",
+            "gcp_prod_key.json",  # Also check current working directory
+
+            # 2. Then check GOOGLE_APPLICATION_CREDENTIALS environment variable
             os.environ.get('GOOGLE_APPLICATION_CREDENTIALS', ''),
+
+            # 3. Finally check default gcloud location
             os.path.expanduser("~/.config/gcloud/application_default_credentials.json")
         ]
-        
+
+        # Try service account authentication first (original approach)
         for path in credential_paths:
             if path and os.path.exists(path):
                 try:
+                    logger.info(f"Attempting service account authentication: {path}")
                     credentials = service_account.Credentials.from_service_account_file(path)
-                    client = bigquery.Client(
-                        project=self.project_id, 
-                        credentials=credentials,
-                        default_query_job_config=bigquery.QueryJobConfig(
-                            use_query_cache=True,
-                            job_timeout_ms=30000,
-                            maximum_bytes_billed=None
-                        )
-                    )
+                    client = bigquery.Client(project=self.project_id, credentials=credentials)
+
+                    # Test the connection
                     list(client.list_datasets(max_results=1))
+
+                    logger.info(f"✅ Successfully authenticated using service account: {path}")
                     return client
+
                 except Exception as e:
                     logger.debug(f"Service account {path} failed: {e}")
                     continue
-        
+
+        # Fall back to default credentials (gcloud auth application-default login)
         try:
-            client = bigquery.Client(
-                project=self.project_id,
-                default_query_job_config=bigquery.QueryJobConfig(
-                    use_query_cache=True,
-                    job_timeout_ms=30000,
-                    maximum_bytes_billed=None
-                )
-            )
+            logger.info("Attempting default credentials authentication")
+            client = bigquery.Client(project=self.project_id)
+
+            # Test the connection
             list(client.list_datasets(max_results=1))
+
+            logger.info("✅ Successfully authenticated using default credentials")
             return client
+
         except Exception as e:
             logger.error(f"All authentication methods failed: {e}")
+            logger.error("Authentication methods tried:")
+            logger.error("1. Service account key: gcp_prod_key.json")
+            logger.error("2. GOOGLE_APPLICATION_CREDENTIALS environment variable")
+            logger.error("3. Default gcloud credentials")
+            logger.error("")
+            logger.error("To fix this:")
+            logger.error("Option 1 (Recommended): Place your service account key as 'gcp_prod_key.json'")
+            logger.error("Option 2: Set GOOGLE_APPLICATION_CREDENTIALS=/path/to/your/key.json")
+            logger.error("Option 3: Run 'gcloud auth application-default login'")
             raise
-    
+
     @contextmanager
     def get_client(self):
-        client = None
-        acquired_from_pool = False
-        
-        try:
+        if self.client is None:
             try:
-                client = self._client_pool.get(timeout=5)
-                acquired_from_pool = True
-            except queue.Empty:
-                with self._pool_lock:
-                    if self._total_clients < self._max_clients:
-                        client = self._create_fresh_client()
-                        self._total_clients += 1
-                        logger.debug(f"Created new client, total: {self._total_clients}")
-                    else:
-                        client = self._client_pool.get(timeout=10)
-                        acquired_from_pool = True
-            
-            yield client
-            
-        except Exception as e:
-            if "Connection pool is full" in str(e) or "pool" in str(e).lower():
-                logger.warning("Connection pool issue, creating temporary client")
-                time.sleep(2)
-                temp_client = self._create_fresh_client()
-                yield temp_client
-                temp_client.close()
-                del temp_client
-                gc.collect()
-            else:
+                self.client = self._create_client()
+            except Exception as e:
+                logger.error(f"Failed to create BigQuery client: {e}")
                 raise
+        try:
+            yield self.client
+        except Exception as e:
+            logger.error(f"BigQuery operation failed: {e}")
+            raise
         finally:
-            if client and acquired_from_pool:
-                try:
-                    self._client_pool.put(client, timeout=1)
-                except queue.Full:
-                    client.close()
-                    del client
-                    with self._pool_lock:
-                        self._total_clients -= 1
-    
+            pass
+
     def test_connection(self) -> bool:
+        """Test the BigQuery connection"""
         try:
             with self.get_client() as client:
+                # Try to list datasets to verify connection
                 datasets = list(client.list_datasets(max_results=1))
-                logger.info("BigQuery connection test successful")
+                logger.info("✅ BigQuery connection test successful")
                 return True
         except Exception as e:
-            logger.error(f"BigQuery connection test failed: {e}")
+            logger.error(f"❌ BigQuery connection test failed: {e}")
             return False
-    
+
     def get_project_info(self) -> dict:
+        """Get project information for verification"""
         try:
             with self.get_client() as client:
+                # The BigQuery client doesn't have a get_project method
+                # Instead, we'll get basic info from the client itself
                 return {
                     'project_id': client.project,
                     'friendly_name': f"BigQuery Project: {client.project}",
@@ -149,14 +131,3 @@ class BigQueryClientManager:
                 'friendly_name': f"Project: {self.project_id}",
                 'description': "Project info unavailable"
             }
-    
-    def close_all(self):
-        while not self._client_pool.empty():
-            try:
-                client = self._client_pool.get_nowait()
-                client.close()
-                del client
-            except queue.Empty:
-                break
-        gc.collect()
-        logger.info("Closed all BigQuery client connections")
