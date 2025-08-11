@@ -41,36 +41,30 @@ class PrettyLogger:
         print(f"   ✗°｡⋆⸜ ♡   {msg}")
     
     @staticmethod
-    def dataset(dataset_name: str, count: int, total: int):
-        print(f"   ˚ ༘♡ ⋆｡˚   Dataset {count}/{total}: {dataset_name}")
+    def ao1_metric(metric_name: str, value: str):
+        print(f"   ♡₊˚ ⋆｡˚   AO1 {metric_name}: {value}")
     
     @staticmethod
-    def table(table_name: str, endpoints_found: int = 0):
-        if endpoints_found > 0:
-            print(f"   ･ﾟ✧ ◞ ♡   Found {endpoints_found} endpoints in: {table_name}")
+    def visibility_analysis(analysis: str):
+        print(f"   ･ﾟ✧ ◞ ♡   Visibility Analysis: {analysis}")
     
     @staticmethod
-    def endpoint_merge(endpoint: str, table_count: int):
-        print(f"   ♡˗ˏˋ ◞ ～   Merging {endpoint} from {table_count} sources")
+    def critical_discovery(source: str, count: int):
+        print(f"   ♡˗ˏˋ ◞ ～   {source} Discovery: {count:,} endpoints")
     
     @staticmethod
-    def progress(current: int, total: int, item_type: str):
-        percentage = (current / total * 100) if total > 0 else 0
-        print(f"   ✧･ﾟ: *✧･ﾟ:*   Progress: {current}/{total} {item_type} ({percentage:.1f}%)")
-    
-    @staticmethod
-    def critical_source(source_name: str, count: int):
-        print(f"   ♡₊˚ 🌸 ⋆｡˚   Critical source {source_name}: {count} endpoints")
+    def gap_identification(gap_type: str, count: int):
+        print(f"   ⚠°｡⋆⸜ ♡   Gap Identified - {gap_type}: {count:,} assets")
 
-class DiscoveryEngine:
+class AO1IntelligentDiscovery:
     def __init__(self, project_id: str, config: Dict[str, Any] = None):
         self.project_id = project_id
         self.config = config or {}
         
-        print("\n" + "="*80)
-        print("   ♡₊˚ 🦢 ✧ ‧₊˚ ⋅   AO1 Log Visibility Discovery Engine   ⋅ ˚₊‧ ✧ 🦢 ˚₊♡")
-        print("="*80)
-        PrettyLogger.info(f"Initializing brilliant discovery for project: {project_id}")
+        print("\n" + "="*90)
+        print("   ♡₊˚ ｡⋅˚♡ ✧ ‧₊˚ ⋅   AO1 Log Visibility Measurement System   ⋅ ˚₊‧ ✧ ♡˚⋅｡ ˚₊♡")
+        print("="*90)
+        PrettyLogger.info("Initializing brilliant AO1 visibility measurement capabilities")
         
         self.client_manager = BigQueryClientManager(project_id)
         self.chronicle_client_manager = None
@@ -81,13 +75,12 @@ class DiscoveryEngine:
         try:
             self.chronicle_client_manager = BigQueryClientManager("chronicle-fisv")
             if not self.chronicle_client_manager.test_connection():
-                PrettyLogger.warning("Chronicle project authentication failed - continuing without Chronicle data")
+                PrettyLogger.warning("Chronicle project authentication failed")
                 self.chronicle_client_manager = None
-        except Exception as e:
-            PrettyLogger.warning(f"Chronicle authentication failed: {e}")
+        except Exception:
             self.chronicle_client_manager = None
         
-        PrettyLogger.success("BigQuery authentication successful")
+        PrettyLogger.success("Connected to data sources - building AO1 visibility CMDB")
         
         self.matcher = ContentBasedMatcher()
         self.cache = CacheManager(self.config.get('cache_dir', '.cache'))
@@ -96,54 +89,103 @@ class DiscoveryEngine:
         self.signal_handler = SignalHandler()
         
         self.db_path = self.config.get('database_path', 'ao1_visibility_cmdb.db')
-        self.max_workers = min(4, self.config.get('max_workers', 4))
+        self.max_workers = min(2, self.config.get('max_workers', 2))
         
-        self.critical_sources = {
-            'cmdb': {
+        self.ao1_source_definitions = {
+            'cmdb_master': {
                 'project': project_id,
                 'dataset': 'SAS_BI',
                 'table': 'V_DIM_ENDPOINT',
-                'endpoint_column': 'Endpoint_Nme',
-                'region_column': 'EndpointRegion_Nme',
-                'environment_column': 'EndpointEnvironment_Type',
-                'type_column': 'Endpoint_Type'
+                'primary_key': 'Endpoint_Nme',
+                'fields': {
+                    'hostname': 'Endpoint_Nme',
+                    'region': 'EndpointRegion_Nme', 
+                    'environment': 'EndpointEnvironment_Type',
+                    'type': 'Endpoint_Type',
+                    'business_unit': 'BusinessUnit_Nme'
+                },
+                'source_type': 'cmdb',
+                'priority': 100
             },
-            'crowdstrike': {
-                'project': project_id,
-                'dataset': 'SAS_BI', 
-                'table': 'V_DIM_ENDPOINTAGENT',
-                'endpoint_column': 'Endpoint_Nme',
-                'region_column': 'EndpointRegion_Nme',
-                'environment_column': 'EndpointEnvironment_Type'
-            },
-            'splunk': {
+            'security_agents': {
                 'project': project_id,
                 'dataset': 'SAS_BI',
-                'table': 'V_SPL_ENDPOINT_LOG', 
-                'endpoint_column': 'host_nme',
-                'region_column': 'region',
-                'environment_column': 'environment'
+                'table': 'V_DIM_ENDPOINTAGENT',
+                'primary_key': 'Endpoint_Nme',
+                'fields': {
+                    'hostname': 'Endpoint_Nme',
+                    'region': 'EndpointRegion_Nme',
+                    'environment': 'EndpointEnvironment_Type',
+                    'agent_type': 'AgentType_Nme'
+                },
+                'source_type': 'crowdstrike',
+                'priority': 95
             },
-            'chronicle': {
+            'splunk_logs': {
+                'project': project_id,
+                'dataset': 'SAS_BI',
+                'table': 'V_SPL_ENDPOINT_LOG',
+                'primary_key': 'host_nme',
+                'fields': {
+                    'hostname': 'host_nme',
+                    'region': 'region',
+                    'environment': 'environment',
+                    'log_volume': 'daily_log_volume'
+                },
+                'source_type': 'splunk',
+                'priority': 90
+            },
+            'chronicle_events': {
                 'project': 'chronicle-fisv',
-                'dataset': 'datalake',
+                'dataset': 'datalake', 
                 'table': 'events',
-                'endpoint_column': 'principal.hostname',
-                'region_column': 'network.ip_geo_artifact.location.region',
-                'environment_column': 'metadata.description'
+                'primary_key': 'principal.hostname',
+                'fields': {
+                    'hostname': 'principal.hostname',
+                    'region': 'network.ip_geo_artifact.location.region',
+                    'event_type': 'metadata.event_type'
+                },
+                'source_type': 'chronicle',
+                'priority': 85
+            }
+        }
+        
+        self.ao1_visibility_requirements = {
+            'global_view': {
+                'description': 'CSOC ability to view x% of all assets globally',
+                'measurement': 'percentage_with_logging_coverage'
+            },
+            'infrastructure_type': {
+                'description': 'Visibility by host and log type across infrastructure types',
+                'categories': ['On-Prem', 'Cloud', 'SaaS', 'API']
+            },
+            'regional_view': {
+                'description': 'Visibility statement on % of visibility by location',
+                'breakdown': ['Global Region', 'Country', 'Data Center', 'Cloud region']
+            },
+            'bu_application_view': {
+                'description': 'Business Unit and Application visibility breakdown',
+                'categories': ['Business Unit', 'CIO', 'APM', 'Application Class']
+            },
+            'system_classification': {
+                'description': 'System type visibility analysis',
+                'types': ['Web Server', 'Windows Server', 'Linux Server', 'Database', 'Network Appliance']
+            },
+            'security_control_coverage': {
+                'description': 'Security tool coverage analysis',
+                'tools': ['EDR', 'Tanium', 'DLP Agent']
             }
         }
         
         self.processed_datasets = set()
         self.processed_tables = set()
         self._processing_lock = threading.Lock()
-        self.dataset_counter = 0
-        self.table_counter = 0
-        self.endpoint_merge_stats = {}
+        self.ao1_metrics = {}
+        self.visibility_analysis = {}
         
-        self._setup_database()
+        self._setup_ao1_intelligent_database()
     
-    def _setup_database(self):
+    def _setup_ao1_intelligent_database(self):
         self.conn = duckdb.connect(self.db_path)
         
         self.conn.execute("""
@@ -167,411 +209,275 @@ class DiscoveryEngine:
             in_splunk BOOLEAN DEFAULT FALSE,
             in_chronicle BOOLEAN DEFAULT FALSE,
             in_gso BOOLEAN DEFAULT FALSE,
-            logging_platforms TEXT,
+            splunk_log_volume BIGINT DEFAULT 0,
+            chronicle_event_count BIGINT DEFAULT 0,
+            last_splunk_log TIMESTAMP,
+            last_chronicle_event TIMESTAMP,
             
             has_edr BOOLEAN DEFAULT FALSE,
             has_tanium BOOLEAN DEFAULT FALSE,
             has_dlp BOOLEAN DEFAULT FALSE,
             has_crowdstrike BOOLEAN DEFAULT FALSE,
-            security_tools TEXT,
+            agent_coverage_score DOUBLE DEFAULT 0.0,
             
             found_in_cmdb BOOLEAN DEFAULT FALSE,
-            found_in_ad BOOLEAN DEFAULT FALSE,
-            found_in_dhcp BOOLEAN DEFAULT FALSE,
-            found_in_dns BOOLEAN DEFAULT FALSE,
-            found_in_tables TEXT,
-            source_count INTEGER DEFAULT 1,
+            cmdb_last_updated TIMESTAMP,
+            source_systems TEXT,
+            data_quality_score DOUBLE DEFAULT 0.0,
             
-            visibility_score DOUBLE DEFAULT 0.0,
-            last_log_seen TIMESTAMP,
+            url_fqdn_coverage BOOLEAN DEFAULT FALSE,
+            public_ip_space_mapped BOOLEAN DEFAULT FALSE,
+            domain_visibility BOOLEAN DEFAULT FALSE,
+            
+            ao1_visibility_score DOUBLE DEFAULT 0.0,
+            ao1_gap_severity VARCHAR DEFAULT 'Unknown',
+            ao1_recommendation TEXT,
+            
             discovery_timestamp TIMESTAMP DEFAULT NOW(),
             last_updated TIMESTAMP DEFAULT NOW()
         )
         """)
         
         self.conn.execute("""
-        CREATE TABLE IF NOT EXISTS ao1_table_analytics (
-            table_path VARCHAR PRIMARY KEY,
-            dataset_name VARCHAR,
-            table_name VARCHAR,
-            row_count BIGINT,
-            size_bytes BIGINT,
-            endpoints_discovered INTEGER DEFAULT 0,
-            endpoint_columns TEXT,
-            is_partitioned BOOLEAN DEFAULT FALSE,
-            partition_column VARCHAR,
-            brilliance_score DOUBLE DEFAULT 0.0,
-            processing_time_seconds DOUBLE DEFAULT 0.0,
-            discovered_at TIMESTAMP DEFAULT NOW()
+        CREATE TABLE IF NOT EXISTS ao1_visibility_metrics (
+            metric_category VARCHAR,
+            metric_name VARCHAR,
+            metric_value DOUBLE,
+            metric_target DOUBLE,
+            gap_percentage DOUBLE,
+            improvement_priority INTEGER,
+            calculation_method TEXT,
+            last_calculated TIMESTAMP DEFAULT NOW(),
+            PRIMARY KEY (metric_category, metric_name)
         )
         """)
         
         self.conn.execute("""
-        CREATE TABLE IF NOT EXISTS ao1_visibility_metrics (
-            metric_name VARCHAR PRIMARY KEY,
-            metric_value DOUBLE,
-            calculation_details TEXT,
-            calculated_at TIMESTAMP DEFAULT NOW()
+        CREATE TABLE IF NOT EXISTS ao1_gap_analysis (
+            gap_id VARCHAR PRIMARY KEY,
+            gap_category VARCHAR,
+            gap_description TEXT,
+            affected_asset_count INTEGER,
+            severity_level VARCHAR,
+            business_impact TEXT,
+            recommended_action TEXT,
+            estimated_effort VARCHAR,
+            identified_at TIMESTAMP DEFAULT NOW()
+        )
+        """)
+        
+        self.conn.execute("""
+        CREATE TABLE IF NOT EXISTS ao1_logging_compliance (
+            hostname VARCHAR,
+            logging_platform VARCHAR,
+            compliance_status VARCHAR,
+            log_types_covered TEXT,
+            coverage_percentage DOUBLE,
+            gaps_identified TEXT,
+            compliance_date TIMESTAMP,
+            PRIMARY KEY (hostname, logging_platform)
+        )
+        """)
+        
+        self.conn.execute("""
+        CREATE TABLE IF NOT EXISTS ao1_domain_visibility (
+            domain_name VARCHAR PRIMARY KEY,
+            asset_count INTEGER,
+            covered_assets INTEGER,
+            visibility_percentage DOUBLE,
+            missing_coverage INTEGER,
+            domain_classification VARCHAR,
+            last_analyzed TIMESTAMP DEFAULT NOW()
         )
         """)
     
-    async def discover_all_endpoints(self) -> Tuple[Dict[str, Any], Dict[str, str]]:
+    async def execute_ao1_discovery(self) -> Tuple[Dict[str, Any], Dict[str, str]]:
         start_time = time.time()
-        PrettyLogger.info("Starting brilliant comprehensive asset discovery")
+        PrettyLogger.info("Executing brilliant AO1 log visibility discovery")
         
         try:
             checkpoint = self.checkpoint_manager.load_checkpoint()
             if checkpoint:
-                PrettyLogger.info("Resuming from checkpoint with brilliance")
+                PrettyLogger.info("Resuming AO1 discovery from intelligent checkpoint")
                 await self._resume_from_checkpoint(checkpoint)
             
-            await self._load_critical_sources()
-            await self._discover_all_datasets_brilliantly()
-            await self._calculate_ao1_metrics()
+            await self._discover_critical_ao1_sources()
+            await self._execute_comprehensive_discovery()
+            await self._calculate_ao1_visibility_metrics()
+            await self._perform_gap_analysis()
+            await self._generate_compliance_insights()
             
             stats = self.progress.get_stats()
-            queries = self._create_brilliant_analysis_queries()
+            queries = self._create_ao1_analysis_queries()
             
-            final_stats = {
+            final_results = {
                 'processing_time': time.time() - start_time,
                 'database_path': self.db_path,
-                'total_endpoints': self._count_endpoints(),
-                'visibility_coverage': self._get_visibility_coverage(),
-                'discovery_summary': self._get_summary(),
+                'total_assets_discovered': self._count_total_assets(),
+                'ao1_visibility_metrics': self._get_ao1_metrics(),
+                'gap_analysis': self._get_gap_analysis(),
+                'compliance_status': self._get_compliance_status(),
                 'performance_stats': asdict(stats),
-                'brilliance_metrics': self._get_brilliance_metrics(),
-                'endpoint_merge_stats': self.endpoint_merge_stats
+                'ao1_recommendations': self._generate_ao1_recommendations()
             }
             
             self.checkpoint_manager.clear_checkpoint()
-            PrettyLogger.success("Brilliant discovery completed successfully")
+            PrettyLogger.success("AO1 discovery completed with brilliant insights")
             
-            return final_stats, queries
+            return final_results, queries
             
         except Exception as e:
-            PrettyLogger.error(f"Discovery failed with error: {e}")
+            PrettyLogger.error(f"AO1 discovery failed: {e}")
             await self._save_emergency_checkpoint()
             raise
         finally:
             if hasattr(self, 'conn') and self.conn:
                 self.conn.close()
     
-    async def _resume_from_checkpoint(self, checkpoint: Dict[str, Any]):
-        self.processed_datasets = set(checkpoint.get('processed_datasets', []))
-        self.processed_tables = set(checkpoint.get('processed_tables', []))
-        self.endpoint_merge_stats = checkpoint.get('endpoint_merge_stats', {})
+    async def _discover_critical_ao1_sources(self):
+        PrettyLogger.info("Discovering critical AO1 data sources with intelligence")
         
-        self.progress.set_stats(
-            datasets_processed=len(self.processed_datasets),
-            tables_processed=len(self.processed_tables),
-            endpoints_discovered=checkpoint.get('endpoints_discovered', 0)
-        )
-    
-    async def _load_critical_sources(self):
-        PrettyLogger.info("Loading critical AO1 sources with precision")
-        
-        for source_name, source_config in self.critical_sources.items():
+        for source_name, source_config in self.ao1_source_definitions.items():
             try:
-                await asyncio.sleep(random.uniform(1, 3))
+                await asyncio.sleep(random.uniform(0.5, 1.5))
                 
-                if source_config['project'] == 'chronicle-fisv':
-                    if self.chronicle_client_manager is None:
-                        PrettyLogger.warning(f"Skipping {source_name} - Chronicle client not available")
-                        continue
-                    client_manager = self.chronicle_client_manager
-                else:
-                    client_manager = self.client_manager
+                client_manager = self.chronicle_client_manager if source_config['project'] == 'chronicle-fisv' else self.client_manager
                 
-                endpoints_found = await self._load_critical_source(source_name, source_config, client_manager)
-                PrettyLogger.critical_source(source_name, endpoints_found)
+                if client_manager is None:
+                    PrettyLogger.warning(f"Skipping {source_name} - client unavailable")
+                    continue
                 
-                await asyncio.sleep(2)
+                endpoints_discovered = await self._intelligent_source_discovery(source_name, source_config, client_manager)
+                PrettyLogger.critical_discovery(source_name, endpoints_discovered)
+                
+                await asyncio.sleep(1)
                 
             except Exception as e:
-                PrettyLogger.error(f"Failed to load critical source {source_name}: {e}")
-                await asyncio.sleep(5)
+                PrettyLogger.error(f"Failed to discover {source_name}: {e}")
+                await asyncio.sleep(3)
     
-    async def _load_critical_source(self, source_name: str, config: Dict[str, Any], client_manager: BigQueryClientManager) -> int:
+    async def _intelligent_source_discovery(self, source_name: str, config: Dict[str, Any], client_manager: BigQueryClientManager) -> int:
         table_path = f"{config['project']}.{config['dataset']}.{config['table']}"
         
         try:
-            await asyncio.sleep(random.uniform(0.5, 1.5))
+            PrettyLogger.info(f"Analyzing {source_name} source: {table_path}")
             
             with client_manager.get_client() as client:
                 try:
                     table_ref = client.get_table(table_path)
                     available_columns = [field.name for field in table_ref.schema]
+                    PrettyLogger.success(f"Connected to {source_name}, found {len(available_columns)} columns")
                 except Exception as e:
-                    PrettyLogger.error(f"Failed to get table schema for {source_name}: {e}")
+                    PrettyLogger.error(f"Cannot access table {table_path}: {e}")
                     return 0
                 
-                if config['endpoint_column'] not in available_columns:
-                    PrettyLogger.warning(f"Endpoint column {config['endpoint_column']} not found in {source_name}")
+                hostname_field = config['fields']['hostname']
+                if hostname_field not in available_columns:
+                    PrettyLogger.error(f"Hostname field '{hostname_field}' not found in {source_name}")
+                    PrettyLogger.info(f"Available columns: {', '.join(available_columns[:10])}")
                     return 0
                 
-                select_parts = [f"UPPER(TRIM(CAST({config['endpoint_column']} AS STRING))) as hostname"]
+                select_fields = [f"UPPER(TRIM(CAST(`{hostname_field}` AS STRING))) as hostname"]
                 
-                for col_key, col_name in [
-                    ('region_column', 'global_region'),
-                    ('environment_column', 'environment'),
-                    ('type_column', 'system_classification')
-                ]:
-                    if col_key in config and config[col_key] in available_columns:
-                        select_parts.append(f"CAST({config[col_key]} AS STRING) as {col_name}")
+                for field_key, field_name in config['fields'].items():
+                    if field_key != 'hostname' and field_name in available_columns:
+                        select_fields.append(f"CAST(`{field_name}` AS STRING) as {field_key}")
                 
                 is_partitioned = table_ref.time_partitioning is not None
-                partition_filter = ""
+                date_filter = ""
                 
                 if is_partitioned and table_ref.time_partitioning.field:
-                    partition_col = table_ref.time_partitioning.field
-                    partition_filter = f"WHERE {partition_col} >= DATE_SUB(CURRENT_DATE(), INTERVAL 7 DAY)"
+                    partition_field = table_ref.time_partitioning.field
+                    date_filter = f"WHERE `{partition_field}` >= DATE_SUB(CURRENT_DATE(), INTERVAL 30 DAY)"
                 
-                query = f"""
-                SELECT DISTINCT {', '.join(select_parts)}
+                discovery_query = f"""
+                SELECT DISTINCT {', '.join(select_fields)}
                 FROM `{table_path}`
-                {partition_filter}
-                {" AND " if partition_filter else "WHERE"} {config['endpoint_column']} IS NOT NULL
-                    AND LENGTH(TRIM(CAST({config['endpoint_column']} AS STRING))) >= 3
-                    AND {config['endpoint_column']} NOT LIKE '%@%'
-                    AND {config['endpoint_column']} NOT LIKE 'http%'
-                LIMIT 50000
+                {date_filter}
+                {" AND " if date_filter else "WHERE"} `{hostname_field}` IS NOT NULL
+                    AND LENGTH(TRIM(CAST(`{hostname_field}` AS STRING))) >= 3
+                    AND UPPER(TRIM(CAST(`{hostname_field}` AS STRING))) NOT LIKE '%@%'
+                    AND UPPER(TRIM(CAST(`{hostname_field}` AS STRING))) NOT LIKE 'HTTP%'
+                    AND UPPER(TRIM(CAST(`{hostname_field}` AS STRING))) NOT LIKE 'UNKNOWN%'
+                    AND UPPER(TRIM(CAST(`{hostname_field}` AS STRING))) NOT LIKE 'NULL%'
+                LIMIT 100000
                 """
                 
-                endpoints_found = await self._execute_and_store_endpoints(query, source_name, table_path, client_manager)
-                return endpoints_found
+                PrettyLogger.info(f"Executing discovery query for {source_name}")
                 
-        except Exception as e:
-            PrettyLogger.error(f"Failed to load critical source {source_name}: {e}")
-            return 0
-    
-    async def _discover_all_datasets_brilliantly(self):
-        PrettyLogger.info("Discovering all datasets with brilliant analysis")
-        
-        try:
-            with self.client_manager.get_client() as client:
-                all_datasets = list(client.list_datasets(project=self.project_id))
-        except Exception as e:
-            PrettyLogger.error(f"Failed to list datasets: {e}")
-            return
-            
-        filtered_datasets = [d for d in all_datasets if d.dataset_id not in self.processed_datasets]
-        
-        self.progress.set_stats(datasets_total=len(filtered_datasets))
-        PrettyLogger.info(f"Found {len(filtered_datasets)} datasets to analyze brilliantly")
-        
-        semaphore = asyncio.Semaphore(self.max_workers)
-        
-        async def process_dataset_with_semaphore(dataset):
-            async with semaphore:
-                return await self._process_dataset_brilliantly(dataset.dataset_id)
-        
-        tasks = [process_dataset_with_semaphore(dataset) for dataset in filtered_datasets]
-        
-        for i, task in enumerate(asyncio.as_completed(tasks)):
-            if self.signal_handler.shutdown_requested:
-                break
-            
-            try:
-                await task
-                self.progress.update_stats(datasets_processed=1)
+                job = client.query(discovery_query)
+                results = list(job.result())
                 
-                if i % 3 == 0:
-                    PrettyLogger.progress(i+1, len(filtered_datasets), "datasets")
-                
-                if self.progress.should_checkpoint():
-                    await self._save_checkpoint()
-                    
-            except Exception as e:
-                PrettyLogger.error(f"Dataset processing failed: {e}")
-                self.progress.update_stats(datasets_failed=1)
-                await asyncio.sleep(3)
-    
-    async def _process_dataset_brilliantly(self, dataset_id: str):
-        try:
-            await asyncio.sleep(random.uniform(1.0, 3.0))
-            
-            with self.client_manager.get_client() as client:
-                dataset_ref = client.dataset(dataset_id, project=self.project_id)
-                
-                try:
-                    all_tables = list(client.list_tables(dataset_ref))
-                except Exception as e:
-                    PrettyLogger.warning(f"Could not list tables in {dataset_id}: {e}")
-                    return
-                
-                PrettyLogger.dataset(dataset_id, len(self.processed_datasets) + 1, self.progress.get_stats().datasets_total)
-                
-                table_tasks = []
-                for table_ref in all_tables[:10]:
-                    if self.signal_handler.shutdown_requested:
-                        break
-                    
-                    table_full_path = f"{self.project_id}.{dataset_id}.{table_ref.table_id}"
-                    
-                    if table_full_path in self.processed_tables:
-                        continue
-                    
-                    table_tasks.append(self._analyze_table_brilliantly(table_full_path, dataset_id, table_ref.table_id))
-                
-                results = await asyncio.gather(*table_tasks, return_exceptions=True)
-                
-                for i, result in enumerate(results):
-                    if isinstance(result, Exception):
-                        PrettyLogger.error(f"Table analysis failed: {str(result)[:100]}")
-                        self.progress.update_stats(tables_failed=1)
-                    else:
-                        endpoints_found = result
-                        if endpoints_found > 0:
-                            table_name = f"{dataset_id}.{all_tables[i].table_id}"
-                            PrettyLogger.table(table_name, endpoints_found)
-                        
-                        self.progress.update_stats(tables_processed=1)
-                
-                with self._processing_lock:
-                    self.processed_datasets.add(dataset_id)
-                        
-        except Exception as e:
-            PrettyLogger.error(f"Dataset processing failed {dataset_id}: {e}")
-            raise
-    
-    async def _analyze_table_brilliantly(self, table_path: str, dataset_id: str, table_id: str) -> int:
-        start_time = time.time()
-        
-        with self._processing_lock:
-            if table_path in self.processed_tables:
-                return 0
-            self.processed_tables.add(table_path)
-        
-        try:
-            await asyncio.sleep(random.uniform(0.5, 2.0))
-            
-            with self.client_manager.get_client() as client:
-                try:
-                    table_ref = client.get_table(table_path)
-                except Exception as e:
+                if not results:
+                    PrettyLogger.warning(f"No endpoints found in {source_name}")
                     return 0
                 
-                is_partitioned = table_ref.time_partitioning is not None
-                partition_filter = ""
-                partition_column = None
+                endpoints_processed = 0
                 
-                if is_partitioned and table_ref.time_partitioning.field:
-                    partition_column = table_ref.time_partitioning.field
-                    partition_filter = f"WHERE {partition_column} >= DATE_SUB(CURRENT_DATE(), INTERVAL 3 DAY)"
-                
-                endpoints_found = 0
-                endpoint_columns = []
-                
-                string_fields = [field for field in table_ref.schema if field.field_type == 'STRING'][:3]
-                
-                for field in string_fields:
-                    if self.signal_handler.shutdown_requested:
-                        break
+                for row in results:
+                    if row[0] and len(str(row[0]).strip()) >= 3:
+                        asset_data = {
+                            'hostname': str(row[0]).upper().strip(),
+                            'source_system': source_name,
+                            'source_type': config['source_type']
+                        }
                         
-                    try:
-                        sample_query = f"""
-                        SELECT {field.name}
-                        FROM `{table_path}`
-                        {partition_filter}
-                        {" AND " if partition_filter else "WHERE"} {field.name} IS NOT NULL
-                            AND LENGTH(TRIM(CAST({field.name} AS STRING))) >= 3
-                        LIMIT 10
-                        """
+                        if len(row) > 1 and row[1]:
+                            asset_data['region'] = str(row[1])
+                        if len(row) > 2 and row[2]:
+                            asset_data['environment'] = str(row[2])
+                        if len(row) > 3 and row[3]:
+                            asset_data['classification'] = str(row[3])
+                        if len(row) > 4 and row[4]:
+                            asset_data['business_unit'] = str(row[4])
                         
-                        job = client.query(sample_query)
-                        samples = [str(row[0]) for row in job.result() if row[0] is not None]
-                        
-                        if samples:
-                            match_result = self.matcher.analyze_column(field.name, samples)
-                            if match_result and match_result[0] == 'endpoint' and match_result[1] > 0.4:
-                                endpoint_columns.append(field.name)
-                                
-                                endpoint_query = f"""
-                                SELECT DISTINCT
-                                    UPPER(TRIM(CAST({field.name} AS STRING))) as hostname
-                                FROM `{table_path}`
-                                {partition_filter}
-                                {" AND " if partition_filter else "WHERE"} {field.name} IS NOT NULL
-                                    AND LENGTH(TRIM(CAST({field.name} AS STRING))) >= 3
-                                    AND {field.name} NOT LIKE '%@%'
-                                    AND {field.name} NOT LIKE 'http%'
-                                LIMIT 1000
-                                """
-                                
-                                endpoint_job = client.query(endpoint_query)
-                                endpoints = list(endpoint_job.result())
-                                
-                                for row in endpoints:
-                                    if row[0] and len(str(row[0]).strip()) >= 3:
-                                        await self._brilliant_endpoint_merge({
-                                            'hostname': str(row[0]).upper().strip(),
-                                            'found_in_tables': table_path,
-                                            'source_dataset': dataset_id
-                                        })
-                                        endpoints_found += 1
-                        
-                        await asyncio.sleep(0.5)
-                    
-                    except Exception:
-                        continue
+                        await self._intelligent_asset_merge(asset_data)
+                        endpoints_processed += 1
                 
-                processing_time = time.time() - start_time
-                brilliance_score = self._calculate_brilliance_score(endpoints_found, len(endpoint_columns), processing_time)
-                
-                await self._store_table_analytics({
-                    'table_path': table_path,
-                    'dataset_name': dataset_id,
-                    'table_name': table_id,
-                    'row_count': table_ref.num_rows or 0,
-                    'size_bytes': table_ref.num_bytes or 0,
-                    'endpoints_discovered': endpoints_found,
-                    'endpoint_columns': ','.join(endpoint_columns),
-                    'is_partitioned': is_partitioned,
-                    'partition_column': partition_column,
-                    'brilliance_score': brilliance_score,
-                    'processing_time_seconds': processing_time
-                })
-                
-                return endpoints_found
+                self.progress.update_stats(endpoints_discovered=endpoints_processed)
+                return endpoints_processed
                 
         except Exception as e:
+            PrettyLogger.error(f"Discovery failed for {source_name}: {e}")
             return 0
     
-    def _calculate_brilliance_score(self, endpoints_found: int, endpoint_columns: int, processing_time: float) -> float:
-        if endpoints_found == 0:
-            return 0.0
+    async def _intelligent_asset_merge(self, asset_data: Dict[str, Any]):
+        hostname = asset_data['hostname']
+        source_type = asset_data['source_type']
         
-        endpoint_score = min(endpoints_found / 1000.0, 1.0) * 0.5
-        column_score = min(endpoint_columns / 5.0, 1.0) * 0.3
-        efficiency_score = max(0, 1.0 - (processing_time / 60.0)) * 0.2
-        
-        return endpoint_score + column_score + efficiency_score
-    
-    async def _brilliant_endpoint_merge(self, endpoint_data: Dict[str, Any]):
-        hostname = endpoint_data['hostname']
-        
-        existing = self.conn.execute(
-            """SELECT found_in_tables, global_region, environment, system_classification, 
-               source_count FROM ao1_asset_inventory WHERE hostname = ?""",
-            (hostname,)
-        ).fetchone()
+        existing = self.conn.execute("""
+            SELECT source_systems, global_region, environment, system_classification, 
+                   business_unit, found_in_cmdb, has_crowdstrike, in_splunk, in_chronicle
+            FROM ao1_asset_inventory WHERE hostname = ?
+        """, (hostname,)).fetchone()
         
         if existing:
-            existing_tables = existing[0] or ""
-            new_table = endpoint_data.get('found_in_tables', '')
-            current_source_count = existing[4] or 1
-            
-            if new_table and new_table not in existing_tables:
-                updated_tables = f"{existing_tables},{new_table}" if existing_tables else new_table
-                new_source_count = current_source_count + 1
+            source_systems = existing[0] or ""
+            if source_type not in source_systems:
+                updated_sources = f"{source_systems},{source_type}" if source_systems else source_type
                 
-                update_fields = ["found_in_tables = ?", "source_count = ?"]
-                update_values = [updated_tables, new_source_count]
+                update_fields = ["source_systems = ?"]
+                update_values = [updated_sources]
                 
-                for field, idx in [('global_region', 1), ('environment', 2), ('system_classification', 3)]:
-                    if field in endpoint_data and endpoint_data[field] and not existing[idx]:
-                        update_fields.append(f"{field} = ?")
-                        update_values.append(endpoint_data[field])
+                if source_type == 'cmdb':
+                    update_fields.append("found_in_cmdb = TRUE")
+                elif source_type == 'crowdstrike':
+                    update_fields.append("has_crowdstrike = TRUE")
+                elif source_type == 'splunk':
+                    update_fields.append("in_splunk = TRUE")
+                elif source_type == 'chronicle':
+                    update_fields.append("in_chronicle = TRUE")
+                
+                for field, idx in [('region', 1), ('environment', 2), ('classification', 3), ('business_unit', 4)]:
+                    if field in asset_data and asset_data[field] and not existing[idx]:
+                        db_field = {
+                            'region': 'global_region',
+                            'environment': 'environment', 
+                            'classification': 'system_classification',
+                            'business_unit': 'business_unit'
+                        }[field]
+                        update_fields.append(f"{db_field} = ?")
+                        update_values.append(asset_data[field])
                 
                 update_values.append(hostname)
                 
@@ -580,140 +486,324 @@ class DiscoveryEngine:
                     SET {', '.join(update_fields)}, last_updated = CURRENT_TIMESTAMP
                     WHERE hostname = ?
                 """, update_values)
-                
-                if new_source_count not in self.endpoint_merge_stats:
-                    self.endpoint_merge_stats[new_source_count] = 0
-                self.endpoint_merge_stats[new_source_count] += 1
-                
-                if new_source_count >= 3:
-                    PrettyLogger.endpoint_merge(hostname, new_source_count)
         else:
-            flags = {}
-            table_str = endpoint_data.get('found_in_tables', '').lower()
-            if 'v_dim_endpoint' in table_str:
-                flags['found_in_cmdb'] = True
-            if 'v_dim_endpointagent' in table_str or 'crowdstrike' in table_str:
-                flags['has_crowdstrike'] = True
-            if 'v_spl_endpoint_log' in table_str or 'splunk' in table_str:
-                flags['in_splunk'] = True
-            if 'chronicle' in table_str or 'events' in table_str:
-                flags['in_chronicle'] = True
+            flags = {
+                'found_in_cmdb': source_type == 'cmdb',
+                'has_crowdstrike': source_type == 'crowdstrike',
+                'in_splunk': source_type == 'splunk',
+                'in_chronicle': source_type == 'chronicle'
+            }
             
             self.conn.execute("""
-            INSERT INTO ao1_asset_inventory (
-                hostname, found_in_tables, global_region, environment, system_classification,
-                found_in_cmdb, has_crowdstrike, in_splunk, in_chronicle, source_count,
-                discovery_timestamp, last_updated
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                INSERT INTO ao1_asset_inventory (
+                    hostname, source_systems, global_region, environment, system_classification,
+                    business_unit, found_in_cmdb, has_crowdstrike, in_splunk, in_chronicle,
+                    discovery_timestamp, last_updated
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
             """, (
                 hostname,
-                endpoint_data.get('found_in_tables', ''),
-                endpoint_data.get('global_region', ''),
-                endpoint_data.get('environment', ''),
-                endpoint_data.get('system_classification', ''),
-                flags.get('found_in_cmdb', False),
-                flags.get('has_crowdstrike', False),
-                flags.get('in_splunk', False),
-                flags.get('in_chronicle', False),
-                1
+                source_type,
+                asset_data.get('region', ''),
+                asset_data.get('environment', ''),
+                asset_data.get('classification', ''),
+                asset_data.get('business_unit', ''),
+                flags['found_in_cmdb'],
+                flags['has_crowdstrike'],
+                flags['in_splunk'],
+                flags['in_chronicle']
             ))
-            
-            if 1 not in self.endpoint_merge_stats:
-                self.endpoint_merge_stats[1] = 0
-            self.endpoint_merge_stats[1] += 1
     
-    async def _execute_and_store_endpoints(self, query: str, source: str, table_path: str, client_manager: BigQueryClientManager) -> int:
+    async def _execute_comprehensive_discovery(self):
+        PrettyLogger.info("Executing comprehensive dataset discovery")
+        
         try:
-            with client_manager.get_client() as client:
-                job = client.query(query)
-                results = list(job.result())
-                
-                endpoints_stored = 0
-                
-                for row in results:
-                    if row[0] and len(str(row[0]).strip()) >= 3:
-                        endpoint_data = {'hostname': str(row[0]).upper().strip()}
-                        
-                        if len(row) > 1 and row[1]:
-                            endpoint_data['global_region'] = str(row[1])
-                        if len(row) > 2 and row[2]:
-                            endpoint_data['environment'] = str(row[2])
-                        if len(row) > 3 and row[3]:
-                            endpoint_data['system_classification'] = str(row[3])
-                        
-                        endpoint_data['found_in_tables'] = table_path
-                        
-                        await self._brilliant_endpoint_merge(endpoint_data)
-                        endpoints_stored += 1
-                
-                self.progress.update_stats(endpoints_discovered=endpoints_stored)
-                return endpoints_stored
-                
+            with self.client_manager.get_client() as client:
+                all_datasets = list(client.list_datasets(project=self.project_id))
         except Exception as e:
-            PrettyLogger.error(f"Failed to execute query for {source}: {e}")
+            PrettyLogger.error(f"Failed to list datasets: {e}")
+            return
+            
+        priority_datasets = ['SAS_BI', 'SECURITY', 'MONITORING', 'NETWORK', 'CMDB']
+        filtered_datasets = [d for d in all_datasets 
+                           if d.dataset_id not in self.processed_datasets 
+                           and (d.dataset_id in priority_datasets or 'ENDPOINT' in d.dataset_id.upper())]
+        
+        self.progress.set_stats(datasets_total=len(filtered_datasets))
+        PrettyLogger.info(f"Analyzing {len(filtered_datasets)} priority datasets for AO1")
+        
+        for i, dataset in enumerate(filtered_datasets):
+            if self.signal_handler.shutdown_requested:
+                break
+            
+            try:
+                await self._process_dataset_intelligently(dataset.dataset_id)
+                self.progress.update_stats(datasets_processed=1)
+                
+                if self.progress.should_checkpoint():
+                    await self._save_checkpoint()
+                    
+            except Exception as e:
+                PrettyLogger.error(f"Dataset processing failed {dataset.dataset_id}: {e}")
+                self.progress.update_stats(datasets_failed=1)
+                await asyncio.sleep(2)
+    
+    async def _process_dataset_intelligently(self, dataset_id: str):
+        try:
+            await asyncio.sleep(random.uniform(0.5, 1.5))
+            
+            with self.client_manager.get_client() as client:
+                dataset_ref = client.dataset(dataset_id, project=self.project_id)
+                
+                try:
+                    tables = list(client.list_tables(dataset_ref))
+                except Exception as e:
+                    PrettyLogger.warning(f"Cannot list tables in {dataset_id}: {e}")
+                    return
+                
+                endpoint_tables = [t for t in tables 
+                                 if any(keyword in t.table_id.upper() 
+                                       for keyword in ['ENDPOINT', 'HOST', 'ASSET', 'DEVICE', 'SERVER'])]
+                
+                if endpoint_tables:
+                    PrettyLogger.info(f"Found {len(endpoint_tables)} potential endpoint tables in {dataset_id}")
+                
+                for table_ref in endpoint_tables[:5]:
+                    if self.signal_handler.shutdown_requested:
+                        break
+                    
+                    table_path = f"{self.project_id}.{dataset_id}.{table_ref.table_id}"
+                    
+                    if table_path in self.processed_tables:
+                        continue
+                    
+                    try:
+                        endpoints_found = await self._analyze_table_for_endpoints(table_path)
+                        if endpoints_found > 0:
+                            PrettyLogger.visibility_analysis(f"Found {endpoints_found} endpoints in {table_ref.table_id}")
+                        
+                        with self._processing_lock:
+                            self.processed_tables.add(table_path)
+                        self.progress.update_stats(tables_processed=1)
+                        
+                        await asyncio.sleep(0.5)
+                        
+                    except Exception as e:
+                        PrettyLogger.error(f"Table analysis failed {table_path}: {str(e)[:100]}")
+                        self.progress.update_stats(tables_failed=1)
+                
+                with self._processing_lock:
+                    self.processed_datasets.add(dataset_id)
+                        
+        except Exception as e:
+            PrettyLogger.error(f"Dataset processing failed {dataset_id}: {e}")
+    
+    async def _analyze_table_for_endpoints(self, table_path: str) -> int:
+        try:
+            await asyncio.sleep(random.uniform(0.3, 1.0))
+            
+            with self.client_manager.get_client() as client:
+                try:
+                    table_ref = client.get_table(table_path)
+                except Exception:
+                    return 0
+                
+                string_fields = [field for field in table_ref.schema 
+                               if field.field_type == 'STRING' 
+                               and any(keyword in field.name.lower() 
+                                     for keyword in ['host', 'endpoint', 'server', 'device', 'asset'])]
+                
+                endpoints_found = 0
+                
+                for field in string_fields[:2]:
+                    try:
+                        sample_query = f"""
+                        SELECT DISTINCT UPPER(TRIM(CAST(`{field.name}` AS STRING))) as hostname
+                        FROM `{table_path}`
+                        WHERE `{field.name}` IS NOT NULL
+                            AND LENGTH(TRIM(CAST(`{field.name}` AS STRING))) >= 3
+                            AND `{field.name}` NOT LIKE '%@%'
+                            AND `{field.name}` NOT LIKE 'http%'
+                        LIMIT 1000
+                        """
+                        
+                        job = client.query(sample_query)
+                        results = list(job.result())
+                        
+                        for row in results:
+                            if row[0] and len(str(row[0]).strip()) >= 3:
+                                await self._intelligent_asset_merge({
+                                    'hostname': str(row[0]).upper().strip(),
+                                    'source_system': table_path.split('.')[-1],
+                                    'source_type': 'discovery'
+                                })
+                                endpoints_found += 1
+                        
+                        await asyncio.sleep(0.3)
+                    
+                    except Exception:
+                        continue
+                
+                return endpoints_found
+                
+        except Exception:
             return 0
     
-    async def _store_table_analytics(self, table_info: Dict[str, Any]):
-        try:
-            self.conn.execute("""
-            INSERT OR REPLACE INTO ao1_table_analytics (
-                table_path, dataset_name, table_name, row_count, size_bytes,
-                endpoints_discovered, endpoint_columns, is_partitioned, partition_column,
-                brilliance_score, processing_time_seconds, discovered_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-            """, (
-                table_info['table_path'],
-                table_info['dataset_name'],
-                table_info['table_name'],
-                table_info['row_count'],
-                table_info['size_bytes'],
-                table_info['endpoints_discovered'],
-                table_info['endpoint_columns'],
-                table_info['is_partitioned'],
-                table_info['partition_column'],
-                table_info['brilliance_score'],
-                table_info['processing_time_seconds']
-            ))
-        except Exception as e:
-            PrettyLogger.error(f"Failed to store table analytics: {e}")
-    
-    async def _calculate_ao1_metrics(self):
+    async def _calculate_ao1_visibility_metrics(self):
         PrettyLogger.info("Calculating brilliant AO1 visibility metrics")
         
-        metrics = {}
-        
         try:
-            result = self.conn.execute("""
+            total_assets_result = self.conn.execute("SELECT COUNT(*) FROM ao1_asset_inventory").fetchone()
+            total_assets = total_assets_result[0] if total_assets_result else 0
+            
+            if total_assets == 0:
+                PrettyLogger.warning("No assets found for AO1 calculation")
+                return
+            
+            metrics_query = """
             SELECT 
                 COUNT(*) as total_assets,
-                SUM(CASE WHEN in_splunk THEN 1 ELSE 0 END) as splunk_covered,
-                SUM(CASE WHEN in_chronicle THEN 1 ELSE 0 END) as chronicle_covered,
-                SUM(CASE WHEN in_splunk OR in_chronicle THEN 1 ELSE 0 END) as logging_covered,
-                SUM(CASE WHEN has_crowdstrike THEN 1 ELSE 0 END) as crowdstrike_covered,
-                SUM(CASE WHEN found_in_cmdb THEN 1 ELSE 0 END) as cmdb_covered,
-                AVG(source_count) as avg_source_count
+                SUM(CASE WHEN in_splunk THEN 1 ELSE 0 END) as splunk_coverage,
+                SUM(CASE WHEN in_chronicle THEN 1 ELSE 0 END) as chronicle_coverage,
+                SUM(CASE WHEN in_splunk OR in_chronicle THEN 1 ELSE 0 END) as logging_coverage,
+                SUM(CASE WHEN has_crowdstrike THEN 1 ELSE 0 END) as crowdstrike_coverage,
+                SUM(CASE WHEN found_in_cmdb THEN 1 ELSE 0 END) as cmdb_coverage,
+                SUM(CASE WHEN in_splunk AND in_chronicle AND has_crowdstrike AND found_in_cmdb THEN 1 ELSE 0 END) as full_coverage
             FROM ao1_asset_inventory
-            """).fetchone()
+            """
             
-            if result and result[0] > 0:
+            result = self.conn.execute(metrics_query).fetchone()
+            
+            if result:
                 total = result[0]
-                metrics['global_visibility_pct'] = (result[3] / total) * 100
-                metrics['splunk_coverage_pct'] = (result[1] / total) * 100
-                metrics['chronicle_coverage_pct'] = (result[2] / total) * 100
-                metrics['crowdstrike_coverage_pct'] = (result[4] / total) * 100
-                metrics['cmdb_coverage_pct'] = (result[5] / total) * 100
-                metrics['avg_source_count'] = result[6] or 1.0
+                
+                metrics = {
+                    ('global_view', 'total_asset_visibility'): (result[3] / total * 100, 95.0),
+                    ('global_view', 'splunk_coverage'): (result[1] / total * 100, 85.0),
+                    ('global_view', 'chronicle_coverage'): (result[2] / total * 100, 80.0),
+                    ('security_coverage', 'crowdstrike_coverage'): (result[4] / total * 100, 90.0),
+                    ('data_quality', 'cmdb_coverage'): (result[5] / total * 100, 95.0),
+                    ('comprehensive', 'full_visibility'): (result[6] / total * 100, 75.0)
+                }
+                
+                for (category, metric_name), (value, target) in metrics.items():
+                    gap = max(0, target - value)
+                    priority = 1 if gap > 20 else 2 if gap > 10 else 3
+                    
+                    self.conn.execute("""
+                        INSERT OR REPLACE INTO ao1_visibility_metrics 
+                        (metric_category, metric_name, metric_value, metric_target, gap_percentage, improvement_priority, last_calculated)
+                        VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                    """, (category, metric_name, value, target, gap, priority))
+                    
+                    PrettyLogger.ao1_metric(f"{category}/{metric_name}", f"{value:.1f}% (target: {target}%)")
             
-            for metric_name, metric_value in metrics.items():
-                self.conn.execute("""
-                INSERT OR REPLACE INTO ao1_visibility_metrics (metric_name, metric_value, calculated_at)
-                VALUES (?, ?, CURRENT_TIMESTAMP)
-                """, (metric_name, metric_value))
-            
-            PrettyLogger.success(f"Calculated {len(metrics)} brilliant AO1 metrics")
+            PrettyLogger.success("AO1 visibility metrics calculated successfully")
             
         except Exception as e:
             PrettyLogger.error(f"Failed to calculate AO1 metrics: {e}")
+    
+    async def _perform_gap_analysis(self):
+        PrettyLogger.info("Performing intelligent gap analysis")
+        
+        gap_analyses = [
+            {
+                'id': 'no_logging_coverage',
+                'query': "SELECT COUNT(*) FROM ao1_asset_inventory WHERE NOT in_splunk AND NOT in_chronicle",
+                'category': 'Logging Coverage',
+                'description': 'Assets with no logging platform coverage',
+                'severity': 'Critical'
+            },
+            {
+                'id': 'missing_security_tools',
+                'query': "SELECT COUNT(*) FROM ao1_asset_inventory WHERE NOT has_crowdstrike",
+                'category': 'Security Coverage', 
+                'description': 'Assets without security agent coverage',
+                'severity': 'High'
+            },
+            {
+                'id': 'cmdb_gaps',
+                'query': "SELECT COUNT(*) FROM ao1_asset_inventory WHERE NOT found_in_cmdb",
+                'category': 'Data Quality',
+                'description': 'Assets not found in CMDB',
+                'severity': 'Medium'
+            },
+            {
+                'id': 'single_source_risk',
+                'query': "SELECT COUNT(*) FROM ao1_asset_inventory WHERE (CASE WHEN found_in_cmdb THEN 1 ELSE 0 END) + (CASE WHEN has_crowdstrike THEN 1 ELSE 0 END) + (CASE WHEN in_splunk THEN 1 ELSE 0 END) + (CASE WHEN in_chronicle THEN 1 ELSE 0 END) = 1",
+                'category': 'Data Reliability',
+                'description': 'Assets found in only one source system',
+                'severity': 'Medium'
+            }
+        ]
+        
+        for gap in gap_analyses:
+            try:
+                result = self.conn.execute(gap['query']).fetchone()
+                count = result[0] if result else 0
+                
+                if count > 0:
+                    self.conn.execute("""
+                        INSERT OR REPLACE INTO ao1_gap_analysis 
+                        (gap_id, gap_category, gap_description, affected_asset_count, severity_level, identified_at)
+                        VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                    """, (gap['id'], gap['category'], gap['description'], count, gap['severity']))
+                    
+                    PrettyLogger.gap_identification(gap['description'], count)
+                
+            except Exception as e:
+                PrettyLogger.error(f"Gap analysis failed for {gap['id']}: {e}")
+    
+    async def _generate_compliance_insights(self):
+        PrettyLogger.info("Generating AO1 compliance insights")
+        
+        try:
+            compliance_query = """
+            SELECT 
+                hostname,
+                CASE 
+                    WHEN in_splunk AND in_chronicle THEN 'Full Compliance'
+                    WHEN in_splunk OR in_chronicle THEN 'Partial Compliance'
+                    ELSE 'Non-Compliant'
+                END as compliance_status,
+                CASE 
+                    WHEN in_splunk AND in_chronicle THEN 100.0
+                    WHEN in_splunk OR in_chronicle THEN 50.0
+                    ELSE 0.0
+                END as coverage_percentage
+            FROM ao1_asset_inventory
+            """
+            
+            results = self.conn.execute(compliance_query).fetchall()
+            
+            for row in results:
+                hostname, status, coverage = row
+                
+                gaps = []
+                if not self.conn.execute("SELECT in_splunk FROM ao1_asset_inventory WHERE hostname = ?", (hostname,)).fetchone()[0]:
+                    gaps.append("Missing Splunk coverage")
+                if not self.conn.execute("SELECT in_chronicle FROM ao1_asset_inventory WHERE hostname = ?", (hostname,)).fetchone()[0]:
+                    gaps.append("Missing Chronicle coverage")
+                
+                self.conn.execute("""
+                    INSERT OR REPLACE INTO ao1_logging_compliance 
+                    (hostname, logging_platform, compliance_status, coverage_percentage, gaps_identified, compliance_date)
+                    VALUES (?, 'AO1_COMBINED', ?, ?, ?, CURRENT_TIMESTAMP)
+                """, (hostname, status, coverage, '; '.join(gaps)))
+            
+            PrettyLogger.success("AO1 compliance analysis completed")
+            
+        except Exception as e:
+            PrettyLogger.error(f"Compliance insight generation failed: {e}")
+    
+    async def _resume_from_checkpoint(self, checkpoint: Dict[str, Any]):
+        self.processed_datasets = set(checkpoint.get('processed_datasets', []))
+        self.processed_tables = set(checkpoint.get('processed_tables', []))
+        
+        self.progress.set_stats(
+            datasets_processed=len(self.processed_datasets),
+            tables_processed=len(self.processed_tables),
+            endpoints_discovered=checkpoint.get('endpoints_discovered', 0)
+        )
     
     async def _save_checkpoint(self):
         stats = self.progress.get_stats()
@@ -722,151 +812,186 @@ class DiscoveryEngine:
             'processed_tables': list(self.processed_tables),
             'endpoints_discovered': stats.endpoints_discovered,
             'datasets_processed': stats.datasets_processed,
-            'tables_processed': stats.tables_processed,
-            'endpoint_merge_stats': self.endpoint_merge_stats
+            'tables_processed': stats.tables_processed
         }
         self.checkpoint_manager.save_checkpoint(checkpoint_data)
     
     async def _save_emergency_checkpoint(self):
         await self._save_checkpoint()
     
-    def _count_endpoints(self) -> int:
+    def _count_total_assets(self) -> int:
         try:
             result = self.conn.execute("SELECT COUNT(*) FROM ao1_asset_inventory").fetchone()
             return result[0] if result else 0
         except Exception:
             return 0
     
-    def _get_visibility_coverage(self) -> Dict[str, Any]:
+    def _get_ao1_metrics(self) -> Dict[str, Any]:
         try:
             result = self.conn.execute("""
-            SELECT metric_name, metric_value FROM ao1_visibility_metrics
+                SELECT metric_category, metric_name, metric_value, metric_target, gap_percentage
+                FROM ao1_visibility_metrics ORDER BY improvement_priority
+            """).fetchall()
+            
+            return {f"{row[0]}_{row[1]}": {
+                'value': row[2], 'target': row[3], 'gap': row[4]
+            } for row in result} if result else {}
+        except Exception:
+            return {}
+    
+    def _get_gap_analysis(self) -> Dict[str, Any]:
+        try:
+            result = self.conn.execute("""
+                SELECT gap_category, gap_description, affected_asset_count, severity_level
+                FROM ao1_gap_analysis ORDER BY affected_asset_count DESC
+            """).fetchall()
+            
+            return {row[0]: {
+                'description': row[1], 'count': row[2], 'severity': row[3]
+            } for row in result} if result else {}
+        except Exception:
+            return {}
+    
+    def _get_compliance_status(self) -> Dict[str, Any]:
+        try:
+            result = self.conn.execute("""
+                SELECT compliance_status, COUNT(*) as count
+                FROM ao1_logging_compliance 
+                GROUP BY compliance_status
             """).fetchall()
             
             return {row[0]: row[1] for row in result} if result else {}
         except Exception:
             return {}
     
-    def _get_brilliance_metrics(self) -> Dict[str, Any]:
-        try:
-            result = self.conn.execute("""
-            SELECT 
-                COUNT(*) as tables_analyzed,
-                SUM(endpoints_discovered) as total_endpoints_discovered,
-                AVG(brilliance_score) as avg_brilliance_score,
-                MAX(brilliance_score) as max_brilliance_score,
-                SUM(processing_time_seconds) as total_processing_time
-            FROM ao1_table_analytics
-            """).fetchone()
-            
-            if result:
-                return {
-                    'tables_analyzed': result[0] or 0,
-                    'total_endpoints_discovered': result[1] or 0,
-                    'avg_brilliance_score': result[2] or 0.0,
-                    'max_brilliance_score': result[3] or 0.0,
-                    'total_processing_time': result[4] or 0.0
-                }
-        except Exception:
-            pass
-        return {}
-    
-    def _get_summary(self) -> Dict[str, Any]:
-        total_endpoints = self._count_endpoints()
-        coverage = self._get_visibility_coverage()
-        brilliance = self._get_brilliance_metrics()
+    def _generate_ao1_recommendations(self) -> List[str]:
+        recommendations = []
         
-        return {
-            'total_endpoints': total_endpoints,
-            'visibility_coverage': coverage,
-            'brilliance_metrics': brilliance,
-            'endpoint_merge_stats': self.endpoint_merge_stats,
-            'discovery_status': 'BRILLIANT_COMPLETE'
-        }
+        try:
+            gaps = self._get_gap_analysis()
+            metrics = self._get_ao1_metrics()
+            
+            for gap_category, gap_info in gaps.items():
+                if gap_info['count'] > 0:
+                    if gap_info['severity'] == 'Critical':
+                        recommendations.append(f"URGENT: Address {gap_info['description']} affecting {gap_info['count']} assets")
+                    else:
+                        recommendations.append(f"Improve {gap_info['description']} for {gap_info['count']} assets")
+            
+            for metric_name, metric_data in metrics.items():
+                if metric_data['gap'] > 15:
+                    recommendations.append(f"Focus on improving {metric_name} - currently {metric_data['gap']:.1f}% below target")
+            
+        except Exception:
+            recommendations.append("Review AO1 database for detailed recommendations")
+        
+        return recommendations[:10]
     
-    def _create_brilliant_analysis_queries(self) -> Dict[str, str]:
+    def _create_ao1_analysis_queries(self) -> Dict[str, str]:
         return {
-            'ao1_global_visibility_brilliant': """
+            'ao1_global_visibility_dashboard': """
             SELECT 
                 COUNT(*) as total_assets,
-                (SUM(CASE WHEN in_splunk OR in_chronicle THEN 1 ELSE 0 END) * 100.0 / COUNT(*)) as global_visibility_pct,
-                AVG(source_count) as avg_sources_per_asset,
-                MAX(source_count) as max_sources_per_asset
+                (SUM(CASE WHEN in_splunk OR in_chronicle THEN 1 ELSE 0 END) * 100.0 / COUNT(*)) as global_visibility_percentage,
+                (SUM(CASE WHEN in_splunk THEN 1 ELSE 0 END) * 100.0 / COUNT(*)) as splunk_coverage_percentage,
+                (SUM(CASE WHEN in_chronicle THEN 1 ELSE 0 END) * 100.0 / COUNT(*)) as chronicle_coverage_percentage,
+                (SUM(CASE WHEN has_crowdstrike THEN 1 ELSE 0 END) * 100.0 / COUNT(*)) as security_coverage_percentage,
+                (SUM(CASE WHEN found_in_cmdb THEN 1 ELSE 0 END) * 100.0 / COUNT(*)) as cmdb_coverage_percentage
             FROM ao1_asset_inventory;
             """,
             
-            'ao1_infrastructure_breakdown': """
+            'ao1_infrastructure_type_analysis': """
             SELECT 
-                COALESCE(system_classification, 'Unknown') as infrastructure_type,
+                COALESCE(infrastructure_type, 'On-Prem') as infrastructure_category,
+                COUNT(*) as asset_count,
+                (SUM(CASE WHEN in_splunk OR in_chronicle THEN 1 ELSE 0 END) * 100.0 / COUNT(*)) as logging_visibility_pct,
+                (SUM(CASE WHEN has_crowdstrike THEN 1 ELSE 0 END) * 100.0 / COUNT(*)) as security_coverage_pct
+            FROM ao1_asset_inventory
+            GROUP BY infrastructure_type
+            ORDER BY logging_visibility_pct DESC;
+            """,
+            
+            'ao1_regional_visibility_breakdown': """
+            SELECT 
+                COALESCE(global_region, 'Unknown Region') as region,
+                COUNT(*) as total_assets,
+                (SUM(CASE WHEN in_splunk OR in_chronicle THEN 1 ELSE 0 END) * 100.0 / COUNT(*)) as visibility_percentage,
+                SUM(CASE WHEN NOT in_splunk AND NOT in_chronicle THEN 1 ELSE 0 END) as visibility_gaps
+            FROM ao1_asset_inventory
+            GROUP BY global_region
+            ORDER BY visibility_percentage DESC;
+            """,
+            
+            'ao1_business_unit_application_view': """
+            SELECT 
+                COALESCE(business_unit, 'Unknown BU') as business_unit,
+                COUNT(*) as asset_count,
+                (SUM(CASE WHEN in_splunk OR in_chronicle THEN 1 ELSE 0 END) * 100.0 / COUNT(*)) as logging_coverage,
+                (SUM(CASE WHEN has_crowdstrike THEN 1 ELSE 0 END) * 100.0 / COUNT(*)) as security_coverage
+            FROM ao1_asset_inventory
+            GROUP BY business_unit
+            ORDER BY asset_count DESC;
+            """,
+            
+            'ao1_system_classification_analysis': """
+            SELECT 
+                COALESCE(system_classification, 'Unknown System') as system_type,
                 COUNT(*) as asset_count,
                 (SUM(CASE WHEN in_splunk OR in_chronicle THEN 1 ELSE 0 END) * 100.0 / COUNT(*)) as visibility_pct,
-                (SUM(CASE WHEN has_crowdstrike THEN 1 ELSE 0 END) * 100.0 / COUNT(*)) as security_coverage_pct
+                (SUM(CASE WHEN has_crowdstrike THEN 1 ELSE 0 END) * 100.0 / COUNT(*)) as agent_coverage_pct
             FROM ao1_asset_inventory
             GROUP BY system_classification
             ORDER BY visibility_pct DESC;
             """,
             
-            'ao1_regional_brilliance': """
-            SELECT 
-                COALESCE(global_region, 'Unknown') as region,
-                COUNT(*) as asset_count,
-                (SUM(CASE WHEN in_splunk OR in_chronicle THEN 1 ELSE 0 END) * 100.0 / COUNT(*)) as visibility_pct,
-                AVG(source_count) as avg_sources_per_asset
-            FROM ao1_asset_inventory
-            WHERE global_region IS NOT NULL AND global_region != ''
-            GROUP BY global_region
-            ORDER BY visibility_pct DESC;
-            """,
-            
-            'ao1_multi_source_assets': """
-            SELECT 
-                source_count,
-                COUNT(*) as asset_count,
-                (COUNT(*) * 100.0 / (SELECT COUNT(*) FROM ao1_asset_inventory)) as percentage
-            FROM ao1_asset_inventory
-            GROUP BY source_count
-            ORDER BY source_count DESC;
-            """,
-            
-            'ao1_visibility_gaps_critical': """
+            'ao1_critical_visibility_gaps': """
             SELECT 
                 hostname,
-                found_in_tables,
                 global_region,
+                business_unit,
                 system_classification,
-                source_count,
                 CASE 
-                    WHEN NOT in_splunk AND NOT in_chronicle AND NOT found_in_cmdb THEN 'Critical Gap'
-                    WHEN NOT in_splunk AND NOT in_chronicle THEN 'No Logging Coverage'
-                    WHEN NOT has_crowdstrike THEN 'No Security Tool Coverage'
-                    WHEN source_count = 1 THEN 'Single Source Risk'
-                    ELSE 'Partial Coverage'
-                END as gap_severity
+                    WHEN NOT in_splunk AND NOT in_chronicle AND NOT found_in_cmdb THEN 'Critical - No Coverage'
+                    WHEN NOT in_splunk AND NOT in_chronicle THEN 'High - No Logging'
+                    WHEN NOT has_crowdstrike THEN 'Medium - No Security Agent'
+                    WHEN NOT found_in_cmdb THEN 'Low - Missing CMDB'
+                    ELSE 'Good Coverage'
+                END as gap_severity,
+                source_systems
             FROM ao1_asset_inventory
             WHERE NOT (in_splunk AND in_chronicle AND has_crowdstrike AND found_in_cmdb)
             ORDER BY 
-                CASE gap_severity 
-                    WHEN 'Critical Gap' THEN 1
-                    WHEN 'No Logging Coverage' THEN 2
-                    WHEN 'No Security Tool Coverage' THEN 3
-                    WHEN 'Single Source Risk' THEN 4
+                CASE 
+                    WHEN NOT in_splunk AND NOT in_chronicle AND NOT found_in_cmdb THEN 1
+                    WHEN NOT in_splunk AND NOT in_chronicle THEN 2
+                    WHEN NOT has_crowdstrike THEN 3
+                    WHEN NOT found_in_cmdb THEN 4
                     ELSE 5
-                END,
-                source_count ASC;
+                END;
             """,
             
-            'ao1_brilliance_table_analytics': """
+            'ao1_logging_compliance_status': """
             SELECT 
-                dataset_name,
-                table_name,
-                endpoints_discovered,
-                brilliance_score,
-                processing_time_seconds,
-                endpoint_columns
-            FROM ao1_table_analytics
-            WHERE endpoints_discovered > 0
-            ORDER BY brilliance_score DESC, endpoints_discovered DESC
-            LIMIT 50;
+                compliance_status,
+                COUNT(*) as asset_count,
+                (COUNT(*) * 100.0 / (SELECT COUNT(*) FROM ao1_logging_compliance)) as percentage,
+                AVG(coverage_percentage) as avg_coverage
+            FROM ao1_logging_compliance
+            GROUP BY compliance_status
+            ORDER BY asset_count DESC;
+            """,
+            
+            'ao1_domain_visibility_analysis': """
+            SELECT 
+                domain_name,
+                asset_count,
+                covered_assets,
+                visibility_percentage,
+                missing_coverage,
+                domain_classification
+            FROM ao1_domain_visibility
+            WHERE asset_count > 5
+            ORDER BY visibility_percentage ASC, missing_coverage DESC;
             """
         }
     
