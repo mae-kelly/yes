@@ -11,6 +11,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from dataclasses import asdict
 import threading
+import json
 
 from gcp_client import BigQueryClientManager
 from content_matcher import ContentBasedMatcher
@@ -21,18 +22,59 @@ from signal_handler import SignalHandler
 
 logger = logging.getLogger(__name__)
 
+class PrettyLogger:
+    @staticmethod
+    def info(msg: str):
+        print(f"   ⋆｡‧˚ʚ♡ɞ˚‧｡⋆   {msg}")
+    
+    @staticmethod
+    def success(msg: str):
+        print(f"   ❀°｡ ‧˚♡ ˚‧ ｡°❀   {msg}")
+    
+    @staticmethod
+    def warning(msg: str):
+        print(f"   ⚠°｡⋆⸜ ♡   {msg}")
+    
+    @staticmethod
+    def error(msg: str):
+        print(f"   ✗°｡⋆⸜ ♡   {msg}")
+    
+    @staticmethod
+    def dataset(dataset_name: str, count: int, total: int):
+        print(f"   ˚ ༘♡ ⋆｡˚   Dataset {count}/{total}: {dataset_name}")
+    
+    @staticmethod
+    def table(table_name: str, endpoints_found: int = 0):
+        if endpoints_found > 0:
+            print(f"   ･ﾟ✧ ◞ ♡   Found {endpoints_found} endpoints in: {table_name}")
+        else:
+            print(f"   ｡･:*:･ﾟ★   Analyzing: {table_name}")
+    
+    @staticmethod
+    def endpoint_merge(endpoint: str, table_count: int):
+        print(f"   ♡˗ˏˋ ◞ ～   Merging {endpoint} from {table_count} sources")
+    
+    @staticmethod
+    def progress(current: int, total: int, item_type: str):
+        percentage = (current / total * 100) if total > 0 else 0
+        print(f"   ✧･ﾟ: *✧･ﾟ:*   Progress: {current}/{total} {item_type} ({percentage:.1f}%)")
+
 class DiscoveryEngine:
     def __init__(self, project_id: str, config: Dict[str, Any] = None):
         self.project_id = project_id
         self.config = config or {}
         
-        logger.info("Initializing BigQuery client")
+        print("\n" + "="*80)
+        print("   ♡₊˚ ✧ ‧₊˚ ⋅   AO1 Log Visibility Discovery   ⋅ ˚₊‧ ✧ ˚₊♡")
+        print("="*80)
+        PrettyLogger.info(f"Initializing for project: {project_id}")
+        
         self.client_manager = BigQueryClientManager(project_id)
         
         if not self.client_manager.test_connection():
             raise ConnectionError("Failed to authenticate with BigQuery")
         
-        logger.info("BigQuery authentication successful")
+        PrettyLogger.success("BigQuery authentication successful")
         
         self.matcher = ContentBasedMatcher()
         self.cache = CacheManager(self.config.get('cache_dir', '.cache'))
@@ -40,9 +82,8 @@ class DiscoveryEngine:
         self.checkpoint_manager = CheckpointManager()
         self.signal_handler = SignalHandler()
         
-        self.db_path = self.config.get('database_path', 'universal_cmdb.db')
-        self.max_workers = self.config.get('max_workers', min(16, mp.cpu_count()))
-        self.batch_size = self.config.get('batch_size', 500)
+        self.db_path = self.config.get('database_path', 'ao1_visibility_cmdb.db')
+        self.max_workers = self.config.get('max_workers', min(12, mp.cpu_count()))
         
         self.core_tables = {
             'cmdb': f'{project_id}.SAS_BI.V_DIM_ENDPOINT',
@@ -50,113 +91,83 @@ class DiscoveryEngine:
             'crowdstrike': f'{project_id}.SAS_BI.V_DIM_ENDPOINTAGENT'
         }
         
-        self.skip_patterns = {
-            'datasets': ['temp', 'test', 'staging', 'backup', 'archive'],
-            'tables': ['temp_', 'test_', 'staging_', 'backup_', 'archive_']
-        }
-        
         self.processed_datasets = set()
         self.processed_tables = set()
         self._processing_lock = threading.Lock()
+        self.dataset_counter = 0
+        self.table_counter = 0
         
-        self._setup_logging()
         self._setup_database()
-    
-    def _setup_logging(self):
-        log_dir = Path("logs")
-        log_dir.mkdir(exist_ok=True)
-        
-        file_handler = logging.FileHandler(log_dir / "discovery.log")
-        file_handler.setLevel(logging.DEBUG)
-        
-        console_handler = logging.StreamHandler()
-        console_handler.setLevel(logging.INFO)
-        
-        formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-        file_handler.setFormatter(formatter)
-        console_handler.setFormatter(formatter)
-        
-        logger.addHandler(file_handler)
-        logger.addHandler(console_handler)
-        logger.setLevel(logging.DEBUG)
     
     def _setup_database(self):
         self.conn = duckdb.connect(self.db_path)
         
         self.conn.execute("""
-        CREATE TABLE IF NOT EXISTS universal_endpoint (
-            endpoint_name VARCHAR PRIMARY KEY,
-            domain_name VARCHAR,
+        CREATE TABLE IF NOT EXISTS ao1_asset_inventory (
+            hostname VARCHAR PRIMARY KEY,
             fqdn VARCHAR,
+            ip_addresses TEXT,
             
-            original_cmdb BOOLEAN DEFAULT FALSE,
-            original_splunk BOOLEAN DEFAULT FALSE,
-            original_crowdstrike BOOLEAN DEFAULT FALSE,
-            present_in_other_table TEXT DEFAULT '',
+            infrastructure_type VARCHAR,
+            system_classification VARCHAR,
+            global_region VARCHAR,
+            country VARCHAR,
+            data_center VARCHAR,
+            cloud_region VARCHAR,
+            business_unit VARCHAR,
+            cio VARCHAR,
+            apm VARCHAR,
+            application_class VARCHAR,
+            environment VARCHAR,
             
-            source_table TEXT DEFAULT '',
-            source_dataset TEXT DEFAULT '',
-            source_count INTEGER DEFAULT 0,
+            in_splunk BOOLEAN DEFAULT FALSE,
+            in_chronicle BOOLEAN DEFAULT FALSE,
+            in_gso BOOLEAN DEFAULT FALSE,
+            logging_platforms TEXT,
             
-            ip_address TEXT DEFAULT '',
-            region TEXT DEFAULT '',
-            country TEXT DEFAULT '',
-            location TEXT DEFAULT '',
-            environment TEXT DEFAULT '',
-            endpoint_type TEXT DEFAULT '',
-            operating_system TEXT DEFAULT '',
-            application TEXT DEFAULT '',
-            pci_scope TEXT DEFAULT '',
-            security_tool TEXT DEFAULT '',
+            has_edr BOOLEAN DEFAULT FALSE,
+            has_tanium BOOLEAN DEFAULT FALSE,
+            has_dlp BOOLEAN DEFAULT FALSE,
+            has_crowdstrike BOOLEAN DEFAULT FALSE,
+            security_tools TEXT,
             
-            confidence_score DOUBLE DEFAULT 0.5,
-            validation_status VARCHAR DEFAULT 'MEDIUM',
+            found_in_cmdb BOOLEAN DEFAULT FALSE,
+            found_in_ad BOOLEAN DEFAULT FALSE,
+            found_in_dhcp BOOLEAN DEFAULT FALSE,
+            found_in_dns BOOLEAN DEFAULT FALSE,
+            found_in_tables TEXT,
+            
+            visibility_score DOUBLE DEFAULT 0.0,
+            last_log_seen TIMESTAMP,
             discovery_timestamp TIMESTAMP DEFAULT NOW(),
             last_updated TIMESTAMP DEFAULT NOW()
         )
         """)
         
         self.conn.execute("""
-        CREATE TABLE IF NOT EXISTS discovered_table (
+        CREATE TABLE IF NOT EXISTS discovered_tables (
             table_path VARCHAR PRIMARY KEY,
             dataset_name VARCHAR,
             table_name VARCHAR,
             row_count BIGINT,
             size_bytes BIGINT,
-            endpoint_field TEXT,
-            domain_field TEXT,
-            other_field TEXT,
-            discovery_score DOUBLE,
+            endpoints_found INTEGER DEFAULT 0,
+            is_partitioned BOOLEAN DEFAULT FALSE,
+            partition_column VARCHAR,
+            discovery_score DOUBLE DEFAULT 0.0,
             discovered_at TIMESTAMP DEFAULT NOW()
-        )
-        """)
-        
-        self.conn.execute("""
-        CREATE TABLE IF NOT EXISTS processing_log (
-            id INTEGER PRIMARY KEY,
-            timestamp TIMESTAMP DEFAULT NOW(),
-            level VARCHAR,
-            message TEXT,
-            table_path VARCHAR,
-            error_details TEXT
         )
         """)
     
     async def discover_all_endpoints(self) -> Tuple[Dict[str, Any], Dict[str, str]]:
         start_time = time.time()
-        logger.info("Starting comprehensive endpoint discovery")
-        
-        project_info = self.client_manager.get_project_info()
-        if project_info:
-            logger.info(f"Connected to project: {project_info.get('project_id', self.project_id)}")
+        PrettyLogger.info("Starting comprehensive asset discovery")
         
         try:
             checkpoint = self.checkpoint_manager.load_checkpoint()
             if checkpoint:
-                logger.info("Resuming from checkpoint")
+                PrettyLogger.info("Resuming from checkpoint")
                 await self._resume_from_checkpoint(checkpoint)
-            else:
-                logger.info("Starting fresh discovery")
             
             await self._load_core_tables()
             await self._discover_all_datasets_and_tables()
@@ -168,26 +179,18 @@ class DiscoveryEngine:
                 'processing_time': time.time() - start_time,
                 'database_path': self.db_path,
                 'total_endpoints': self._count_endpoints(),
-                'core_coverage': self._get_core_coverage(),
+                'visibility_coverage': self._get_visibility_coverage(),
                 'discovery_summary': self._get_summary(),
-                'performance_stats': asdict(stats),
-                'processing_analysis': {
-                    'bigquery_tb_processed': stats.bigquery_bytes_processed / (1024**4),
-                    'cache_hit_ratio': stats.cache_hits / max(1, stats.cache_hits + stats.cache_misses)
-                },
-                'authentication_info': {
-                    'method': 'service_account_or_default',
-                    'project_info': project_info
-                }
+                'performance_stats': asdict(stats)
             }
             
             self.checkpoint_manager.clear_checkpoint()
-            logger.info("Discovery completed successfully")
+            PrettyLogger.success("Discovery completed successfully")
             
             return final_stats, queries
             
         except Exception as e:
-            logger.error(f"Discovery failed: {e}")
+            PrettyLogger.error(f"Discovery failed: {e}")
             await self._save_emergency_checkpoint()
             raise
         finally:
@@ -200,180 +203,109 @@ class DiscoveryEngine:
         self.progress.set_stats(
             datasets_processed=len(self.processed_datasets),
             tables_processed=len(self.processed_tables),
-            endpoints_discovered=checkpoint.get('endpoints_discovered', 0),
-            bigquery_bytes_processed=checkpoint.get('bigquery_bytes_processed', 0)
+            endpoints_discovered=checkpoint.get('endpoints_discovered', 0)
         )
-        
-        logger.info(f"Resumed: {len(self.processed_datasets)} datasets, {len(self.processed_tables)} tables processed")
     
     async def _load_core_tables(self):
-        logger.info("Loading core CMDB tables")
+        PrettyLogger.info("Loading core CMDB tables")
         
-        core_tasks = [
-            self._load_core_table('cmdb', original_cmdb=True),
-            self._load_core_table('splunk', original_splunk=True),
-            self._load_core_table('crowdstrike', original_crowdstrike=True)
-        ]
-        
-        results = await asyncio.gather(*core_tasks, return_exceptions=True)
-        
-        for i, result in enumerate(results):
-            table_name = list(self.core_tables.keys())[i]
-            if isinstance(result, Exception):
-                logger.error(f"Failed to load {table_name}: {result}")
-                self.progress.update_stats(errors=[f"Core table {table_name}: {str(result)}"])
-            else:
-                logger.info(f"{table_name} loaded successfully")
+        for table_key in self.core_tables:
+            try:
+                await self._load_core_table(table_key)
+                PrettyLogger.success(f"Loaded {table_key} successfully")
+            except Exception as e:
+                PrettyLogger.error(f"Failed to load {table_key}: {e}")
     
-    async def _load_core_table(self, table_key: str, **flags):
+    async def _load_core_table(self, table_key: str):
         table_path = self.core_tables[table_key]
         
         try:
-            cache_key = f"core_table_columns:{table_path}"
-            table_columns = self.cache.get(cache_key)
-            
-            if table_columns is None:
-                table_columns = await self._discover_table_columns(table_path)
-                self.cache.set(cache_key, table_columns, ttl_hours=168)
-                self.progress.update_stats(cache_misses=1)
-            else:
-                self.progress.update_stats(cache_hits=1)
-            
-            if not table_columns:
-                logger.warning(f"No usable columns found in {table_key} table")
-                return
-            
-            endpoint_cols = [col for col, field_type, conf in table_columns if field_type == 'endpoint']
-            
-            if not endpoint_cols:
-                endpoint_cols = ['Endpoint_Nme', 'EndpointFQDN_Nme', 'Endpoint_ID', 'hostname', 'computer_name', 'device_name']
-                existing_cols = [col[0] for col in table_columns]
-                endpoint_cols = [col for col in endpoint_cols if col in existing_cols]
-            
-            if not endpoint_cols:
-                logger.warning(f"No endpoint columns found in {table_key}")
-                return
-            
-            endpoint_col = endpoint_cols[0]
-            
             with self.client_manager.get_client() as client:
                 table_ref = client.get_table(table_path)
                 available_columns = [field.name for field in table_ref.schema]
-            
-            select_parts = [f"UPPER(TRIM(CAST(`{endpoint_col}` AS STRING))) as endpoint_name"]
-            
-            if 'EndpointRegion_Nme' in available_columns:
-                select_parts.append("CAST(EndpointRegion_Nme AS STRING) as region")
-            elif 'region' in available_columns:
-                select_parts.append("CAST(region AS STRING) as region")
-            
-            if 'EndpointEnvironment_Type' in available_columns:
-                select_parts.append("CAST(EndpointEnvironment_Type AS STRING) as environment")
-            elif 'environment' in available_columns:
-                select_parts.append("CAST(environment AS STRING) as environment")
-            
-            if 'Endpoint_Type' in available_columns:
-                select_parts.append("CAST(Endpoint_Type AS STRING) as endpoint_type")
-            elif 'endpoint_type' in available_columns:
-                select_parts.append("CAST(endpoint_type AS STRING) as endpoint_type")
-            
-            query = f"""
-            SELECT DISTINCT
-                {', '.join(select_parts)}
-            FROM `{table_path}`
-            WHERE `{endpoint_col}` IS NOT NULL
-                AND LENGTH(TRIM(CAST(`{endpoint_col}` AS STRING))) >= 3
-            LIMIT {self.batch_size * 10}
-            """
-            
-            await self._execute_and_store_batch(query, {'endpoint_name': 'endpoint'}, table_key, **flags)
-            
-        except Exception as e:
-            logger.error(f"Failed to load core table {table_key}: {e}")
-    
-    async def _discover_table_columns(self, table_path: str) -> List[Tuple[str, str, float]]:
-        try:
-            with self.client_manager.get_client() as client:
-                table_ref = client.get_table(table_path)
                 
-                valid_columns = []
-                for field in table_ref.schema:
-                    if field.field_type in ['STRING', 'INTEGER', 'FLOAT']:
-                        try:
-                            sample_query = f"""
-                            SELECT `{field.name}`
-                            FROM `{table_path}`
-                            WHERE `{field.name}` IS NOT NULL
-                            LIMIT 15
-                            """
-                            
-                            job = client.query(sample_query)
-                            samples = [str(row[0]) for row in job.result() if row[0] is not None]
-                            
-                            if samples:
-                                match_result = self.matcher.analyze_column(field.name, samples)
-                                if match_result:
-                                    field_type, confidence = match_result
-                                    valid_columns.append((field.name, field_type, confidence))
-                        except Exception as col_e:
-                            logger.debug(f"Failed to sample column {field.name}: {col_e}")
-                            continue
+                endpoint_cols = []
+                for col in ['Endpoint_Nme', 'EndpointFQDN_Nme', 'Endpoint_ID', 'hostname', 'computer_name', 'device_name']:
+                    if col in available_columns:
+                        endpoint_cols.append(col)
                 
-                return valid_columns
+                if not endpoint_cols:
+                    PrettyLogger.warning(f"No endpoint columns found in {table_key}")
+                    return
+                
+                endpoint_col = endpoint_cols[0]
+                
+                select_parts = [f"UPPER(TRIM(CAST(`{endpoint_col}` AS STRING))) as hostname"]
+                
+                for col, alias in [
+                    ('EndpointRegion_Nme', 'global_region'),
+                    ('region', 'global_region'),
+                    ('EndpointEnvironment_Type', 'environment'),
+                    ('environment', 'environment'),
+                    ('Endpoint_Type', 'system_classification'),
+                    ('endpoint_type', 'system_classification')
+                ]:
+                    if col in available_columns:
+                        select_parts.append(f"CAST({col} AS STRING) as {alias}")
+                        break
+                
+                query = f"""
+                SELECT DISTINCT {', '.join(select_parts)}
+                FROM `{table_path}`
+                WHERE `{endpoint_col}` IS NOT NULL
+                    AND LENGTH(TRIM(CAST(`{endpoint_col}` AS STRING))) >= 3
+                """
+                
+                await self._execute_and_store_endpoints(query, table_key, table_path)
                 
         except Exception as e:
-            logger.error(f"Failed to discover columns for {table_path}: {e}")
-            return []
+            PrettyLogger.error(f"Failed to load core table {table_key}: {e}")
     
     async def _discover_all_datasets_and_tables(self):
-        logger.info("Starting comprehensive discovery of ALL datasets and tables")
+        PrettyLogger.info("Discovering all datasets and tables")
         
         with self.client_manager.get_client() as client:
             all_datasets = list(client.list_datasets(project=self.project_id))
-            logger.info(f"Found {len(all_datasets)} total datasets in project")
             
-            self.progress.set_stats(datasets_total=len(all_datasets))
+        self.progress.set_stats(datasets_total=len(all_datasets))
+        PrettyLogger.info(f"Found {len(all_datasets)} datasets to analyze")
+        
+        with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
+            futures = []
             
-            dataset_futures = []
-            with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
-                for dataset in all_datasets:
-                    if self.signal_handler.shutdown_requested:
-                        break
-                    
-                    if dataset.dataset_id in self.processed_datasets:
-                        logger.info(f"Skipping already processed dataset: {dataset.dataset_id}")
-                        continue
-                    
-                    logger.info(f"Queuing dataset for processing: {dataset.dataset_id}")
-                    future = executor.submit(self._process_complete_dataset, dataset.dataset_id)
-                    dataset_futures.append((future, dataset.dataset_id))
+            for i, dataset in enumerate(all_datasets, 1):
+                if self.signal_handler.shutdown_requested:
+                    break
                 
-                for future, dataset_id in dataset_futures:
-                    if self.signal_handler.shutdown_requested:
-                        break
+                if dataset.dataset_id in self.processed_datasets:
+                    continue
+                
+                PrettyLogger.dataset(dataset.dataset_id, i, len(all_datasets))
+                future = executor.submit(self._process_complete_dataset, dataset.dataset_id)
+                futures.append((future, dataset.dataset_id))
+            
+            for future, dataset_id in futures:
+                if self.signal_handler.shutdown_requested:
+                    break
+                
+                try:
+                    result = future.result()
+                    with self._processing_lock:
+                        self.processed_datasets.add(dataset_id)
+                    self.progress.update_stats(datasets_processed=1)
                     
-                    try:
-                        result = future.result()
-                        with self._processing_lock:
-                            self.processed_datasets.add(dataset_id)
-                        self.progress.update_stats(datasets_processed=1)
-                        logger.info(f"Completed processing dataset: {dataset_id}")
+                    if self.progress.should_checkpoint():
+                        await self._save_checkpoint()
                         
-                        if self.progress.should_checkpoint():
-                            await self._save_checkpoint()
-                            
-                    except Exception as e:
-                        logger.error(f"Dataset processing failed for {dataset_id}: {e}")
-                        self.progress.update_stats(datasets_failed=1)
+                except Exception as e:
+                    PrettyLogger.error(f"Dataset processing failed for {dataset_id}: {e}")
+                    self.progress.update_stats(datasets_failed=1)
     
     def _process_complete_dataset(self, dataset_id: str):
-        logger.info(f"Processing ALL tables in dataset: {dataset_id}")
-        
         try:
             with self.client_manager.get_client() as client:
                 dataset_ref = client.dataset(dataset_id, project=self.project_id)
                 all_tables = list(client.list_tables(dataset_ref))
-                logger.info(f"Found {len(all_tables)} tables in dataset {dataset_id}")
                 
                 for table_ref in all_tables:
                     if self.signal_handler.shutdown_requested:
@@ -382,12 +314,14 @@ class DiscoveryEngine:
                     table_full_path = f"{self.project_id}.{dataset_id}.{table_ref.table_id}"
                     
                     if table_full_path in self.processed_tables:
-                        logger.debug(f"Skipping already processed table: {table_full_path}")
                         continue
                     
                     try:
-                        logger.info(f"Processing table: {table_full_path}")
-                        self._process_single_table_complete(table_full_path, dataset_id, table_ref.table_id)
+                        PrettyLogger.table(f"{dataset_id}.{table_ref.table_id}")
+                        endpoints_found = self._analyze_table_for_endpoints(table_full_path, dataset_id, table_ref.table_id)
+                        
+                        if endpoints_found > 0:
+                            PrettyLogger.table(f"{dataset_id}.{table_ref.table_id}", endpoints_found)
                         
                         with self._processing_lock:
                             self.processed_tables.add(table_full_path)
@@ -396,39 +330,26 @@ class DiscoveryEngine:
                         time.sleep(0.1)
                         
                     except Exception as e:
-                        logger.error(f"Table processing failed {table_full_path}: {e}")
+                        PrettyLogger.error(f"Table analysis failed {table_full_path}: {e}")
                         self.progress.update_stats(tables_failed=1)
                         
         except Exception as e:
-            logger.error(f"Dataset processing failed {dataset_id}: {e}")
+            PrettyLogger.error(f"Dataset processing failed {dataset_id}: {e}")
             raise
     
-    def _process_single_table_complete(self, table_path: str, dataset_id: str, table_id: str):
+    def _analyze_table_for_endpoints(self, table_path: str, dataset_id: str, table_id: str) -> int:
         try:
-            cache_key = f"table_analysis:{table_path}"
-            cached_result = self.cache.get(cache_key)
-            
-            if cached_result is not None:
-                logger.debug(f"Using cached analysis for {table_path}")
-                self.progress.update_stats(cache_hits=1)
-                return cached_result
-            
             with self.client_manager.get_client() as client:
                 table_ref = client.get_table(table_path)
                 
-                table_info = {
-                    'table_path': table_path,
-                    'dataset_name': dataset_id,
-                    'table_name': table_id,
-                    'row_count': table_ref.num_rows or 0,
-                    'size_bytes': table_ref.num_bytes or 0,
-                    'endpoint_field': '',
-                    'domain_field': '',
-                    'other_field': '',
-                    'discovery_score': 0.0
-                }
+                is_partitioned = table_ref.time_partitioning is not None
+                partition_filter = ""
                 
-                logger.debug(f"Analyzing table schema: {table_path}")
+                if is_partitioned and table_ref.time_partitioning.field:
+                    partition_col = table_ref.time_partitioning.field
+                    partition_filter = f"WHERE {partition_col} >= DATE_SUB(CURRENT_DATE(), INTERVAL 7 DAY)"
+                
+                endpoints_found = 0
                 
                 for field in table_ref.schema:
                     if field.field_type == 'STRING':
@@ -436,7 +357,8 @@ class DiscoveryEngine:
                             sample_query = f"""
                             SELECT `{field.name}`
                             FROM `{table_path}`
-                            WHERE `{field.name}` IS NOT NULL
+                            {partition_filter}
+                            {" AND " if partition_filter else "WHERE"} `{field.name}` IS NOT NULL
                             LIMIT 10
                             """
                             
@@ -445,140 +367,144 @@ class DiscoveryEngine:
                             
                             if samples:
                                 match_result = self.matcher.analyze_column(field.name, samples)
-                                if match_result:
-                                    field_type, confidence = match_result
-                                    table_info['discovery_score'] = max(table_info['discovery_score'], confidence)
+                                if match_result and match_result[0] == 'endpoint':
                                     
-                                    if field_type == 'endpoint' and not table_info['endpoint_field']:
-                                        table_info['endpoint_field'] = field.name
-                                        
-                                        endpoint_query = f"""
-                                        SELECT DISTINCT
-                                            UPPER(TRIM(CAST(`{field.name}` AS STRING))) as endpoint_name
-                                        FROM `{table_path}`
-                                        WHERE `{field.name}` IS NOT NULL
-                                            AND LENGTH(TRIM(CAST(`{field.name}` AS STRING))) >= 3
-                                        LIMIT {self.batch_size}
-                                        """
-                                        
-                                        endpoint_job = client.query(endpoint_query)
-                                        endpoint_results = list(endpoint_job.result())
-                                        
-                                        if endpoint_results:
-                                            batch_data = []
-                                            for row in endpoint_results:
-                                                if row[0]:
-                                                    batch_data.append({
-                                                        'endpoint_name': str(row[0]).upper().strip(),
-                                                        'source_table': table_path,
-                                                        'source_dataset': dataset_id,
-                                                        'original_cmdb': False,
-                                                        'original_splunk': False,
-                                                        'original_crowdstrike': False
-                                                    })
-                                            
-                                            if batch_data:
-                                                self._store_endpoint_batch(batch_data)
-                                                self.progress.update_stats(endpoints_discovered=len(batch_data))
-                                                logger.info(f"Found {len(batch_data)} endpoints in {table_path}")
+                                    endpoint_query = f"""
+                                    SELECT DISTINCT
+                                        UPPER(TRIM(CAST(`{field.name}` AS STRING))) as hostname
+                                    FROM `{table_path}`
+                                    {partition_filter}
+                                    {" AND " if partition_filter else "WHERE"} `{field.name}` IS NOT NULL
+                                        AND LENGTH(TRIM(CAST(`{field.name}` AS STRING))) >= 3
+                                    """
                                     
-                                    elif field_type == 'domain' and not table_info['domain_field']:
-                                        table_info['domain_field'] = field.name
+                                    endpoint_job = client.query(endpoint_query)
+                                    endpoints = list(endpoint_job.result())
+                                    
+                                    if endpoints:
+                                        for row in endpoints:
+                                            if row[0]:
+                                                self._merge_endpoint_data({
+                                                    'hostname': str(row[0]).upper().strip(),
+                                                    'found_in_tables': table_path
+                                                })
+                                                endpoints_found += 1
                         
-                        except Exception as field_e:
-                            logger.debug(f"Failed to analyze field {field.name} in {table_path}: {field_e}")
+                        except Exception:
                             continue
                 
-                self._store_table_info(table_info)
-                self.cache.set(cache_key, table_info, ttl_hours=24)
-                self.progress.update_stats(cache_misses=1)
+                self._store_table_metadata({
+                    'table_path': table_path,
+                    'dataset_name': dataset_id,
+                    'table_name': table_id,
+                    'row_count': table_ref.num_rows or 0,
+                    'size_bytes': table_ref.num_bytes or 0,
+                    'endpoints_found': endpoints_found,
+                    'is_partitioned': is_partitioned
+                })
                 
-                return table_info
+                return endpoints_found
                 
         except Exception as e:
-            logger.error(f"Failed to process table {table_path}: {e}")
-            return None
+            return 0
     
-    def _store_table_info(self, table_info: Dict[str, Any]):
+    def _merge_endpoint_data(self, endpoint_data: Dict[str, Any]):
+        hostname = endpoint_data['hostname']
+        
+        existing = self.conn.execute(
+            "SELECT found_in_tables, global_region, environment, system_classification FROM ao1_asset_inventory WHERE hostname = ?",
+            (hostname,)
+        ).fetchone()
+        
+        if existing:
+            existing_tables = existing[0] or ""
+            new_table = endpoint_data.get('found_in_tables', '')
+            
+            if new_table and new_table not in existing_tables:
+                updated_tables = f"{existing_tables},{new_table}" if existing_tables else new_table
+                
+                update_fields = ["found_in_tables = ?"]
+                update_values = [updated_tables]
+                
+                for field, idx in [('global_region', 1), ('environment', 2), ('system_classification', 3)]:
+                    if field in endpoint_data and endpoint_data[field] and not existing[idx]:
+                        update_fields.append(f"{field} = ?")
+                        update_values.append(endpoint_data[field])
+                
+                update_values.append(hostname)
+                
+                self.conn.execute(f"""
+                    UPDATE ao1_asset_inventory 
+                    SET {', '.join(update_fields)}, last_updated = CURRENT_TIMESTAMP
+                    WHERE hostname = ?
+                """, update_values)
+                
+                PrettyLogger.endpoint_merge(hostname, len(updated_tables.split(',')))
+        else:
+            self.conn.execute("""
+            INSERT INTO ao1_asset_inventory (
+                hostname, found_in_tables, global_region, environment, system_classification,
+                discovery_timestamp, last_updated
+            ) VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+            """, (
+                hostname,
+                endpoint_data.get('found_in_tables', ''),
+                endpoint_data.get('global_region', ''),
+                endpoint_data.get('environment', ''),
+                endpoint_data.get('system_classification', '')
+            ))
+    
+    async def _execute_and_store_endpoints(self, query: str, source: str, table_path: str):
+        try:
+            with self.client_manager.get_client() as client:
+                job = client.query(query)
+                results = list(job.result())
+                
+                for row in results:
+                    if row[0]:
+                        endpoint_data = {'hostname': str(row[0]).upper().strip()}
+                        
+                        if len(row) > 1 and row[1]:
+                            endpoint_data['global_region'] = str(row[1])
+                        if len(row) > 2 and row[2]:
+                            endpoint_data['environment'] = str(row[2])
+                        if len(row) > 3 and row[3]:
+                            endpoint_data['system_classification'] = str(row[3])
+                        
+                        endpoint_data['found_in_tables'] = table_path
+                        
+                        if source == 'cmdb':
+                            endpoint_data['found_in_cmdb'] = True
+                        elif source == 'splunk':
+                            endpoint_data['in_splunk'] = True
+                        elif source == 'crowdstrike':
+                            endpoint_data['has_crowdstrike'] = True
+                        
+                        self._merge_endpoint_data(endpoint_data)
+                
+                self.progress.update_stats(endpoints_discovered=len(results))
+                
+        except Exception as e:
+            PrettyLogger.error(f"Failed to execute query for {source}: {e}")
+    
+    def _store_table_metadata(self, table_info: Dict[str, Any]):
         try:
             self.conn.execute("""
-            INSERT OR REPLACE INTO discovered_table (
+            INSERT OR REPLACE INTO discovered_tables (
                 table_path, dataset_name, table_name, row_count, size_bytes,
-                endpoint_field, domain_field, other_field, discovery_score, discovered_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                endpoints_found, is_partitioned, discovered_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
             """, (
                 table_info['table_path'],
                 table_info['dataset_name'],
                 table_info['table_name'],
                 table_info['row_count'],
                 table_info['size_bytes'],
-                table_info['endpoint_field'],
-                table_info['domain_field'],
-                table_info['other_field'],
-                table_info['discovery_score']
+                table_info['endpoints_found'],
+                table_info['is_partitioned']
             ))
         except Exception as e:
-            logger.error(f"Failed to store table info: {e}")
-    
-    async def _execute_and_store_batch(self, query: str, field_mapping: Dict[str, str], source: str, **flags):
-        try:
-            with self.client_manager.get_client() as client:
-                job = client.query(query)
-                results = list(job.result())
-                
-                self.progress.update_stats(
-                    bigquery_bytes_processed=job.total_bytes_processed or 0
-                )
-                
-                batch_data = []
-                for row in results:
-                    endpoint_data = {
-                        'endpoint_name': str(row[0]).upper().strip() if row[0] else '',
-                        'source_table': source,
-                        **flags
-                    }
-                    
-                    if len(row) > 1 and row[1]:
-                        endpoint_data['region'] = str(row[1])
-                    if len(row) > 2 and row[2]:
-                        endpoint_data['environment'] = str(row[2])
-                    if len(row) > 3 and row[3]:
-                        endpoint_data['endpoint_type'] = str(row[3])
-                    
-                    batch_data.append(endpoint_data)
-                
-                if batch_data:
-                    self._store_endpoint_batch(batch_data)
-                    self.progress.update_stats(endpoints_discovered=len(batch_data))
-                
-        except Exception as e:
-            logger.error(f"Failed to execute query for {source}: {e}")
-            raise
-    
-    def _store_endpoint_batch(self, batch_data: List[Dict[str, Any]]):
-        try:
-            for endpoint in batch_data:
-                if not endpoint.get('endpoint_name'):
-                    continue
-                
-                self.conn.execute("""
-                INSERT OR REPLACE INTO universal_endpoint (
-                    endpoint_name, source_table, source_dataset, original_cmdb, original_splunk, original_crowdstrike,
-                    region, environment, endpoint_type, discovery_timestamp
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-                """, (
-                    endpoint['endpoint_name'],
-                    endpoint.get('source_table', ''),
-                    endpoint.get('source_dataset', ''),
-                    endpoint.get('original_cmdb', False),
-                    endpoint.get('original_splunk', False),
-                    endpoint.get('original_crowdstrike', False),
-                    endpoint.get('region', ''),
-                    endpoint.get('environment', ''),
-                    endpoint.get('endpoint_type', '')
-                ))
-        except Exception as e:
-            logger.error(f"Failed to store endpoint batch: {e}")
+            PrettyLogger.error(f"Failed to store table metadata: {e}")
     
     async def _save_checkpoint(self):
         stats = self.progress.get_stats()
@@ -586,7 +512,6 @@ class DiscoveryEngine:
             'processed_datasets': list(self.processed_datasets),
             'processed_tables': list(self.processed_tables),
             'endpoints_discovered': stats.endpoints_discovered,
-            'bigquery_bytes_processed': stats.bigquery_bytes_processed,
             'datasets_processed': stats.datasets_processed,
             'tables_processed': stats.tables_processed
         }
@@ -597,127 +522,107 @@ class DiscoveryEngine:
     
     def _count_endpoints(self) -> int:
         try:
-            result = self.conn.execute("SELECT COUNT(*) FROM universal_endpoint").fetchone()
+            result = self.conn.execute("SELECT COUNT(*) FROM ao1_asset_inventory").fetchone()
             return result[0] if result else 0
         except Exception:
             return 0
     
-    def _get_core_coverage(self) -> Dict[str, int]:
+    def _get_visibility_coverage(self) -> Dict[str, Any]:
         try:
             result = self.conn.execute("""
             SELECT 
-                SUM(CASE WHEN original_cmdb THEN 1 ELSE 0 END) as cmdb,
-                SUM(CASE WHEN original_splunk THEN 1 ELSE 0 END) as splunk,
-                SUM(CASE WHEN original_crowdstrike THEN 1 ELSE 0 END) as crowdstrike,
-                SUM(CASE WHEN NOT original_cmdb AND NOT original_splunk AND NOT original_crowdstrike THEN 1 ELSE 0 END) as other_tables
-            FROM universal_endpoint
+                COUNT(*) as total_assets,
+                SUM(CASE WHEN in_splunk THEN 1 ELSE 0 END) as splunk_coverage,
+                SUM(CASE WHEN in_chronicle THEN 1 ELSE 0 END) as chronicle_coverage,
+                SUM(CASE WHEN has_crowdstrike THEN 1 ELSE 0 END) as crowdstrike_coverage,
+                SUM(CASE WHEN found_in_cmdb THEN 1 ELSE 0 END) as cmdb_coverage
+            FROM ao1_asset_inventory
             """).fetchone()
             
             if result:
+                total = result[0] or 1
                 return {
-                    'cmdb': result[0] or 0,
-                    'splunk': result[1] or 0,
-                    'crowdstrike': result[2] or 0,
-                    'other_tables': result[3] or 0
+                    'total_assets': result[0],
+                    'splunk_coverage_pct': (result[1] / total) * 100,
+                    'chronicle_coverage_pct': (result[2] / total) * 100,
+                    'crowdstrike_coverage_pct': (result[3] / total) * 100,
+                    'cmdb_coverage_pct': (result[4] / total) * 100
                 }
         except Exception:
             pass
-        return {'cmdb': 0, 'splunk': 0, 'crowdstrike': 0, 'other_tables': 0}
+        return {}
     
     def _get_summary(self) -> Dict[str, Any]:
         total_endpoints = self._count_endpoints()
-        core_coverage = self._get_core_coverage()
-        
-        core_total = core_coverage['cmdb'] + core_coverage['splunk'] + core_coverage['crowdstrike']
-        coverage_pct = (core_total / total_endpoints * 100) if total_endpoints > 0 else 0
+        coverage = self._get_visibility_coverage()
         
         return {
             'total_endpoints': total_endpoints,
-            'core_tracked': core_total,
-            'coverage_percentage': round(coverage_pct, 1),
+            'visibility_coverage': coverage,
             'discovery_status': 'COMPLETE'
         }
     
     def _create_analysis_queries(self) -> Dict[str, str]:
         return {
-            'universal_endpoint_view': """
+            'ao1_global_visibility': """
             SELECT 
-                endpoint_name,
-                domain_name,
-                fqdn,
-                original_cmdb,
-                original_splunk,
-                original_crowdstrike,
-                source_table,
-                source_dataset,
-                region,
-                environment,
-                endpoint_type,
-                confidence_score,
-                discovery_timestamp
-            FROM universal_endpoint
-            ORDER BY confidence_score DESC, endpoint_name;
+                COUNT(*) as total_assets,
+                (SUM(CASE WHEN in_splunk OR in_chronicle THEN 1 ELSE 0 END) * 100.0 / COUNT(*)) as global_visibility_pct
+            FROM ao1_asset_inventory;
             """,
             
-            'endpoint_coverage_summary': """
+            'ao1_infrastructure_type_breakdown': """
             SELECT 
-                'Total Endpoints' as metric,
-                COUNT(*) as count
-            FROM universal_endpoint
+                infrastructure_type,
+                COUNT(*) as asset_count,
+                (SUM(CASE WHEN in_splunk OR in_chronicle THEN 1 ELSE 0 END) * 100.0 / COUNT(*)) as visibility_pct
+            FROM ao1_asset_inventory
+            GROUP BY infrastructure_type
+            ORDER BY visibility_pct DESC;
+            """,
+            
+            'ao1_regional_visibility': """
+            SELECT 
+                global_region,
+                COUNT(*) as asset_count,
+                (SUM(CASE WHEN in_splunk OR in_chronicle THEN 1 ELSE 0 END) * 100.0 / COUNT(*)) as visibility_pct
+            FROM ao1_asset_inventory
+            WHERE global_region IS NOT NULL
+            GROUP BY global_region
+            ORDER BY visibility_pct DESC;
+            """,
+            
+            'ao1_security_control_coverage': """
+            SELECT 
+                'EDR Coverage' as control_type,
+                (SUM(CASE WHEN has_edr THEN 1 ELSE 0 END) * 100.0 / COUNT(*)) as coverage_pct
+            FROM ao1_asset_inventory
             UNION ALL
             SELECT 
-                'CMDB Tracked',
-                SUM(CASE WHEN original_cmdb THEN 1 ELSE 0 END)
-            FROM universal_endpoint
+                'CrowdStrike Coverage',
+                (SUM(CASE WHEN has_crowdstrike THEN 1 ELSE 0 END) * 100.0 / COUNT(*))
+            FROM ao1_asset_inventory
             UNION ALL
             SELECT 
-                'Splunk Tracked',
-                SUM(CASE WHEN original_splunk THEN 1 ELSE 0 END)
-            FROM universal_endpoint
-            UNION ALL
-            SELECT 
-                'CrowdStrike Tracked',
-                SUM(CASE WHEN original_crowdstrike THEN 1 ELSE 0 END)
-            FROM universal_endpoint;
+                'Tanium Coverage',
+                (SUM(CASE WHEN has_tanium THEN 1 ELSE 0 END) * 100.0 / COUNT(*))
+            FROM ao1_asset_inventory;
             """,
             
-            'missing_from_cmdb': """
+            'ao1_visibility_gaps': """
             SELECT 
-                endpoint_name,
-                source_table,
-                source_dataset,
-                region,
-                environment,
-                endpoint_type,
-                confidence_score
-            FROM universal_endpoint
-            WHERE NOT original_cmdb
-            ORDER BY confidence_score DESC;
-            """,
-            
-            'dataset_summary': """
-            SELECT 
-                dataset_name,
-                COUNT(*) as table_count,
-                SUM(row_count) as total_rows,
-                SUM(size_bytes) as total_bytes,
-                AVG(discovery_score) as avg_discovery_score
-            FROM discovered_table
-            GROUP BY dataset_name
-            ORDER BY avg_discovery_score DESC;
-            """,
-            
-            'processing_analysis': """
-            SELECT 
-                table_path,
-                row_count,
-                size_bytes,
-                endpoint_field,
-                domain_field,
-                discovery_score
-            FROM discovered_table
-            WHERE discovery_score > 0
-            ORDER BY discovery_score DESC;
+                hostname,
+                found_in_tables,
+                global_region,
+                system_classification,
+                CASE 
+                    WHEN NOT in_splunk AND NOT in_chronicle THEN 'No Logging Coverage'
+                    WHEN NOT has_crowdstrike AND NOT has_edr THEN 'No Security Tool Coverage'
+                    ELSE 'Partial Coverage'
+                END as gap_type
+            FROM ao1_asset_inventory
+            WHERE NOT (in_splunk AND in_chronicle AND has_crowdstrike)
+            ORDER BY gap_type, global_region;
             """
         }
     
