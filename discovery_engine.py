@@ -519,7 +519,7 @@ class AO1IntelligentDiscovery:
                         job = client.query(discovery_query, job_config=job_config)
                         results = list(job.result())
                 except Exception as e:
-                    PrettyLogger.warning(f"Query failed, trying simplified query: {e}")
+                    PrettyLogger.warning(f"Primary query failed, trying simplified query: {e}")
                     
                     simplified_query = f"""
                     SELECT DISTINCT UPPER(TRIM(CAST(`{hostname_field}` AS STRING))) as hostname
@@ -530,16 +530,20 @@ class AO1IntelligentDiscovery:
                     LIMIT 5000
                     """
                     
-                    with client_manager.get_client() as client:
-                        job_config = bigquery.QueryJobConfig(
-                            use_query_cache=False,
-                            job_timeout_ms=300000,
-                            maximum_bytes_billed=None,
-                            use_legacy_sql=False,
-                            dry_run=False
-                        )
-                        job = client.query(simplified_query, job_config=job_config)
-                        results = list(job.result())
+                    try:
+                        with client_manager.get_client() as client:
+                            job_config = bigquery.QueryJobConfig(
+                                use_query_cache=False,
+                                job_timeout_ms=300000,
+                                maximum_bytes_billed=None,
+                                use_legacy_sql=False,
+                                dry_run=False
+                            )
+                            job = client.query(simplified_query, job_config=job_config)
+                            results = list(job.result())
+                    except Exception as e2:
+                        PrettyLogger.error(f"Both queries failed for {source_name}: {e2}")
+                        return 0
                 
                 if not results:
                     PrettyLogger.warning(f"No endpoints found in {source_name}")
@@ -752,11 +756,17 @@ class AO1IntelligentDiscovery:
                             AND LENGTH(TRIM(CAST(`{field.name}` AS STRING))) >= 3
                             AND `{field.name}` NOT LIKE '%@%'
                             AND `{field.name}` NOT LIKE 'http%'
-                        LIMIT 1000
+                        LIMIT 500
                         """
                         
                         with client_manager.get_client() as client:
-                            job = client.query(sample_query, job_config=bigquery.QueryJobConfig(maximum_bytes_billed=None))
+                            job_config = bigquery.QueryJobConfig(
+                                use_query_cache=False,
+                                job_timeout_ms=120000,
+                                maximum_bytes_billed=None,
+                                use_legacy_sql=False
+                            )
+                            job = client.query(sample_query, job_config=job_config)
                             results = list(job.result())
                         
                         for row in results:
@@ -768,9 +778,10 @@ class AO1IntelligentDiscovery:
                                 })
                                 endpoints_found += 1
                         
-                        await asyncio.sleep(0.3)
+                        await asyncio.sleep(0.5)
                     
-                    except Exception:
+                    except Exception as e:
+                        PrettyLogger.warning(f"Field analysis failed for {field.name}: {str(e)[:50]}")
                         continue
                 
                 return endpoints_found
