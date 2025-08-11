@@ -2,8 +2,7 @@
 
 PROJECT_ID ?= $(GOOGLE_CLOUD_PROJECT)
 CONFIG_FILE ?= config.yaml
-WORKERS ?= 32
-LOG_LEVEL ?= INFO
+WORKERS ?= 12
 
 DATA_DIR ?= ./data
 CACHE_DIR ?= $(DATA_DIR)/cache
@@ -11,116 +10,109 @@ LOGS_DIR ?= $(DATA_DIR)/logs
 OUTPUT_DIR ?= $(DATA_DIR)/output
 CHECKPOINTS_DIR ?= $(DATA_DIR)/checkpoints
 
-DOCKER_IMAGE ?= cmdb-discovery:latest
-
-RED := \033[0;31m
-GREEN := \033[0;32m
-YELLOW := \033[1;33m
-BLUE := \033[0;34m
-NC := \033[0m
+DOCKER_IMAGE ?= ao1-discovery:latest
 
 help:
-	@echo "$(BLUE)CMDB Discovery System$(NC)"
-	@echo "$(BLUE)=====================$(NC)"
+	@echo "AO1 Log Visibility Discovery System"
+	@echo "==================================="
 	@echo ""
-	@echo "$(GREEN)Core Commands:$(NC)"
-	@echo "  $(YELLOW)setup$(NC)                 - Complete setup"
-	@echo "  $(YELLOW)run$(NC)                   - Run discovery locally"
-	@echo "  $(YELLOW)docker-run$(NC)            - Run discovery in Docker"
-	@echo "  $(YELLOW)estimate$(NC)              - Estimate scope"
-	@echo "  $(YELLOW)resume$(NC)                - Resume from checkpoint"
+	@echo "Core Commands:"
+	@echo "  setup                 - Complete setup"
+	@echo "  run                   - Run AO1 discovery"
+	@echo "  docker-run            - Run discovery in Docker"
+	@echo "  estimate              - Estimate scope"
+	@echo "  resume                - Resume from checkpoint"
 	@echo ""
-	@echo "$(GREEN)Development:$(NC)"
-	@echo "  $(YELLOW)install$(NC)               - Install dependencies"
-	@echo "  $(YELLOW)test$(NC)                  - Run tests"
-	@echo "  $(YELLOW)format$(NC)                - Format code"
-	@echo "  $(YELLOW)lint$(NC)                  - Run linting"
+	@echo "Development:"
+	@echo "  install               - Install dependencies"
+	@echo "  test                  - Run tests"
+	@echo "  format                - Format code"
+	@echo "  lint                  - Run linting"
 	@echo ""
-	@echo "$(GREEN)Docker:$(NC)"
-	@echo "  $(YELLOW)docker-build$(NC)          - Build Docker image"
-	@echo "  $(YELLOW)docker-dev$(NC)            - Run development container"
+	@echo "Docker:"
+	@echo "  docker-build          - Build Docker image"
+	@echo "  docker-dev            - Run development container"
 	@echo ""
-	@echo "$(GREEN)Data Management:$(NC)"
-	@echo "  $(YELLOW)analyze$(NC)               - Analyze results"
-	@echo "  $(YELLOW)export$(NC)                - Export results"
-	@echo "  $(YELLOW)clean$(NC)                 - Clean generated files"
-	@echo "  $(YELLOW)backup$(NC)                - Backup results"
+	@echo "Data Management:"
+	@echo "  analyze               - Analyze AO1 results"
+	@echo "  export                - Export results"
+	@echo "  clean                 - Clean generated files"
+	@echo "  backup                - Backup results"
 	@echo ""
-	@echo "$(GREEN)Configuration:$(NC)"
-	@echo "  $(YELLOW)PROJECT_ID$(NC)            - GCP Project ID ($(PROJECT_ID))"
-	@echo "  $(YELLOW)CONFIG_FILE$(NC)           - Configuration file ($(CONFIG_FILE))"
-	@echo "  $(YELLOW)WORKERS$(NC)               - Number of workers ($(WORKERS))"
+	@echo "Configuration:"
+	@echo "  PROJECT_ID            - GCP Project ID ($(PROJECT_ID))"
+	@echo "  CONFIG_FILE           - Configuration file ($(CONFIG_FILE))"
+	@echo "  WORKERS               - Number of workers ($(WORKERS))"
 
 setup:
-	@echo "$(BLUE)CMDB Discovery Setup$(NC)"
-	@echo "$(BLUE)====================$(NC)"
+	@echo "AO1 Discovery Setup"
+	@echo "=================="
 	@echo ""
-	@echo "$(GREEN)1. Checking prerequisites...$(NC)"
+	@echo "1. Checking prerequisites..."
 	@$(MAKE) check-prerequisites
 	@echo ""
-	@echo "$(GREEN)2. Creating directory structure...$(NC)"
+	@echo "2. Creating directory structure..."
 	@$(MAKE) create-dirs
 	@echo ""
-	@echo "$(GREEN)3. Installing dependencies...$(NC)"
+	@echo "3. Installing dependencies..."
 	@$(MAKE) install
 	@echo ""
-	@echo "$(GREEN)4. Validating configuration...$(NC)"
+	@echo "4. Validating configuration..."
 	@$(MAKE) validate-config
 	@echo ""
-	@echo "$(GREEN)Setup complete!$(NC)"
+	@echo "Setup complete!"
 
 check-prerequisites:
-	@echo "$(BLUE)Checking Python version...$(NC)"
-	@python3 --version || (echo "$(RED)Python 3.8+ required$(NC)" && exit 1)
-	@echo "$(BLUE)Checking pip...$(NC)"
-	@pip3 --version || (echo "$(RED)pip3 required$(NC)" && exit 1)
-	@echo "$(BLUE)Checking gcloud...$(NC)"
-	@gcloud version --format="value(Google Cloud SDK)" 2>/dev/null || echo "$(YELLOW)gcloud not found$(NC)"
-	@echo "$(BLUE)Checking Docker...$(NC)"
-	@docker --version 2>/dev/null || echo "$(YELLOW)Docker not found$(NC)"
-	@echo "$(GREEN)Prerequisites checked$(NC)"
+	@echo "Checking Python version..."
+	@python3 --version || (echo "Python 3.8+ required" && exit 1)
+	@echo "Checking pip..."
+	@pip3 --version || (echo "pip3 required" && exit 1)
+	@echo "Checking gcloud..."
+	@gcloud version --format="value(Google Cloud SDK)" 2>/dev/null || echo "gcloud not found"
+	@echo "Checking Docker..."
+	@docker --version 2>/dev/null || echo "Docker not found"
+	@echo "Prerequisites checked"
 
 create-dirs:
 	@mkdir -p $(DATA_DIR) $(CACHE_DIR) $(LOGS_DIR) $(OUTPUT_DIR) $(CHECKPOINTS_DIR)
 	@mkdir -p config
-	@echo "$(GREEN)Directory structure created$(NC)"
+	@echo "Directory structure created"
 
 install:
-	@echo "$(BLUE)Installing Python dependencies...$(NC)"
+	@echo "Installing Python dependencies..."
 	@pip3 install -r requirements.txt
-	@echo "$(GREEN)Dependencies installed$(NC)"
+	@echo "Dependencies installed"
 
 validate-config:
 	@if [ -f "$(CONFIG_FILE)" ]; then \
-		echo "$(GREEN)Configuration file found: $(CONFIG_FILE)$(NC)"; \
+		echo "Configuration file found: $(CONFIG_FILE)"; \
 		python3 -c "import yaml; yaml.safe_load(open('$(CONFIG_FILE)'))" || \
-		(echo "$(RED)Invalid YAML configuration$(NC)" && exit 1); \
+		(echo "Invalid YAML configuration" && exit 1); \
 	else \
-		echo "$(YELLOW)Configuration file not found: $(CONFIG_FILE)$(NC)"; \
+		echo "Configuration file not found: $(CONFIG_FILE)"; \
 	fi
 
 run:
 	@if [ -z "$(PROJECT_ID)" ]; then \
-		echo "$(RED)PROJECT_ID not set$(NC)"; \
+		echo "PROJECT_ID not set"; \
 		echo "Run: export GOOGLE_CLOUD_PROJECT='your-project-id'"; \
 		exit 1; \
 	fi
-	@echo "$(BLUE)Starting discovery...$(NC)"
-	@echo "$(BLUE)Project: $(PROJECT_ID)$(NC)"
-	@echo "$(BLUE)Workers: $(WORKERS)$(NC)"
+	@echo "Starting AO1 discovery..."
+	@echo "Project: $(PROJECT_ID)"
+	@echo "Workers: $(WORKERS)"
 	@python3 main.py \
 		--project $(PROJECT_ID) \
 		--config $(CONFIG_FILE) \
 		--workers $(WORKERS) \
-		--log-level $(LOG_LEVEL) \
 		--output-dir $(OUTPUT_DIR)
 
 estimate:
 	@if [ -z "$(PROJECT_ID)" ]; then \
-		echo "$(RED)PROJECT_ID not set$(NC)"; \
+		echo "PROJECT_ID not set"; \
 		exit 1; \
 	fi
-	@echo "$(BLUE)Estimating discovery scope...$(NC)"
+	@echo "Estimating AO1 discovery scope..."
 	@python3 main.py \
 		--project $(PROJECT_ID) \
 		--config $(CONFIG_FILE) \
@@ -129,10 +121,10 @@ estimate:
 
 resume:
 	@if [ -z "$(PROJECT_ID)" ]; then \
-		echo "$(RED)PROJECT_ID not set$(NC)"; \
+		echo "PROJECT_ID not set"; \
 		exit 1; \
 	fi
-	@echo "$(BLUE)Resuming from checkpoint...$(NC)"
+	@echo "Resuming AO1 discovery from checkpoint..."
 	@python3 main.py \
 		--project $(PROJECT_ID) \
 		--config $(CONFIG_FILE) \
@@ -141,16 +133,16 @@ resume:
 		--output-dir $(OUTPUT_DIR)
 
 docker-build:
-	@echo "$(BLUE)Building Docker image...$(NC)"
+	@echo "Building Docker image..."
 	@docker build -f Dockerfile -t $(DOCKER_IMAGE) .
-	@echo "$(GREEN)Docker image built: $(DOCKER_IMAGE)$(NC)"
+	@echo "Docker image built: $(DOCKER_IMAGE)"
 
 docker-run: docker-build
 	@if [ -z "$(PROJECT_ID)" ]; then \
-		echo "$(RED)PROJECT_ID not set$(NC)"; \
+		echo "PROJECT_ID not set"; \
 		exit 1; \
 	fi
-	@echo "$(BLUE)Running discovery in Docker...$(NC)"
+	@echo "Running AO1 discovery in Docker..."
 	@mkdir -p $(DATA_DIR) $(CACHE_DIR) $(LOGS_DIR) $(OUTPUT_DIR) $(CHECKPOINTS_DIR)
 	@GOOGLE_CLOUD_PROJECT=$(PROJECT_ID) \
 	 DATA_DIR=$(DATA_DIR) \
@@ -159,88 +151,91 @@ docker-run: docker-build
 	 docker-compose up --build discovery
 
 docker-dev: docker-build
-	@echo "$(BLUE)Starting development container...$(NC)"
+	@echo "Starting development container..."
 	@docker-compose run --rm discovery-dev
 
 analyze:
-	@if [ ! -f "universal_cmdb.db" ]; then \
-		echo "$(RED)Database not found. Run discovery first.$(NC)"; \
+	@if [ ! -f "ao1_visibility_cmdb.db" ]; then \
+		echo "AO1 database not found. Run discovery first."; \
 		exit 1; \
 	fi
-	@echo "$(BLUE)Quick Analysis$(NC)"
-	@echo "$(BLUE)==============$(NC)"
+	@echo "AO1 Visibility Analysis"
+	@echo "======================"
 	@echo ""
-	@echo "$(GREEN)Total Endpoints:$(NC)"
-	@duckdb universal_cmdb.db "SELECT COUNT(*) as total_endpoints FROM universal_endpoint;"
+	@echo "Total Assets:"
+	@duckdb ao1_visibility_cmdb.db "SELECT COUNT(*) as total_assets FROM ao1_asset_inventory;"
 	@echo ""
-	@echo "$(GREEN)Core System Coverage:$(NC)"
-	@duckdb universal_cmdb.db "SELECT SUM(CASE WHEN original_cmdb THEN 1 ELSE 0 END) as cmdb, SUM(CASE WHEN original_splunk THEN 1 ELSE 0 END) as splunk, SUM(CASE WHEN original_crowdstrike THEN 1 ELSE 0 END) as crowdstrike FROM universal_endpoint;"
+	@echo "Visibility Coverage:"
+	@duckdb ao1_visibility_cmdb.db "SELECT (SUM(CASE WHEN in_splunk OR in_chronicle THEN 1 ELSE 0 END) * 100.0 / COUNT(*)) as global_visibility_pct FROM ao1_asset_inventory;"
+	@echo ""
+	@echo "Security Tool Coverage:"
+	@duckdb ao1_visibility_cmdb.db "SELECT (SUM(CASE WHEN has_crowdstrike THEN 1 ELSE 0 END) * 100.0 / COUNT(*)) as crowdstrike_coverage FROM ao1_asset_inventory;"
 
 export:
-	@echo "$(BLUE)Exporting results...$(NC)"
+	@echo "Exporting AO1 results..."
 	@mkdir -p $(OUTPUT_DIR)/exports
-	@if [ -f "universal_cmdb.db" ]; then \
-		echo "$(BLUE)Exporting endpoints to CSV...$(NC)"; \
-		duckdb universal_cmdb.db "COPY (SELECT * FROM universal_endpoint) TO '$(OUTPUT_DIR)/exports/endpoints.csv' (HEADER, DELIMITER ',');"; \
-		echo "$(BLUE)Exporting tables to CSV...$(NC)"; \
-		duckdb universal_cmdb.db "COPY (SELECT * FROM discovered_table) TO '$(OUTPUT_DIR)/exports/discovered_tables.csv' (HEADER, DELIMITER ',');"; \
-		echo "$(GREEN)Results exported to $(OUTPUT_DIR)/exports/$(NC)"; \
+	@if [ -f "ao1_visibility_cmdb.db" ]; then \
+		echo "Exporting asset inventory to CSV..."; \
+		duckdb ao1_visibility_cmdb.db "COPY (SELECT * FROM ao1_asset_inventory) TO '$(OUTPUT_DIR)/exports/ao1_asset_inventory.csv' (HEADER, DELIMITER ',');"; \
+		echo "Exporting visibility gaps to CSV..."; \
+		duckdb ao1_visibility_cmdb.db "COPY (SELECT hostname, found_in_tables, global_region, system_classification, CASE WHEN NOT in_splunk AND NOT in_chronicle THEN 'No Logging Coverage' ELSE 'Partial Coverage' END as gap_type FROM ao1_asset_inventory WHERE NOT (in_splunk AND in_chronicle)) TO '$(OUTPUT_DIR)/exports/ao1_visibility_gaps.csv' (HEADER, DELIMITER ',');"; \
+		echo "Results exported to $(OUTPUT_DIR)/exports/"; \
 	else \
-		echo "$(RED)Database not found$(NC)"; \
+		echo "AO1 database not found"; \
 	fi
 
 backup:
-	@echo "$(BLUE)Creating backup...$(NC)"
+	@echo "Creating AO1 backup..."
 	@TIMESTAMP=$$(date +%Y%m%d_%H%M%S) && \
 	mkdir -p backups && \
-	tar -czf "backups/discovery_backup_$$TIMESTAMP.tar.gz" \
-		universal_cmdb.db \
+	tar -czf "backups/ao1_backup_$$TIMESTAMP.tar.gz" \
+		ao1_visibility_cmdb.db \
 		$(OUTPUT_DIR) \
 		$(LOGS_DIR) \
 		$(CHECKPOINTS_DIR) \
 		2>/dev/null || true
-	@echo "$(GREEN)Backup created in backups/$(NC)"
+	@echo "Backup created in backups/"
 
 status:
-	@echo "$(BLUE)System Status$(NC)"
-	@echo "$(BLUE)==============$(NC)"
+	@echo "AO1 System Status"
+	@echo "================"
 	@echo ""
-	@echo "$(GREEN)Environment:$(NC)"
+	@echo "Environment:"
 	@echo "  Project ID: $(or $(PROJECT_ID),Not set)"
 	@echo "  Config file: $(CONFIG_FILE)"
 	@echo "  Workers: $(WORKERS)"
 	@echo ""
-	@echo "$(GREEN)Files:$(NC)"
-	@ls -la universal_cmdb.db 2>/dev/null && echo "  Database exists" || echo "  Database not found"
+	@echo "Files:"
+	@ls -la ao1_visibility_cmdb.db 2>/dev/null && echo "  AO1 database exists" || echo "  AO1 database not found"
 	@ls -la $(CONFIG_FILE) 2>/dev/null && echo "  Config exists" || echo "  Config not found"
 	@ls -d $(OUTPUT_DIR) 2>/dev/null && echo "  Output directory exists" || echo "  Output directory not found"
 
 logs:
 	@if [ -d "$(LOGS_DIR)" ]; then \
-		echo "$(BLUE)Recent Logs$(NC)"; \
+		echo "Recent AO1 Logs"; \
 		find $(LOGS_DIR) -name "*.log" -type f -exec ls -lt {} + | head -5; \
 		echo ""; \
-		echo "$(GREEN)Latest log content:$(NC)"; \
+		echo "Latest log content:"; \
 		find $(LOGS_DIR) -name "*.log" -type f -exec ls -t {} + | head -1 | xargs tail -20; \
 	else \
-		echo "$(RED)No logs directory found$(NC)"; \
+		echo "No logs directory found"; \
 	fi
 
 test:
-	@echo "$(BLUE)Running tests...$(NC)"
-	@python3 -m pytest tests/ -v || echo "$(YELLOW)No tests found$(NC)"
+	@echo "Running tests..."
+	@python3 -m pytest tests/ -v || echo "No tests found"
 
 format:
-	@echo "$(BLUE)Formatting code...$(NC)"
-	@black . || echo "$(YELLOW)black not installed$(NC)"
+	@echo "Formatting code..."
+	@black . || echo "black not installed"
 
 lint:
-	@echo "$(BLUE)Running linting...$(NC)"
-	@flake8 . || echo "$(YELLOW)flake8 not installed$(NC)"
+	@echo "Running linting..."
+	@flake8 . || echo "flake8 not installed"
 
 clean:
-	@echo "$(BLUE)Cleaning generated files...$(NC)"
+	@echo "Cleaning generated files..."
 	@rm -rf __pycache__ .pytest_cache .cache
 	@rm -f *.pyc *.pyo
 	@rm -f discovery_checkpoint.json
-	@echo "$(GREEN)Cleanup complete$(NC)"
+	@echo "Cleanup complete"

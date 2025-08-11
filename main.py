@@ -14,10 +14,10 @@ import signal
 from discovery_engine import DiscoveryEngine
 from config_loader import ConfigLoader
 
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+logging.basicConfig(level=logging.WARNING, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-class CMDBDiscoveryRunner:
+class AO1DiscoveryRunner:
     def __init__(self, project_id: str, config_file: str = None):
         self.project_id = project_id
         self.config = ConfigLoader.load_config(config_file)
@@ -28,7 +28,7 @@ class CMDBDiscoveryRunner:
         signal.signal(signal.SIGTERM, self._signal_handler)
     
     def _signal_handler(self, signum, frame):
-        logger.info(f"Received signal {signum}, initiating graceful shutdown...")
+        print(f"\n   ⚠°｡⋆⸜ ♡   Received signal {signum}, graceful shutdown...")
         self.shutdown_requested = True
         if hasattr(self.engine, 'signal_handler'):
             self.engine.signal_handler.shutdown_requested = True
@@ -36,78 +36,33 @@ class CMDBDiscoveryRunner:
     async def run_discovery(self) -> tuple[Dict[str, Any], Dict[str, str]]:
         start_time = time.time()
         
-        logger.info("Starting CMDB Discovery System")
-        logger.info(f"Project: {self.project_id}")
-        logger.info(f"Configuration: {json.dumps(self.config, indent=2)}")
-        
         try:
             stats, queries = await self.engine.discover_all_endpoints()
             processing_time = time.time() - start_time
             stats['total_processing_time'] = processing_time
             return stats, queries
         except Exception as e:
-            logger.error(f"Discovery failed: {e}")
+            print(f"   ✗°｡⋆⸜ ♡   Discovery failed: {e}")
             return {'error': str(e)}, {}
         finally:
             self.engine.close()
 
-def setup_logging(log_level: str = "INFO", log_file: str = None):
-    log_dir = Path("logs")
-    log_dir.mkdir(exist_ok=True)
-    
-    log_format = '%(asctime)s - %(name)s - %(levelname)s - [%(filename)s:%(lineno)d] - %(message)s'
-    
-    handlers = []
-    
-    console_handler = logging.StreamHandler(sys.stdout)
-    console_handler.setLevel(getattr(logging, log_level.upper()))
-    console_handler.setFormatter(logging.Formatter(log_format))
-    handlers.append(console_handler)
-    
-    if log_file:
-        file_path = log_dir / log_file
-    else:
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        file_path = log_dir / f"discovery_{timestamp}.log"
-    
-    file_handler = logging.FileHandler(file_path)
-    file_handler.setLevel(logging.DEBUG)
-    file_handler.setFormatter(logging.Formatter(log_format))
-    handlers.append(file_handler)
-    
-    logging.basicConfig(
-        level=logging.DEBUG,
-        handlers=handlers,
-        format=log_format
-    )
-    
-    logging.getLogger('google.auth').setLevel(logging.WARNING)
-    logging.getLogger('google.cloud').setLevel(logging.WARNING)
-    logging.getLogger('urllib3').setLevel(logging.WARNING)
-    
-    logger.info(f"Logging configured - File: {file_path}")
-
 def parse_arguments():
-    parser = argparse.ArgumentParser(
-        description="CMDB Discovery System",
-        formatter_class=argparse.RawDescriptionHelpFormatter
-    )
+    parser = argparse.ArgumentParser(description="AO1 Log Visibility Discovery System")
     
     parser.add_argument('--project', '-p', required=True, help='GCP Project ID')
-    parser.add_argument('--config', '-c', help='Configuration file (JSON or YAML)')
-    parser.add_argument('--workers', '-w', type=int, help='Maximum number of parallel workers')
-    parser.add_argument('--log-level', choices=['DEBUG', 'INFO', 'WARNING', 'ERROR'], default='INFO', help='Logging level')
-    parser.add_argument('--log-file', help='Log file name')
-    parser.add_argument('--resume', action='store_true', help='Resume from previous checkpoint')
-    parser.add_argument('--dry-run', action='store_true', help='Estimate scope without processing')
-    parser.add_argument('--output-dir', default='output', help='Output directory for results')
+    parser.add_argument('--config', '-c', help='Configuration file')
+    parser.add_argument('--workers', '-w', type=int, help='Maximum parallel workers')
+    parser.add_argument('--resume', action='store_true', help='Resume from checkpoint')
+    parser.add_argument('--dry-run', action='store_true', help='Estimate scope')
+    parser.add_argument('--output-dir', default='output', help='Output directory')
     parser.add_argument('--cache-dir', default='.cache', help='Cache directory')
-    parser.add_argument('--database', default='universal_cmdb.db', help='Database file path')
+    parser.add_argument('--database', default='ao1_visibility_cmdb.db', help='Database file')
     
     return parser.parse_args()
 
 async def estimate_discovery_scope(project_id: str, config: Dict[str, Any]):
-    logger.info("Estimating discovery scope...")
+    print("   ⋆｡‧˚ʚ♡ɞ˚‧｡⋆   Estimating discovery scope...")
     
     try:
         from gcp_client import BigQueryClientManager
@@ -124,7 +79,7 @@ async def estimate_discovery_scope(project_id: str, config: Dict[str, Any]):
             sample_datasets = datasets[:10]
             
             for i, dataset in enumerate(sample_datasets):
-                logger.info(f"Sampling dataset {i+1}/10: {dataset.dataset_id}")
+                print(f"   ｡･:*:･ﾟ★   Sampling dataset {i+1}/10: {dataset.dataset_id}")
                 
                 try:
                     tables = list(client.list_tables(dataset.reference))
@@ -157,25 +112,23 @@ async def estimate_discovery_scope(project_id: str, config: Dict[str, Any]):
                 'recommendation': 'PROCEED'
             }
             
-            logger.info("Discovery Scope Estimate:")
-            logger.info(f"  Total datasets: {estimate['total_datasets']:,}")
-            logger.info(f"  Estimated tables: {estimate['estimated_tables']:,}")
-            logger.info(f"  Estimated data size: {estimate['estimated_size_gb']:,.1f} GB")
-            logger.info(f"  Recommendation: {estimate['recommendation']}")
+            print("   ❀°｡ ‧˚♡ ˚‧ ｡°❀   Discovery Scope Estimate:")
+            print(f"   ✧･ﾟ: *✧･ﾟ:*   Total datasets: {estimate['total_datasets']:,}")
+            print(f"   ✧･ﾟ: *✧･ﾟ:*   Estimated tables: {estimate['estimated_tables']:,}")
+            print(f"   ✧･ﾟ: *✧･ﾟ:*   Estimated data size: {estimate['estimated_size_gb']:,.1f} GB")
+            print(f"   ✧･ﾟ: *✧･ﾟ:*   Recommendation: {estimate['recommendation']}")
             
             return estimate
             
     except Exception as e:
-        logger.error(f"Failed to estimate scope: {e}")
+        print(f"   ✗°｡⋆⸜ ♡   Failed to estimate scope: {e}")
         return {'error': str(e)}
 
 async def main():
     args = parse_arguments()
     
-    setup_logging(args.log_level, args.log_file)
-    
     if not args.project:
-        logger.error("GCP Project ID is required")
+        print("   ✗°｡⋆⸜ ♡   GCP Project ID is required")
         sys.exit(1)
     
     config = {}
@@ -188,7 +141,7 @@ async def main():
                 else:
                     config = json.load(f)
         except Exception as e:
-            logger.error(f"Failed to load config: {e}")
+            print(f"   ✗°｡⋆⸜ ♡   Failed to load config: {e}")
             sys.exit(1)
     
     if args.workers:
@@ -201,62 +154,62 @@ async def main():
     output_dir = Path(args.output_dir)
     output_dir.mkdir(exist_ok=True)
     
-    logger.info("CMDB Discovery System")
-    logger.info(f"Project: {args.project}")
-    logger.info(f"Output directory: {output_dir}")
-    logger.info(f"Database: {config.get('database_path', 'universal_cmdb.db')}")
-    logger.info(f"Max workers: {config.get('max_workers', 32)}")
+    print("   ♡₊˚ ✧ ‧₊˚ ⋅   AO1 Log Visibility Discovery   ⋅ ˚₊‧ ✧ ˚₊♡")
+    print(f"   ⋆｡‧˚ʚ♡ɞ˚‧｡⋆   Project: {args.project}")
+    print(f"   ⋆｡‧˚ʚ♡ɞ˚‧｡⋆   Output directory: {output_dir}")
+    print(f"   ⋆｡‧˚ʚ♡ɞ˚‧｡⋆   Database: {config.get('database_path', 'ao1_visibility_cmdb.db')}")
+    print(f"   ⋆｡‧˚ʚ♡ɞ˚‧｡⋆   Max workers: {config.get('max_workers', 12)}")
     
     try:
         if args.dry_run:
             estimate = await estimate_discovery_scope(args.project, config)
             
             if 'error' in estimate:
-                logger.error(f"Estimation failed: {estimate['error']}")
+                print(f"   ✗°｡⋆⸜ ♡   Estimation failed: {estimate['error']}")
                 sys.exit(1)
             
             estimate_file = output_dir / "scope_estimate.json"
             with open(estimate_file, 'w') as f:
                 json.dump(estimate, f, indent=2)
             
-            logger.info(f"Scope estimate saved: {estimate_file}")
-            logger.info("Scope estimation complete. Run without --dry-run to proceed.")
+            print(f"   ❀°｡ ‧˚♡ ˚‧ ｡°❀   Scope estimate saved: {estimate_file}")
+            print("   ❀°｡ ‧˚♡ ˚‧ ｡°❀   Scope estimation complete. Run without --dry-run to proceed.")
             return
         
-        runner = CMDBDiscoveryRunner(args.project, args.config)
+        runner = AO1DiscoveryRunner(args.project, args.config)
         
         if not args.resume:
-            logger.info("Starting fresh discovery")
+            print("   ⋆｡‧˚ʚ♡ɞ˚‧｡⋆   Starting fresh discovery")
         else:
-            logger.info("Attempting to resume from checkpoint")
+            print("   ⋆｡‧˚ʚ♡ɞ˚‧｡⋆   Attempting to resume from checkpoint")
         
         stats, queries = await runner.run_discovery()
         
         if 'error' in stats:
-            logger.error(f"Discovery failed: {stats['error']}")
+            print(f"   ✗°｡⋆⸜ ♡   Discovery failed: {stats['error']}")
             sys.exit(1)
         
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         
-        stats_file = output_dir / f"discovery_stats_{timestamp}.json"
+        stats_file = output_dir / f"ao1_visibility_stats_{timestamp}.json"
         with open(stats_file, 'w') as f:
             json.dump(stats, f, indent=2, default=str)
         
-        queries_dir = output_dir / f"queries_{timestamp}"
+        queries_dir = output_dir / f"ao1_queries_{timestamp}"
         queries_dir.mkdir(exist_ok=True)
         
         for query_name, query_sql in queries.items():
             query_file = queries_dir / f"{query_name}.sql"
             with open(query_file, 'w') as f:
                 f.write(f"-- {query_name.replace('_', ' ').title()}\n")
-                f.write(f"-- CMDB Discovery\n")
+                f.write(f"-- AO1 Log Visibility Discovery\n")
                 f.write(f"-- Project: {args.project}\n")
                 f.write(f"-- Generated: {datetime.now().isoformat()}\n")
-                f.write(f"-- Database: {config.get('database_path', 'universal_cmdb.db')}\n\n")
+                f.write(f"-- Database: {config.get('database_path', 'ao1_visibility_cmdb.db')}\n\n")
                 f.write(query_sql)
         
-        latest_stats = output_dir / "latest_stats.json"
-        latest_queries = output_dir / "latest_queries"
+        latest_stats = output_dir / "latest_ao1_stats.json"
+        latest_queries = output_dir / "latest_ao1_queries"
         
         if latest_stats.exists() or latest_stats.is_symlink():
             latest_stats.unlink()
@@ -266,60 +219,53 @@ async def main():
         latest_stats.symlink_to(stats_file.name)
         latest_queries.symlink_to(queries_dir.name)
         
-        logger.info("Discovery Complete!")
+        print("\n" + "="*80)
+        print("   ♡₊˚ ✧ ‧₊˚ ⋅   AO1 Discovery Complete   ⋅ ˚₊‧ ✧ ˚₊♡")
+        print("="*80)
         
         performance_stats = stats.get('performance_stats', {})
-        processing_analysis = stats.get('processing_analysis', {})
+        visibility_coverage = stats.get('visibility_coverage', {})
         
-        logger.info(f"Total processing time: {stats.get('total_processing_time', 0):.2f} seconds")
-        logger.info(f"Unique endpoints discovered: {stats.get('total_endpoints', 0):,}")
-        logger.info(f"Datasets processed: {performance_stats.get('datasets_processed', 0)}")
-        logger.info(f"Tables processed: {performance_stats.get('tables_processed', 0)}")
-        logger.info(f"Cache hit ratio: {processing_analysis.get('cache_hit_ratio', 0):.2%}")
+        print(f"   ❀°｡ ‧˚♡ ˚‧ ｡°❀   Total processing time: {stats.get('total_processing_time', 0):.2f} seconds")
+        print(f"   ❀°｡ ‧˚♡ ˚‧ ｡°❀   Total assets discovered: {stats.get('total_endpoints', 0):,}")
+        print(f"   ❀°｡ ‧˚♡ ˚‧ ｡°❀   Datasets processed: {performance_stats.get('datasets_processed', 0)}")
+        print(f"   ❀°｡ ‧˚♡ ˚‧ ｡°❀   Tables processed: {performance_stats.get('tables_processed', 0)}")
         
-        core_coverage = stats.get('core_coverage', {})
-        if core_coverage:
-            logger.info("Core System Coverage:")
-            logger.info(f"  CMDB endpoints: {core_coverage.get('cmdb', 0):,}")
-            logger.info(f"  Splunk endpoints: {core_coverage.get('splunk', 0):,}")
-            logger.info(f"  CrowdStrike endpoints: {core_coverage.get('crowdstrike', 0):,}")
-            logger.info(f"  Other tables: {core_coverage.get('other_tables', 0):,}")
+        if visibility_coverage:
+            print("\n   ♡˗ˏˋ ◞ ～   AO1 Visibility Coverage:")
+            print(f"   ✧･ﾟ: *✧･ﾟ:*   CMDB Coverage: {visibility_coverage.get('cmdb_coverage_pct', 0):.1f}%")
+            print(f"   ✧･ﾟ: *✧･ﾟ:*   Splunk Coverage: {visibility_coverage.get('splunk_coverage_pct', 0):.1f}%")
+            print(f"   ✧･ﾟ: *✧･ﾟ:*   Chronicle Coverage: {visibility_coverage.get('chronicle_coverage_pct', 0):.1f}%")
+            print(f"   ✧･ﾟ: *✧･ﾟ:*   CrowdStrike Coverage: {visibility_coverage.get('crowdstrike_coverage_pct', 0):.1f}%")
         
-        logger.info("Output Files:")
-        logger.info(f"  Statistics: {stats_file}")
-        logger.info(f"  Latest stats: {latest_stats}")
-        logger.info(f"  SQL queries: {queries_dir}")
-        logger.info(f"  Latest queries: {latest_queries}")
-        logger.info(f"  Database: {config.get('database_path', 'universal_cmdb.db')}")
+        print("\n   ｡･:*:･ﾟ★   Output Files:")
+        print(f"   ◦ ❀ ◦   Statistics: {stats_file}")
+        print(f"   ◦ ❀ ◦   Latest stats: {latest_stats}")
+        print(f"   ◦ ❀ ◦   AO1 queries: {queries_dir}")
+        print(f"   ◦ ❀ ◦   Latest queries: {latest_queries}")
+        print(f"   ◦ ❀ ◦   Database: {config.get('database_path', 'ao1_visibility_cmdb.db')}")
         
         discovery_summary = stats.get('discovery_summary', {})
         if discovery_summary:
             total_endpoints = discovery_summary.get('total_endpoints', 0)
-            coverage_pct = discovery_summary.get('coverage_percentage', 0)
             
             if total_endpoints > 0:
-                logger.info(f"Success! Discovered {total_endpoints:,} endpoints across your infrastructure")
-                logger.info(f"Core system coverage: {coverage_pct}%")
-                
-                if coverage_pct >= 80:
-                    logger.info("Excellent coverage - your CMDB is well-maintained")
-                elif coverage_pct >= 60:
-                    logger.info("Good coverage - some gaps to address")
-                else:
-                    logger.info("Significant gaps detected - review missing endpoints")
+                print(f"\n   ❀°｡ ‧˚♡ ˚‧ ｡°❀   Success! Discovered {total_endpoints:,} assets for AO1 visibility measurement")
+                print("   ❀°｡ ‧˚♡ ˚‧ ｡°❀   CSOC can now measure log visibility across critical domains")
             else:
-                logger.warning("No endpoints discovered - check permissions and data sources")
+                print("   ⚠°｡⋆⸜ ♡   No assets discovered - check permissions and data sources")
+        
+        print("\n   ♡₊˚ ✧ ‧₊˚ ⋅   Ready for AO1 Visibility Analysis   ⋅ ˚₊‧ ✧ ˚₊♡")
         
     except KeyboardInterrupt:
-        logger.info("Discovery interrupted by user (Ctrl+C)")
-        logger.info("Check for checkpoint files to resume later")
+        print("\n\n   ⚠°｡⋆⸜ ♡   Discovery interrupted by user")
+        print("   ･ﾟ✧ ◞ ♡   Check for checkpoint files to resume later")
         sys.exit(130)
         
     except Exception as e:
-        logger.error(f"Discovery failed: {e}")
-        logger.error("Check logs for detailed error information")
+        print(f"\n   ✗°｡⋆⸜ ♡   Discovery failed: {e}")
         
-        error_file = output_dir / f"error_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+        error_file = output_dir / f"ao1_error_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
         with open(error_file, 'w') as f:
             json.dump({
                 'error': str(e),
@@ -329,12 +275,12 @@ async def main():
                 'config': config
             }, f, indent=2)
         
-        logger.error(f"Error details saved: {error_file}")
+        print(f"   ･ﾟ✧ ◞ ♡   Error details saved: {error_file}")
         sys.exit(1)
 
 if __name__ == "__main__":
     try:
         asyncio.run(main())
     except KeyboardInterrupt:
-        print("Interrupted by user")
+        print("\n   ⚠°｡⋆⸜ ♡   Interrupted by user")
         sys.exit(130)
