@@ -17,7 +17,6 @@ class ProcessingStats:
     tables_failed: int = 0
     endpoints_discovered: int = 0
     bigquery_bytes_processed: int = 0
-    estimated_cost_usd: float = 0.0
     processing_time_seconds: float = 0.0
     cache_hits: int = 0
     cache_misses: int = 0

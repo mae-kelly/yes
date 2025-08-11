@@ -2,8 +2,6 @@ max_workers: 32
 batch_size: 1000
 max_tables_per_dataset: 200
 
-max_cost_per_query: 2.0
-max_total_cost: 200.0
 skip_large_tables: true
 max_table_size_gb: 50
 

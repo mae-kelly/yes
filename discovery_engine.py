@@ -17,7 +17,6 @@ from content_matcher import ContentBasedMatcher
 from cache_manager import CacheManager
 from progress_tracker import ProgressTracker
 from checkpoint_manager import CheckpointManager
-from cost_estimator import CostEstimator
 from signal_handler import SignalHandler
 
 logger = logging.getLogger(__name__)
@@ -39,13 +38,10 @@ class DiscoveryEngine:
         self.cache = CacheManager(self.config.get('cache_dir', '.cache'))
         self.progress = ProgressTracker()
         self.checkpoint_manager = CheckpointManager()
-        self.cost_estimator = CostEstimator()
         self.signal_handler = SignalHandler()
         
         self.db_path = self.config.get('database_path', 'universal_cmdb.db')
         self.max_workers = self.config.get('max_workers', min(32, mp.cpu_count() + 4))
-        self.max_cost_per_query = self.config.get('max_cost_per_query', 1.0)
-        self.max_total_cost = self.config.get('max_total_cost', 50.0)
         self.batch_size = self.config.get('batch_size', 1000)
         
         self.core_tables = {
@@ -127,7 +123,6 @@ class DiscoveryEngine:
             domain_field TEXT,
             other_field TEXT,
             discovery_score DOUBLE,
-            processing_cost_usd DOUBLE DEFAULT 0.0,
             discovered_at TIMESTAMP DEFAULT NOW()
         )
         """)
@@ -172,8 +167,7 @@ class DiscoveryEngine:
                 'core_coverage': self._get_core_coverage(),
                 'discovery_summary': self._get_summary(),
                 'performance_stats': asdict(stats),
-                'cost_analysis': {
-                    'estimated_total_cost_usd': stats.estimated_cost_usd,
+                'processing_analysis': {
                     'bigquery_tb_processed': stats.bigquery_bytes_processed / (1024**4),
                     'cache_hit_ratio': stats.cache_hits / max(1, stats.cache_hits + stats.cache_misses)
                 },
@@ -203,8 +197,7 @@ class DiscoveryEngine:
             datasets_processed=len(processed_datasets),
             tables_processed=len(processed_tables),
             endpoints_discovered=checkpoint.get('endpoints_discovered', 0),
-            bigquery_bytes_processed=checkpoint.get('bigquery_bytes_processed', 0),
-            estimated_cost_usd=checkpoint.get('estimated_cost_usd', 0.0)
+            bigquery_bytes_processed=checkpoint.get('bigquery_bytes_processed', 0)
         )
         
         logger.info(f"Resumed: {len(processed_datasets)} datasets, {len(processed_tables)} tables processed")
@@ -259,12 +252,30 @@ class DiscoveryEngine:
             
             endpoint_col = endpoint_cols[0]
             
+            with self.client_manager.get_client() as client:
+                table_ref = client.get_table(table_path)
+                available_columns = [field.name for field in table_ref.schema]
+            
+            select_parts = [f"UPPER(TRIM(CAST(`{endpoint_col}` AS STRING))) as endpoint_name"]
+            
+            if 'EndpointRegion_Nme' in available_columns:
+                select_parts.append("CAST(EndpointRegion_Nme AS STRING) as region")
+            elif 'region' in available_columns:
+                select_parts.append("CAST(region AS STRING) as region")
+            
+            if 'EndpointEnvironment_Type' in available_columns:
+                select_parts.append("CAST(EndpointEnvironment_Type AS STRING) as environment")
+            elif 'environment' in available_columns:
+                select_parts.append("CAST(environment AS STRING) as environment")
+            
+            if 'Endpoint_Type' in available_columns:
+                select_parts.append("CAST(Endpoint_Type AS STRING) as endpoint_type")
+            elif 'endpoint_type' in available_columns:
+                select_parts.append("CAST(endpoint_type AS STRING) as endpoint_type")
+            
             query = f"""
             SELECT DISTINCT
-                UPPER(TRIM(CAST(`{endpoint_col}` AS STRING))) as endpoint_name,
-                CAST(EndpointRegion_Nme AS STRING) as region,
-                CAST(EndpointEnvironment_Type AS STRING) as environment,
-                CAST(Endpoint_Type AS STRING) as endpoint_type
+                {', '.join(select_parts)}
             FROM `{table_path}`
             WHERE `{endpoint_col}` IS NOT NULL
                 AND LENGTH(TRIM(CAST(`{endpoint_col}` AS STRING))) >= 3
@@ -275,7 +286,6 @@ class DiscoveryEngine:
             
         except Exception as e:
             logger.error(f"Failed to load core table {table_key}: {e}")
-            raise
     
     async def _discover_table_columns(self, table_path: str) -> List[Tuple[str, str, float]]:
         try:
@@ -370,8 +380,7 @@ class DiscoveryEngine:
         table_columns = self.cache.get(cache_key)
         
         if table_columns is None:
-            # This would be async in the actual implementation
-            table_columns = []  # Simplified for this example
+            table_columns = []
             self.cache.set(cache_key, table_columns, ttl_hours=48)
             self.progress.update_stats(cache_misses=1)
         else:
@@ -383,11 +392,8 @@ class DiscoveryEngine:
                 job = client.query(query)
                 results = list(job.result())
                 
-                estimated_cost = self.cost_estimator.estimate_query_cost(job.total_bytes_processed or 0)
-                self.cost_estimator.add_usage(job.total_bytes_processed or 0)
                 self.progress.update_stats(
-                    bigquery_bytes_processed=job.total_bytes_processed or 0,
-                    estimated_cost_usd=estimated_cost
+                    bigquery_bytes_processed=job.total_bytes_processed or 0
                 )
                 
                 batch_data = []
@@ -455,7 +461,6 @@ class DiscoveryEngine:
             'processed_tables': [],
             'endpoints_discovered': stats.endpoints_discovered,
             'bigquery_bytes_processed': stats.bigquery_bytes_processed,
-            'estimated_cost_usd': stats.estimated_cost_usd,
             'datasets_processed': stats.datasets_processed,
             'tables_processed': stats.tables_processed
         }
@@ -562,15 +567,14 @@ class DiscoveryEngine:
             ORDER BY confidence_score DESC;
             """,
             
-            'cost_analysis': """
+            'processing_analysis': """
             SELECT 
                 table_path,
                 row_count,
                 size_bytes,
-                processing_cost_usd,
                 discovery_score
             FROM discovered_table
-            ORDER BY processing_cost_usd DESC;
+            ORDER BY discovery_score DESC;
             """
         }
     

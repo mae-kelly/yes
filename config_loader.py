@@ -11,8 +11,6 @@ class ConfigLoader:
     def load_config(config_file: str = None) -> Dict[str, Any]:
         default_config = {
             'max_workers': min(32, os.cpu_count() * 2),
-            'max_cost_per_query': 1.0,
-            'max_total_cost': 100.0,
             'batch_size': 1000,
             'cache_dir': '.cache',
             'database_path': 'universal_cmdb.db',

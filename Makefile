@@ -2,7 +2,6 @@
 
 PROJECT_ID ?= $(GOOGLE_CLOUD_PROJECT)
 CONFIG_FILE ?= config.yaml
-MAX_COST ?= 100
 WORKERS ?= 32
 LOG_LEVEL ?= INFO
 
@@ -28,7 +27,7 @@ help:
 	@echo "  $(YELLOW)setup$(NC)                 - Complete setup"
 	@echo "  $(YELLOW)run$(NC)                   - Run discovery locally"
 	@echo "  $(YELLOW)docker-run$(NC)            - Run discovery in Docker"
-	@echo "  $(YELLOW)estimate$(NC)              - Estimate scope and cost"
+	@echo "  $(YELLOW)estimate$(NC)              - Estimate scope"
 	@echo "  $(YELLOW)resume$(NC)                - Resume from checkpoint"
 	@echo ""
 	@echo "$(GREEN)Development:$(NC)"
@@ -50,7 +49,6 @@ help:
 	@echo "$(GREEN)Configuration:$(NC)"
 	@echo "  $(YELLOW)PROJECT_ID$(NC)            - GCP Project ID ($(PROJECT_ID))"
 	@echo "  $(YELLOW)CONFIG_FILE$(NC)           - Configuration file ($(CONFIG_FILE))"
-	@echo "  $(YELLOW)MAX_COST$(NC)              - Maximum cost in USD ($(MAX_COST))"
 	@echo "  $(YELLOW)WORKERS$(NC)               - Number of workers ($(WORKERS))"
 
 setup:
@@ -110,12 +108,10 @@ run:
 	@echo "$(BLUE)Starting discovery...$(NC)"
 	@echo "$(BLUE)Project: $(PROJECT_ID)$(NC)"
 	@echo "$(BLUE)Workers: $(WORKERS)$(NC)"
-	@echo "$(BLUE)Cost limit: $$(MAX_COST)$(NC)"
 	@python3 main.py \
 		--project $(PROJECT_ID) \
 		--config $(CONFIG_FILE) \
 		--workers $(WORKERS) \
-		--cost-limit $(MAX_COST) \
 		--log-level $(LOG_LEVEL) \
 		--output-dir $(OUTPUT_DIR)
 
@@ -142,7 +138,6 @@ resume:
 		--config $(CONFIG_FILE) \
 		--resume \
 		--workers $(WORKERS) \
-		--cost-limit $(MAX_COST) \
 		--output-dir $(OUTPUT_DIR)
 
 docker-build:
@@ -213,7 +208,6 @@ status:
 	@echo "$(GREEN)Environment:$(NC)"
 	@echo "  Project ID: $(or $(PROJECT_ID),Not set)"
 	@echo "  Config file: $(CONFIG_FILE)"
-	@echo "  Max cost: $$(MAX_COST)"
 	@echo "  Workers: $(WORKERS)"
 	@echo ""
 	@echo "$(GREEN)Files:$(NC)"

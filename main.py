@@ -96,11 +96,10 @@ def parse_arguments():
     parser.add_argument('--project', '-p', required=True, help='GCP Project ID')
     parser.add_argument('--config', '-c', help='Configuration file (JSON or YAML)')
     parser.add_argument('--workers', '-w', type=int, help='Maximum number of parallel workers')
-    parser.add_argument('--cost-limit', type=float, help='Maximum total cost in USD')
     parser.add_argument('--log-level', choices=['DEBUG', 'INFO', 'WARNING', 'ERROR'], default='INFO', help='Logging level')
     parser.add_argument('--log-file', help='Log file name')
     parser.add_argument('--resume', action='store_true', help='Resume from previous checkpoint')
-    parser.add_argument('--dry-run', action='store_true', help='Estimate scope and cost without processing')
+    parser.add_argument('--dry-run', action='store_true', help='Estimate scope without processing')
     parser.add_argument('--output-dir', default='output', help='Output directory for results')
     parser.add_argument('--cache-dir', default='.cache', help='Cache directory')
     parser.add_argument('--database', default='universal_cmdb.db', help='Database file path')
@@ -108,7 +107,7 @@ def parse_arguments():
     return parser.parse_args()
 
 async def estimate_discovery_scope(project_id: str, config: Dict[str, Any]):
-    logger.info("Estimating discovery scope and cost...")
+    logger.info("Estimating discovery scope...")
     
     try:
         from gcp_client import BigQueryClientManager
@@ -121,7 +120,6 @@ async def estimate_discovery_scope(project_id: str, config: Dict[str, Any]):
             total_datasets = len(datasets)
             total_tables = 0
             total_size_gb = 0
-            estimated_cost = 0.0
             
             sample_datasets = datasets[:10]
             
@@ -138,9 +136,6 @@ async def estimate_discovery_scope(project_id: str, config: Dict[str, Any]):
                             if table.num_bytes:
                                 size_gb = table.num_bytes / (1024**3)
                                 total_size_gb += size_gb
-                                
-                                sample_bytes = min(table.num_bytes, 100 * 1024 * 1024)
-                                estimated_cost += (sample_bytes / (1024**4)) * 5.0
                         except Exception:
                             continue
                 except Exception:
@@ -150,26 +145,22 @@ async def estimate_discovery_scope(project_id: str, config: Dict[str, Any]):
                 scale_factor = total_datasets / len(sample_datasets)
                 estimated_total_tables = int(total_tables * scale_factor)
                 estimated_total_size_gb = total_size_gb * scale_factor
-                estimated_total_cost = estimated_cost * scale_factor
             else:
                 estimated_total_tables = 0
                 estimated_total_size_gb = 0
-                estimated_total_cost = 0
             
             estimate = {
                 'total_datasets': total_datasets,
                 'estimated_tables': estimated_total_tables,
                 'estimated_size_gb': round(estimated_total_size_gb, 2),
-                'estimated_cost_usd': round(estimated_total_cost, 2),
                 'sampling_coverage': f"{len(sample_datasets)}/{total_datasets} datasets",
-                'recommendation': 'PROCEED' if estimated_total_cost < config.get('max_total_cost', 100) else 'REVIEW_COST'
+                'recommendation': 'PROCEED'
             }
             
             logger.info("Discovery Scope Estimate:")
             logger.info(f"  Total datasets: {estimate['total_datasets']:,}")
             logger.info(f"  Estimated tables: {estimate['estimated_tables']:,}")
             logger.info(f"  Estimated data size: {estimate['estimated_size_gb']:,.1f} GB")
-            logger.info(f"  Estimated cost: ${estimate['estimated_cost_usd']:.2f}")
             logger.info(f"  Recommendation: {estimate['recommendation']}")
             
             return estimate
@@ -202,8 +193,6 @@ async def main():
     
     if args.workers:
         config['max_workers'] = args.workers
-    if args.cost_limit:
-        config['max_total_cost'] = args.cost_limit
     if args.cache_dir:
         config['cache_dir'] = args.cache_dir
     if args.database:
@@ -217,7 +206,6 @@ async def main():
     logger.info(f"Output directory: {output_dir}")
     logger.info(f"Database: {config.get('database_path', 'universal_cmdb.db')}")
     logger.info(f"Max workers: {config.get('max_workers', 32)}")
-    logger.info(f"Cost limit: ${config.get('max_total_cost', 100)}")
     
     try:
         if args.dry_run:
@@ -232,11 +220,6 @@ async def main():
                 json.dump(estimate, f, indent=2)
             
             logger.info(f"Scope estimate saved: {estimate_file}")
-            
-            if estimate['recommendation'] == 'REVIEW_COST':
-                logger.warning("Estimated cost exceeds limit. Review configuration or increase cost limit.")
-                sys.exit(0)
-            
             logger.info("Scope estimation complete. Run without --dry-run to proceed.")
             return
         
@@ -286,14 +269,13 @@ async def main():
         logger.info("Discovery Complete!")
         
         performance_stats = stats.get('performance_stats', {})
-        cost_analysis = stats.get('cost_analysis', {})
+        processing_analysis = stats.get('processing_analysis', {})
         
         logger.info(f"Total processing time: {stats.get('total_processing_time', 0):.2f} seconds")
         logger.info(f"Unique endpoints discovered: {stats.get('total_endpoints', 0):,}")
         logger.info(f"Datasets processed: {performance_stats.get('datasets_processed', 0)}")
         logger.info(f"Tables processed: {performance_stats.get('tables_processed', 0)}")
-        logger.info(f"Total cost: ${cost_analysis.get('estimated_total_cost_usd', 0):.2f}")
-        logger.info(f"Cache hit ratio: {cost_analysis.get('cache_hit_ratio', 0):.2%}")
+        logger.info(f"Cache hit ratio: {processing_analysis.get('cache_hit_ratio', 0):.2%}")
         
         core_coverage = stats.get('core_coverage', {})
         if core_coverage:
