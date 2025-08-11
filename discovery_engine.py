@@ -12,6 +12,8 @@ from pathlib import Path
 from dataclasses import asdict
 import threading
 import json
+import gc
+import platform
 
 from gcp_client import BigQueryClientManager
 from content_matcher import ContentBasedMatcher
@@ -21,6 +23,19 @@ from checkpoint_manager import CheckpointManager
 from signal_handler import SignalHandler
 
 logger = logging.getLogger(__name__)
+
+def setup_m1_optimization():
+    if platform.system() == "Darwin" and platform.processor() == "arm":
+        try:
+            import torch
+            if torch.backends.mps.is_available():
+                os.environ['PYTORCH_MPS_HIGH_WATERMARK_RATIO'] = '0.0'
+                os.environ['PYTORCH_ENABLE_MPS_FALLBACK'] = '1'
+                print("   ❀°｡ ‧˚♡ ˚‧ ｡°❀   M1 GPU acceleration enabled")
+                return True
+        except ImportError:
+            pass
+    return False
 
 class PrettyLogger:
     @staticmethod
@@ -58,6 +73,10 @@ class PrettyLogger:
     def progress(current: int, total: int, item_type: str):
         percentage = (current / total * 100) if total > 0 else 0
         print(f"   ✧･ﾟ: *✧･ﾟ:*   Progress: {current}/{total} {item_type} ({percentage:.1f}%)")
+    
+    @staticmethod
+    def memory_cleanup():
+        print(f"   ｡･:*:･ﾟ★   Memory cleanup performed")
 
 class DiscoveryEngine:
     def __init__(self, project_id: str, config: Dict[str, Any] = None):
@@ -67,6 +86,9 @@ class DiscoveryEngine:
         print("\n" + "="*80)
         print("   ♡₊˚ ✧ ‧₊˚ ⋅   AO1 Log Visibility Discovery   ⋅ ˚₊‧ ✧ ˚₊♡")
         print("="*80)
+        
+        self.m1_enabled = setup_m1_optimization()
+        
         PrettyLogger.info(f"Initializing for project: {project_id}")
         
         self.client_manager = BigQueryClientManager(project_id)
@@ -83,7 +105,14 @@ class DiscoveryEngine:
         self.signal_handler = SignalHandler()
         
         self.db_path = self.config.get('database_path', 'ao1_visibility_cmdb.db')
-        self.max_workers = self.config.get('max_workers', min(12, mp.cpu_count()))
+        
+        cpu_count = mp.cpu_count()
+        if self.m1_enabled:
+            self.max_workers = min(8, cpu_count)
+        else:
+            self.max_workers = self.config.get('max_workers', min(6, cpu_count))
+        
+        PrettyLogger.info(f"Using {self.max_workers} workers (M1 optimized: {self.m1_enabled})")
         
         self.core_tables = {
             'cmdb': f'{project_id}.SAS_BI.V_DIM_ENDPOINT',
@@ -96,6 +125,7 @@ class DiscoveryEngine:
         self._processing_lock = threading.Lock()
         self.dataset_counter = 0
         self.table_counter = 0
+        self._cleanup_counter = 0
         
         self._setup_database()
     
@@ -159,6 +189,12 @@ class DiscoveryEngine:
         )
         """)
     
+    def _periodic_cleanup(self):
+        self._cleanup_counter += 1
+        if self._cleanup_counter % 20 == 0:
+            gc.collect()
+            PrettyLogger.memory_cleanup()
+    
     async def discover_all_endpoints(self) -> Tuple[Dict[str, Any], Dict[str, str]]:
         start_time = time.time()
         PrettyLogger.info("Starting comprehensive asset discovery")
@@ -181,7 +217,8 @@ class DiscoveryEngine:
                 'total_endpoints': self._count_endpoints(),
                 'visibility_coverage': self._get_visibility_coverage(),
                 'discovery_summary': self._get_summary(),
-                'performance_stats': asdict(stats)
+                'performance_stats': asdict(stats),
+                'm1_gpu_enabled': self.m1_enabled
             }
             
             self.checkpoint_manager.clear_checkpoint()
@@ -194,6 +231,8 @@ class DiscoveryEngine:
             await self._save_emergency_checkpoint()
             raise
         finally:
+            if hasattr(self.client_manager, 'close_all'):
+                self.client_manager.close_all()
             self.conn.close()
     
     async def _resume_from_checkpoint(self, checkpoint: Dict[str, Any]):
@@ -213,6 +252,7 @@ class DiscoveryEngine:
             try:
                 await self._load_core_table(table_key)
                 PrettyLogger.success(f"Loaded {table_key} successfully")
+                time.sleep(1)
             except Exception as e:
                 PrettyLogger.error(f"Failed to load {table_key}: {e}")
     
@@ -266,7 +306,7 @@ class DiscoveryEngine:
         
         with self.client_manager.get_client() as client:
             all_datasets = list(client.list_datasets(project=self.project_id))
-            
+        
         self.progress.set_stats(datasets_total=len(all_datasets))
         PrettyLogger.info(f"Found {len(all_datasets)} datasets to analyze")
         
@@ -283,6 +323,9 @@ class DiscoveryEngine:
                 PrettyLogger.dataset(dataset.dataset_id, i, len(all_datasets))
                 future = executor.submit(self._process_complete_dataset, dataset.dataset_id)
                 futures.append((future, dataset.dataset_id))
+                
+                if i % 5 == 0:
+                    time.sleep(2)
             
             for future, dataset_id in futures:
                 if self.signal_handler.shutdown_requested:
@@ -293,6 +336,8 @@ class DiscoveryEngine:
                     with self._processing_lock:
                         self.processed_datasets.add(dataset_id)
                     self.progress.update_stats(datasets_processed=1)
+                    
+                    self._periodic_cleanup()
                     
                     if self.progress.should_checkpoint():
                         await self._save_checkpoint()
@@ -327,11 +372,12 @@ class DiscoveryEngine:
                             self.processed_tables.add(table_full_path)
                         self.progress.update_stats(tables_processed=1)
                         
-                        time.sleep(0.1)
+                        time.sleep(0.2)
                         
                     except Exception as e:
                         PrettyLogger.error(f"Table analysis failed {table_full_path}: {e}")
                         self.progress.update_stats(tables_failed=1)
+                        time.sleep(0.5)
                         
         except Exception as e:
             PrettyLogger.error(f"Dataset processing failed {dataset_id}: {e}")
@@ -629,3 +675,5 @@ class DiscoveryEngine:
     def close(self):
         if hasattr(self, 'conn') and self.conn:
             self.conn.close()
+        if hasattr(self.client_manager, 'close_all'):
+            self.client_manager.close_all()

@@ -1,18 +1,24 @@
-FROM python:3.11-slim as base
+FROM --platform=linux/arm64 python:3.11-slim as base
 
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     PIP_NO_CACHE_DIR=1 \
-    PIP_DISABLE_PIP_VERSION_CHECK=1
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    PYTORCH_ENABLE_MPS_FALLBACK=1 \
+    PYTORCH_MPS_HIGH_WATERMARK_RATIO=0.0
 
 RUN apt-get update && apt-get install -y \
     build-essential \
     curl \
     git \
     procps \
+    libblas-dev \
+    liblapack-dev \
+    libopenblas-dev \
+    gfortran \
     && rm -rf /var/lib/apt/lists/*
 
-RUN curl https://dl.google.com/dl/cloudsdk/channels/rapid/downloads/google-cloud-sdk-450.0.0-linux-x86_64.tar.gz > /tmp/google-cloud-sdk.tar.gz && \
+RUN curl https://dl.google.com/dl/cloudsdk/channels/rapid/downloads/google-cloud-sdk-450.0.0-linux-arm.tar.gz > /tmp/google-cloud-sdk.tar.gz && \
     mkdir -p /usr/local/gcloud && \
     tar -C /usr/local/gcloud -xzf /tmp/google-cloud-sdk.tar.gz && \
     /usr/local/gcloud/google-cloud-sdk/install.sh --quiet && \
@@ -42,17 +48,20 @@ RUN cat > /app/entrypoint.sh << 'EOF'
 #!/bin/bash
 set -e
 
+export PYTORCH_ENABLE_MPS_FALLBACK=1
+export PYTORCH_MPS_HIGH_WATERMARK_RATIO=0.0
+
 if [[ "$1" == "--dry-run" || "$DRY_RUN" == "true" ]]; then
-    echo "Running in dry-run mode"
+    echo "Running in dry-run mode with M1 optimization"
     exec python main.py --dry-run "${@:2}"
 fi
 
 if [[ "$1" == "--resume" || "$RESUME" == "true" ]]; then
-    echo "Resuming from checkpoint"
+    echo "Resuming from checkpoint with M1 optimization"
     exec python main.py --resume "${@:2}"
 fi
 
-echo "Starting discovery"
+echo "Starting AO1 discovery with M1 optimization"
 exec python main.py "$@"
 EOF
 
@@ -68,7 +77,7 @@ if Path('/app/discovery_running.lock').exists():
     print('Discovery running')
     sys.exit(0)
 
-if Path('/app/universal_cmdb.db').exists():
+if Path('/app/ao1_visibility_cmdb.db').exists():
     print('Discovery completed')
     sys.exit(0)
 
@@ -87,7 +96,8 @@ CMD ["--help"]
 
 LABEL maintainer="Development Team" \
       version="1.0.0" \
-      description="CMDB Discovery System"
+      description="AO1 Discovery System with M1 GPU Support" \
+      architecture="arm64"
 
 FROM production as development
 
