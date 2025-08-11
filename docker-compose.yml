@@ -1,0 +1,125 @@
+version: '3.8'
+
+services:
+  discovery:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: production
+    container_name: cmdb-discovery
+    environment:
+      - GOOGLE_CLOUD_PROJECT=${GOOGLE_CLOUD_PROJECT}
+      - GOOGLE_APPLICATION_CREDENTIALS=/app/credentials/gcp_key.json
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - MAX_COST=${MAX_COST:-100}
+      - WORKERS=${WORKERS:-32}
+      - PYTHONUNBUFFERED=1
+    volumes:
+      - ${GCP_KEY_FILE:-./gcp_prod_key.json}:/app/credentials/gcp_key.json:ro
+      - ${CONFIG_FILE:-./config.yaml}:/app/config/config.yaml:ro
+      - discovery-data:/app/output
+      - discovery-cache:/app/.cache
+      - discovery-logs:/app/logs
+      - discovery-checkpoints:/app/checkpoints
+      - ${DATABASE_PATH:-./universal_cmdb.db}:/app/universal_cmdb.db
+    networks:
+      - discovery-network
+    restart: unless-stopped
+    mem_limit: 8g
+    mem_reservation: 4g
+    cpus: '4.0'
+    ulimits:
+      nofile:
+        soft: 65536
+        hard: 65536
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "100m"
+        max-file: "5"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import os; exit(0 if os.path.exists('/app/universal_cmdb.db') else 1)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  duckdb-cli:
+    image: python:3.11-slim
+    container_name: discovery-duckdb
+    volumes:
+      - discovery-data:/app/output:ro
+      - ${DATABASE_PATH:-./universal_cmdb.db}:/app/universal_cmdb.db:ro
+    working_dir: /app
+    command: >
+      bash -c "
+        pip install duckdb &&
+        echo 'DuckDB CLI ready. Database: /app/universal_cmdb.db' &&
+        echo 'Example: SELECT COUNT(*) FROM universal_endpoint;' &&
+        duckdb /app/universal_cmdb.db
+      "
+    networks:
+      - discovery-network
+    profiles:
+      - tools
+
+  discovery-dev:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: development
+    container_name: cmdb-discovery-dev
+    environment:
+      - GOOGLE_CLOUD_PROJECT=${GOOGLE_CLOUD_PROJECT}
+      - GOOGLE_APPLICATION_CREDENTIALS=/app/credentials/gcp_key.json
+      - LOG_LEVEL=DEBUG
+    volumes:
+      - ${GCP_KEY_FILE:-./gcp_prod_key.json}:/app/credentials/gcp_key.json:ro
+      - .:/app/src:ro
+      - discovery-dev-data:/app/output
+      - discovery-dev-cache:/app/.cache
+    networks:
+      - discovery-network
+    profiles:
+      - development
+
+networks:
+  discovery-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
+
+volumes:
+  discovery-data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${DATA_DIR:-./data}
+  
+  discovery-cache:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${CACHE_DIR:-./cache}
+  
+  discovery-logs:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${LOGS_DIR:-./logs}
+  
+  discovery-checkpoints:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${CHECKPOINTS_DIR:-./checkpoints}
+  
+  discovery-dev-data:
+    driver: local
+  discovery-dev-cache:
+    driver: local
