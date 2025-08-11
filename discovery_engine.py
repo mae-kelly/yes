@@ -21,6 +21,11 @@ from progress_tracker import ProgressTracker
 from checkpoint_manager import CheckpointManager
 from signal_handler import SignalHandler
 
+try:
+    from google.cloud import bigquery
+except ImportError:
+    bigquery = None
+
 logger = logging.getLogger(__name__)
 
 class PrettyLogger:
@@ -497,13 +502,26 @@ class AO1IntelligentDiscovery:
                     AND UPPER(TRIM(CAST(`{hostname_field}` AS STRING))) NOT LIKE 'NULL%'
                     AND UPPER(TRIM(CAST(`{hostname_field}` AS STRING))) NOT LIKE 'N/A%'
                     AND UPPER(TRIM(CAST(`{hostname_field}` AS STRING))) NOT LIKE 'NONE%'
-                LIMIT 100000
+                LIMIT 10000
                 """
                 
                 PrettyLogger.info(f"Executing discovery query for {source_name}")
                 
-                job = client.query(discovery_query)
-                results = list(job.result())
+                try:
+                    results = list(client_manager.execute_query_unlimited(discovery_query))
+                except Exception as e:
+                    PrettyLogger.warning(f"Query failed with cost limits, trying simplified query: {e}")
+                    
+                    simplified_query = f"""
+                    SELECT DISTINCT UPPER(TRIM(CAST(`{hostname_field}` AS STRING))) as hostname
+                    FROM `{table_path}`
+                    {date_filter}
+                    {" AND " if date_filter else "WHERE"} `{hostname_field}` IS NOT NULL
+                        AND LENGTH(TRIM(CAST(`{hostname_field}` AS STRING))) >= 3
+                    LIMIT 10000
+                    """
+                    
+                    results = list(client_manager.execute_query_unlimited(simplified_query))
                 
                 if not results:
                     PrettyLogger.warning(f"No endpoints found in {source_name}")
@@ -719,7 +737,7 @@ class AO1IntelligentDiscovery:
                         LIMIT 1000
                         """
                         
-                        job = client.query(sample_query)
+                        job = client.query(sample_query, job_config=bigquery.QueryJobConfig(maximum_bytes_billed=None))
                         results = list(job.result())
                         
                         for row in results:
