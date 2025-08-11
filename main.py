@@ -118,7 +118,7 @@ async def estimate_intelligent_scope(project_id: str, config: dict):
                             
                             all_columns = [field.name for field in full_table.schema]
                             
-                            sample_query = f"SELECT * FROM `{project_id}.{dataset.dataset_id}.{table_ref.table_id}` LIMIT 5"
+                                sample_query = f"SELECT * FROM `{project_id}.{dataset.dataset_id}.{table_ref.table_id}` LIMIT 5"
                             try:
                                 sample_job = client.query(sample_query)
                                 sample_results = list(sample_job.result())
