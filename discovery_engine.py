@@ -785,21 +785,28 @@ class SuperIntelligentDataFusion:
             'total_enrichments': 0,
             'columns_processed': 0,
             'tables_processed': 0,
-            'unique_fields_discovered': set()
+            'unique_fields_discovered': set(),
+            'field_type_counts': defaultdict(int),
+            'sample_enrichments': []
         }
         
         for table_meta in all_table_metadata:
             hostname_column = table_meta['hostname_analysis']['primary_hostname_column']
             if not hostname_column:
+                PrettyLogger.warning(f"No hostname column found in {table_meta.get('table_id', 'unknown')}")
                 continue
             
             sample_data = table_meta.get('sample_data', {})
             hostname_samples = sample_data.get(hostname_column, [])
             
             if not hostname_samples:
+                PrettyLogger.warning(f"No hostname samples in {table_meta.get('table_id', 'unknown')}")
                 continue
             
             enrichment_stats['tables_processed'] += 1
+            table_enrichments = 0
+            
+            PrettyLogger.info(f"Processing table {table_meta.get('table_id', 'unknown')} with {len(hostname_samples)} hostnames")
             
             for column_name in table_meta.get('all_columns', []):
                 if column_name == hostname_column:
@@ -813,7 +820,9 @@ class SuperIntelligentDataFusion:
                 
                 field_type = self._determine_field_type_from_name_and_values(column_name, column_values)
                 enrichment_stats['unique_fields_discovered'].add(field_type)
+                enrichment_stats['field_type_counts'][field_type] += 1
                 
+                # Process each hostname-value pair
                 for i, sample_hostname in enumerate(hostname_samples):
                     normalized_hostname = self.host_linker._normalize_hostname_advanced(sample_hostname)
                     if not normalized_hostname:
@@ -825,6 +834,7 @@ class SuperIntelligentDataFusion:
                     
                     entity_id = f"entity_{matching_fingerprint.primary_id}"
                     
+                    # Get the corresponding value for this hostname
                     if i < len(column_values) and column_values[i]:
                         value = str(column_values[i]).strip()
                         if self._is_valid_enrichment_value(value):
@@ -841,10 +851,38 @@ class SuperIntelligentDataFusion:
                             )
                             
                             enrichment_stats['total_enrichments'] += 1
+                            table_enrichments += 1
+                            
+                            # Save sample enrichments for debugging
+                            if len(enrichment_stats['sample_enrichments']) < 10:
+                                enrichment_stats['sample_enrichments'].append({
+                                    'hostname': sample_hostname,
+                                    'field_type': field_type,
+                                    'column_name': column_name,
+                                    'value': value,
+                                    'confidence': confidence,
+                                    'table': table_meta.get('table_id', 'unknown')
+                                })
+            
+            PrettyLogger.info(f"Table {table_meta.get('table_id', 'unknown')}: {table_enrichments} enrichments added")
         
         enrichment_stats['unique_fields_discovered'] = len(enrichment_stats['unique_fields_discovered'])
+        
+        # Log detailed stats
         PrettyLogger.success(f"Processed {enrichment_stats['columns_processed']} columns from {enrichment_stats['tables_processed']} tables")
         PrettyLogger.success(f"Added {enrichment_stats['total_enrichments']} comprehensive enrichments")
+        PrettyLogger.info(f"Discovered {enrichment_stats['unique_fields_discovered']} unique field types")
+        
+        # Log top field types found
+        top_fields = sorted(enrichment_stats['field_type_counts'].items(), key=lambda x: x[1], reverse=True)[:10]
+        PrettyLogger.info(f"Top field types: {top_fields}")
+        
+        # Log sample enrichments
+        if enrichment_stats['sample_enrichments']:
+            PrettyLogger.info("Sample enrichments:")
+            for sample in enrichment_stats['sample_enrichments'][:5]:
+                PrettyLogger.info(f"  {sample['hostname']} -> {sample['field_type']}: {sample['value']}")
+        
         return enrichment_stats
     
     def _find_matching_fingerprint(self, normalized_hostname: str, fingerprints: Dict[str, HostFingerprint]) -> Optional[HostFingerprint]:
@@ -884,103 +922,127 @@ class SuperIntelligentDataFusion:
         if not sample_values:
             return f"unknown_{column_lower}"
         
-        if any(keyword in column_lower for keyword in ['fqdn', 'domain', 'dns']):
-            if any('.' in v and not v.replace('.', '').isdigit() for v in sample_values):
-                return 'fqdn'
+        # FQDN detection - prioritize this
+        if any(keyword in column_lower for keyword in ['fqdn', 'domain', 'dns', 'qualified', 'full_name']):
+            return 'fqdn'
         
-        if any(keyword in column_lower for keyword in ['ip', 'addr', 'address']):
-            if any(self._looks_like_ip(v) for v in sample_values):
+        # Check if values look like FQDNs regardless of column name
+        for value in sample_values:
+            if '.' in value and not value.replace('.', '').isdigit() and len(value.split('.')) >= 2:
+                parts = value.split('.')
+                if len(parts[-1]) >= 2 and parts[-1].isalpha():  # Looks like a TLD
+                    return 'fqdn'
+        
+        # IP Address detection
+        if any(keyword in column_lower for keyword in ['ip', 'addr', 'address', 'inet']):
+            return 'ip_address'
+        
+        # Check if values look like IPs regardless of column name
+        for value in sample_values:
+            if self._looks_like_ip(value):
                 return 'ip_address'
         
-        if any(keyword in column_lower for keyword in ['mac', 'ethernet', 'physical']):
-            if any(self._looks_like_mac(v) for v in sample_values):
+        # MAC Address detection
+        if any(keyword in column_lower for keyword in ['mac', 'ethernet', 'physical', 'ether']):
+            return 'mac_address'
+        
+        # Check for MAC pattern in values
+        for value in sample_values:
+            if self._looks_like_mac(value):
                 return 'mac_address'
         
-        if any(keyword in column_lower for keyword in ['os', 'operating', 'platform']):
+        # Infrastructure type detection
+        if any(keyword in column_lower for keyword in ['infrastructure', 'infra', 'platform', 'deployment', 'hosting']):
+            return 'infrastructure_type'
+        
+        # Check if values look like infrastructure types
+        infra_values = ['physical', 'virtual', 'cloud', 'container', 'vm', 'bare', 'metal', 'aws', 'azure', 'gcp']
+        for value in sample_values:
+            if any(infra in value.lower() for infra in infra_values):
+                return 'infrastructure_type'
+        
+        # Operating System detection
+        if any(keyword in column_lower for keyword in ['os', 'operating', 'platform', 'system']):
             return 'operating_system'
         
-        if any(keyword in column_lower for keyword in ['region', 'location', 'geo', 'site']):
+        # Check if values look like OS names
+        os_values = ['windows', 'linux', 'unix', 'centos', 'ubuntu', 'redhat', 'macos', 'debian']
+        for value in sample_values:
+            if any(os_name in value.lower() for os_name in os_values):
+                return 'operating_system'
+        
+        # Region/Location detection - be more aggressive
+        if any(keyword in column_lower for keyword in ['region', 'location', 'geo', 'site', 'area', 'zone', 'locale', 'place']):
             return 'region'
         
-        if any(keyword in column_lower for keyword in ['country', 'nation']):
+        # Country detection
+        if any(keyword in column_lower for keyword in ['country', 'nation', 'ctry']):
             return 'country'
         
-        if any(keyword in column_lower for keyword in ['datacenter', 'data_center', 'dc', 'facility']):
+        # Check if values look like country codes or names
+        for value in sample_values:
+            if len(value) == 2 and value.isupper():  # Country codes like US, UK, CA
+                return 'country'
+            if value.upper() in ['USA', 'UNITED STATES', 'CANADA', 'GERMANY', 'FRANCE', 'JAPAN', 'CHINA']:
+                return 'country'
+        
+        # Data Center detection
+        if any(keyword in column_lower for keyword in ['datacenter', 'data_center', 'dc', 'facility', 'center']):
             return 'data_center'
         
-        if any(keyword in column_lower for keyword in ['env', 'environment', 'stage', 'tier']):
+        # Check if values look like data center names
+        for value in sample_values:
+            if re.search(r'dc\d+|datacenter|data.?center', value.lower()):
+                return 'data_center'
+        
+        # Environment detection
+        if any(keyword in column_lower for keyword in ['env', 'environment', 'stage', 'tier', 'deployment']):
             return 'environment'
         
-        if any(keyword in column_lower for keyword in ['business', 'unit', 'org', 'department']):
+        # Check if values look like environments
+        env_values = ['prod', 'production', 'dev', 'development', 'test', 'staging', 'uat', 'qa']
+        for value in sample_values:
+            if value.lower() in env_values:
+                return 'environment'
+        
+        # Business Unit detection
+        if any(keyword in column_lower for keyword in ['business', 'unit', 'org', 'department', 'division', 'bu']):
             return 'business_unit'
         
-        if any(keyword in column_lower for keyword in ['cost', 'center', 'billing']):
-            return 'cost_center'
-        
-        if any(keyword in column_lower for keyword in ['owner', 'contact', 'responsible']):
-            return 'owner'
-        
-        if any(keyword in column_lower for keyword in ['type', 'category', 'class', 'kind']):
-            if any(v.lower() in ['physical', 'virtual', 'cloud', 'container'] for v in sample_values):
-                return 'infrastructure_type'
-            else:
-                return 'system_classification'
-        
-        if any(keyword in column_lower for keyword in ['app', 'application', 'service', 'software']):
+        # Application detection
+        if any(keyword in column_lower for keyword in ['app', 'application', 'service', 'software', 'system']):
             return 'application'
         
-        if any(keyword in column_lower for keyword in ['status', 'state', 'condition']):
-            return 'status'
+        # More specific detections based on common CMDB field names
+        specific_mappings = {
+            'cost_center': ['cost', 'center', 'billing', 'charge'],
+            'owner': ['owner', 'contact', 'responsible', 'admin', 'manager'],
+            'status': ['status', 'state', 'condition', 'active'],
+            'criticality_level': ['criticality', 'priority', 'importance', 'critical', 'tier'],
+            'serial_number': ['serial', 'sn', 'serialnumber', 'serialno'],
+            'asset_tag': ['tag', 'asset', 'inventory', 'inv'],
+            'vendor': ['vendor', 'manufacturer', 'make', 'oem'],
+            'model': ['model', 'type', 'product', 'hardware'],
+            'version': ['version', 'release', 'build', 'patch'],
+            'cpu_info': ['cpu', 'processor', 'cores', 'vcpu'],
+            'memory_info': ['memory', 'ram', 'mem', 'gb'],
+            'storage_info': ['disk', 'storage', 'drive', 'capacity'],
+            'network_info': ['network', 'nic', 'interface', 'adapter'],
+            'network_segment': ['vlan', 'subnet', 'segment', 'network'],
+            'patch_level': ['patch', 'update', 'hotfix', 'kb'],
+            'compliance_info': ['compliance', 'policy', 'standard', 'audit'],
+            'backup_info': ['backup', 'snapshot', 'archive', 'recovery'],
+            'monitoring_info': ['monitor', 'agent', 'sensor', 'probe'],
+            'license_info': ['license', 'subscription', 'entitlement', 'seat']
+        }
         
-        if any(keyword in column_lower for keyword in ['criticality', 'priority', 'importance']):
-            return 'criticality_level'
+        for field_type, keywords in specific_mappings.items():
+            if any(keyword in column_lower for keyword in keywords):
+                return field_type
         
-        if any(keyword in column_lower for keyword in ['serial', 'sn', 'serialnumber']):
-            return 'serial_number'
-        
-        if any(keyword in column_lower for keyword in ['tag', 'asset', 'inventory']):
-            return 'asset_tag'
-        
-        if any(keyword in column_lower for keyword in ['vendor', 'manufacturer', 'make']):
-            return 'vendor'
-        
-        if any(keyword in column_lower for keyword in ['model', 'type', 'product']):
-            return 'model'
-        
-        if any(keyword in column_lower for keyword in ['version', 'release', 'build']):
-            return 'version'
-        
-        if any(keyword in column_lower for keyword in ['cpu', 'processor', 'cores']):
-            return 'cpu_info'
-        
-        if any(keyword in column_lower for keyword in ['memory', 'ram', 'mem']):
-            return 'memory_info'
-        
-        if any(keyword in column_lower for keyword in ['disk', 'storage', 'drive']):
-            return 'storage_info'
-        
-        if any(keyword in column_lower for keyword in ['network', 'nic', 'interface']):
-            return 'network_info'
-        
-        if any(keyword in column_lower for keyword in ['vlan', 'subnet', 'segment']):
-            return 'network_segment'
-        
-        if any(keyword in column_lower for keyword in ['patch', 'update', 'hotfix']):
-            return 'patch_level'
-        
-        if any(keyword in column_lower for keyword in ['compliance', 'policy', 'standard']):
-            return 'compliance_info'
-        
-        if any(keyword in column_lower for keyword in ['backup', 'snapshot', 'archive']):
-            return 'backup_info'
-        
-        if any(keyword in column_lower for keyword in ['monitor', 'agent', 'sensor']):
-            return 'monitoring_info'
-        
-        if any(keyword in column_lower for keyword in ['license', 'subscription', 'entitlement']):
-            return 'license_info'
-        
-        return f"custom_{column_lower.replace(' ', '_').replace('-', '_')}"
+        # If we can't determine the type, create a custom field name
+        clean_column = column_lower.replace(' ', '_').replace('-', '_').replace('.', '_')
+        return f"custom_{clean_column}"
     
     def _looks_like_ip(self, value: str) -> bool:
         try:
@@ -1110,34 +1172,55 @@ class SuperIntelligentDataFusion:
             ))
     
     def _build_consolidated_intelligence(self) -> Dict[str, Any]:
-        PrettyLogger.info("Building consolidated asset intelligence from ALL DuckDB tables")
+        PrettyLogger.info("Building consolidated asset intelligence")
         
-        # First get all entities
         entities = self.conn.execute("""
         SELECT entity_id, primary_hostname, confidence_score, fingerprint_data, linked_identities
         FROM master_entity_registry
         """).fetchall()
         
-        # Get all DuckDB tables for comprehensive enrichment
-        all_duckdb_tables = self._get_all_duckdb_tables()
+        # Debug: Check what observations we have
+        total_observations = self.conn.execute("""
+        SELECT COUNT(*) FROM entity_observations
+        """).fetchone()[0]
+        
+        PrettyLogger.info(f"Found {total_observations} total observations in database")
+        
+        if total_observations > 0:
+            sample_observations = self.conn.execute("""
+            SELECT entity_id, observation_type, field_value, confidence_score, source_table
+            FROM entity_observations 
+            ORDER BY confidence_score DESC
+            LIMIT 10
+            """).fetchall()
+            
+            PrettyLogger.info("Sample observations:")
+            for obs in sample_observations:
+                PrettyLogger.info(f"  Entity: {obs[0]}, Type: {obs[1]}, Value: {obs[2]}")
         
         consolidated_count = 0
         
         for entity_id, primary_hostname, confidence_score, fingerprint_data_json, linked_identities_json in entities:
             try:
                 fingerprint_data = json.loads(fingerprint_data_json)
-                linked_identities = json.loads(linked_identities_json)
                 
-                # Enrich from ALL DuckDB tables
-                comprehensive_data = self._extract_from_all_duckdb_tables(
-                    primary_hostname, fingerprint_data, linked_identities, all_duckdb_tables
-                )
+                # Debug: Check observations for this entity
+                entity_obs_count = self.conn.execute("""
+                SELECT COUNT(*) FROM entity_observations WHERE entity_id = ?
+                """, (entity_id,)).fetchone()[0]
                 
-                consolidated_asset = self._build_comprehensive_asset_profile(
-                    entity_id, primary_hostname, fingerprint_data, comprehensive_data
+                PrettyLogger.info(f"Entity {entity_id} ({primary_hostname}): {entity_obs_count} observations")
+                
+                consolidated_asset = self._build_asset_profile(
+                    entity_id, primary_hostname, fingerprint_data
                 )
                 
                 if consolidated_asset:
+                    # Debug: Show populated fields
+                    populated_fields = [k for k, v in consolidated_asset.items() 
+                                      if v and str(v).strip() and k not in ['asset_id', 'hostname']]
+                    PrettyLogger.info(f"Populated fields for {primary_hostname}: {populated_fields}")
+                    
                     self._insert_consolidated_asset(consolidated_asset)
                     consolidated_count += 1
                     
@@ -1147,329 +1230,11 @@ class SuperIntelligentDataFusion:
         stats = {
             'consolidated_assets': consolidated_count,
             'total_entities': len(entities),
-            'duckdb_tables_processed': len(all_duckdb_tables)
+            'total_observations': total_observations
         }
         
-        PrettyLogger.success(f"Consolidated {consolidated_count} assets from {len(all_duckdb_tables)} DuckDB tables")
+        PrettyLogger.success(f"Consolidated {consolidated_count} intelligent assets")
         return stats
-    
-    def _get_all_duckdb_tables(self) -> List[Dict[str, Any]]:
-        """Get metadata for all tables in the DuckDB database"""
-        try:
-            # Get all table names
-            tables_query = """
-            SELECT table_name, table_schema 
-            FROM information_schema.tables 
-            WHERE table_type = 'BASE TABLE' 
-            AND table_schema NOT IN ('information_schema', 'pg_catalog')
-            """
-            
-            tables = self.conn.execute(tables_query).fetchall()
-            
-            table_metadata = []
-            for table_name, schema_name in tables:
-                try:
-                    # Get column information for each table
-                    columns_query = f"""
-                    SELECT column_name, data_type 
-                    FROM information_schema.columns 
-                    WHERE table_name = '{table_name}' 
-                    AND table_schema = '{schema_name}'
-                    ORDER BY ordinal_position
-                    """
-                    
-                    columns = self.conn.execute(columns_query).fetchall()
-                    
-                    # Get row count
-                    count_query = f"SELECT COUNT(*) FROM {schema_name}.{table_name}"
-                    row_count = self.conn.execute(count_query).fetchone()[0]
-                    
-                    if row_count > 0:  # Only process non-empty tables
-                        table_metadata.append({
-                            'table_name': table_name,
-                            'schema_name': schema_name,
-                            'full_table_name': f"{schema_name}.{table_name}",
-                            'columns': [col_name for col_name, col_type in columns],
-                            'row_count': row_count
-                        })
-                        
-                except Exception as e:
-                    PrettyLogger.warning(f"Failed to analyze DuckDB table {table_name}: {e}")
-                    continue
-            
-            PrettyLogger.info(f"Found {len(table_metadata)} DuckDB tables to process")
-            return table_metadata
-            
-        except Exception as e:
-            PrettyLogger.error(f"Failed to get DuckDB table metadata: {e}")
-            return []
-    
-    def _extract_from_all_duckdb_tables(self, primary_hostname: str, fingerprint_data: Dict, 
-                                      linked_identities: Dict, all_tables: List[Dict]) -> Dict[str, List[Dict]]:
-        """Extract data from every column in every DuckDB table for this hostname"""
-        
-        comprehensive_data = defaultdict(list)
-        
-        # Get all possible hostname variants for this entity
-        all_hostnames = set([primary_hostname])
-        all_hostnames.update(fingerprint_data.get('all_hostnames', []))
-        
-        # Add hostnames from linked identities
-        for fp_id, hostnames in linked_identities.items():
-            all_hostnames.update(hostnames)
-        
-        # Normalize all hostnames for matching
-        normalized_hostnames = set()
-        for hostname in all_hostnames:
-            if hostname:
-                normalized = self.host_linker._normalize_hostname_advanced(hostname)
-                if normalized:
-                    normalized_hostnames.add(normalized.upper())
-                    normalized_hostnames.add(hostname.upper())
-        
-        PrettyLogger.info(f"Searching for {len(normalized_hostnames)} hostname variants across {len(all_tables)} DuckDB tables")
-        
-        for table_meta in all_tables:
-            table_name = table_meta['full_table_name']
-            columns = table_meta['columns']
-            
-            try:
-                # Look for hostname matches in ANY column of this table
-                hostname_conditions = []
-                for column in columns:
-                    for hostname in normalized_hostnames:
-                        hostname_conditions.append(f"UPPER(CAST({column} AS VARCHAR)) LIKE '%{hostname}%'")
-                
-                if not hostname_conditions:
-                    continue
-                
-                # Create query to find rows containing any of our hostnames
-                hostname_filter = " OR ".join(hostname_conditions)
-                
-                query = f"""
-                SELECT * 
-                FROM {table_name} 
-                WHERE ({hostname_filter})
-                LIMIT 100
-                """
-                
-                results = self.conn.execute(query).fetchall()
-                
-                if not results:
-                    continue
-                
-                PrettyLogger.info(f"Found {len(results)} matching rows in {table_name}")
-                
-                # Extract data from ALL columns for matching rows
-                for row in results:
-                    for i, column_name in enumerate(columns):
-                        if i < len(row) and row[i] is not None:
-                            value = str(row[i]).strip()
-                            
-                            if self._is_valid_enrichment_value(value):
-                                field_type = self._determine_field_type_from_name_and_values(column_name, [value])
-                                confidence = self._calculate_field_confidence(field_type, value, column_name)
-                                
-                                comprehensive_data[field_type].append({
-                                    'value': value,
-                                    'column': column_name,
-                                    'table': table_name,
-                                    'confidence': confidence,
-                                    'source_type': 'duckdb'
-                                })
-                
-            except Exception as e:
-                PrettyLogger.warning(f"Failed to extract from DuckDB table {table_name}: {e}")
-                continue
-        
-        total_extractions = sum(len(values) for values in comprehensive_data.values())
-        PrettyLogger.success(f"Extracted {total_extractions} data points from DuckDB tables")
-        
-        return dict(comprehensive_data)
-    
-    def _build_comprehensive_asset_profile(self, entity_id: str, primary_hostname: str, 
-                                         fingerprint_data: Dict, duckdb_data: Dict) -> Optional[Dict]:
-        """Build asset profile using both entity observations and DuckDB extractions"""
-        
-        # Get existing observations from entity_observations table
-        observations = self.conn.execute("""
-        SELECT observation_type, field_value, confidence_score, validation_score, 
-               temporal_score, network_score, semantic_score, ml_score, source_table
-        FROM entity_observations 
-        WHERE entity_id = ?
-        ORDER BY confidence_score DESC, validation_score DESC
-        """, (entity_id,)).fetchall()
-        
-        profile = {
-            'asset_id': entity_id,
-            'hostname': primary_hostname,
-            'fqdn': '',
-            'ip_addresses': '',
-            'mac_addresses': '',
-            'infrastructure_type': '',
-            'system_classification': '',
-            'operating_system': '',
-            'global_region': '',
-            'country': '',
-            'data_center': '',
-            'business_unit': '',
-            'cost_center': '',
-            'environment': '',
-            'criticality_level': '',
-            'owner': '',
-            'application': '',
-            'status': '',
-            'serial_number': '',
-            'asset_tag': '',
-            'vendor': '',
-            'model': '',
-            'version': '',
-            'cpu_info': '',
-            'memory_info': '',
-            'storage_info': '',
-            'network_info': '',
-            'network_segment': '',
-            'patch_level': '',
-            'compliance_info': '',
-            'backup_info': '',
-            'monitoring_info': '',
-            'license_info': '',
-            'custom_fields': '',
-            'cmdb_presence': False,
-            'splunk_visibility': False,
-            'chronicle_visibility': False,
-            'crowdstrike_coverage': False,
-            'tanium_coverage': False,
-            'visibility_gap_score': 0.0,
-            'data_quality_score': 0.0,
-            'intelligence_confidence': 0.0,
-            'enrichment_completeness': 0.0,
-            'network_connectivity_map': '',
-            'source_system_count': 0,
-            'total_fields_populated': 0,
-            'last_observation': None
-        }
-        
-        # Combine data from entity observations and DuckDB extractions
-        field_values = defaultdict(list)
-        source_systems = set()
-        all_confidence_scores = []
-        custom_fields = {}
-        
-        # Process existing entity observations
-        for obs_type, field_value, conf_score, val_score, temp_score, net_score, sem_score, ml_score, source_table in observations:
-            if not field_value or str(field_value).strip().upper() in ['NULL', 'N/A', 'UNKNOWN', 'NONE', 'EMPTY']:
-                continue
-            
-            combined_score = (conf_score * 0.4) + (val_score * 0.3) + (temp_score * 0.1) + (net_score * 0.1) + (sem_score * 0.05) + (ml_score * 0.05)
-            
-            field_values[obs_type].append({
-                'value': str(field_value).strip(),
-                'confidence': conf_score,
-                'combined_score': combined_score,
-                'source': source_table,
-                'source_type': 'entity_observation'
-            })
-            
-            source_systems.add(source_table)
-            all_confidence_scores.append(conf_score)
-        
-        # Process DuckDB extractions
-        for field_type, extractions in duckdb_data.items():
-            for extraction in extractions:
-                combined_score = extraction['confidence'] * 0.8  # Slightly lower weight for DuckDB extractions
-                
-                field_values[field_type].append({
-                    'value': extraction['value'],
-                    'confidence': extraction['confidence'],
-                    'combined_score': combined_score,
-                    'source': extraction['table'],
-                    'source_type': 'duckdb_extraction'
-                })
-                
-                source_systems.add(extraction['table'])
-                all_confidence_scores.append(extraction['confidence'])
-        
-        # Populate profile fields with best values
-        for field_type, candidates in field_values.items():
-            if not candidates:
-                continue
-            
-            # Sort by combined score and take the best value
-            candidates.sort(key=lambda x: x['combined_score'], reverse=True)
-            best_value = candidates[0]['value']
-            
-            # Map to profile fields
-            if field_type == 'fqdn':
-                profile['fqdn'] = best_value
-            elif field_type == 'ip_address':
-                unique_ips = list(set([c['value'] for c in candidates[:10] if self._is_valid_ip(c['value'])]))
-                profile['ip_addresses'] = ','.join(unique_ips)
-            elif field_type == 'mac_address':
-                unique_macs = list(set([c['value'] for c in candidates[:5] if self._is_valid_mac(c['value'])]))
-                profile['mac_addresses'] = ','.join(unique_macs)
-            elif field_type in ['infrastructure_type', 'system_classification', 'operating_system', 
-                              'global_region', 'country', 'data_center', 'business_unit', 'cost_center',
-                              'environment', 'criticality_level', 'owner', 'application', 'status',
-                              'serial_number', 'asset_tag', 'vendor', 'model', 'version', 'cpu_info',
-                              'memory_info', 'storage_info', 'network_info', 'network_segment',
-                              'patch_level', 'compliance_info', 'backup_info', 'monitoring_info', 'license_info']:
-                if field_type == 'global_region':
-                    profile['global_region'] = best_value
-                else:
-                    profile[field_type] = best_value
-            elif field_type.startswith('custom_'):
-                custom_fields[field_type] = best_value
-        
-        if custom_fields:
-            profile['custom_fields'] = json.dumps(custom_fields)
-        
-        # Enhance with fingerprint data
-        if fingerprint_data.get('all_ips'):
-            existing_ips = profile['ip_addresses'].split(',') if profile['ip_addresses'] else []
-            all_ips = list(set(existing_ips + fingerprint_data['all_ips']))
-            profile['ip_addresses'] = ','.join([ip for ip in all_ips if ip.strip() and self._is_valid_ip(ip)])
-        
-        if fingerprint_data.get('all_macs'):
-            existing_macs = profile['mac_addresses'].split(',') if profile['mac_addresses'] else []
-            all_macs = list(set(existing_macs + fingerprint_data['all_macs']))
-            profile['mac_addresses'] = ','.join([mac for mac in all_macs if mac.strip() and self._is_valid_mac(mac)])
-        
-        # Calculate metrics
-        source_tables = fingerprint_data.get('source_tables', [])
-        all_sources = source_systems.union(set(source_tables))
-        profile['source_system_count'] = len(all_sources)
-        
-        populated_fields = sum(1 for key, value in profile.items() 
-                             if key not in ['asset_id', 'source_system_count', 'total_fields_populated', 'last_observation', 'enrichment_timestamp'] 
-                             and value and str(value).strip())
-        profile['total_fields_populated'] = populated_fields
-        
-        # Set visibility flags
-        for source_table in all_sources:
-            source_lower = source_table.lower()
-            if any(keyword in source_lower for keyword in ['cmdb', 'asset', 'inventory']):
-                profile['cmdb_presence'] = True
-            if any(keyword in source_lower for keyword in ['splunk', 'spl', 'log']):
-                profile['splunk_visibility'] = True
-            if any(keyword in source_lower for keyword in ['chronicle', 'security']):
-                profile['chronicle_visibility'] = True
-            if any(keyword in source_lower for keyword in ['crowdstrike', 'cs', 'falcon']):
-                profile['crowdstrike_coverage'] = True
-            if any(keyword in source_lower for keyword in ['tanium', 'tan']):
-                profile['tanium_coverage'] = True
-        
-        # Calculate scores
-        if all_confidence_scores:
-            profile['intelligence_confidence'] = sum(all_confidence_scores) / len(all_confidence_scores)
-        else:
-            profile['intelligence_confidence'] = 0.5
-        
-        profile['data_quality_score'] = self._calculate_data_quality_from_observations(field_values)
-        profile['enrichment_completeness'] = self._calculate_comprehensive_enrichment_completeness(profile)
-        profile['visibility_gap_score'] = self._calculate_visibility_gap_score(profile)
-        
-        return profile
     
     def _build_asset_profile(self, entity_id: str, primary_hostname: str, fingerprint_data: Dict) -> Optional[Dict]:
         
@@ -2047,6 +1812,7 @@ class SuperIntelligentAO1Discovery:
     
     async def _get_enhanced_sample(self, client, table_ref, project_id: str) -> Dict[str, List[str]]:
         try:
+            # Get more comprehensive samples
             base_query = f"""
             SELECT *
             FROM `{table_ref.project}.{table_ref.dataset_id}.{table_ref.table_id}`
@@ -2054,33 +1820,48 @@ class SuperIntelligentAO1Discovery:
             
             where_clauses = []
             
+            # Add partition filter if available
             if table_ref.time_partitioning and table_ref.time_partitioning.field:
                 partition_field = table_ref.time_partitioning.field
-                where_clauses.append(f"`{partition_field}` >= DATE_SUB(CURRENT_DATE(), INTERVAL 30 DAY)")
+                where_clauses.append(f"`{partition_field}` >= DATE_SUB(CURRENT_DATE(), INTERVAL 60 DAY)")
             
+            # Find hostname columns
             hostname_columns = []
             for field in table_ref.schema:
                 field_lower = field.name.lower()
-                if any(indicator in field_lower for indicator in ['host', 'endpoint', 'computer', 'device']):
+                if any(indicator in field_lower for indicator in ['host', 'endpoint', 'computer', 'device', 'server', 'machine', 'asset', 'node']):
                     hostname_columns.append(field.name)
-                    where_clauses.append(f"`{field.name}` IS NOT NULL")
-                    where_clauses.append(f"LENGTH(TRIM(CAST(`{field.name}` AS STRING))) >= 2")
+            
+            # Add basic filters for hostname columns
+            if hostname_columns:
+                for hostname_col in hostname_columns:
+                    where_clauses.append(f"`{hostname_col}` IS NOT NULL")
+                    where_clauses.append(f"LENGTH(TRIM(CAST(`{hostname_col}` AS STRING))) >= 2")
             
             where_clause = ""
             if where_clauses:
                 where_clause = "WHERE " + " AND ".join(where_clauses)
             
-            sample_query = f"{base_query} {where_clause} LIMIT 50"
+            # Try to get more samples - increase from 50 to 200
+            sample_query = f"{base_query} {where_clause} LIMIT 200"
             
+            # Check query cost first
             job_config = bigquery.QueryJobConfig(dry_run=True, use_query_cache=False)
             dry_run_job = client.query(sample_query, job_config=job_config)
             
-            if dry_run_job.total_bytes_processed > 100 * 1024 * 1024:
-                sample_query = f"{base_query} {where_clause} ORDER BY RAND() LIMIT 20"
+            # If too expensive, reduce sample size or add sampling
+            if dry_run_job.total_bytes_processed > 500 * 1024 * 1024:  # 500MB limit
+                if where_clause:
+                    sample_query = f"{base_query} {where_clause} ORDER BY RAND() LIMIT 50"
+                else:
+                    sample_query = f"SELECT * FROM `{table_ref.project}.{table_ref.dataset_id}.{table_ref.table_id}` TABLESAMPLE SYSTEM (1 PERCENT) LIMIT 100"
             
+            # Execute the actual query
             job_config = bigquery.QueryJobConfig(dry_run=False, use_query_cache=True)
             job = client.query(sample_query, job_config=job_config)
             results = list(job.result())
+            
+            PrettyLogger.info(f"Retrieved {len(results)} sample rows from {table_ref.table_id}")
             
             if not results:
                 return {}
@@ -2091,14 +1872,22 @@ class SuperIntelligentAO1Discovery:
                     if i < len(table_ref.schema) and value is not None:
                         column_name = table_ref.schema[i].name
                         str_value = str(value).strip()
-                        if len(str_value) > 0 and len(str_value) < 1000:
+                        if len(str_value) > 0 and len(str_value) < 2000:  # Allow longer values
                             sample_data[column_name].append(str_value)
             
-            enriched_sample = self._enhance_sample_with_lookups(sample_data, hostname_columns)
+            # Enhanced sample with hostname detection
+            enhanced_sample = self._enhance_sample_with_lookups(sample_data, hostname_columns)
             
-            return enriched_sample
+            # Log sample data statistics
+            PrettyLogger.info(f"Sample data for {table_ref.table_id}: {len(enhanced_sample)} columns")
+            for col, values in enhanced_sample.items():
+                if values:
+                    PrettyLogger.info(f"  {col}: {len(values)} values (sample: {values[0] if values else 'none'})")
             
-        except Exception:
+            return enhanced_sample
+            
+        except Exception as e:
+            PrettyLogger.warning(f"Failed to get sample from {table_ref.table_id}: {e}")
             return {}
     
     def _enhance_sample_with_lookups(self, sample_data: Dict[str, List[str]], hostname_columns: List[str]) -> Dict[str, List[str]]:
