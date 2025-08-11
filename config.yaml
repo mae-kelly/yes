@@ -1,86 +1,193 @@
-max_workers: 4
-cache_dir: ".cache"
-cache_ttl_hours: 24
-enable_memory_cache: true
+# Intelligent AO1 Discovery Configuration
+# Optimized for maximum intelligence and data quality
 
-database_path: "ao1_visibility_cmdb.db"
-enable_checkpointing: true
-checkpoint_interval_minutes: 1
+# Intelligence Settings
+intelligence_level: "expert"
+enable_deep_analysis: true
+enable_semantic_matching: true
+enable_predictive_enrichment: true
+enable_quality_scoring: true
 
-confidence_threshold: 0.2
-sample_validation_threshold: 0.3
-prioritize_core_datasets: true
+# Memory and Performance Optimization
+max_memory_mb: 1024
+max_disk_gb: 10
+enable_intelligent_caching: true
+cache_compression: true
+cache_ttl_hours: 48
+adaptive_batch_sizing: true
 
-skip_patterns:
-  datasets: []
-  tables: []
+# Database Configuration
+database_path: "ao1_intelligent_cmdb.db"
+enable_advanced_indexing: true
+enable_query_optimization: true
+enable_data_deduplication: true
 
-dataset_priorities:
-  SAS_BI: 100
-  datalake: 95
-  CMDB: 90
-  CSIRT: 85
-  SECURITY: 80
-  AXONIUS: 75
-  CROWDSTRIKE: 70
-  SPLUNK: 65
-  MONITORING: 60
-  COMPLIANCE: 55
-  NETWORK: 50
+# Discovery Intelligence
+hostname_normalization_aggressive: true
+enable_hostname_variants: true
+enable_fuzzy_matching: true
+semantic_confidence_threshold: 0.5
+validation_confidence_threshold: 0.6
+data_quality_threshold: 0.7
 
-parallel_dataset_processing: true
-parallel_table_processing: true
-graceful_failure_handling: true
+# Content Analysis Intelligence
+enable_pattern_recognition: true
+enable_statistical_analysis: true
+enable_anomaly_detection: true
+sample_size_adaptive: true
+min_sample_size: 5
+max_sample_size: 50
 
-content_analysis:
-  max_sample_size: 10
+# Data Fusion Intelligence
+enable_multi_source_fusion: true
+enable_conflict_resolution: true
+enable_confidence_weighting: true
+enable_temporal_analysis: true
+data_freshness_weight: 0.3
+source_reliability_weight: 0.4
+validation_score_weight: 0.3
 
-bigquery_settings:
-  query_timeout_seconds: 300
-  max_results_per_page: 10000
-  use_query_cache: false
-  dry_run_first: false
-  connection_pool_size: 2
-  max_retries: 3
-  retry_delay_seconds: 5
+# Network Intelligence
+enable_network_discovery: true
+enable_ip_validation: true
+enable_mac_discovery: true
+enable_domain_extraction: true
+enable_subnet_analysis: true
 
-logging:
-  level: "INFO"
-  file_rotation: true
-  max_file_size_mb: 100
-  backup_count: 5
+# Security Intelligence
+enable_security_classification: true
+enable_risk_scoring: true
+enable_compliance_mapping: true
+prioritize_security_sources: true
 
-output:
-  generate_reports: true
-  create_visualizations: false
-  export_formats: ["sql", "json"]
-  compress_results: false
+# Regional Intelligence
+enable_geo_intelligence: true
+enable_datacenter_mapping: true
+enable_cloud_detection: true
+enable_region_standardization: true
 
-recovery:
-  auto_resume: true
-  checkpoint_compression: true
-  max_checkpoint_age_hours: 24
+# Business Intelligence
+enable_business_mapping: true
+enable_cost_center_analysis: true
+enable_owner_identification: true
+enable_criticality_assessment: true
 
-resource_limits:
-  max_memory_usage_gb: 6
-  max_disk_cache_gb: 8
-  connection_pool_size: 2
+# Source Prioritization (Higher numbers = higher priority)
+source_priorities:
+  cmdb: 100
+  crowdstrike: 95
+  splunk: 90
+  chronicle: 85
+  security: 80
+  monitoring: 75
+  network: 70
+  infrastructure: 65
+  compliance: 60
+  discovery: 50
 
-m1_optimizations:
-  enable_metal_performance_shaders: true
-  use_apple_silicon_acceleration: true
-  optimize_memory_usage: true
-  torch_backend: "mps"
-  max_parallel_operations: 4
+# Table Intelligence Scoring
+table_scoring:
+  enable_richness_scoring: true
+  enable_completeness_scoring: true
+  enable_quality_scoring: true
+  richness_weight: 0.4
+  completeness_weight: 0.3
+  quality_weight: 0.3
 
-advanced:
-  enable_ml_classification: false
-  enable_graph_analysis: false
-  enable_anomaly_detection: false
-  ml_confidence_threshold: 0.5
+# Field Type Intelligence
+field_type_priorities:
+  hostname: 100
+  fqdn: 95
+  ip_address: 90
+  mac_address: 85
+  region: 80
+  environment: 75
+  operating_system: 70
+  business_unit: 65
+  infrastructure_type: 60
+  application: 55
 
-debug:
-  enable_debug_mode: false
-  save_intermediate_results: false
-  profile_performance: false
-  verbose_error_reporting: true
+# Processing Intelligence
+enable_parallel_processing: true
+max_concurrent_tables: 5
+max_concurrent_enrichments: 10
+intelligent_backoff: true
+adaptive_timeouts: true
+graceful_degradation: true
+
+# Checkpoint Intelligence
+enable_intelligent_checkpointing: true
+checkpoint_interval_minutes: 2
+checkpoint_on_signal: true
+checkpoint_compression: true
+auto_recovery: true
+
+# Cache Intelligence
+intelligent_cache_eviction: true
+promote_hot_data: true
+compress_cold_data: true
+cache_hit_optimization: true
+memory_pressure_handling: true
+
+# Query Intelligence
+enable_query_optimization: true
+enable_partition_detection: true
+enable_sampling_optimization: true
+enable_cost_estimation: true
+max_query_cost_usd: 10.0
+
+# Error Intelligence
+intelligent_error_handling: true
+enable_retry_strategies: true
+enable_fallback_mechanisms: true
+error_pattern_recognition: true
+adaptive_error_recovery: true
+
+# Logging Intelligence
+log_level: "INFO"
+enable_performance_logging: true
+enable_quality_metrics: true
+enable_intelligence_tracking: true
+log_rotation: true
+max_log_size_mb: 200
+
+# Output Intelligence
+generate_intelligent_reports: true
+enable_visualization_data: true
+enable_recommendation_engine: true
+export_formats: ["json", "sql", "csv"]
+compress_outputs: false
+
+# Validation Intelligence
+enable_data_validation: true
+enable_format_validation: true
+enable_semantic_validation: true
+enable_business_rule_validation: true
+validation_strictness: "moderate"
+
+# Advanced Features
+enable_machine_learning: false  # Requires additional dependencies
+enable_graph_analysis: false    # Requires graph libraries
+enable_time_series_analysis: false  # Requires time series libraries
+enable_nlp_analysis: false      # Requires NLP libraries
+
+# Debugging and Development
+debug_mode: false
+enable_profiling: false
+save_intermediate_results: false
+verbose_logging: false
+enable_telemetry: true
+
+# System Limits and Safety
+max_tables_per_dataset: 100
+max_rows_per_query: 100000
+max_processing_time_hours: 4
+memory_safety_margin: 0.2
+disk_safety_margin: 0.1
+
+# Intelligence Metadata
+config_version: "2.0"
+intelligence_framework: "claude_optimized"
+optimization_target: "maximum_data_quality"
+created_by: "intelligent_ao1_system"
+last_updated: "2025-01-01"
