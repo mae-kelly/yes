@@ -1,64 +1,54 @@
-.PHONY: help install run docker-build docker-run clean test format lint setup ao1-analyze ao1-gaps
+.PHONY: help setup run estimate expert analyze clean install test
 
 PROJECT_ID ?= $(GOOGLE_CLOUD_PROJECT)
-CONFIG_FILE ?= config.yaml
-WORKERS ?= 4
+CONFIG_FILE ?= intelligent_config.yaml
+INTELLIGENCE_LEVEL ?= advanced
+MAX_MEMORY ?= 512
+MAX_DISK ?= 5
 
-DATA_DIR ?= ./data
-CACHE_DIR ?= $(DATA_DIR)/cache
-LOGS_DIR ?= $(DATA_DIR)/logs
-OUTPUT_DIR ?= $(DATA_DIR)/output
-CHECKPOINTS_DIR ?= $(DATA_DIR)/checkpoints
-
-DOCKER_IMAGE ?= ao1-discovery:latest
-DATABASE_FILE ?= ao1_visibility_cmdb.db
+DATA_DIR ?= ./output
+CACHE_DIR ?= ./.cache
+DATABASE_FILE ?= ao1_intelligent_cmdb.db
 
 help:
-	@echo "AO1 Log Visibility Measurement System"
-	@echo "====================================="
+	@echo "♡₊˚ ｡⋅˚♡ ✧ ‧₊˚ ⋅   Intelligent AO1 Discovery System   ⋅ ˚₊‧ ✧ ♡˚⋅｡ ˚₊♡"
+	@echo "=================================================================="
 	@echo ""
-	@echo "Core Commands:"
-	@echo "  setup                 - Complete setup for AO1"
-	@echo "  run                   - Execute AO1 discovery"
-	@echo "  docker-run            - Run discovery in Docker"
-	@echo "  estimate              - Estimate AO1 scope"
-	@echo "  resume                - Resume from checkpoint"
+	@echo "Quick Commands:"
+	@echo "  make setup                - Complete intelligent setup"
+	@echo "  make run                  - Run intelligent discovery"
+	@echo "  make estimate             - Estimate discovery scope"
+	@echo "  make expert               - Run with expert intelligence"
 	@echo ""
-	@echo "AO1 Analysis:"
-	@echo "  ao1-analyze           - Analyze AO1 results"
-	@echo "  ao1-gaps              - Show visibility gaps"
-	@echo "  ao1-metrics           - Display AO1 metrics"
-	@echo "  ao1-compliance        - Check compliance status"
-	@echo "  ao1-recommendations   - Get improvement recommendations"
+	@echo "Analysis Commands:"
+	@echo "  make analyze              - Analyze discovery results"
+	@echo "  make stats                - Show database statistics"
+	@echo "  make quality              - Show data quality metrics"
 	@echo ""
-	@echo "Development:"
-	@echo "  install               - Install dependencies"
-	@echo "  test                  - Run tests"
-	@echo "  format                - Format code"
-	@echo "  lint                  - Run linting"
-	@echo ""
-	@echo "Docker:"
-	@echo "  docker-build          - Build Docker image"
-	@echo "  docker-dev            - Run development container"
-	@echo ""
-	@echo "Data Management:"
-	@echo "  export                - Export AO1 results"
-	@echo "  clean                 - Clean generated files"
-	@echo "  backup                - Backup AO1 database"
+	@echo "Management:"
+	@echo "  make clean                - Clean generated files"
+	@echo "  make install              - Install dependencies only"
+	@echo "  make test                 - Test system connectivity"
 	@echo ""
 	@echo "Configuration:"
-	@echo "  PROJECT_ID            - GCP Project ID ($(PROJECT_ID))"
-	@echo "  CONFIG_FILE           - Configuration file ($(CONFIG_FILE))"
-	@echo "  WORKERS               - Number of workers ($(WORKERS))"
+	@echo "  PROJECT_ID                - GCP Project ID ($(or $(PROJECT_ID),Not set))"
+	@echo "  INTELLIGENCE_LEVEL        - Intelligence level ($(INTELLIGENCE_LEVEL))"
+	@echo "  MAX_MEMORY                - Memory limit MB ($(MAX_MEMORY))"
+	@echo "  MAX_DISK                  - Disk limit GB ($(MAX_DISK))"
+	@echo ""
+	@echo "Examples:"
+	@echo "  make setup PROJECT_ID=my-project"
+	@echo "  make run PROJECT_ID=my-project"
+	@echo "  make expert PROJECT_ID=my-project MAX_MEMORY=2048"
 
 setup:
-	@echo "AO1 Log Visibility Setup"
-	@echo "======================="
+	@echo "♡₊˚ ｡⋅˚♡   Setting up Intelligent AO1 Discovery System   ♡˚⋅｡ ˚₊♡"
+	@echo "=============================================================="
 	@echo ""
 	@echo "1. Checking prerequisites..."
 	@$(MAKE) check-prerequisites
 	@echo ""
-	@echo "2. Creating directory structure..."
+	@echo "2. Creating directories..."
 	@$(MAKE) create-dirs
 	@echo ""
 	@echo "3. Installing dependencies..."
@@ -67,251 +57,259 @@ setup:
 	@echo "4. Validating configuration..."
 	@$(MAKE) validate-config
 	@echo ""
-	@echo "5. Testing connections..."
-	@$(MAKE) test-connections
+	@echo "5. Testing connectivity..."
+	@$(MAKE) test-connectivity
 	@echo ""
-	@echo "AO1 setup complete! Ready for visibility measurement."
+	@echo "❀°｡ ‧˚♡ ˚‧ ｡°❀   Intelligent AO1 setup complete!"
+	@echo ""
+	@echo "Next steps:"
+	@echo "  make estimate PROJECT_ID=your-project-id"
+	@echo "  make run PROJECT_ID=your-project-id"
+
+run:
+	@if [ -z "$(PROJECT_ID)" ]; then \
+		echo "❌ PROJECT_ID not set"; \
+		echo "Usage: make run PROJECT_ID=your-project-id"; \
+		exit 1; \
+	fi
+	@echo "♡₊˚ 🌸 ⋆｡˚   Starting Intelligent AO1 Discovery   ⋆｡˚ 🌸 ˚₊♡"
+	@echo "Project: $(PROJECT_ID)"
+	@echo "Intelligence: $(INTELLIGENCE_LEVEL)"
+	@echo "Memory: $(MAX_MEMORY)MB, Disk: $(MAX_DISK)GB"
+	@echo ""
+	@python3 intelligent_main.py \
+		--project $(PROJECT_ID) \
+		--intelligence-level $(INTELLIGENCE_LEVEL) \
+		--max-memory $(MAX_MEMORY) \
+		--max-disk $(MAX_DISK) \
+		--config $(CONFIG_FILE) \
+		--output-dir $(DATA_DIR) \
+		--cache-dir $(CACHE_DIR) \
+		--database $(DATABASE_FILE)
+
+estimate:
+	@if [ -z "$(PROJECT_ID)" ]; then \
+		echo "❌ PROJECT_ID not set"; \
+		echo "Usage: make estimate PROJECT_ID=your-project-id"; \
+		exit 1; \
+	fi
+	@echo "⋆｡‧˚ʚ♡ɞ˚‧｡⋆   Intelligent Scope Estimation   ⋆｡‧˚ʚ♡ɞ˚‧｡⋆"
+	@echo "Project: $(PROJECT_ID)"
+	@echo ""
+	@python3 intelligent_main.py \
+		--project $(PROJECT_ID) \
+		--dry-run \
+		--intelligence-level $(INTELLIGENCE_LEVEL) \
+		--config $(CONFIG_FILE) \
+		--output-dir $(DATA_DIR)
+
+expert:
+	@if [ -z "$(PROJECT_ID)" ]; then \
+		echo "❌ PROJECT_ID not set"; \
+		echo "Usage: make expert PROJECT_ID=your-project-id"; \
+		exit 1; \
+	fi
+	@echo "🧠 ♡₊˚   Expert Intelligence Discovery   ˚₊♡ 🧠"
+	@echo "Project: $(PROJECT_ID)"
+	@echo "Intelligence: EXPERT"
+	@echo "Memory: 2048MB, Disk: 10GB"
+	@echo ""
+	@python3 intelligent_main.py \
+		--project $(PROJECT_ID) \
+		--intelligence-level expert \
+		--max-memory 2048 \
+		--max-disk 10 \
+		--config $(CONFIG_FILE) \
+		--output-dir $(DATA_DIR) \
+		--cache-dir $(CACHE_DIR) \
+		--database $(DATABASE_FILE)
+
+analyze:
+	@echo "📊 ♡₊˚   Intelligent Analysis Results   ˚₊♡ 📊"
+	@echo ""
+	@if [ ! -f "$(DATABASE_FILE)" ]; then \
+		echo "❌ Database not found. Run discovery first:"; \
+		echo "   make run PROJECT_ID=your-project-id"; \
+		exit 1; \
+	fi
+	@echo "Asset Inventory Summary:"
+	@duckdb $(DATABASE_FILE) "SELECT COUNT(*) as total_assets FROM intelligent_asset_inventory;" 2>/dev/null || echo "No assets found"
+	@echo ""
+	@echo "Intelligence Scores:"
+	@duckdb $(DATABASE_FILE) "SELECT AVG(intelligence_score) as avg_intelligence, AVG(data_quality_score) as avg_quality FROM intelligent_asset_inventory;" 2>/dev/null || echo "No scores available"
+	@echo ""
+	@echo "Source Coverage:"
+	@duckdb $(DATABASE_FILE) "SELECT SUM(CASE WHEN found_in_cmdb THEN 1 ELSE 0 END) as cmdb, SUM(CASE WHEN has_crowdstrike THEN 1 ELSE 0 END) as crowdstrike, SUM(CASE WHEN in_splunk THEN 1 ELSE 0 END) as splunk FROM intelligent_asset_inventory;" 2>/dev/null || echo "No coverage data"
+
+stats:
+	@echo "📈 ♡₊˚   Database Statistics   ˚₊♡ 📈"
+	@echo ""
+	@if [ ! -f "$(DATABASE_FILE)" ]; then \
+		echo "❌ Database not found"; \
+		exit 1; \
+	fi
+	@echo "Endpoints Discovered:"
+	@duckdb $(DATABASE_FILE) "SELECT COUNT(*) FROM intelligent_endpoints;" 2>/dev/null
+	@echo ""
+	@echo "Data Points Collected:"
+	@duckdb $(DATABASE_FILE) "SELECT COUNT(*) FROM intelligent_endpoint_data;" 2>/dev/null
+	@echo ""
+	@echo "Consolidated Assets:"
+	@duckdb $(DATABASE_FILE) "SELECT COUNT(*) FROM intelligent_asset_inventory;" 2>/dev/null
+
+quality:
+	@echo "🎯 ♡₊˚   Data Quality Analysis   ˚₊♡ 🎯"
+	@echo ""
+	@if [ ! -f "$(DATABASE_FILE)" ]; then \
+		echo "❌ Database not found"; \
+		exit 1; \
+	fi
+	@echo "Quality Distribution:"
+	@duckdb $(DATABASE_FILE) "SELECT CASE WHEN intelligence_score >= 0.8 THEN 'Excellent' WHEN intelligence_score >= 0.6 THEN 'Good' WHEN intelligence_score >= 0.4 THEN 'Fair' ELSE 'Poor' END as quality, COUNT(*) as count FROM intelligent_asset_inventory GROUP BY quality ORDER BY MIN(intelligence_score) DESC;" 2>/dev/null
+	@echo ""
+	@echo "Top Quality Assets:"
+	@duckdb $(DATABASE_FILE) "SELECT hostname, intelligence_score, data_quality_score FROM intelligent_asset_inventory ORDER BY intelligence_score DESC LIMIT 5;" 2>/dev/null
 
 check-prerequisites:
-	@echo "Checking Python version..."
-	@python3 --version || (echo "Python 3.8+ required" && exit 1)
+	@echo "Checking Python..."
+	@python3 --version || (echo "❌ Python 3.8+ required" && exit 1)
+	@echo "✅ Python OK"
 	@echo "Checking pip..."
-	@pip3 --version || (echo "pip3 required" && exit 1)
-	@echo "Checking gcloud..."
-	@gcloud version --format="value(Google Cloud SDK)" 2>/dev/null || echo "gcloud not found - using service account key"
-	@echo "Checking Docker..."
-	@docker --version 2>/dev/null || echo "Docker not found"
-	@echo "Prerequisites checked"
+	@pip3 --version || (echo "❌ pip3 required" && exit 1)
+	@echo "✅ pip OK"
+	@echo "Checking gcloud (optional)..."
+	@gcloud version --format="value(Google Cloud SDK)" 2>/dev/null && echo "✅ gcloud OK" || echo "⚠️  gcloud not found - using service account key"
+	@echo "✅ Prerequisites checked"
 
 create-dirs:
-	@mkdir -p $(DATA_DIR) $(CACHE_DIR) $(LOGS_DIR) $(OUTPUT_DIR) $(CHECKPOINTS_DIR)
-	@mkdir -p config
-	@echo "Directory structure created"
+	@mkdir -p $(DATA_DIR) $(CACHE_DIR) logs
+	@mkdir -p config backups
+	@echo "✅ Directory structure created"
 
 install:
 	@echo "Installing Python dependencies..."
 	@pip3 install -r requirements.txt
-	@echo "Dependencies installed"
+	@echo "✅ Dependencies installed"
 
 validate-config:
 	@if [ -f "$(CONFIG_FILE)" ]; then \
-		echo "Configuration file found: $(CONFIG_FILE)"; \
-		python3 -c "import yaml; yaml.safe_load(open('$(CONFIG_FILE)'))" || \
-		(echo "Invalid YAML configuration" && exit 1); \
+		echo "✅ Configuration file found: $(CONFIG_FILE)"; \
+		python3 -c "import yaml; yaml.safe_load(open('$(CONFIG_FILE)'))" 2>/dev/null || \
+		(echo "❌ Invalid YAML configuration" && exit 1); \
+		echo "✅ Configuration valid"; \
 	else \
-		echo "Configuration file not found: $(CONFIG_FILE)"; \
+		echo "⚠️  Configuration file not found: $(CONFIG_FILE)"; \
+		echo "   Using default configuration"; \
 	fi
 
-test-connections:
+test-connectivity:
 	@if [ -z "$(PROJECT_ID)" ]; then \
-		echo "PROJECT_ID not set - skipping connection test"; \
+		echo "⚠️  PROJECT_ID not set - skipping connectivity test"; \
+		echo "   Set with: export GOOGLE_CLOUD_PROJECT=your-project-id"; \
 	else \
-		echo "Testing BigQuery connection..."; \
-		python3 -c "from gcp_client import BigQueryClientManager; client = BigQueryClientManager('$(PROJECT_ID)'); assert client.test_connection(), 'Connection failed'"; \
-		echo "Connection test successful"; \
-	fi
-
-run:
-	@if [ -z "$(PROJECT_ID)" ]; then \
-		echo "PROJECT_ID not set"; \
-		echo "Run: export GOOGLE_CLOUD_PROJECT='your-project-id'"; \
-		exit 1; \
-	fi
-	@echo "Starting AO1 Log Visibility Discovery..."
-	@echo "Project: $(PROJECT_ID)"
-	@echo "Workers: $(WORKERS)"
-	@python3 main.py \
-		--project $(PROJECT_ID) \
-		--config $(CONFIG_FILE) \
-		--workers $(WORKERS) \
-		--output-dir $(OUTPUT_DIR)
-
-estimate:
-	@if [ -z "$(PROJECT_ID)" ]; then \
-		echo "PROJECT_ID not set"; \
-		exit 1; \
-	fi
-	@echo "Estimating AO1 discovery scope..."
-	@python3 main.py \
-		--project $(PROJECT_ID) \
-		--config $(CONFIG_FILE) \
-		--dry-run \
-		--output-dir $(OUTPUT_DIR)
-
-resume:
-	@if [ -z "$(PROJECT_ID)" ]; then \
-		echo "PROJECT_ID not set"; \
-		exit 1; \
-	fi
-	@echo "Resuming AO1 discovery from checkpoint..."
-	@python3 main.py \
-		--project $(PROJECT_ID) \
-		--config $(CONFIG_FILE) \
-		--resume \
-		--workers $(WORKERS) \
-		--output-dir $(OUTPUT_DIR)
-
-docker-build:
-	@echo "Building Docker image..."
-	@docker build -f Dockerfile -t $(DOCKER_IMAGE) .
-	@echo "Docker image built: $(DOCKER_IMAGE)"
-
-docker-run: docker-build
-	@if [ -z "$(PROJECT_ID)" ]; then \
-		echo "PROJECT_ID not set"; \
-		exit 1; \
-	fi
-	@echo "Running AO1 discovery in Docker..."
-	@mkdir -p $(DATA_DIR) $(CACHE_DIR) $(LOGS_DIR) $(OUTPUT_DIR) $(CHECKPOINTS_DIR)
-	@GOOGLE_CLOUD_PROJECT=$(PROJECT_ID) \
-	 DATA_DIR=$(DATA_DIR) \
-	 CACHE_DIR=$(CACHE_DIR) \
-	 LOGS_DIR=$(LOGS_DIR) \
-	 docker-compose up --build discovery
-
-docker-dev: docker-build
-	@echo "Starting development container..."
-	@docker-compose run --rm discovery-dev
-
-ao1-analyze:
-	@if [ ! -f "$(DATABASE_FILE)" ]; then \
-		echo "AO1 database not found. Run discovery first."; \
-		exit 1; \
-	fi
-	@echo "AO1 Log Visibility Analysis"
-	@echo "=========================="
-	@echo ""
-	@echo "Total Assets:"
-	@duckdb $(DATABASE_FILE) "SELECT COUNT(*) as total_assets FROM ao1_asset_inventory;"
-	@echo ""
-	@echo "Global Visibility Coverage:"
-	@duckdb $(DATABASE_FILE) "SELECT (SUM(CASE WHEN in_splunk OR in_chronicle THEN 1 ELSE 0 END) * 100.0 / COUNT(*)) as global_visibility_pct FROM ao1_asset_inventory;"
-	@echo ""
-	@echo "Platform Coverage:"
-	@duckdb $(DATABASE_FILE) "SELECT (SUM(CASE WHEN in_splunk THEN 1 ELSE 0 END) * 100.0 / COUNT(*)) as splunk_coverage, (SUM(CASE WHEN in_chronicle THEN 1 ELSE 0 END) * 100.0 / COUNT(*)) as chronicle_coverage FROM ao1_asset_inventory;"
-	@echo ""
-	@echo "Security Tool Coverage:"
-	@duckdb $(DATABASE_FILE) "SELECT (SUM(CASE WHEN has_crowdstrike THEN 1 ELSE 0 END) * 100.0 / COUNT(*)) as crowdstrike_coverage FROM ao1_asset_inventory;"
-
-ao1-gaps:
-	@if [ ! -f "$(DATABASE_FILE)" ]; then \
-		echo "AO1 database not found. Run discovery first."; \
-		exit 1; \
-	fi
-	@echo "AO1 Visibility Gaps Analysis"
-	@echo "==========================="
-	@echo ""
-	@echo "Critical Gaps (No Logging Coverage):"
-	@duckdb $(DATABASE_FILE) "SELECT COUNT(*) as count FROM ao1_asset_inventory WHERE NOT in_splunk AND NOT in_chronicle;"
-	@echo ""
-	@echo "Missing Security Coverage:"
-	@duckdb $(DATABASE_FILE) "SELECT COUNT(*) as count FROM ao1_asset_inventory WHERE NOT has_crowdstrike;"
-	@echo ""
-	@echo "CMDB Gaps:"
-	@duckdb $(DATABASE_FILE) "SELECT COUNT(*) as count FROM ao1_asset_inventory WHERE NOT found_in_cmdb;"
-	@echo ""
-	@echo "Top 10 Assets with Critical Gaps:"
-	@duckdb $(DATABASE_FILE) "SELECT hostname, global_region, system_classification FROM ao1_asset_inventory WHERE NOT in_splunk AND NOT in_chronicle AND NOT found_in_cmdb LIMIT 10;"
-
-ao1-metrics:
-	@if [ ! -f "$(DATABASE_FILE)" ]; then \
-		echo "AO1 database not found. Run discovery first."; \
-		exit 1; \
-	fi
-	@echo "AO1 Visibility Metrics"
-	@echo "===================="
-	@duckdb $(DATABASE_FILE) "SELECT metric_category, metric_name, metric_value, metric_target, gap_percentage FROM ao1_visibility_metrics ORDER BY improvement_priority;"
-
-ao1-compliance:
-	@if [ ! -f "$(DATABASE_FILE)" ]; then \
-		echo "AO1 database not found. Run discovery first."; \
-		exit 1; \
-	fi
-	@echo "AO1 Logging Compliance Status"
-	@echo "============================"
-	@duckdb $(DATABASE_FILE) "SELECT compliance_status, COUNT(*) as asset_count, (COUNT(*) * 100.0 / (SELECT COUNT(*) FROM ao1_logging_compliance)) as percentage FROM ao1_logging_compliance GROUP BY compliance_status;"
-
-ao1-recommendations:
-	@if [ ! -f "$(DATABASE_FILE)" ]; then \
-		echo "AO1 database not found. Run discovery first."; \
-		exit 1; \
-	fi
-	@echo "AO1 Improvement Recommendations"
-	@echo "=============================="
-	@duckdb $(DATABASE_FILE) "SELECT gap_category, gap_description, affected_asset_count, severity_level, recommended_action FROM ao1_gap_analysis ORDER BY affected_asset_count DESC;"
-
-export:
-	@echo "Exporting AO1 results..."
-	@mkdir -p $(OUTPUT_DIR)/exports
-	@if [ -f "$(DATABASE_FILE)" ]; then \
-		echo "Exporting asset inventory to CSV..."; \
-		duckdb $(DATABASE_FILE) "COPY (SELECT * FROM ao1_asset_inventory) TO '$(OUTPUT_DIR)/exports/ao1_asset_inventory.csv' (HEADER, DELIMITER ',');"; \
-		echo "Exporting visibility gaps to CSV..."; \
-		duckdb $(DATABASE_FILE) "COPY (SELECT hostname, source_systems, global_region, system_classification, CASE WHEN NOT in_splunk AND NOT in_chronicle THEN 'Critical - No Logging' WHEN NOT has_crowdstrike THEN 'High - No Security' WHEN NOT found_in_cmdb THEN 'Medium - Missing CMDB' ELSE 'Low Risk' END as gap_severity FROM ao1_asset_inventory WHERE NOT (in_splunk AND in_chronicle AND has_crowdstrike AND found_in_cmdb)) TO '$(OUTPUT_DIR)/exports/ao1_visibility_gaps.csv' (HEADER, DELIMITER ',');"; \
-		echo "Exporting metrics to CSV..."; \
-		duckdb $(DATABASE_FILE) "COPY (SELECT * FROM ao1_visibility_metrics) TO '$(OUTPUT_DIR)/exports/ao1_metrics.csv' (HEADER, DELIMITER ',');"; \
-		echo "Results exported to $(OUTPUT_DIR)/exports/"; \
-	else \
-		echo "AO1 database not found"; \
-	fi
-
-backup:
-	@echo "Creating AO1 backup..."
-	@TIMESTAMP=$$(date +%Y%m%d_%H%M%S) && \
-	mkdir -p backups && \
-	tar -czf "backups/ao1_backup_$$TIMESTAMP.tar.gz" \
-		$(DATABASE_FILE) \
-		$(OUTPUT_DIR) \
-		$(LOGS_DIR) \
-		$(CHECKPOINTS_DIR) \
-		2>/dev/null || true
-	@echo "Backup created in backups/"
-
-status:
-	@echo "AO1 System Status"
-	@echo "================"
-	@echo ""
-	@echo "Environment:"
-	@echo "  Project ID: $(or $(PROJECT_ID),Not set)"
-	@echo "  Config file: $(CONFIG_FILE)"
-	@echo "  Workers: $(WORKERS)"
-	@echo ""
-	@echo "Files:"
-	@ls -la $(DATABASE_FILE) 2>/dev/null && echo "  AO1 database exists" || echo "  AO1 database not found"
-	@ls -la $(CONFIG_FILE) 2>/dev/null && echo "  Config exists" || echo "  Config not found"
-	@ls -d $(OUTPUT_DIR) 2>/dev/null && echo "  Output directory exists" || echo "  Output directory not found"
-	@echo ""
-	@if [ -f "$(DATABASE_FILE)" ]; then \
-		echo "Database Statistics:"; \
-		duckdb $(DATABASE_FILE) "SELECT 'Total Assets: ' || COUNT(*) FROM ao1_asset_inventory;" 2>/dev/null || echo "  Cannot read database"; \
-	fi
-
-logs:
-	@if [ -d "$(LOGS_DIR)" ]; then \
-		echo "Recent AO1 Logs"; \
-		find $(LOGS_DIR) -name "*.log" -type f -exec ls -lt {} + | head -5; \
-		echo ""; \
-		echo "Latest log content:"; \
-		find $(LOGS_DIR) -name "*.log" -type f -exec ls -t {} + | head -1 | xargs tail -20; \
-	else \
-		echo "No logs directory found"; \
+		echo "Testing BigQuery connectivity..."; \
+		python3 -c "from gcp_client import BigQueryClientManager; client = BigQueryClientManager('$(PROJECT_ID)'); assert client.test_connection(), 'Connection failed'" && \
+		echo "✅ BigQuery connection successful" || \
+		echo "❌ BigQuery connection failed - check authentication"; \
 	fi
 
 test:
-	@echo "Running tests..."
-	@python3 -m pytest tests/ -v || echo "No tests found"
+	@echo "🧪 ♡₊˚   Testing Intelligent Discovery System   ˚₊♡ 🧪"
+	@echo ""
+	@$(MAKE) check-prerequisites
+	@echo ""
+	@if [ -z "$(PROJECT_ID)" ]; then \
+		echo "⚠️  PROJECT_ID not set - run: export GOOGLE_CLOUD_PROJECT=your-project-id"; \
+		echo "   Or use: make test PROJECT_ID=your-project-id"; \
+	else \
+		echo "Testing with PROJECT_ID: $(PROJECT_ID)"; \
+		$(MAKE) test-connectivity PROJECT_ID=$(PROJECT_ID); \
+	fi
+	@echo ""
+	@echo "Testing intelligent components..."
+	@python3 -c "from intelligent_content_matcher import IntelligentContentMatcher; print('✅ Content matcher OK')" 2>/dev/null || echo "❌ Content matcher failed"
+	@python3 -c "from intelligent_cache_manager import IntelligentCacheManager; print('✅ Cache manager OK')" 2>/dev/null || echo "❌ Cache manager failed"
+	@echo ""
+	@echo "✅ System test complete"
 
-format:
-	@echo "Formatting code..."
-	@black . || echo "black not installed"
+export:
+	@echo "📤 ♡₊˚   Exporting Discovery Results   ˚₊♡ 📤"
+	@mkdir -p $(DATA_DIR)/exports
+	@if [ -f "$(DATABASE_FILE)" ]; then \
+		echo "Exporting asset inventory..."; \
+		duckdb $(DATABASE_FILE) "COPY (SELECT * FROM intelligent_asset_inventory) TO '$(DATA_DIR)/exports/intelligent_assets.csv' (HEADER, DELIMITER ',');" && \
+		echo "✅ Assets exported to $(DATA_DIR)/exports/intelligent_assets.csv"; \
+		echo "Exporting endpoint data..."; \
+		duckdb $(DATABASE_FILE) "COPY (SELECT * FROM intelligent_endpoint_data) TO '$(DATA_DIR)/exports/endpoint_data.csv' (HEADER, DELIMITER ',');" && \
+		echo "✅ Data exported to $(DATA_DIR)/exports/endpoint_data.csv"; \
+		echo "Exporting quality analysis..."; \
+		duckdb $(DATABASE_FILE) "COPY (SELECT hostname, intelligence_score, data_quality_score, source_systems FROM intelligent_asset_inventory ORDER BY intelligence_score DESC) TO '$(DATA_DIR)/exports/quality_analysis.csv' (HEADER, DELIMITER ',');" && \
+		echo "✅ Quality analysis exported"; \
+	else \
+		echo "❌ Database not found. Run discovery first."; \
+	fi
 
-lint:
-	@echo "Running linting..."
-	@flake8 . || echo "flake8 not installed"
+backup:
+	@echo "💾 ♡₊˚   Creating Intelligent Backup   ˚₊♡ 💾"
+	@TIMESTAMP=$$(date +%Y%m%d_%H%M%S) && \
+	mkdir -p backups && \
+	tar -czf "backups/intelligent_backup_$$TIMESTAMP.tar.gz" \
+		$(DATABASE_FILE) \
+		$(DATA_DIR) \
+		$(CACHE_DIR) \
+		logs/ \
+		$(CONFIG_FILE) \
+		2>/dev/null || true && \
+	echo "✅ Backup created: backups/intelligent_backup_$$TIMESTAMP.tar.gz"
+
+status:
+	@echo "🔍 ♡₊˚   Intelligent System Status   ˚₊♡ 🔍"
+	@echo "================================================="
+	@echo ""
+	@echo "Environment:"
+	@echo "  Project ID: $(or $(PROJECT_ID),❌ Not set)"
+	@echo "  Intelligence Level: $(INTELLIGENCE_LEVEL)"
+	@echo "  Memory Limit: $(MAX_MEMORY)MB"
+	@echo "  Disk Limit: $(MAX_DISK)GB"
+	@echo ""
+	@echo "Files:"
+	@ls -la $(DATABASE_FILE) 2>/dev/null && echo "  ✅ Database exists" || echo "  ❌ Database not found"
+	@ls -la $(CONFIG_FILE) 2>/dev/null && echo "  ✅ Config exists" || echo "  ❌ Config not found"
+	@ls -d $(DATA_DIR) 2>/dev/null && echo "  ✅ Output directory exists" || echo "  ❌ Output directory not found"
+	@ls -d $(CACHE_DIR) 2>/dev/null && echo "  ✅ Cache directory exists" || echo "  ❌ Cache directory not found"
+	@echo ""
+	@if [ -f "$(DATABASE_FILE)" ]; then \
+		echo "Database Statistics:"; \
+		duckdb $(DATABASE_FILE) "SELECT 'Assets: ' || COUNT(*) FROM intelligent_asset_inventory;" 2>/dev/null || echo "  ❌ Cannot read database"; \
+		duckdb $(DATABASE_FILE) "SELECT 'Avg Intelligence: ' || ROUND(AVG(intelligence_score), 3) FROM intelligent_asset_inventory;" 2>/dev/null || true; \
+	fi
+
+logs:
+	@echo "📋 ♡₊˚   Recent Discovery Logs   ˚₊♡ 📋"
+	@echo ""
+	@if [ -d "logs" ]; then \
+		echo "Recent log files:"; \
+		find logs -name "*.log" -type f -exec ls -lt {} + | head -5 2>/dev/null || echo "No log files found"; \
+		echo ""; \
+		echo "Latest log content:"; \
+		find logs -name "*.log" -type f -exec ls -t {} + 2>/dev/null | head -1 | xargs tail -20 2>/dev/null || echo "No logs available"; \
+	else \
+		echo "❌ No logs directory found"; \
+	fi
 
 clean:
-	@echo "Cleaning generated files..."
-	@rm -rf __pycache__ .pytest_cache .cache
-	@rm -f *.pyc *.pyo
-	@rm -f discovery_checkpoint.json
-	@echo "Cleanup complete"
+	@echo "🧹 ♡₊˚   Cleaning Generated Files   ˚₊♡ 🧹"
+	@echo ""
+	@echo "Removing cache..."
+	@rm -rf $(CACHE_DIR) && echo "✅ Cache cleared" || echo "❌ Cache clear failed"
+	@echo "Removing Python cache..."
+	@rm -rf __pycache__ .pytest_cache *.pyc *.pyo && echo "✅ Python cache cleared"
+	@echo "Removing logs..."
+	@rm -rf logs/*.log && echo "✅ Logs cleared" || echo "No logs to clear"
+	@echo "Removing checkpoints..."
+	@rm -f discovery_checkpoint.json && echo "✅ Checkpoints cleared" || echo "No checkpoints to clear"
+	@echo ""
+	@echo "✅ Cleanup complete"
+	@echo ""
+	@echo "Database and output files preserved."
+	@echo "To remove everything: rm -f $(DATABASE_FILE) && rm -rf $(DATA_DIR)"
