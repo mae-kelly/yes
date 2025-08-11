@@ -19,6 +19,8 @@ help:
 	@echo "  make run                  - Run intelligent discovery"
 	@echo "  make estimate             - Estimate discovery scope"
 	@echo "  make expert               - Run with expert intelligence"
+	@echo "  make debug                - Run with debug output"
+	@echo "  make quick                - Quick test run"
 	@echo ""
 	@echo "Analysis Commands:"
 	@echo "  make analyze              - Analyze discovery results"
@@ -232,7 +234,46 @@ test:
 	@echo ""
 	@echo "✅ System test complete"
 
-export:
+debug:
+	@if [ -z "$(PROJECT_ID)" ]; then \
+		echo "❌ PROJECT_ID not set"; \
+		echo "Usage: make debug PROJECT_ID=your-project-id"; \
+		exit 1; \
+	fi
+	@echo "🐛 ♡₊˚   Debug Mode Discovery   ˚₊♡ 🐛"
+	@echo "Project: $(PROJECT_ID)"
+	@echo "Debug output enabled"
+	@echo ""
+	@python3 intelligent_main.py \
+		--project $(PROJECT_ID) \
+		--intelligence-level $(INTELLIGENCE_LEVEL) \
+		--max-memory $(MAX_MEMORY) \
+		--max-disk $(MAX_DISK) \
+		--config $(CONFIG_FILE) \
+		--output-dir $(DATA_DIR) \
+		--cache-dir $(CACHE_DIR) \
+		--database $(DATABASE_FILE) \
+		--debug
+
+quick:
+	@if [ -z "$(PROJECT_ID)" ]; then \
+		echo "❌ PROJECT_ID not set"; \
+		echo "Usage: make quick PROJECT_ID=your-project-id"; \
+		exit 1; \
+	fi
+	@echo "⚡ ♡₊˚   Quick Discovery Test   ˚₊♡ ⚡"
+	@echo "Project: $(PROJECT_ID)"
+	@echo "Fast mode with timeouts"
+	@echo ""
+	@python3 intelligent_main.py \
+		--project $(PROJECT_ID) \
+		--intelligence-level basic \
+		--max-memory 256 \
+		--max-disk 2 \
+		--timeout 60 \
+		--output-dir $(DATA_DIR) \
+		--cache-dir $(CACHE_DIR) \
+		--database $(DATABASE_FILE)
 	@echo "📤 ♡₊˚   Exporting Discovery Results   ˚₊♡ 📤"
 	@mkdir -p $(DATA_DIR)/exports
 	@if [ -f "$(DATABASE_FILE)" ]; then \

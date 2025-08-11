@@ -125,30 +125,71 @@ class IntelligentTableDiscovery:
         
         try:
             with client_manager.get_client() as client:
+                PrettyLogger.info("Listing datasets...")
                 datasets = list(client.list_datasets(project=project_id))
+                PrettyLogger.success(f"Found {len(datasets)} datasets")
+                
+                if not datasets:
+                    PrettyLogger.warning(f"No datasets found in {project_id}")
+                    return []
                 
                 priority_datasets = self._prioritize_datasets([d.dataset_id for d in datasets])
+                PrettyLogger.info(f"Analyzing {len(priority_datasets)} prioritized datasets")
                 
-                for dataset_id in priority_datasets:
+                total_tables_found = 0
+                total_intelligent_tables = 0
+                
+                for i, dataset_id in enumerate(priority_datasets):
                     try:
-                        dataset_ref = client.dataset(dataset_id, project=project_id)
-                        tables = list(client.list_tables(dataset_ref))
+                        PrettyLogger.info(f"Dataset {i+1}/{len(priority_datasets)}: {dataset_id}")
                         
-                        for table_ref in tables:
-                            metadata = await self._analyze_table_intelligence(client, table_ref, project_id)
-                            if metadata:
-                                all_metadata.append(metadata)
+                        dataset_ref = client.dataset(dataset_id, project=project_id)
+                        
+                        try:
+                            tables = list(client.list_tables(dataset_ref))
+                            total_tables_found += len(tables)
+                            PrettyLogger.info(f"  Found {len(tables)} tables")
+                            
+                            if not tables:
+                                continue
                                 
+                        except Exception as e:
+                            PrettyLogger.warning(f"  Cannot list tables in {dataset_id}: {e}")
+                            continue
+                        
+                        dataset_intelligent_tables = 0
+                        
+                        for j, table_ref in enumerate(tables):
+                            try:
+                                if j > 0 and j % 10 == 0:
+                                    PrettyLogger.info(f"    Analyzed {j}/{len(tables)} tables...")
+                                
+                                metadata = await self._analyze_table_intelligence(client, table_ref, project_id)
+                                if metadata:
+                                    all_metadata.append(metadata)
+                                    dataset_intelligent_tables += 1
+                                    total_intelligent_tables += 1
+                                    
+                            except Exception as e:
+                                continue
+                        
+                        if dataset_intelligent_tables > 0:
+                            PrettyLogger.success(f"  {dataset_id}: {dataset_intelligent_tables} intelligent tables")
+                        else:
+                            PrettyLogger.info(f"  {dataset_id}: No intelligent tables found")
+                            
                     except Exception as e:
                         PrettyLogger.warning(f"Dataset {dataset_id} analysis failed: {e}")
                         continue
+                
+                PrettyLogger.success(f"Discovery complete: {total_intelligent_tables} intelligent tables from {total_tables_found} total tables")
                         
         except Exception as e:
             PrettyLogger.error(f"Project {project_id} discovery failed: {e}")
             return []
         
         self.cache.set(cache_key, all_metadata, ttl_hours=6)
-        PrettyLogger.success(f"Discovered {len(all_metadata)} intelligent table structures")
+        PrettyLogger.success(f"Cached {len(all_metadata)} intelligent table structures")
         
         return all_metadata
     
@@ -177,19 +218,52 @@ class IntelligentTableDiscovery:
         try:
             full_table = client.get_table(table_ref)
             
-            if not full_table.schema or full_table.num_rows == 0:
+            # Quick skip conditions
+            if not full_table.schema:
+                return None
+                
+            if full_table.num_rows == 0:
+                return None
+            
+            # Skip very large tables initially (can be configured)
+            if full_table.num_rows and full_table.num_rows > 10000000:  # 10M rows
                 return None
             
             all_columns = [field.name for field in full_table.schema]
             
+            # Quick hostname check before expensive sampling
+            hostname_indicators = ['host', 'endpoint', 'computer', 'device', 'server', 'machine', 'asset', 'node', 'system']
+            has_potential_hostname = any(
+                any(indicator in col.lower() for indicator in hostname_indicators)
+                for col in all_columns
+            )
+            
+            if not has_potential_hostname:
+                return None
+            
             sample_data = await self._get_intelligent_sample(client, full_table)
             
+            if not sample_data:
+                return None
+            
             column_analysis = {}
+            hostname_found = False
+            
             for column in all_columns:
                 samples = sample_data.get(column, [])
+                if not samples:
+                    continue
+                    
                 analysis = self.matcher.analyze_column_intelligently(column, samples)
                 if analysis:
+                    field_type, confidence, metadata = analysis
                     column_analysis[column] = analysis
+                    
+                    if field_type in ['hostname', 'fqdn'] and confidence > 0.5:
+                        hostname_found = True
+            
+            if not hostname_found:
+                return None
             
             hostname_analysis = self._find_optimal_hostname_columns(column_analysis, sample_data)
             
@@ -218,34 +292,49 @@ class IntelligentTableDiscovery:
             return table_metadata
             
         except Exception as e:
+            # Don't log every table failure - too noisy
             return None
     
     async def _get_intelligent_sample(self, client, table_ref) -> Dict[str, List[str]]:
         try:
+            # Start with minimal sample for speed
             sample_query = f"""
             SELECT *
             FROM `{table_ref.project}.{table_ref.dataset_id}.{table_ref.table_id}`
             """
             
+            # Add partition filter for performance
             if table_ref.time_partitioning and table_ref.time_partitioning.field:
                 partition_field = table_ref.time_partitioning.field
-                sample_query += f" WHERE `{partition_field}` >= DATE_SUB(CURRENT_DATE(), INTERVAL 30 DAY)"
+                sample_query += f" WHERE `{partition_field}` >= DATE_SUB(CURRENT_DATE(), INTERVAL 7 DAY)"
             
-            sample_query += " LIMIT 20"
+            sample_query += " LIMIT 5"  # Start with just 5 rows for speed
             
-            job = client.query(sample_query)
+            # Use dry run first to check query validity
+            job_config = bigquery.QueryJobConfig(dry_run=True, use_query_cache=False)
+            job = client.query(sample_query, job_config=job_config)
+            
+            # If dry run succeeds, run actual query
+            job_config = bigquery.QueryJobConfig(dry_run=False, use_query_cache=True)
+            job = client.query(sample_query, job_config=job_config)
             results = list(job.result())
+            
+            if not results:
+                return {}
             
             sample_data = defaultdict(list)
             for row in results:
                 for i, value in enumerate(row):
                     if i < len(table_ref.schema) and value is not None:
                         column_name = table_ref.schema[i].name
-                        sample_data[column_name].append(str(value))
+                        str_value = str(value)
+                        if len(str_value) > 0 and len(str_value) < 500:  # Skip very long values
+                            sample_data[column_name].append(str_value)
             
             return dict(sample_data)
             
-        except Exception:
+        except Exception as e:
+            # Return empty dict on any error - table might be inaccessible
             return {}
     
     def _find_optimal_hostname_columns(self, column_analysis: Dict[str, Tuple], sample_data: Dict[str, List[str]]) -> Dict[str, Any]:
@@ -861,15 +950,39 @@ class IntelligentAO1Discovery:
             client_mgr = self.chronicle_client_manager if project_id == 'chronicle-fisv' else self.client_manager
             
             try:
-                project_metadata = await self.table_discovery.discover_intelligent_table_metadata(client_mgr, project_id)
-                all_metadata.extend(project_metadata)
+                PrettyLogger.info(f"Analyzing project: {project_id}")
                 
+                # Add timeout for table discovery
+                project_metadata = await asyncio.wait_for(
+                    self.table_discovery.discover_intelligent_table_metadata(client_mgr, project_id),
+                    timeout=300  # 5 minutes max per project
+                )
+                
+                all_metadata.extend(project_metadata)
+                PrettyLogger.success(f"Project {project_id}: {len(project_metadata)} intelligent tables")
+                
+            except asyncio.TimeoutError:
+                PrettyLogger.warning(f"Project {project_id} analysis timed out after 5 minutes")
             except Exception as e:
                 PrettyLogger.warning(f"Project {project_id} analysis failed: {e}")
         
+        if not all_metadata:
+            PrettyLogger.warning("No intelligent tables found - check permissions and data")
+            return []
+        
+        # Sort by data richness for better processing order
         all_metadata.sort(key=lambda x: x['data_richness_score'], reverse=True)
         
-        PrettyLogger.success(f"Analyzed {len(all_metadata)} tables with intelligent scoring")
+        PrettyLogger.success(f"Total intelligent tables discovered: {len(all_metadata)}")
+        
+        # Show top tables for visibility
+        if len(all_metadata) > 0:
+            PrettyLogger.info("Top intelligent tables:")
+            for i, table in enumerate(all_metadata[:5]):
+                richness = table['data_richness_score']
+                table_name = table['table_id']
+                PrettyLogger.info(f"  {i+1}. {table_name} (richness: {richness:.2f})")
+        
         return all_metadata
     
     async def _execute_intelligent_hostname_discovery(self, table_metadata: List[Dict[str, Any]]):

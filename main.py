@@ -59,6 +59,8 @@ def parse_arguments():
     parser.add_argument('--cache-dir', default='.cache', help='Intelligent cache directory')
     parser.add_argument('--database', default='ao1_intelligent_cmdb.db', help='Intelligent database file')
     parser.add_argument('--intelligence-level', choices=['basic', 'advanced', 'expert'], default='advanced', help='Intelligence analysis level')
+    parser.add_argument('--debug', action='store_true', help='Enable debug mode with verbose output')
+    parser.add_argument('--timeout', type=int, default=300, help='Timeout per operation in seconds')
     
     return parser.parse_args()
 
@@ -208,8 +210,14 @@ async def main():
         'max_disk_gb': args.max_disk,
         'cache_dir': args.cache_dir,
         'database_path': args.database,
-        'intelligence_level': args.intelligence_level
+        'intelligence_level': args.intelligence_level,
+        'debug_mode': args.debug,
+        'operation_timeout': args.timeout
     })
+    
+    if args.debug:
+        logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+        print("   🐛 Debug mode enabled - verbose output activated")
     
     output_dir = Path(args.output_dir)
     output_dir.mkdir(exist_ok=True)
