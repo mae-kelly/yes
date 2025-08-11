@@ -41,6 +41,10 @@ class PrettyLogger:
         print(f"   ✗°｡⋆⸜ ♡   {msg}")
     
     @staticmethod
+    def column_detection(table_name: str, expected: str, found: str):
+        print(f"   ･ﾟ✧ ◞ ♡   {table_name}: Expected '{expected}' → Found '{found}'")
+    
+    @staticmethod
     def ao1_metric(metric_name: str, value: str):
         print(f"   ♡₊˚ ⋆｡˚   AO1 {metric_name}: {value}")
     
@@ -55,6 +59,52 @@ class PrettyLogger:
     @staticmethod
     def gap_identification(gap_type: str, count: int):
         print(f"   ⚠°｡⋆⸜ ♡   Gap Identified - {gap_type}: {count:,} assets")
+
+class IntelligentColumnMatcher:
+    @staticmethod
+    def find_column_case_insensitive(column_name: str, available_columns: List[str]) -> str:
+        column_lower = column_name.lower()
+        
+        for available_col in available_columns:
+            if available_col.lower() == column_lower:
+                return available_col
+        
+        for available_col in available_columns:
+            if column_lower in available_col.lower() or available_col.lower() in column_lower:
+                return available_col
+        
+        column_variations = [
+            column_name.upper(),
+            column_name.lower(), 
+            column_name.replace('_', '').upper(),
+            column_name.replace('_', '').lower(),
+            column_name.replace('_', ' ').upper(),
+            column_name.replace('_', ' ').lower()
+        ]
+        
+        for variation in column_variations:
+            for available_col in available_columns:
+                if variation == available_col or variation.replace(' ', '_') == available_col:
+                    return available_col
+        
+        return None
+    
+    @staticmethod
+    def smart_column_mapping(expected_fields: Dict[str, str], available_columns: List[str]) -> Dict[str, str]:
+        mapped_fields = {}
+        
+        for field_key, expected_column in expected_fields.items():
+            found_column = IntelligentColumnMatcher.find_column_case_insensitive(expected_column, available_columns)
+            if found_column:
+                mapped_fields[field_key] = found_column
+            else:
+                potential_matches = [col for col in available_columns 
+                                   if any(part.lower() in col.lower() 
+                                         for part in expected_column.replace('_', ' ').split())]
+                if potential_matches:
+                    mapped_fields[field_key] = potential_matches[0]
+        
+        return mapped_fields
 
 class AO1IntelligentDiscovery:
     def __init__(self, project_id: str, config: Dict[str, Any] = None):
@@ -87,6 +137,7 @@ class AO1IntelligentDiscovery:
         self.progress = ProgressTracker()
         self.checkpoint_manager = CheckpointManager()
         self.signal_handler = SignalHandler()
+        self.column_matcher = IntelligentColumnMatcher()
         
         self.db_path = self.config.get('database_path', 'ao1_visibility_cmdb.db')
         self.max_workers = min(2, self.config.get('max_workers', 2))
@@ -96,13 +147,20 @@ class AO1IntelligentDiscovery:
                 'project': project_id,
                 'dataset': 'SAS_BI',
                 'table': 'V_DIM_ENDPOINT',
-                'primary_key': 'Endpoint_Nme',
+                'primary_key': 'endpoint_nme',
                 'fields': {
-                    'hostname': 'Endpoint_Nme',
-                    'region': 'EndpointRegion_Nme', 
-                    'environment': 'EndpointEnvironment_Type',
-                    'type': 'Endpoint_Type',
-                    'business_unit': 'BusinessUnit_Nme'
+                    'hostname': 'endpoint_nme',
+                    'region': 'endpointregion_nme', 
+                    'environment': 'endpointenvironment_type',
+                    'type': 'endpoint_type',
+                    'business_unit': 'businessunit_nme'
+                },
+                'field_variations': {
+                    'hostname': ['endpoint_nme', 'Endpoint_Nme', 'ENDPOINT_NME', 'endpoint_name', 'host_name'],
+                    'region': ['endpointregion_nme', 'EndpointRegion_Nme', 'ENDPOINTREGION_NME', 'region', 'endpoint_region'],
+                    'environment': ['endpointenvironment_type', 'EndpointEnvironment_Type', 'ENDPOINTENVIRONMENT_TYPE', 'environment', 'env'],
+                    'type': ['endpoint_type', 'Endpoint_Type', 'ENDPOINT_TYPE', 'system_type', 'classification'],
+                    'business_unit': ['businessunit_nme', 'BusinessUnit_Nme', 'BUSINESSUNIT_NME', 'business_unit', 'bu']
                 },
                 'source_type': 'cmdb',
                 'priority': 100
@@ -111,12 +169,18 @@ class AO1IntelligentDiscovery:
                 'project': project_id,
                 'dataset': 'SAS_BI',
                 'table': 'V_DIM_ENDPOINTAGENT',
-                'primary_key': 'Endpoint_Nme',
+                'primary_key': 'endpoint_nme',
                 'fields': {
-                    'hostname': 'Endpoint_Nme',
-                    'region': 'EndpointRegion_Nme',
-                    'environment': 'EndpointEnvironment_Type',
-                    'agent_type': 'AgentType_Nme'
+                    'hostname': 'endpoint_nme',
+                    'region': 'endpointregion_nme',
+                    'environment': 'endpointenvironment_type',
+                    'agent_type': 'agenttype_nme'
+                },
+                'field_variations': {
+                    'hostname': ['endpoint_nme', 'Endpoint_Nme', 'ENDPOINT_NME', 'endpoint_name', 'host_name'],
+                    'region': ['endpointregion_nme', 'EndpointRegion_Nme', 'ENDPOINTREGION_NME', 'region'],
+                    'environment': ['endpointenvironment_type', 'EndpointEnvironment_Type', 'ENDPOINTENVIRONMENT_TYPE', 'environment'],
+                    'agent_type': ['agenttype_nme', 'AgentType_Nme', 'AGENTTYPE_NME', 'agent_type', 'tool_type']
                 },
                 'source_type': 'crowdstrike',
                 'priority': 95
@@ -132,6 +196,12 @@ class AO1IntelligentDiscovery:
                     'environment': 'environment',
                     'log_volume': 'daily_log_volume'
                 },
+                'field_variations': {
+                    'hostname': ['host_nme', 'HOST_NME', 'Host_Nme', 'hostname', 'host_name', 'endpoint'],
+                    'region': ['region', 'REGION', 'Region', 'location', 'geo'],
+                    'environment': ['environment', 'ENVIRONMENT', 'Environment', 'env', 'stage'],
+                    'log_volume': ['daily_log_volume', 'DAILY_LOG_VOLUME', 'log_volume', 'volume']
+                },
                 'source_type': 'splunk',
                 'priority': 90
             },
@@ -144,6 +214,11 @@ class AO1IntelligentDiscovery:
                     'hostname': 'principal.hostname',
                     'region': 'network.ip_geo_artifact.location.region',
                     'event_type': 'metadata.event_type'
+                },
+                'field_variations': {
+                    'hostname': ['principal.hostname', 'PRINCIPAL.HOSTNAME', 'hostname', 'host', 'endpoint'],
+                    'region': ['network.ip_geo_artifact.location.region', 'region', 'location', 'geo'],
+                    'event_type': ['metadata.event_type', 'event_type', 'type']
                 },
                 'source_type': 'chronicle',
                 'priority': 85
@@ -335,7 +410,7 @@ class AO1IntelligentDiscovery:
                 self.conn.close()
     
     async def _discover_critical_ao1_sources(self):
-        PrettyLogger.info("Discovering critical AO1 data sources with intelligence")
+        PrettyLogger.info("Discovering critical AO1 data sources with brilliant column detection")
         
         for source_name, source_config in self.ao1_source_definitions.items():
             try:
@@ -367,21 +442,41 @@ class AO1IntelligentDiscovery:
                     table_ref = client.get_table(table_path)
                     available_columns = [field.name for field in table_ref.schema]
                     PrettyLogger.success(f"Connected to {source_name}, found {len(available_columns)} columns")
+                    
+                    PrettyLogger.info(f"Available columns: {', '.join(available_columns[:10])}")
+                    
                 except Exception as e:
                     PrettyLogger.error(f"Cannot access table {table_path}: {e}")
                     return 0
                 
-                hostname_field = config['fields']['hostname']
-                if hostname_field not in available_columns:
-                    PrettyLogger.error(f"Hostname field '{hostname_field}' not found in {source_name}")
-                    PrettyLogger.info(f"Available columns: {', '.join(available_columns[:10])}")
-                    return 0
+                mapped_fields = self.column_matcher.smart_column_mapping(config['fields'], available_columns)
                 
+                if not mapped_fields or 'hostname' not in mapped_fields:
+                    PrettyLogger.error(f"Cannot find hostname column in {source_name}")
+                    
+                    if 'field_variations' in config:
+                        for hostname_variation in config['field_variations']['hostname']:
+                            found_col = self.column_matcher.find_column_case_insensitive(hostname_variation, available_columns)
+                            if found_col:
+                                mapped_fields['hostname'] = found_col
+                                PrettyLogger.column_detection(source_name, hostname_variation, found_col)
+                                break
+                    
+                    if 'hostname' not in mapped_fields:
+                        PrettyLogger.error(f"No hostname column found in {source_name} after trying all variations")
+                        return 0
+                
+                for field_key, expected_field in config['fields'].items():
+                    if field_key in mapped_fields:
+                        if mapped_fields[field_key] != expected_field:
+                            PrettyLogger.column_detection(source_name, expected_field, mapped_fields[field_key])
+                
+                hostname_field = mapped_fields['hostname']
                 select_fields = [f"UPPER(TRIM(CAST(`{hostname_field}` AS STRING))) as hostname"]
                 
-                for field_key, field_name in config['fields'].items():
-                    if field_key != 'hostname' and field_name in available_columns:
-                        select_fields.append(f"CAST(`{field_name}` AS STRING) as {field_key}")
+                for field_key, actual_field in mapped_fields.items():
+                    if field_key != 'hostname':
+                        select_fields.append(f"CAST(`{actual_field}` AS STRING) as {field_key}")
                 
                 is_partitioned = table_ref.time_partitioning is not None
                 date_filter = ""
@@ -400,6 +495,8 @@ class AO1IntelligentDiscovery:
                     AND UPPER(TRIM(CAST(`{hostname_field}` AS STRING))) NOT LIKE 'HTTP%'
                     AND UPPER(TRIM(CAST(`{hostname_field}` AS STRING))) NOT LIKE 'UNKNOWN%'
                     AND UPPER(TRIM(CAST(`{hostname_field}` AS STRING))) NOT LIKE 'NULL%'
+                    AND UPPER(TRIM(CAST(`{hostname_field}` AS STRING))) NOT LIKE 'N/A%'
+                    AND UPPER(TRIM(CAST(`{hostname_field}` AS STRING))) NOT LIKE 'NONE%'
                 LIMIT 100000
                 """
                 
@@ -422,14 +519,10 @@ class AO1IntelligentDiscovery:
                             'source_type': config['source_type']
                         }
                         
-                        if len(row) > 1 and row[1]:
-                            asset_data['region'] = str(row[1])
-                        if len(row) > 2 and row[2]:
-                            asset_data['environment'] = str(row[2])
-                        if len(row) > 3 and row[3]:
-                            asset_data['classification'] = str(row[3])
-                        if len(row) > 4 and row[4]:
-                            asset_data['business_unit'] = str(row[4])
+                        field_mapping = list(mapped_fields.keys())[1:]
+                        for i, field_key in enumerate(field_mapping, 1):
+                            if i < len(row) and row[i]:
+                                asset_data[field_key] = str(row[i])
                         
                         await self._intelligent_asset_merge(asset_data)
                         endpoints_processed += 1
@@ -468,12 +561,12 @@ class AO1IntelligentDiscovery:
                 elif source_type == 'chronicle':
                     update_fields.append("in_chronicle = TRUE")
                 
-                for field, idx in [('region', 1), ('environment', 2), ('classification', 3), ('business_unit', 4)]:
+                for field, idx in [('region', 1), ('environment', 2), ('type', 3), ('business_unit', 4)]:
                     if field in asset_data and asset_data[field] and not existing[idx]:
                         db_field = {
                             'region': 'global_region',
                             'environment': 'environment', 
-                            'classification': 'system_classification',
+                            'type': 'system_classification',
                             'business_unit': 'business_unit'
                         }[field]
                         update_fields.append(f"{db_field} = ?")
@@ -505,7 +598,7 @@ class AO1IntelligentDiscovery:
                 source_type,
                 asset_data.get('region', ''),
                 asset_data.get('environment', ''),
-                asset_data.get('classification', ''),
+                asset_data.get('type', ''),
                 asset_data.get('business_unit', ''),
                 flags['found_in_cmdb'],
                 flags['has_crowdstrike'],
