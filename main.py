@@ -1,674 +1,359 @@
 #!/usr/bin/env python3
 
 import os
-import asyncio
-import logging
-import duckdb
+import sys
 import time
-import threading
-from typing import Dict, List, Any, Tuple, Set
-from concurrent.futures import ThreadPoolExecutor, as_completed
-from pathlib import Path
-from dataclasses import asdict
 import json
-import random
-import re
-from collections import defaultdict
+import logging
+import asyncio
+import argparse
+from pathlib import Path
+from datetime import datetime
+import signal
 
-from gcp_client import BigQueryClientManager
-from content_matcher import ContentBasedMatcher
-from cache_manager import CacheManager
-from progress_tracker import ProgressTracker
-from checkpoint_manager import CheckpointManager
-from signal_handler import SignalHandler
+from intelligent_discovery_engine import IntelligentAO1Discovery
+from config_loader import ConfigLoader
 
-try:
-    from google.cloud import bigquery
-except ImportError:
-    bigquery = None
-
+logging.basicConfig(level=logging.WARNING, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-class PrettyLogger:
-    @staticmethod
-    def info(msg: str):
-        print(f"   ⋆｡‧˚ʚ♡ɞ˚‧｡⋆   {msg}")
-    
-    @staticmethod
-    def success(msg: str):
-        print(f"   ❀°｡ ‧˚♡ ˚‧ ｡°❀   {msg}")
-    
-    @staticmethod
-    def warning(msg: str):
-        print(f"   ⚠°｡⋆⸜ ♡   {msg}")
-    
-    @staticmethod
-    def error(msg: str):
-        print(f"   ✗°｡⋆⸜ ♡   {msg}")
-    
-    @staticmethod
-    def discovery(source: str, endpoints: int, enriched: int):
-        print(f"   ♡₊˚ 🌸 ⋆｡˚   {source}: {endpoints:,} endpoints discovered, {enriched:,} enriched")
-
-class HostnameNormalizer:
-    @staticmethod
-    def normalize(hostname: str) -> str:
-        if not hostname:
-            return ""
-        
-        hostname = str(hostname).strip().upper()
-        if len(hostname) < 2:
-            return ""
-        
-        invalid_patterns = ['@', 'HTTP', 'HTTPS', 'UNKNOWN', 'NULL', 'N/A', 'NONE', 'EMPTY', 'TEST', 'EXAMPLE', 'LOCALHOST']
-        if any(pattern in hostname for pattern in invalid_patterns):
-            return ""
-        
-        hostname = re.sub(r'^[^A-Z0-9]+|[^A-Z0-9]+$', '', hostname)
-        hostname = re.sub(r'\..*$', '', hostname)
-        
-        if len(hostname) < 2:
-            return ""
-        
-        return hostname
-
-class SmartTableAnalyzer:
-    def __init__(self, matcher: ContentBasedMatcher):
-        self.matcher = matcher
-        self.hostname_patterns = ['host', 'endpoint', 'computer', 'device', 'server', 'machine', 'asset', 'node', 'system', 'workstation']
-        
-    def analyze_table_structure(self, table_ref, client) -> Dict[str, Any]:
-        try:
-            all_columns = [field.name for field in table_ref.schema]
-            
-            hostname_cols = []
-            for col in all_columns:
-                col_lower = col.lower()
-                for pattern in self.hostname_patterns:
-                    if pattern in col_lower:
-                        hostname_cols.append(col)
-                        break
-            
-            if not hostname_cols:
-                return None
-            
-            categorized = self.matcher.analyze_all_columns(all_columns)
-            
-            primary_hostname = self._select_best_hostname_column(hostname_cols)
-            
-            data_columns = {}
-            for category, cols in categorized.items():
-                if category != 'endpoint' and cols:
-                    data_columns[category] = cols[0]
-            
-            sample_query = f"SELECT * FROM `{table_ref.project}.{table_ref.dataset_id}.{table_ref.table_id}` LIMIT 5"
-            try:
-                sample_job = client.query(sample_query)
-                sample_data = list(sample_job.result())
-                has_data = len(sample_data) > 0
-            except:
-                has_data = False
-            
-            return {
-                'table_path': f"{table_ref.project}.{table_ref.dataset_id}.{table_ref.table_id}",
-                'primary_hostname_col': primary_hostname,
-                'hostname_columns': hostname_cols,
-                'data_columns': data_columns,
-                'all_columns': all_columns,
-                'has_data': has_data,
-                'row_count': table_ref.num_rows or 0,
-                'size_bytes': table_ref.num_bytes or 0
-            }
-        except Exception as e:
-            return None
-    
-    def _select_best_hostname_column(self, hostname_cols: List[str]) -> str:
-        priority_patterns = ['hostname', 'host_name', 'endpoint', 'computer_name', 'device_name', 'server_name']
-        
-        for pattern in priority_patterns:
-            for col in hostname_cols:
-                if pattern in col.lower():
-                    return col
-        
-        return hostname_cols[0] if hostname_cols else None
-
-class IntelligentDataMerger:
-    def __init__(self, db_path: str):
-        self.db_path = db_path
-        self.conn = duckdb.connect(db_path)
-        self._setup_tables()
-        self._lock = threading.Lock()
-        
-    def _setup_tables(self):
-        self.conn.execute("""
-        CREATE TABLE IF NOT EXISTS ao1_endpoints (
-            hostname VARCHAR PRIMARY KEY,
-            normalized_hostname VARCHAR,
-            discovered_timestamp TIMESTAMP DEFAULT NOW(),
-            last_updated TIMESTAMP DEFAULT NOW()
-        )
-        """)
-        
-        self.conn.execute("""
-        CREATE TABLE IF NOT EXISTS ao1_endpoint_data (
-            hostname VARCHAR,
-            field_name VARCHAR,
-            field_value TEXT,
-            data_source VARCHAR,
-            table_source VARCHAR,
-            confidence_score DOUBLE DEFAULT 1.0,
-            last_updated TIMESTAMP DEFAULT NOW(),
-            PRIMARY KEY (hostname, field_name, data_source)
-        )
-        """)
-        
-        self.conn.execute("""
-        CREATE TABLE IF NOT EXISTS ao1_asset_inventory (
-            hostname VARCHAR PRIMARY KEY,
-            fqdn VARCHAR,
-            ip_addresses TEXT,
-            infrastructure_type VARCHAR,
-            system_classification VARCHAR,
-            operating_system VARCHAR,
-            global_region VARCHAR,
-            country VARCHAR,
-            data_center VARCHAR,
-            cloud_region VARCHAR,
-            business_unit VARCHAR,
-            environment VARCHAR,
-            cost_center VARCHAR,
-            owner VARCHAR,
-            criticality VARCHAR,
-            
-            in_splunk BOOLEAN DEFAULT FALSE,
-            in_chronicle BOOLEAN DEFAULT FALSE,
-            has_crowdstrike BOOLEAN DEFAULT FALSE,
-            found_in_cmdb BOOLEAN DEFAULT FALSE,
-            
-            source_systems TEXT,
-            data_completeness_score DOUBLE DEFAULT 0.0,
-            ao1_visibility_score DOUBLE DEFAULT 0.0,
-            
-            discovery_timestamp TIMESTAMP DEFAULT NOW(),
-            last_updated TIMESTAMP DEFAULT NOW(),
-            raw_data TEXT
-        )
-        """)
-    
-    def register_endpoint(self, hostname: str, original_hostname: str = None):
-        normalized = HostnameNormalizer.normalize(hostname)
-        if not normalized:
-            return False
-            
-        with self._lock:
-            try:
-                self.conn.execute("""
-                INSERT OR IGNORE INTO ao1_endpoints (hostname, normalized_hostname)
-                VALUES (?, ?)
-                """, (normalized, original_hostname or hostname))
-                return True
-            except:
-                return False
-    
-    def add_endpoint_data(self, hostname: str, field_name: str, field_value: str, 
-                         data_source: str, table_source: str, confidence: float = 1.0):
-        normalized = HostnameNormalizer.normalize(hostname)
-        if not normalized or not field_value:
-            return
-            
-        with self._lock:
-            try:
-                self.conn.execute("""
-                INSERT OR REPLACE INTO ao1_endpoint_data 
-                (hostname, field_name, field_value, data_source, table_source, confidence_score)
-                VALUES (?, ?, ?, ?, ?, ?)
-                """, (normalized, field_name, str(field_value).strip(), data_source, table_source, confidence))
-            except Exception as e:
-                pass
-    
-    def build_consolidated_inventory(self):
-        with self._lock:
-            try:
-                endpoints = self.conn.execute("SELECT DISTINCT hostname FROM ao1_endpoints").fetchall()
-                
-                for (hostname,) in endpoints:
-                    data = self._get_best_data_for_endpoint(hostname)
-                    self._insert_or_update_inventory(hostname, data)
-                    
-            except Exception as e:
-                PrettyLogger.error(f"Consolidation failed: {e}")
-    
-    def _get_best_data_for_endpoint(self, hostname: str) -> Dict[str, str]:
-        data_query = """
-        SELECT field_name, field_value, confidence_score, data_source
-        FROM ao1_endpoint_data 
-        WHERE hostname = ?
-        ORDER BY confidence_score DESC, last_updated DESC
-        """
-        
-        results = self.conn.execute(data_query, (hostname,)).fetchall()
-        
-        best_data = {}
-        sources = set()
-        
-        for field_name, field_value, confidence, data_source in results:
-            sources.add(data_source)
-            
-            if field_name not in best_data and field_value and str(field_value).strip():
-                best_data[field_name] = str(field_value).strip()
-        
-        best_data['source_systems'] = ','.join(sorted(sources))
-        return best_data
-    
-    def _insert_or_update_inventory(self, hostname: str, data: Dict[str, str]):
-        try:
-            source_flags = {
-                'found_in_cmdb': any('cmdb' in s.lower() for s in data.get('source_systems', '').split(',')),
-                'has_crowdstrike': any('crowdstrike' in s.lower() for s in data.get('source_systems', '').split(',')),
-                'in_splunk': any('splunk' in s.lower() for s in data.get('source_systems', '').split(',')),
-                'in_chronicle': any('chronicle' in s.lower() for s in data.get('source_systems', '').split(','))
-            }
-            
-            completeness = self._calculate_completeness(data)
-            
-            self.conn.execute("""
-            INSERT OR REPLACE INTO ao1_asset_inventory (
-                hostname, fqdn, ip_addresses, infrastructure_type, system_classification,
-                operating_system, global_region, country, data_center, cloud_region,
-                business_unit, environment, cost_center, owner, criticality,
-                found_in_cmdb, has_crowdstrike, in_splunk, in_chronicle,
-                source_systems, data_completeness_score, raw_data, last_updated
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-            """, (
-                hostname,
-                data.get('fqdn', ''),
-                data.get('ip_address', ''),
-                data.get('infrastructure_type', ''),
-                data.get('system_classification', ''),
-                data.get('os', ''),
-                data.get('region', ''),
-                data.get('country', ''),
-                data.get('data_center', ''),
-                data.get('cloud_region', ''),
-                data.get('business_unit', ''),
-                data.get('environment', ''),
-                data.get('cost_center', ''),
-                data.get('owner', ''),
-                data.get('criticality', ''),
-                source_flags['found_in_cmdb'],
-                source_flags['has_crowdstrike'],
-                source_flags['in_splunk'],
-                source_flags['in_chronicle'],
-                data.get('source_systems', ''),
-                completeness,
-                json.dumps(data)
-            ))
-        except Exception as e:
-            pass
-    
-    def _calculate_completeness(self, data: Dict[str, str]) -> float:
-        critical_fields = ['fqdn', 'ip_address', 'infrastructure_type', 'region', 'business_unit', 'environment']
-        populated = sum(1 for field in critical_fields if data.get(field))
-        return (populated / len(critical_fields)) * 100
-    
-    def get_stats(self) -> Dict[str, int]:
-        try:
-            endpoints_count = self.conn.execute("SELECT COUNT(*) FROM ao1_endpoints").fetchone()[0]
-            inventory_count = self.conn.execute("SELECT COUNT(*) FROM ao1_asset_inventory").fetchone()[0]
-            data_points = self.conn.execute("SELECT COUNT(*) FROM ao1_endpoint_data").fetchone()[0]
-            
-            return {
-                'total_endpoints': endpoints_count,
-                'consolidated_assets': inventory_count,
-                'total_data_points': data_points
-            }
-        except:
-            return {'total_endpoints': 0, 'consolidated_assets': 0, 'total_data_points': 0}
-
-class AO1SmartDiscovery:
-    def __init__(self, project_id: str, config: Dict[str, Any] = None):
+class IntelligentAO1Runner:
+    def __init__(self, project_id: str, config_file: str = None):
         self.project_id = project_id
-        self.config = config or {}
+        self.config = ConfigLoader.load_config(config_file)
+        self.engine = IntelligentAO1Discovery(project_id, self.config)
+        self.shutdown_requested = False
         
-        print("\n" + "="*90)
-        print("   ♡₊˚ ｡⋅˚♡ ✧ ‧₊˚ ⋅   AO1 Smart Multi-Table Discovery   ⋅ ˚₊‧ ✧ ♡˚⋅｡ ˚₊♡")
-        print("="*90)
-        
-        self.client_manager = BigQueryClientManager(project_id)
-        self.chronicle_client_manager = None
-        
-        if not self.client_manager.test_connection():
-            raise ConnectionError("Failed to authenticate with BigQuery")
-        
-        try:
-            self.chronicle_client_manager = BigQueryClientManager("chronicle-fisv")
-            if not self.chronicle_client_manager.test_connection():
-                PrettyLogger.warning("Chronicle project unavailable")
-                self.chronicle_client_manager = None
-        except:
-            self.chronicle_client_manager = None
-        
-        self.matcher = ContentBasedMatcher()
-        self.analyzer = SmartTableAnalyzer(self.matcher)
-        self.cache = CacheManager(self.config.get('cache_dir', '.cache'))
-        self.progress = ProgressTracker()
-        self.checkpoint_manager = CheckpointManager()
-        self.signal_handler = SignalHandler()
-        
-        self.db_path = self.config.get('database_path', 'ao1_visibility_cmdb.db')
-        self.merger = IntelligentDataMerger(self.db_path)
-        
-        self.processed_tables = set()
-        self.discovered_endpoints = set()
-        self._lock = threading.Lock()
-        
-        self.critical_sources = [
-            (project_id, 'SAS_BI', 'V_DIM_ENDPOINT', 'cmdb', 100),
-            (project_id, 'SAS_BI', 'V_DIM_ENDPOINTAGENT', 'crowdstrike', 95),
-            (project_id, 'SAS_BI', 'V_SPL_ENDPOINT_LOG', 'splunk', 90),
-            ('chronicle-fisv', 'datalake', 'events', 'chronicle', 85)
-        ]
+        signal.signal(signal.SIGINT, self._signal_handler)
+        signal.signal(signal.SIGTERM, self._signal_handler)
     
-    async def execute_smart_discovery(self) -> Tuple[Dict[str, Any], Dict[str, str]]:
+    def _signal_handler(self, signum, frame):
+        print(f"\n   ⚠°｡⋆⸜ ♡   Received signal {signum}, initiating intelligent shutdown...")
+        self.shutdown_requested = True
+        if hasattr(self.engine, 'signal_handler'):
+            self.engine.signal_handler.shutdown_requested = True
+    
+    async def execute_intelligent_discovery(self) -> tuple[Dict[str, Any], Dict[str, str]]:
         start_time = time.time()
-        PrettyLogger.info("Starting intelligent multi-table discovery")
         
         try:
-            await self._discover_all_tables()
-            
-            await self._execute_smart_hostname_discovery()
-            
-            await self._execute_comprehensive_data_enrichment()
-            
-            PrettyLogger.info("Building consolidated asset inventory")
-            self.merger.build_consolidated_inventory()
-            
-            stats = self._generate_final_stats(time.time() - start_time)
-            queries = self._create_analysis_queries()
-            
-            PrettyLogger.success("Smart discovery completed successfully")
+            stats, queries = await self.engine.execute_intelligent_discovery()
+            processing_time = time.time() - start_time
+            stats['total_processing_time'] = processing_time
             return stats, queries
-            
         except Exception as e:
-            PrettyLogger.error(f"Smart discovery failed: {e}")
-            raise
+            print(f"   ✗°｡⋆⸜ ♡   Intelligent discovery failed: {e}")
+            return {'error': str(e)}, {}
         finally:
-            if hasattr(self.merger, 'conn'):
-                self.merger.conn.close()
+            self.engine.close()
+
+def parse_arguments():
+    parser = argparse.ArgumentParser(description="Intelligent AO1 Log Visibility Measurement System")
     
-    async def _discover_all_tables(self):
-        PrettyLogger.info("Discovering all available tables")
+    parser.add_argument('--project', '-p', required=True, help='GCP Project ID')
+    parser.add_argument('--config', '-c', help='Configuration file')
+    parser.add_argument('--max-memory', type=int, default=512, help='Max memory cache (MB)')
+    parser.add_argument('--max-disk', type=int, default=5, help='Max disk cache (GB)')
+    parser.add_argument('--dry-run', action='store_true', help='Estimate scope with intelligence')
+    parser.add_argument('--output-dir', default='output', help='Output directory')
+    parser.add_argument('--cache-dir', default='.cache', help='Intelligent cache directory')
+    parser.add_argument('--database', default='ao1_intelligent_cmdb.db', help='Intelligent database file')
+    parser.add_argument('--intelligence-level', choices=['basic', 'advanced', 'expert'], default='advanced', help='Intelligence analysis level')
+    
+    return parser.parse_args()
+
+async def estimate_intelligent_scope(project_id: str, config: Dict[str, Any]):
+    print("   ⋆｡‧˚ʚ♡ɞ˚‧｡⋆   Intelligent scope estimation with deep analysis...")
+    
+    try:
+        from gcp_client import BigQueryClientManager
+        from intelligent_content_matcher import IntelligentContentMatcher
         
-        self.all_table_metadata = []
+        client_manager = BigQueryClientManager(project_id)
+        matcher = IntelligentContentMatcher()
         
-        for project_id in [self.project_id, 'chronicle-fisv']:
-            if project_id == 'chronicle-fisv' and not self.chronicle_client_manager:
-                continue
-                
-            client_mgr = self.chronicle_client_manager if project_id == 'chronicle-fisv' else self.client_manager
+        with client_manager.get_client() as client:
+            datasets = list(client.list_datasets(project=project_id))
             
-            try:
-                with client_mgr.get_client() as client:
-                    datasets = list(client.list_datasets(project=project_id))
+            intelligent_analysis = {
+                'total_datasets': len(datasets),
+                'intelligent_tables': 0,
+                'hostname_capable_tables': 0,
+                'estimated_endpoints': 0,
+                'data_richness_scores': [],
+                'intelligence_recommendations': []
+            }
+            
+            for dataset in datasets[:10]:
+                try:
+                    dataset_ref = client.dataset(dataset.dataset_id, project=project_id)
+                    tables = list(client.list_tables(dataset_ref))
                     
-                    for dataset in datasets:
+                    for table_ref in tables[:5]:
                         try:
-                            tables = list(client.list_tables(dataset.reference))
+                            full_table = client.get_table(table_ref)
                             
-                            for table_ref in tables:
-                                try:
-                                    full_table = client.get_table(table_ref)
-                                    analysis = self.analyzer.analyze_table_structure(full_table, client)
-                                    
-                                    if analysis and analysis['has_data']:
-                                        analysis['project_id'] = project_id
-                                        self.all_table_metadata.append(analysis)
-                                        
-                                except Exception:
-                                    continue
+                            if not full_table.schema or full_table.num_rows == 0:
+                                continue
+                            
+                            all_columns = [field.name for field in full_table.schema]
+                            
+                            sample_query = f"SELECT * FROM `{project_id}.{dataset.dataset_id}.{table_ref.table_id}` LIMIT 3"
+                            try:
+                                sample_job = client.query(sample_query)
+                                sample_results = list(sample_job.result())
+                                
+                                sample_data = {}
+                                for row in sample_results:
+                                    for i, value in enumerate(row):
+                                        if i < len(all_columns) and value is not None:
+                                            column_name = all_columns[i]
+                                            if column_name not in sample_data:
+                                                sample_data[column_name] = []
+                                            sample_data[column_name].append(str(value))
+                                
+                            except:
+                                sample_data = {}
+                            
+                            categorized = matcher.intelligently_categorize_all_columns(all_columns, sample_data)
+                            
+                            has_hostname = 'hostname' in categorized or 'fqdn' in categorized
+                            data_richness = len(categorized) / max(len(all_columns), 1)
+                            
+                            if has_hostname:
+                                intelligent_analysis['hostname_capable_tables'] += 1
+                                
+                                estimated_rows = min(full_table.num_rows or 0, 100000)
+                                endpoint_estimate = int(estimated_rows * 0.7)
+                                intelligent_analysis['estimated_endpoints'] += endpoint_estimate
+                            
+                            if data_richness > 0.2:
+                                intelligent_analysis['intelligent_tables'] += 1
+                                intelligent_analysis['data_richness_scores'].append(data_richness)
+                            
                         except Exception:
                             continue
-            except Exception as e:
-                PrettyLogger.warning(f"Failed to analyze project {project_id}: {e}")
-        
-        PrettyLogger.success(f"Discovered {len(self.all_table_metadata)} tables with hostname data")
-    
-    async def _execute_smart_hostname_discovery(self):
-        PrettyLogger.info("Phase 1: Smart hostname discovery across all tables")
-        
-        critical_tables = [t for t in self.all_table_metadata 
-                          if any(crit[1] in t['table_path'] and crit[2] in t['table_path'] 
-                               for crit in self.critical_sources)]
-        
-        other_tables = [t for t in self.all_table_metadata if t not in critical_tables]
-        
-        all_tables = critical_tables + other_tables
-        
-        hostname_counts = {}
-        
-        for table_meta in all_tables:
+                            
+                except Exception:
+                    continue
+            
+            if intelligent_analysis['estimated_endpoints'] > 5000:
+                intelligent_analysis['intelligence_recommendations'].append("Excellent endpoint coverage detected")
+            elif intelligent_analysis['estimated_endpoints'] > 1000:
+                intelligent_analysis['intelligence_recommendations'].append("Good endpoint coverage expected")
+            else:
+                intelligent_analysis['intelligence_recommendations'].append("Limited endpoint data - check permissions")
+            
+            if intelligent_analysis['data_richness_scores']:
+                avg_richness = sum(intelligent_analysis['data_richness_scores']) / len(intelligent_analysis['data_richness_scores'])
+                if avg_richness > 0.5:
+                    intelligent_analysis['intelligence_recommendations'].append("High data richness - comprehensive discovery possible")
+                elif avg_richness > 0.3:
+                    intelligent_analysis['intelligence_recommendations'].append("Moderate data richness - selective enrichment recommended")
+                else:
+                    intelligent_analysis['intelligence_recommendations'].append("Low data richness - basic discovery only")
+            
             try:
-                count = await self._discover_hostnames_from_table(table_meta)
-                if count > 0:
-                    hostname_counts[table_meta['table_path']] = count
-                    
-            except Exception as e:
-                PrettyLogger.error(f"Hostname discovery failed for {table_meta['table_path']}: {e}")
-                continue
-        
-        total_hostnames = len(self.discovered_endpoints)
-        PrettyLogger.success(f"Discovered {total_hostnames:,} unique endpoints from {len(hostname_counts)} tables")
+                chronicle_client = BigQueryClientManager("chronicle-fisv")
+                with chronicle_client.get_client() as chronicle:
+                    chronicle_table = chronicle.get_table("chronicle-fisv.datalake.events")
+                    chronicle_endpoints = int((chronicle_table.num_rows or 0) * 0.05)
+                    intelligent_analysis['estimated_endpoints'] += chronicle_endpoints
+                    intelligent_analysis['intelligence_recommendations'].append("Chronicle integration available")
+            except:
+                intelligent_analysis['intelligence_recommendations'].append("Chronicle unavailable - primary project only")
+            
+            print("   ❀°｡ ‧˚♡ ˚‧ ｡°❀   Intelligent Scope Analysis:")
+            print(f"   ✧･ﾟ: *✧･ﾟ:*   Total datasets: {intelligent_analysis['total_datasets']:,}")
+            print(f"   ✧･ﾟ: *✧･ﾟ:*   Intelligent tables: {intelligent_analysis['intelligent_tables']:,}")
+            print(f"   ✧･ﾟ: *✧･ﾟ:*   Hostname-capable tables: {intelligent_analysis['hostname_capable_tables']:,}")
+            print(f"   ✧･ﾟ: *✧･ﾟ:*   Estimated endpoints: {intelligent_analysis['estimated_endpoints']:,}")
+            
+            if intelligent_analysis['data_richness_scores']:
+                avg_richness = sum(intelligent_analysis['data_richness_scores']) / len(intelligent_analysis['data_richness_scores'])
+                print(f"   ✧･ﾟ: *✧･ﾟ:*   Average data richness: {avg_richness:.2f}")
+            
+            print("\n   ♡˗ˏˋ ◞ ～   Intelligence Recommendations:")
+            for rec in intelligent_analysis['intelligence_recommendations']:
+                print(f"   ･ﾟ✧ ◞ ♡   {rec}")
+            
+            return intelligent_analysis
+            
+    except Exception as e:
+        print(f"   ✗°｡⋆⸜ ♡   Intelligent estimation failed: {e}")
+        return {'error': str(e)}
+
+async def main():
+    args = parse_arguments()
     
-    async def _discover_hostnames_from_table(self, table_meta: Dict[str, Any]) -> int:
-        table_path = table_meta['table_path']
-        hostname_col = table_meta['primary_hostname_col']
-        
-        if not hostname_col:
-            return 0
-        
-        project_id = table_meta['project_id']
-        client_mgr = self.chronicle_client_manager if project_id == 'chronicle-fisv' else self.client_manager
-        
+    if not args.project:
+        print("   ✗°｡⋆⸜ ♡   GCP Project ID is required for intelligent discovery")
+        sys.exit(1)
+    
+    config = {}
+    if args.config and Path(args.config).exists():
         try:
-            with client_mgr.get_client() as client:
-                hostname_query = f"""
-                SELECT DISTINCT 
-                    UPPER(TRIM(CAST(`{hostname_col}` AS STRING))) as hostname
-                FROM `{table_path}`
-                WHERE `{hostname_col}` IS NOT NULL
-                    AND LENGTH(TRIM(CAST(`{hostname_col}` AS STRING))) >= 2
-                    AND TRIM(CAST(`{hostname_col}` AS STRING)) NOT IN ('', 'NULL', 'N/A', 'UNKNOWN')
-                """
-                
-                job = client.query(hostname_query)
-                results = list(job.result())
-                
-                discovered_count = 0
-                for row in results:
-                    hostname = row[0]
-                    normalized = HostnameNormalizer.normalize(hostname)
-                    
-                    if normalized and self.merger.register_endpoint(normalized, hostname):
-                        with self._lock:
-                            self.discovered_endpoints.add(normalized)
-                        discovered_count += 1
-                
-                if discovered_count > 0:
-                    table_name = table_path.split('.')[-1]
-                    PrettyLogger.success(f"{table_name}: {discovered_count:,} hostnames")
-                
-                return discovered_count
-                
+            with open(args.config, 'r') as f:
+                if args.config.endswith(('.yaml', '.yml')):
+                    import yaml
+                    config = yaml.safe_load(f)
+                else:
+                    config = json.load(f)
         except Exception as e:
-            return 0
+            print(f"   ✗°｡⋆⸜ ♡   Configuration loading failed: {e}")
+            sys.exit(1)
     
-    async def _execute_comprehensive_data_enrichment(self):
-        PrettyLogger.info("Phase 2: Comprehensive data enrichment for all endpoints")
-        
-        endpoint_chunks = list(self.discovered_endpoints)
-        chunk_size = 1000
-        
-        for i in range(0, len(endpoint_chunks), chunk_size):
-            if self.signal_handler.shutdown_requested:
-                break
-                
-            chunk = endpoint_chunks[i:i + chunk_size]
-            await self._enrich_endpoint_chunk(chunk)
+    config.update({
+        'max_memory_mb': args.max_memory,
+        'max_disk_gb': args.max_disk,
+        'cache_dir': args.cache_dir,
+        'database_path': args.database,
+        'intelligence_level': args.intelligence_level
+    })
+    
+    output_dir = Path(args.output_dir)
+    output_dir.mkdir(exist_ok=True)
+    
+    print("   ♡₊˚ ｡⋅˚♡ ✧ ‧₊˚ ⋅   Intelligent AO1 Log Visibility Measurement   ⋅ ˚₊‧ ✧ ♡˚⋅｡ ˚₊♡")
+    print(f"   ⋆｡‧˚ʚ♡ɞ˚‧｡⋆   Project: {args.project}")
+    print(f"   ⋆｡‧˚ʚ♡ɞ˚‧｡⋆   Intelligence Level: {args.intelligence_level}")
+    print(f"   ⋆｡‧˚ʚ♡ɞ˚‧｡⋆   Database: {args.database}")
+    print(f"   ⋆｡‧˚ʚ♡ɞ˚‧｡⋆   Memory Cache: {args.max_memory}MB")
+    print(f"   ⋆｡‧˚ʚ♡ɞ˚‧｡⋆   Disk Cache: {args.max_disk}GB")
+    
+    try:
+        if args.dry_run:
+            estimate = await estimate_intelligent_scope(args.project, config)
             
-            PrettyLogger.info(f"Enriched {min(i + chunk_size, len(endpoint_chunks)):,}/{len(endpoint_chunks):,} endpoints")
-    
-    async def _enrich_endpoint_chunk(self, hostnames: List[str]):
-        for table_meta in self.all_table_metadata:
-            if self.signal_handler.shutdown_requested:
-                break
-                
-            try:
-                enriched = await self._enrich_from_table(table_meta, hostnames)
-                
-                if enriched > 0:
-                    table_name = table_meta['table_path'].split('.')[-1]
-                    data_source = self._determine_data_source(table_meta['table_path'])
-                    
-            except Exception:
-                continue
-    
-    async def _enrich_from_table(self, table_meta: Dict[str, Any], target_hostnames: List[str]) -> int:
-        table_path = table_meta['table_path']
-        hostname_col = table_meta['primary_hostname_col']
-        data_columns = table_meta['data_columns']
+            if 'error' in estimate:
+                print(f"   ✗°｡⋆⸜ ♡   Intelligent estimation failed: {estimate['error']}")
+                sys.exit(1)
+            
+            estimate_file = output_dir / "intelligent_scope_estimate.json"
+            with open(estimate_file, 'w') as f:
+                json.dump(estimate, f, indent=2)
+            
+            print(f"   ❀°｡ ‧˚♡ ˚‧ ｡°❀   Intelligent scope estimate saved: {estimate_file}")
+            
+            if estimate['estimated_endpoints'] > 1000:
+                print("   ❀°｡ ‧˚♡ ˚‧ ｡°❀   Ready for intelligent discovery. Run without --dry-run to proceed.")
+            else:
+                print("   ⚠°｡⋆⸜ ♡   Limited data detected - review permissions and data sources.")
+            return
         
-        if not data_columns:
-            return 0
+        runner = IntelligentAO1Runner(args.project, args.config)
         
-        project_id = table_meta['project_id']
-        client_mgr = self.chronicle_client_manager if project_id == 'chronicle-fisv' else self.client_manager
+        print("   ⋆｡‧˚ʚ♡ɞ˚‧｡⋆   Starting intelligent multi-dimensional discovery")
         
-        hostname_list = "', '".join(target_hostnames)
+        stats, queries = await runner.execute_intelligent_discovery()
         
-        select_fields = [f"UPPER(TRIM(CAST(`{hostname_col}` AS STRING))) as hostname"]
-        field_mappings = {'hostname': hostname_col}
+        if 'error' in stats:
+            print(f"   ✗°｡⋆⸜ ♡   Intelligent discovery failed: {stats['error']}")
+            sys.exit(1)
         
-        for field_type, column in data_columns.items():
-            select_fields.append(f"CAST(`{column}` AS STRING) as {field_type}")
-            field_mappings[field_type] = column
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         
-        enrichment_query = f"""
-        SELECT {', '.join(select_fields)}
-        FROM `{table_path}`
-        WHERE UPPER(TRIM(CAST(`{hostname_col}` AS STRING))) IN ('{hostname_list}')
-            AND `{hostname_col}` IS NOT NULL
-        """
+        stats_file = output_dir / f"intelligent_discovery_results_{timestamp}.json"
+        with open(stats_file, 'w') as f:
+            json.dump(stats, f, indent=2, default=str)
         
-        try:
-            with client_mgr.get_client() as client:
-                job = client.query(enrichment_query)
-                results = list(job.result())
-                
-                data_source = self._determine_data_source(table_path)
-                enriched_count = 0
-                
-                for row in results:
-                    hostname = HostnameNormalizer.normalize(row[0])
-                    if not hostname:
-                        continue
-                    
-                    for i, (field_type, _) in enumerate(field_mappings.items()):
-                        if i > 0 and i < len(row) and row[i]:
-                            value = str(row[i]).strip()
-                            if value and value.upper() not in ['NULL', 'N/A', 'UNKNOWN', 'NONE', '']:
-                                self.merger.add_endpoint_data(
-                                    hostname, field_type, value, data_source, table_path
-                                )
-                    
-                    enriched_count += 1
-                
-                return enriched_count
-                
-        except Exception:
-            return 0
-    
-    def _determine_data_source(self, table_path: str) -> str:
-        table_lower = table_path.lower()
+        queries_dir = output_dir / f"intelligent_queries_{timestamp}"
+        queries_dir.mkdir(exist_ok=True)
         
-        if 'cmdb' in table_lower or 'dim_endpoint' in table_lower:
-            return 'cmdb'
-        elif 'crowdstrike' in table_lower or 'agent' in table_lower:
-            return 'crowdstrike'
-        elif 'splunk' in table_lower or 'spl_' in table_lower:
-            return 'splunk'
-        elif 'chronicle' in table_lower or 'events' in table_lower:
-            return 'chronicle'
-        elif 'security' in table_lower:
-            return 'security'
-        elif 'network' in table_lower:
-            return 'network'
+        for query_name, query_sql in queries.items():
+            query_file = queries_dir / f"{query_name}.sql"
+            with open(query_file, 'w') as f:
+                f.write(f"-- {query_name.replace('_', ' ').title()}\n")
+                f.write(f"-- Intelligent AO1 Log Visibility Measurement\n")
+                f.write(f"-- Project: {args.project}\n")
+                f.write(f"-- Intelligence Level: {args.intelligence_level}\n")
+                f.write(f"-- Generated: {datetime.now().isoformat()}\n")
+                f.write(f"-- Database: {args.database}\n\n")
+                f.write(query_sql)
+        
+        latest_stats = output_dir / "latest_intelligent_results.json"
+        latest_queries = output_dir / "latest_intelligent_queries"
+        
+        if latest_stats.exists() or latest_stats.is_symlink():
+            latest_stats.unlink()
+        if latest_queries.exists() or latest_queries.is_symlink():
+            latest_queries.unlink()
+        
+        latest_stats.symlink_to(stats_file.name)
+        latest_queries.symlink_to(queries_dir.name)
+        
+        print("\n" + "="*90)
+        print("   ♡₊˚ ｡⋅˚♡ ✧ ‧₊˚ ⋅   Intelligent Discovery Complete   ⋅ ˚₊‧ ✧ ♡˚⋅｡ ˚₊♡")
+        print("="*90)
+        
+        cache_stats = stats.get('cache_performance', {})
+        
+        print(f"   ❀°｡ ‧˚♡ ˚‧ ｡°❀   Total processing time: {stats.get('total_processing_time', 0):.2f} seconds")
+        print(f"   ❀°｡ ‧˚♡ ˚‧ ｡°❀   Endpoints discovered: {stats.get('total_endpoints_discovered', 0):,}")
+        print(f"   ❀°｡ ‧˚♡ ˚‧ ｡°❀   Consolidated assets: {stats.get('consolidated_assets', 0):,}")
+        print(f"   ❀°｡ ‧˚♡ ˚‧ ｡°❀   Total data points: {stats.get('total_data_points', 0):,}")
+        print(f"   ❀°｡ ‧˚♡ ˚‧ ｡°❀   Average intelligence score: {stats.get('avg_intelligence_score', 0):.2f}")
+        print(f"   ❀°｡ ‧˚♡ ˚‧ ｡°❀   High quality assets: {stats.get('high_quality_assets', 0):,}")
+        
+        if cache_stats:
+            hit_rate = cache_stats.get('hit_rate', 0)
+            memory_usage = cache_stats.get('memory_usage_mb', 0)
+            print(f"   ❀°｡ ‧˚♡ ˚‧ ｡°❀   Cache hit rate: {hit_rate}%")
+            print(f"   ❀°｡ ‧˚♡ ˚‧ ｡°❀   Memory usage: {memory_usage:.1f}MB")
+        
+        print("\n   ｡･:*:･ﾟ★   Intelligent Output Files:")
+        print(f"   ◦ ❀ ◦   Intelligent results: {stats_file}")
+        print(f"   ◦ ❀ ◦   Latest results: {latest_stats}")
+        print(f"   ◦ ❀ ◦   Intelligent queries: {queries_dir}")
+        print(f"   ◦ ❀ ◦   Latest queries: {latest_queries}")
+        print(f"   ◦ ❀ ◦   Intelligent database: {args.database}")
+        
+        total_assets = stats.get('consolidated_assets', 0)
+        avg_intelligence = stats.get('avg_intelligence_score', 0)
+        
+        if total_assets > 0:
+            print(f"\n   ❀°｡ ‧˚♡ ˚‧ ｡°❀   Success! Intelligent CMDB built with {total_assets:,} assets")
+            
+            if avg_intelligence >= 0.8:
+                print("   ❀°｡ ‧˚♡ ˚‧ ｡°❀   Excellent intelligence quality achieved!")
+            elif avg_intelligence >= 0.6:
+                print("   ❀°｡ ‧˚♡ ˚‧ ｡°❀   High intelligence quality with comprehensive data")
+            elif avg_intelligence >= 0.4:
+                print("   ❀°｡ ‧˚♡ ˚‧ ｡°❀   Good intelligence quality with room for enrichment")
+            else:
+                print("   ⚠°｡⋆⸜ ♡   Intelligence gaps detected - consider additional data sources")
+            
+            print("   ❀°｡ ‧˚♡ ˚‧ ｡°❀   CSOC can now perform intelligent log visibility analysis")
         else:
-            return 'discovery'
-    
-    def _generate_final_stats(self, processing_time: float) -> Dict[str, Any]:
-        merger_stats = self.merger.get_stats()
+            print("   ⚠°｡⋆⸜ ♡   No assets discovered - verify permissions and data sources")
         
-        return {
-            'processing_time': processing_time,
-            'database_path': self.db_path,
-            'total_tables_analyzed': len(self.all_table_metadata),
-            'total_endpoints_discovered': merger_stats['total_endpoints'],
-            'consolidated_assets': merger_stats['consolidated_assets'],
-            'total_data_points': merger_stats['total_data_points'],
-            'unique_hostnames': len(self.discovered_endpoints),
-            'tables_with_hostnames': len([t for t in self.all_table_metadata if t['has_data']]),
-            'data_enrichment_complete': True
-        }
-    
-    def _create_analysis_queries(self) -> Dict[str, str]:
-        return {
-            'consolidated_assets': """
-            SELECT 
-                hostname, fqdn, ip_addresses, infrastructure_type, global_region,
-                business_unit, environment, found_in_cmdb, has_crowdstrike, 
-                in_splunk, in_chronicle, data_completeness_score, source_systems
-            FROM ao1_asset_inventory 
-            ORDER BY data_completeness_score DESC;
-            """,
-            
-            'data_enrichment_summary': """
-            SELECT 
-                field_name,
-                COUNT(DISTINCT hostname) as endpoints_with_data,
-                COUNT(DISTINCT data_source) as data_sources,
-                AVG(confidence_score) as avg_confidence
-            FROM ao1_endpoint_data
-            GROUP BY field_name
-            ORDER BY endpoints_with_data DESC;
-            """,
-            
-            'source_contribution': """
-            SELECT 
-                data_source,
-                COUNT(DISTINCT hostname) as unique_endpoints,
-                COUNT(*) as total_data_points,
-                COUNT(DISTINCT field_name) as field_types
-            FROM ao1_endpoint_data
-            GROUP BY data_source
-            ORDER BY unique_endpoints DESC;
-            """,
-            
-            'completeness_analysis': """
-            SELECT 
-                CASE 
-                    WHEN data_completeness_score >= 80 THEN 'Excellent (80%+)'
-                    WHEN data_completeness_score >= 60 THEN 'Good (60-79%)'
-                    WHEN data_completeness_score >= 40 THEN 'Fair (40-59%)'
-                    ELSE 'Poor (<40%)'
-                END as completeness_tier,
-                COUNT(*) as asset_count,
-                AVG(data_completeness_score) as avg_score
-            FROM ao1_asset_inventory
-            GROUP BY completeness_tier
-            ORDER BY avg_score DESC;
-            """
-        }
-    
-    def close(self):
-        if hasattr(self.merger, 'conn') and self.merger.conn:
-            self.merger.conn.close()
+        print("\n   ♡₊˚ ｡⋅˚♡ ✧ ‧₊˚ ⋅   Intelligent AO1 System Ready   ⋅ ˚₊‧ ✧ ♡˚⋅｡ ˚₊♡")
+        
+    except KeyboardInterrupt:
+        print("\n\n   ⚠°｡⋆⸜ ♡   Intelligent discovery interrupted by user")
+        print("   ･ﾟ✧ ◞ ♡   Intelligent cache preserved for faster restart")
+        sys.exit(130)
+        
+    except Exception as e:
+        print(f"\n   ✗°｡⋆⸜ ♡   Intelligent discovery failed: {e}")
+        
+        error_file = output_dir / f"intelligent_error_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+        with open(error_file, 'w') as f:
+            json.dump({
+                'error': str(e),
+                'type': type(e).__name__,
+                'timestamp': datetime.now().isoformat(),
+                'project': args.project,
+                'intelligence_level': args.intelligence_level,
+                'config': config
+            }, f, indent=2)
+        
+        print(f"   ･ﾟ✧ ◞ ♡   Error details saved: {error_file}")
+        sys.exit(1)
+
+if __name__ == "__main__":
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        print("\n   ⚠°｡⋆⸜ ♡   Interrupted by user")
+        sys.exit(130)
