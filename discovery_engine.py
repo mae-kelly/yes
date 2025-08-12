@@ -1,14 +1,13 @@
 #!/usr/bin/env python3
 
-import asyncio
 import logging
 import duckdb
 import re
-from typing import Dict, List, Any, Optional, Tuple, Set
-from collections import defaultdict, Counter
-from dataclasses import dataclass
-import statistics
 import ipaddress
+from typing import Dict, List, Any, Optional, Tuple
+from dataclasses import dataclass, field
+from datetime import datetime
+from collections import defaultdict
 
 @dataclass
 class AO1AssetRecord:
@@ -27,312 +26,304 @@ class AO1AssetRecord:
     apm: str = ""
     application_class: str = ""
     edr_coverage: str = "No"
-    tanium_coverage: str = "No"  
+    tanium_coverage: str = "No"
     dlp_coverage: str = "No"
     in_splunk: bool = False
     in_chronicle: bool = False
     in_gso: bool = False
-    url_fqdn_coverage: str = "No"
-    public_ip_coverage: str = "No"
-    network_zones: str = ""
-    ipam_coverage: str = "No"
-    geolocation: str = ""
-    vpc: str = ""
-    internal_external: str = ""
-    host_parity_score: float = 0.0
-    cmdb_asset_visibility_score: float = 0.0
     network_log_types: str = ""
     endpoint_log_types: str = ""
     cloud_log_types: str = ""
     application_log_types: str = ""
     identity_log_types: str = ""
-    found_in_cmdb: bool = None
-    found_in_splunk: bool = None
-    found_in_chronicle: bool = None
-    found_in_crowdstrike: bool = None
+    found_in_cmdb: bool = False
+    found_in_splunk: bool = False
+    found_in_chronicle: bool = False
+    found_in_crowdstrike: bool = False
     source_count: int = 0
-    data_completeness_score: float = 0.0
+    host_parity_score: float = 0.0
+    cmdb_asset_visibility_score: float = 0.0
     visibility_gap_severity: str = "unknown"
+    last_updated: str = ""
 
-class SmartHostnameDetector:
+class UltraIntelligentFieldDetector:
     def __init__(self):
-        self.exact_hostname_patterns = [
-            'hostname', 'host_name', 'computername', 'computer_name', 'machine_name', 
-            'device_name', 'endpoint_name', 'server_name', 'asset_name', 'node_name', 
-            'system_name', 'workstation_name', 'appliance_name'
-        ]
-        
-        self.fqdn_patterns = [
-            'fqdn', 'full_qualified_domain_name', 'dns_name', 'domain_name',
-            'canonical_name', 'qualified_name', 'full_dns_name'
-        ]
-        
-        self.partial_hostname_patterns = [
-            'host', 'endpoint', 'computer', 'device', 'server', 'machine', 
-            'asset', 'node', 'system', 'workstation', 'appliance', 'vm', 'instance'
-        ]
-        
-        self.security_context_patterns = [
-            'crowdstrike_hostname', 'cs_hostname', 'falcon_hostname', 'falcon_device',
-            'splunk_host', 'chronicle_hostname', 'cmdb_hostname', 'cmdb_device',
-            'agent_hostname', 'sensor_hostname', 'client_name', 'device_id'
-        ]
-        
-        self.network_context_patterns = [
-            'src_host', 'dst_host', 'source_host', 'destination_host',
-            'origin_host', 'target_host', 'peer_host', 'remote_host'
-        ]
-        
-        self.invalid_indicators = [
-            'id', 'key', 'guid', 'uuid', 'token', 'hash', 'count', 'total',
-            'sum', 'avg', 'created', 'updated', 'modified', 'deleted',
-            'timestamp', 'date', 'time', 'status', 'state', 'flag'
-        ]
-        
-        self.hostname_validation_regex = [
-            r'^[a-zA-Z0-9][a-zA-Z0-9\-\.]{1,251}[a-zA-Z0-9]$',
-            r'^[a-zA-Z0-9][a-zA-Z0-9\-]{1,63}$',
-            r'^[a-zA-Z0-9][a-zA-Z0-9\-\.]*\.[a-zA-Z]{2,}$',
-            r'^[a-zA-Z]{2,}[0-9]{1,}[a-zA-Z0-9\-]*$',
-            r'^[a-zA-Z0-9]+[-_][a-zA-Z0-9]+',
-            r'^(srv|web|app|db|sql|win|linux|vm|dc|fw)[0-9]+',
-        ]
-        
-        self.invalid_value_patterns = [
-            r'^\d+\.\d+\.\d+\.\d+$',
-            r'^[0-9a-fA-F]{2}:[0-9a-fA-F]{2}:[0-9a-fA-F]{2}',
-            r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}',
-            r'^https?://',
-            r'^\d+$',
-            r'^null$|^none$|^unknown$|^n\/a$|^empty$'
-        ]
-        
-        self.enterprise_hostname_indicators = [
-            'prod', 'dev', 'test', 'stage', 'uat', 'qa', 'dr',
-            'srv', 'web', 'app', 'db', 'sql', 'dc', 'fw', 'lb',
-            'win', 'linux', 'rhel', 'ubuntu', 'centos', 'aix'
-        ]
-
-    def analyze_column_for_hostnames(self, column_name: str, sample_values: List[str]) -> float:
-        if not column_name or not sample_values:
-            return 0.0
-        
-        column_lower = column_name.lower().replace('_', '').replace('-', '').replace(' ', '')
-        
-        if any(invalid in column_lower for invalid in self.invalid_indicators):
-            return 0.0
-        
-        score = 0.0
-        
-        for exact_pattern in self.exact_hostname_patterns:
-            exact_clean = exact_pattern.replace('_', '').replace('-', '')
-            if exact_clean == column_lower:
-                score += 10.0
-            elif exact_clean in column_lower:
-                score += 8.0
-        
-        for fqdn_pattern in self.fqdn_patterns:
-            fqdn_clean = fqdn_pattern.replace('_', '').replace('-', '')
-            if fqdn_clean == column_lower:
-                score += 9.0
-            elif fqdn_clean in column_lower:
-                score += 7.0
-        
-        for partial_pattern in self.partial_hostname_patterns:
-            if partial_pattern in column_lower and len(column_lower) < 20:
-                score += 5.0
-        
-        for security_pattern in self.security_context_patterns:
-            security_clean = security_pattern.replace('_', '').replace('-', '')
-            if security_clean in column_lower:
-                score += 6.0
-        
-        for network_pattern in self.network_context_patterns:
-            network_clean = network_pattern.replace('_', '').replace('-', '')
-            if network_clean in column_lower:
-                score += 4.0
-        
-        if 'name' in column_lower and len(column_lower) < 15:
-            score += 3.0
-        
-        cleaned_values = [str(v).strip() for v in sample_values if v and str(v).strip()]
-        if not cleaned_values:
-            return score * 0.1
-        
-        valid_hostname_count = 0
-        enterprise_pattern_count = 0
-        
-        for value in cleaned_values[:20]:
-            if self.is_valid_hostname_value(value):
-                valid_hostname_count += 1
-                
-                if any(indicator in value.lower() for indicator in self.enterprise_hostname_indicators):
-                    enterprise_pattern_count += 1
-        
-        if cleaned_values:
-            validation_ratio = valid_hostname_count / len(cleaned_values[:20])
-            enterprise_ratio = enterprise_pattern_count / len(cleaned_values[:20])
-            
-            score *= validation_ratio
-            score += enterprise_ratio * 2.0
-        
-        return min(score, 15.0)
-    
-    def is_valid_hostname_value(self, value: str) -> bool:
-        if not isinstance(value, str) or len(value) < 2 or len(value) > 253:
-            return False
-        
-        value_clean = value.strip().upper()
-        
-        if value_clean in ['UNKNOWN', 'NULL', 'N/A', 'NONE', 'EMPTY', '', 'NAN', 'LOCALHOST']:
-            return False
-        
-        for invalid_pattern in self.invalid_value_patterns:
-            if re.match(invalid_pattern, value, re.IGNORECASE):
-                return False
-        
-        if value.count('.') > 10 or value.count('-') > 10:
-            return False
-        
-        for valid_pattern in self.hostname_validation_regex:
-            if re.match(valid_pattern, value, re.IGNORECASE):
-                return True
-        
-        return False
-    
-    def find_best_hostname_columns(self, table_schema: Dict[str, List[str]]) -> List[Tuple[str, float]]:
-        column_scores = []
-        
-        for column_name, sample_values in table_schema.items():
-            score = self.analyze_column_for_hostnames(column_name, sample_values)
-            if score > 2.0:
-                column_scores.append((column_name, score))
-        
-        return sorted(column_scores, key=lambda x: x[1], reverse=True)
-
-class IntelligentFieldMapper:
-    def __init__(self):
-        self.field_patterns = {
+        self.conservative_patterns = {
+            'hostname': {
+                'exact_names': ['hostname', 'host_name', 'computername', 'computer_name', 'endpoint_name'],
+                'content_validators': [self._is_hostname_content]
+            },
+            'fqdn': {
+                'exact_names': ['fqdn', 'full_qualified_domain_name', 'dns_name', 'domain_name'],
+                'content_validators': [self._is_fqdn_content]
+            },
+            'ip_address': {
+                'exact_names': ['ip_address', 'ip_addr', 'ipaddress', 'host_ip', 'endpoint_ip'],
+                'content_validators': [self._is_ip_content]
+            },
+            'mac_address': {
+                'exact_names': ['mac_address', 'mac_addr', 'macaddress', 'physical_address'],
+                'content_validators': [self._is_mac_content]
+            },
             'infrastructure_type': {
-                'columns': ['infrastructure_type', 'infra_type', 'platform_type', 'deployment_type', 'env_type'],
-                'values': {
-                    'on-prem': ['onprem', 'on-prem', 'on-premises', 'physical', 'bare', 'metal'],
-                    'cloud': ['cloud', 'aws', 'azure', 'gcp', 'ec2', 'vm'],
-                    'saas': ['saas', 'software', 'service', 'managed'],
-                    'api': ['api', 'interface', 'gateway', 'endpoint']
-                }
+                'exact_names': ['infrastructure_type', 'infra_type', 'platform_type', 'deployment_type'],
+                'content_validators': [self._is_infrastructure_content]
             },
             'system_classification': {
-                'columns': ['system_classification', 'os_type', 'platform', 'system_type', 'device_type'],
-                'values': {
-                    'windows_server': ['windows', 'win', 'microsoft', 'server'],
-                    'linux_server': ['linux', 'unix', 'centos', 'ubuntu', 'rhel', 'nix'],
-                    'web_server': ['web', 'apache', 'nginx', 'iis', 'http'],
-                    'database': ['database', 'db', 'sql', 'oracle', 'mysql', 'postgres'],
-                    'mainframe': ['mainframe', 'mf', 'zos', 'mvs'],
-                    'appliance': ['appliance', 'firewall', 'switch', 'router', 'device']
-                }
+                'exact_names': ['system_classification', 'os_type', 'operating_system', 'platform'],
+                'content_validators': [self._is_system_classification_content]
             },
             'global_region': {
-                'columns': ['region', 'global_region', 'geo_region', 'area', 'location'],
-                'values': {
-                    'us': ['us', 'usa', 'america', 'north america', 'united states'],
-                    'eu': ['eu', 'europe', 'emea', 'european'],
-                    'apac': ['ap', 'asia', 'pacific', 'apac', 'asian']
-                }
+                'exact_names': ['global_region', 'region', 'geo_region', 'geographic_region'],
+                'content_validators': [self._is_region_content]
+            },
+            'country': {
+                'exact_names': ['country', 'country_code', 'nation'],
+                'content_validators': [self._is_country_content]
             },
             'business_unit': {
-                'columns': ['business_unit', 'bu', 'org', 'organization', 'department', 'division'],
-                'values': {}
+                'exact_names': ['business_unit', 'bu', 'organization', 'org_unit'],
+                'content_validators': [self._is_business_unit_content]
             },
             'edr_coverage': {
-                'columns': ['crowdstrike', 'edr', 'endpoint_protection', 'cs_agent', 'falcon'],
-                'values': {
-                    'yes': ['true', 'yes', 'enabled', 'active', 'installed', 'protected'],
-                    'no': ['false', 'no', 'disabled', 'inactive', 'uninstalled', 'unprotected']
-                }
-            },
-            'network_log_types': {
-                'columns': ['log_type', 'source_type', 'event_type', 'data_source'],
-                'values': {
-                    'firewall': ['firewall', 'fw', 'palo', 'checkpoint', 'fortinet'],
-                    'ids_ips': ['ids', 'ips', 'intrusion'],
-                    'proxy': ['proxy', 'web_proxy', 'squid'],
-                    'dns': ['dns', 'domain'],
-                    'waf': ['waf', 'web_application_firewall']
-                }
+                'exact_names': ['crowdstrike_status', 'edr_status', 'cs_agent', 'falcon_status'],
+                'content_validators': [self._is_coverage_content]
             }
         }
     
-    def map_field_value(self, field_type: str, raw_value: str) -> str:
-        if not raw_value or field_type not in self.field_patterns:
-            return ""
+    def _is_hostname_content(self, values: List[str]) -> float:
+        if not values:
+            return 0.0
         
-        raw_lower = str(raw_value).lower().strip()
-        field_config = self.field_patterns[field_type]
+        hostname_count = 0
+        for value in values[:20]:
+            if self._validate_hostname(value):
+                hostname_count += 1
         
-        for canonical_value, variants in field_config.get('values', {}).items():
-            if raw_lower in variants or any(variant in raw_lower for variant in variants):
-                return canonical_value.replace('_', ' ').title()
-        
-        return raw_value
+        return hostname_count / min(len(values), 20)
     
-    def find_field_columns(self, table_schema: Dict[str, List[str]], field_type: str) -> List[Tuple[str, float]]:
-        if field_type not in self.field_patterns:
-            return []
+    def _is_fqdn_content(self, values: List[str]) -> float:
+        if not values:
+            return 0.0
         
-        field_config = self.field_patterns[field_type]
-        column_candidates = []
+        fqdn_count = 0
+        for value in values[:20]:
+            if self._validate_fqdn(value):
+                fqdn_count += 1
         
-        for column_name, sample_values in table_schema.items():
+        return fqdn_count / min(len(values), 20)
+    
+    def _is_ip_content(self, values: List[str]) -> float:
+        if not values:
+            return 0.0
+        
+        ip_count = 0
+        for value in values[:20]:
+            if self._validate_ip(value):
+                ip_count += 1
+        
+        return ip_count / min(len(values), 20)
+    
+    def _is_mac_content(self, values: List[str]) -> float:
+        if not values:
+            return 0.0
+        
+        mac_count = 0
+        for value in values[:20]:
+            if self._validate_mac(value):
+                mac_count += 1
+        
+        return mac_count / min(len(values), 20)
+    
+    def _is_infrastructure_content(self, values: List[str]) -> float:
+        if not values:
+            return 0.0
+        
+        infra_keywords = ['cloud', 'on-prem', 'saas', 'api', 'physical', 'virtual', 'aws', 'azure', 'gcp']
+        match_count = 0
+        
+        for value in values[:20]:
+            if any(keyword in str(value).lower() for keyword in infra_keywords):
+                match_count += 1
+        
+        return match_count / min(len(values), 20)
+    
+    def _is_system_classification_content(self, values: List[str]) -> float:
+        if not values:
+            return 0.0
+        
+        os_keywords = ['windows', 'linux', 'unix', 'server', 'workstation', 'database', 'web']
+        match_count = 0
+        
+        for value in values[:20]:
+            if any(keyword in str(value).lower() for keyword in os_keywords):
+                match_count += 1
+        
+        return match_count / min(len(values), 20)
+    
+    def _is_region_content(self, values: List[str]) -> float:
+        if not values:
+            return 0.0
+        
+        region_keywords = ['us', 'eu', 'apac', 'america', 'europe', 'asia', 'north', 'south', 'east', 'west']
+        match_count = 0
+        
+        for value in values[:20]:
+            if any(keyword in str(value).lower() for keyword in region_keywords):
+                match_count += 1
+        
+        return match_count / min(len(values), 20)
+    
+    def _is_country_content(self, values: List[str]) -> float:
+        if not values:
+            return 0.0
+        
+        country_keywords = ['usa', 'canada', 'uk', 'germany', 'france', 'japan', 'australia']
+        match_count = 0
+        
+        for value in values[:20]:
+            value_str = str(value).lower()
+            if any(keyword in value_str for keyword in country_keywords) or len(value_str) == 2:
+                match_count += 1
+        
+        return match_count / min(len(values), 20)
+    
+    def _is_business_unit_content(self, values: List[str]) -> float:
+        if not values:
+            return 0.0
+        
+        bu_keywords = ['finance', 'marketing', 'sales', 'operations', 'hr', 'it', 'engineering']
+        match_count = 0
+        
+        for value in values[:20]:
+            if any(keyword in str(value).lower() for keyword in bu_keywords):
+                match_count += 1
+        
+        return match_count / min(len(values), 20)
+    
+    def _is_coverage_content(self, values: List[str]) -> float:
+        if not values:
+            return 0.0
+        
+        coverage_keywords = ['yes', 'no', 'true', 'false', 'enabled', 'disabled', 'active', 'inactive']
+        match_count = 0
+        
+        for value in values[:20]:
+            if str(value).lower() in coverage_keywords:
+                match_count += 1
+        
+        return match_count / min(len(values), 20)
+    
+    def _validate_hostname(self, value: str) -> bool:
+        if not value or not isinstance(value, str):
+            return False
+        
+        value = str(value).strip()
+        if len(value) < 2 or len(value) > 253:
+            return False
+        
+        if value.upper() in ['UNKNOWN', 'NULL', 'N/A', 'NONE', 'EMPTY']:
+            return False
+        
+        if re.match(r'^\d+\.\d+\.\d+\.\d+$', value):
+            return False
+        
+        if re.match(r'^[a-zA-Z0-9][a-zA-Z0-9\-]*[a-zA-Z0-9]$', value) or re.match(r'^[a-zA-Z0-9]+$', value):
+            return True
+        
+        return False
+    
+    def _validate_fqdn(self, value: str) -> bool:
+        if not value or not isinstance(value, str):
+            return False
+        
+        value = str(value).strip()
+        if '.' not in value or len(value) < 4:
+            return False
+        
+        return re.match(r'^[a-zA-Z0-9][a-zA-Z0-9\-\.]*\.[a-zA-Z]{2,}$', value) is not None
+    
+    def _validate_ip(self, value: str) -> bool:
+        if not value:
+            return False
+        
+        try:
+            ipaddress.ip_address(str(value).strip())
+            return True
+        except:
+            return False
+    
+    def _validate_mac(self, value: str) -> bool:
+        if not value:
+            return False
+        
+        mac_patterns = [
+            r'^([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})$',
+            r'^([0-9A-Fa-f]{4}\.){2}([0-9A-Fa-f]{4})$'
+        ]
+        
+        return any(re.match(pattern, str(value).strip()) for pattern in mac_patterns)
+    
+    def analyze_column(self, column_name: str, sample_values: List[str]) -> Dict[str, float]:
+        results = {}
+        column_lower = column_name.lower()
+        
+        for field_type, config in self.conservative_patterns.items():
             score = 0.0
-            column_lower = column_name.lower()
             
-            for pattern in field_config['columns']:
-                if pattern in column_lower:
-                    score += 5.0
-                elif any(part in column_lower for part in pattern.split('_')):
-                    score += 2.0
+            if any(exact_name == column_lower for exact_name in config['exact_names']):
+                score = 10.0
+            elif any(exact_name in column_lower for exact_name in config['exact_names']):
+                score = 5.0
             
-            if field_config.get('values') and sample_values:
-                value_matches = 0
-                for value in sample_values[:10]:
-                    if value:
-                        value_lower = str(value).lower()
-                        for canonical, variants in field_config['values'].items():
-                            if any(variant in value_lower for variant in variants):
-                                value_matches += 1
-                                break
-                
-                if sample_values:
-                    value_ratio = value_matches / min(len(sample_values), 10)
-                    score += value_ratio * 3.0
+            if config['content_validators'] and sample_values:
+                for validator in config['content_validators']:
+                    content_score = validator(sample_values)
+                    if content_score > 0.7:
+                        score += 8.0
+                    elif content_score > 0.5:
+                        score += 5.0
+                    elif content_score > 0.3:
+                        score += 2.0
             
-            if score > 1.0:
-                column_candidates.append((column_name, score))
+            if score > 0:
+                results[field_type] = score
         
-        return sorted(column_candidates, key=lambda x: x[1], reverse=True)
+        return results
 
-class AdvancedAO1Discovery:
+class UltraIntelligentAO1Discovery:
     def __init__(self, project_id: str, config: Dict[str, Any] = None):
         self.project_id = project_id
         self.config = config or {}
-        self.hostname_detector = SmartHostnameDetector()
-        self.field_mapper = IntelligentFieldMapper()
+        self.field_detector = UltraIntelligentFieldDetector()
+        
+        from gcp_client import BigQueryClientManager
+        self.client_manager = BigQueryClientManager(project_id)
         
         try:
-            from gcp_client import BigQueryClientManager
-            self.client_manager = BigQueryClientManager(project_id)
-        except ImportError:
-            raise ImportError("BigQueryClientManager not available")
+            self.chronicle_client_manager = BigQueryClientManager("chronicle-fisv")
+        except:
+            self.chronicle_client_manager = None
+            logging.warning("Chronicle access not available")
         
-        self.db_path = self.config.get('database_path', 'ao1_enhanced_cmdb.db')
+        self.db_path = self.config.get('database_path', 'ao1_ultra_intelligent.db')
         self.conn = duckdb.connect(self.db_path)
-        self._setup_ao1_schema()
+        self._setup_ultra_schema()
+        
+        self.known_tables = {
+            'cmdb': 'prj-fisv.SAS_BI.V_DIM_ENDPOINT',
+            'splunk': 'prj-fisv.SAS_BI.V_SPL_ENDPOINT_LOG',
+            'crowdstrike': 'prj-fisv.SAS_BI.V_DIM_ENDPOINTAGENT',
+            'chronicle': 'chronicle-fisv.datalake.events'
+        }
+        
+        logging.info(f"UltraIntelligentAO1Discovery initialized with known tables: {list(self.known_tables.keys())}")
     
-    def _setup_ao1_schema(self):
+    def _setup_ultra_schema(self):
+        self.conn.execute("DROP TABLE IF EXISTS ao1_ultra_assets")
+        
         self.conn.execute("""
-            CREATE TABLE IF NOT EXISTS ao1_asset_visibility (
+            CREATE TABLE ao1_ultra_assets (
                 hostname VARCHAR PRIMARY KEY,
                 fqdn VARCHAR DEFAULT '',
                 ip_address VARCHAR DEFAULT '',
@@ -353,15 +344,6 @@ class AdvancedAO1Discovery:
                 in_splunk BOOLEAN DEFAULT FALSE,
                 in_chronicle BOOLEAN DEFAULT FALSE,
                 in_gso BOOLEAN DEFAULT FALSE,
-                url_fqdn_coverage VARCHAR DEFAULT 'No',
-                public_ip_coverage VARCHAR DEFAULT 'No',
-                network_zones VARCHAR DEFAULT '',
-                ipam_coverage VARCHAR DEFAULT 'No',
-                geolocation VARCHAR DEFAULT '',
-                vpc VARCHAR DEFAULT '',
-                internal_external VARCHAR DEFAULT '',
-                host_parity_score DOUBLE DEFAULT 0.0,
-                cmdb_asset_visibility_score DOUBLE DEFAULT 0.0,
                 network_log_types VARCHAR DEFAULT '',
                 endpoint_log_types VARCHAR DEFAULT '',
                 cloud_log_types VARCHAR DEFAULT '',
@@ -372,214 +354,216 @@ class AdvancedAO1Discovery:
                 found_in_chronicle BOOLEAN DEFAULT FALSE,
                 found_in_crowdstrike BOOLEAN DEFAULT FALSE,
                 source_count INTEGER DEFAULT 0,
-                data_completeness_score DOUBLE DEFAULT 0.0,
+                host_parity_score DOUBLE DEFAULT 0.0,
+                cmdb_asset_visibility_score DOUBLE DEFAULT 0.0,
                 visibility_gap_severity VARCHAR DEFAULT 'unknown',
-                discovery_timestamp TIMESTAMP DEFAULT NOW(),
                 last_updated TIMESTAMP DEFAULT NOW()
             )
         """)
         
-        self.conn.execute("CREATE INDEX IF NOT EXISTS idx_hostname_ao1 ON ao1_asset_visibility(hostname)")
-        self.conn.execute("CREATE INDEX IF NOT EXISTS idx_source_systems ON ao1_asset_visibility(found_in_cmdb, found_in_splunk, found_in_chronicle, found_in_crowdstrike)")
-        self.conn.execute("CREATE INDEX IF NOT EXISTS idx_visibility_gaps ON ao1_asset_visibility(visibility_gap_severity, host_parity_score)")
-        
         self.conn.commit()
+        logging.info("Created ao1_ultra_assets table")
     
-    async def discover_tables_with_hostnames(self) -> List[Dict[str, Any]]:
-        discovered_tables = []
+    def discover_and_populate_ultra_intelligent(self) -> Dict[str, Any]:
+        logging.info("Starting ultra-intelligent AO1 discovery")
         
-        try:
-            with self.client_manager.get_client() as client:
-                datasets = list(client.list_datasets(project=self.project_id))
+        master_assets = {}
+        tables_processed = 0
+        
+        for source_name, table_path in self.known_tables.items():
+            logging.info(f"Processing {source_name} table: {table_path}")
+            
+            try:
+                if source_name == 'chronicle' and self.chronicle_client_manager:
+                    client_manager = self.chronicle_client_manager
+                else:
+                    client_manager = self.client_manager
                 
-                for dataset in datasets:
-                    dataset_ref = client.dataset(dataset.dataset_id)
-                    tables = list(client.list_tables(dataset_ref))
+                table_data = self._analyze_and_extract_from_table(client_manager, table_path, source_name)
+                
+                if table_data:
+                    logging.info(f"Extracted {len(table_data)} records from {source_name}")
                     
-                    for table_ref in tables:
-                        try:
-                            full_table = client.get_table(table_ref)
-                            
-                            if not full_table.schema or full_table.num_rows == 0:
-                                continue
-                            
-                            table_path = f"{self.project_id}.{dataset.dataset_id}.{table_ref.table_id}"
-                            
-                            schema_sample = await self._sample_table_schema(client, table_path, full_table.schema)
-                            
-                            hostname_candidates = self.hostname_detector.find_best_hostname_columns(schema_sample)
-                            
-                            if hostname_candidates and hostname_candidates[0][1] > 3.0:
-                                best_hostname_col = hostname_candidates[0][0]
-                                
-                                source_system = self._identify_source_system(table_path, dataset.dataset_id)
-                                
-                                field_mappings = {}
-                                for field_type in ['infrastructure_type', 'system_classification', 'global_region', 
-                                                 'business_unit', 'edr_coverage', 'network_log_types']:
-                                    field_candidates = self.field_mapper.find_field_columns(schema_sample, field_type)
-                                    if field_candidates:
-                                        field_mappings[field_type] = field_candidates[0][0]
-                                
-                                discovered_tables.append({
-                                    'table_path': table_path,
-                                    'dataset_id': dataset.dataset_id,
-                                    'table_id': table_ref.table_id,
-                                    'hostname_column': best_hostname_col,
-                                    'hostname_score': hostname_candidates[0][1],
-                                    'row_count': full_table.num_rows,
-                                    'source_system': source_system,
-                                    'field_mappings': field_mappings,
-                                    'all_columns': list(schema_sample.keys())
-                                })
-                                
-                        except Exception as e:
-                            logging.warning(f"Failed to analyze table {table_ref.table_id}: {e}")
-                            continue
+                    for hostname, asset_data in table_data.items():
+                        if hostname not in master_assets:
+                            master_assets[hostname] = AO1AssetRecord(hostname=hostname)
+                        
+                        self._merge_asset_data_intelligently(master_assets[hostname], asset_data, source_name)
+                    
+                    tables_processed += 1
+                else:
+                    logging.warning(f"No data extracted from {source_name}")
+            
+            except Exception as e:
+                logging.error(f"Failed to process {source_name}: {e}")
+                continue
+        
+        if not master_assets:
+            return {'error': 'No assets discovered from any table', 'total_assets': 0}
+        
+        for asset in master_assets.values():
+            self._calculate_asset_scores(asset)
+        
+        inserted_count = self._upsert_assets_intelligently(list(master_assets.values()))
+        
+        verification = self._verify_ultra_database()
+        
+        return {
+            'total_assets': len(master_assets),
+            'inserted_count': inserted_count,
+            'tables_processed': tables_processed,
+            'database_path': self.db_path,
+            'verification': verification
+        }
+    
+    def _analyze_and_extract_from_table(self, client_manager, table_path: str, source_name: str) -> Dict[str, Dict[str, Any]]:
+        try:
+            with client_manager.get_client() as client:
+                table_ref = client.get_table(table_path)
+                
+                if not table_ref.schema or table_ref.num_rows == 0:
+                    logging.warning(f"Table {table_path} is empty or has no schema")
+                    return {}
+                
+                columns = [field.name for field in table_ref.schema]
+                logging.info(f"Analyzing {len(columns)} columns in {table_path}")
+                
+                schema_analysis = self._sample_and_analyze_schema(client, table_path, columns)
+                
+                field_mappings = self._create_field_mappings(schema_analysis)
+                
+                if 'hostname' not in field_mappings:
+                    logging.warning(f"No hostname field found in {table_path}")
+                    return {}
+                
+                return self._extract_all_data_from_table(client, table_path, field_mappings)
         
         except Exception as e:
-            logging.error(f"Failed to discover tables: {e}")
-            raise
-        
-        return discovered_tables
+            logging.error(f"Failed to analyze table {table_path}: {e}")
+            return {}
     
-    async def _sample_table_schema(self, client, table_path: str, schema) -> Dict[str, List[str]]:
-        columns = [field.name for field in schema]
-        column_samples = {}
-        
+    def _sample_and_analyze_schema(self, client, table_path: str, columns: List[str]) -> Dict[str, Dict[str, Any]]:
         sample_query = f"""
         SELECT {', '.join([f'`{col}`' for col in columns[:50]])}
         FROM `{table_path}`
-        WHERE RAND() < 0.01
+        WHERE RAND() < 0.001
         LIMIT 100
         """
+        
+        schema_analysis = {}
         
         try:
             job = client.query(sample_query)
             results = list(job.result())
             
-            for col_idx, col_name in enumerate(columns[:50]):
-                samples = []
+            for col_idx, column_name in enumerate(columns[:50]):
+                sample_values = []
                 for row in results:
                     if col_idx < len(row) and row[col_idx] is not None:
-                        samples.append(str(row[col_idx]))
+                        sample_values.append(str(row[col_idx]))
                 
-                column_samples[col_name] = samples[:20]
+                if sample_values:
+                    field_scores = self.field_detector.analyze_column(column_name, sample_values)
+                    if field_scores:
+                        schema_analysis[column_name] = {
+                            'field_scores': field_scores,
+                            'sample_values': sample_values[:10]
+                        }
         
         except Exception as e:
-            logging.warning(f"Failed to sample {table_path}: {e}")
-            for col_name in columns:
-                column_samples[col_name] = []
+            logging.error(f"Failed to sample schema for {table_path}: {e}")
         
-        return column_samples
+        return schema_analysis
     
-    def _identify_source_system(self, table_path: str, dataset_id: str) -> str:
-        path_lower = table_path.lower()
-        dataset_lower = dataset_id.lower()
+    def _create_field_mappings(self, schema_analysis: Dict[str, Dict[str, Any]]) -> Dict[str, str]:
+        field_mappings = {}
         
-        if any(indicator in path_lower for indicator in ['crowdstrike', 'cs_', 'falcon', 'edr']):
-            return 'crowdstrike'
-        elif any(indicator in path_lower for indicator in ['splunk', 'spl_', 'search']):
-            return 'splunk'  
-        elif any(indicator in path_lower for indicator in ['chronicle', 'chr_', 'security']):
-            return 'chronicle'
-        elif any(indicator in path_lower for indicator in ['cmdb', 'asset', 'inventory', 'config']):
-            return 'cmdb'
-        elif any(indicator in path_lower for indicator in ['gso', 'operations']):
-            return 'gso'
-        else:
-            return 'unknown'
+        field_candidates = defaultdict(list)
+        
+        for column_name, analysis in schema_analysis.items():
+            for field_type, score in analysis['field_scores'].items():
+                if score >= 5.0:
+                    field_candidates[field_type].append((column_name, score))
+        
+        for field_type, candidates in field_candidates.items():
+            if candidates:
+                best_candidate = max(candidates, key=lambda x: x[1])
+                field_mappings[field_type] = best_candidate[0]
+                logging.info(f"Mapped {field_type} to {best_candidate[0]} (score: {best_candidate[1]:.1f})")
+        
+        return field_mappings
     
-    async def extract_and_enrich_assets(self, discovered_tables: List[Dict[str, Any]]) -> int:
-        all_assets = {}
+    def _extract_all_data_from_table(self, client, table_path: str, field_mappings: Dict[str, str]) -> Dict[str, Dict[str, Any]]:
+        hostname_col = field_mappings['hostname']
         
-        for table_info in discovered_tables:
-            table_assets = await self._extract_assets_from_table(table_info)
-            
-            for hostname, asset_data in table_assets.items():
-                if hostname not in all_assets:
-                    all_assets[hostname] = AO1AssetRecord(hostname=hostname)
-                
-                self._merge_asset_data(all_assets[hostname], asset_data, table_info['source_system'])
-        
-        populated_assets = []
-        for hostname, asset in all_assets.items():
-            self._calculate_asset_scores(asset)
-            populated_assets.append(asset)
-        
-        return await self._store_assets_in_db(populated_assets)
-    
-    async def _extract_assets_from_table(self, table_info: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
-        hostname_col = table_info['hostname_column']
-        table_path = table_info['table_path']
-        field_mappings = table_info['field_mappings']
-        
-        select_columns = [f"DISTINCT UPPER(TRIM(`{hostname_col}`)) as hostname"]
+        select_parts = [f"UPPER(TRIM(`{hostname_col}`)) as hostname"]
         
         for field_type, column_name in field_mappings.items():
-            select_columns.append(f"`{column_name}` as {field_type}")
+            if field_type != 'hostname':
+                select_parts.append(f"`{column_name}` as {field_type}")
         
         query = f"""
-        SELECT {', '.join(select_columns)}
+        SELECT {', '.join(select_parts)}
         FROM `{table_path}`
         WHERE `{hostname_col}` IS NOT NULL
         AND LENGTH(TRIM(`{hostname_col}`)) >= 2
         AND LENGTH(TRIM(`{hostname_col}`)) <= 253
         AND UPPER(TRIM(`{hostname_col}`)) NOT IN ('UNKNOWN', 'NULL', 'N/A', 'NONE', 'EMPTY')
-        AND TRIM(`{hostname_col}`) NOT LIKE '%@%'
-        AND TRIM(`{hostname_col}`) NOT LIKE 'http%'
         LIMIT 50000
         """
         
-        assets = {}
+        extracted_data = {}
         
         try:
-            with self.client_manager.get_client() as client:
-                job = client.query(query)
-                results = list(job.result())
+            job = client.query(query)
+            results = list(job.result())
+            
+            for row in results:
+                hostname = row[0] if row[0] else None
                 
-                for row in results:
-                    hostname = row[0] if row[0] else None
+                if hostname and self.field_detector._validate_hostname(hostname):
+                    asset_data = {'hostname': hostname}
                     
-                    if hostname and self.hostname_detector.is_valid_hostname_value(hostname):
-                        asset_data = {'hostname': hostname}
-                        
-                        for idx, (field_type, _) in enumerate(field_mappings.items(), 1):
-                            if idx < len(row) and row[idx]:
-                                mapped_value = self.field_mapper.map_field_value(field_type, row[idx])
-                                asset_data[field_type] = mapped_value
-                        
-                        assets[hostname] = asset_data
+                    for idx, (field_type, _) in enumerate(field_mappings.items()):
+                        if field_type != 'hostname' and idx < len(row) and row[idx]:
+                            asset_data[field_type] = str(row[idx]).strip()
+                    
+                    extracted_data[hostname] = asset_data
         
         except Exception as e:
-            logging.error(f"Failed to extract assets from {table_path}: {e}")
+            logging.error(f"Failed to extract data from {table_path}: {e}")
         
-        return assets
+        return extracted_data
     
-    def _merge_asset_data(self, asset: AO1AssetRecord, new_data: Dict[str, Any], source_system: str):
-        for field, value in new_data.items():
-            if field == 'hostname':
+    def _merge_asset_data_intelligently(self, asset: AO1AssetRecord, new_data: Dict[str, Any], source_name: str):
+        for field_name, new_value in new_data.items():
+            if field_name == 'hostname' or not new_value:
                 continue
             
-            if hasattr(asset, field) and value:
-                current_value = getattr(asset, field)
-                if not current_value or current_value in ['', 'No', 'unknown']:
-                    setattr(asset, field, value)
+            if hasattr(asset, field_name):
+                current_value = getattr(asset, field_name)
+                
+                if not current_value or current_value in ['', 'No', 'unknown', 'Unknown']:
+                    setattr(asset, field_name, new_value)
+                elif current_value != new_value and new_value not in ['', 'No', 'unknown', 'Unknown']:
+                    if len(str(new_value)) > len(str(current_value)):
+                        setattr(asset, field_name, new_value)
         
-        if source_system == 'cmdb':
+        if source_name == 'cmdb':
             asset.found_in_cmdb = True
-        elif source_system == 'splunk':
+        elif source_name == 'splunk':
             asset.found_in_splunk = True
             asset.in_splunk = True
-        elif source_system == 'chronicle':
+        elif source_name == 'chronicle':
             asset.found_in_chronicle = True
             asset.in_chronicle = True
-        elif source_system == 'crowdstrike':
+        elif source_name == 'crowdstrike':
             asset.found_in_crowdstrike = True
             asset.edr_coverage = 'Yes'
-        elif source_system == 'gso':
-            asset.in_gso = True
         
+        asset.last_updated = datetime.now().isoformat()
+    
+    def _calculate_asset_scores(self, asset: AO1AssetRecord):
         source_count = sum([
             1 if asset.found_in_cmdb else 0,
             1 if asset.found_in_splunk else 0,
@@ -587,39 +571,18 @@ class AdvancedAO1Discovery:
             1 if asset.found_in_crowdstrike else 0
         ])
         asset.source_count = source_count
-    
-    def _calculate_asset_scores(self, asset: AO1AssetRecord):
-        completeness_fields = [
-            asset.hostname, asset.fqdn, asset.ip_address, asset.infrastructure_type,
-            asset.system_classification, asset.global_region, asset.business_unit
-        ]
         
-        filled_fields = sum(1 for field in completeness_fields if field and field != '')
-        asset.data_completeness_score = (filled_fields / len(completeness_fields)) * 100
+        asset.host_parity_score = (source_count / 4.0) * 100
         
-        coverage_score = 0.0
-        max_coverage = 4.0
-        
+        cmdb_score = 0.0
         if asset.found_in_cmdb:
-            coverage_score += 1.0
-        if asset.found_in_splunk:
-            coverage_score += 1.0
-        if asset.found_in_chronicle:
-            coverage_score += 1.0
-        if asset.found_in_crowdstrike:
-            coverage_score += 1.0
-        
-        asset.host_parity_score = (coverage_score / max_coverage) * 100
-        
-        cmdb_visibility = 0.0
-        if asset.found_in_cmdb:
-            cmdb_visibility += 50.0
+            cmdb_score += 40.0
         if asset.infrastructure_type and asset.infrastructure_type != '':
-            cmdb_visibility += 25.0
+            cmdb_score += 30.0
         if asset.system_classification and asset.system_classification != '':
-            cmdb_visibility += 25.0
+            cmdb_score += 30.0
         
-        asset.cmdb_asset_visibility_score = cmdb_visibility
+        asset.cmdb_asset_visibility_score = cmdb_score
         
         if asset.host_parity_score >= 75:
             asset.visibility_gap_severity = 'low'
@@ -630,115 +593,75 @@ class AdvancedAO1Discovery:
         else:
             asset.visibility_gap_severity = 'critical'
     
-    async def _store_assets_in_db(self, assets: List[AO1AssetRecord]) -> int:
+    def _upsert_assets_intelligently(self, assets: List[AO1AssetRecord]) -> int:
         if not assets:
             return 0
         
-        insert_query = """
-        INSERT OR REPLACE INTO ao1_asset_visibility (
-            hostname, fqdn, ip_address, mac_address, infrastructure_type, system_classification,
-            global_region, country, data_center, cloud_region, business_unit, cio, apm, 
-            application_class, edr_coverage, tanium_coverage, dlp_coverage, in_splunk, 
-            in_chronicle, in_gso, url_fqdn_coverage, public_ip_coverage, network_zones,
-            ipam_coverage, geolocation, vpc, internal_external, host_parity_score,
-            cmdb_asset_visibility_score, network_log_types, endpoint_log_types, 
-            cloud_log_types, application_log_types, identity_log_types, found_in_cmdb,
-            found_in_splunk, found_in_chronicle, found_in_crowdstrike, source_count,
-            data_completeness_score, visibility_gap_severity, discovery_timestamp, last_updated
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        upsert_query = """
+        INSERT OR REPLACE INTO ao1_ultra_assets (
+            hostname, fqdn, ip_address, mac_address, infrastructure_type, 
+            system_classification, global_region, country, data_center, cloud_region,
+            business_unit, cio, apm, application_class, edr_coverage, tanium_coverage,
+            dlp_coverage, in_splunk, in_chronicle, in_gso, network_log_types,
+            endpoint_log_types, cloud_log_types, application_log_types, identity_log_types,
+            found_in_cmdb, found_in_splunk, found_in_chronicle, found_in_crowdstrike,
+            source_count, host_parity_score, cmdb_asset_visibility_score,
+            visibility_gap_severity, last_updated
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
         """
         
-        rows_inserted = 0
-        batch_size = 1000
+        inserted = 0
         
-        for i in range(0, len(assets), batch_size):
-            batch = assets[i:i + batch_size]
-            values_batch = []
-            
-            for asset in batch:
+        for asset in assets:
+            try:
                 values = [
                     asset.hostname, asset.fqdn, asset.ip_address, asset.mac_address,
                     asset.infrastructure_type, asset.system_classification, asset.global_region,
                     asset.country, asset.data_center, asset.cloud_region, asset.business_unit,
                     asset.cio, asset.apm, asset.application_class, asset.edr_coverage,
                     asset.tanium_coverage, asset.dlp_coverage, asset.in_splunk, asset.in_chronicle,
-                    asset.in_gso, asset.url_fqdn_coverage, asset.public_ip_coverage,
-                    asset.network_zones, asset.ipam_coverage, asset.geolocation, asset.vpc,
-                    asset.internal_external, asset.host_parity_score, asset.cmdb_asset_visibility_score,
-                    asset.network_log_types, asset.endpoint_log_types, asset.cloud_log_types,
-                    asset.application_log_types, asset.identity_log_types, asset.found_in_cmdb,
-                    asset.found_in_splunk, asset.found_in_chronicle, asset.found_in_crowdstrike,
-                    asset.source_count, asset.data_completeness_score, asset.visibility_gap_severity,
-                    'NOW()', 'NOW()'
+                    asset.in_gso, asset.network_log_types, asset.endpoint_log_types,
+                    asset.cloud_log_types, asset.application_log_types, asset.identity_log_types,
+                    asset.found_in_cmdb, asset.found_in_splunk, asset.found_in_chronicle,
+                    asset.found_in_crowdstrike, asset.source_count, asset.host_parity_score,
+                    asset.cmdb_asset_visibility_score, asset.visibility_gap_severity
                 ]
-                values_batch.append(values)
-            
-            try:
-                self.conn.executemany(insert_query, values_batch)
-                rows_inserted += len(values_batch)
-            except Exception as e:
-                logging.error(f"Failed to insert batch: {e}")
                 
-                for values in values_batch:
-                    try:
-                        self.conn.execute(insert_query, values)
-                        rows_inserted += 1
-                    except Exception as single_error:
-                        logging.warning(f"Failed to insert single asset: {single_error}")
+                self.conn.execute(upsert_query, values)
+                inserted += 1
+            
+            except Exception as e:
+                logging.error(f"Failed to upsert asset {asset.hostname}: {e}")
         
         self.conn.commit()
-        return rows_inserted
+        logging.info(f"Successfully upserted {inserted} assets")
+        return inserted
     
-    async def execute_enhanced_discovery(self) -> Tuple[Dict[str, Any], Dict[str, str]]:
-        start_time = datetime.now()
-        
-        logging.info("Starting enhanced AO1 discovery with accurate field detection")
-        
-        discovered_tables = await self.discover_tables_with_hostnames()
-        
-        if not discovered_tables:
-            return {
-                'error': 'No tables with hostname columns found',
-                'total_assets': 0,
-                'tables_analyzed': 0
-            }, {}
-        
-        logging.info(f"Found {len(discovered_tables)} tables with hostname data")
-        
-        total_assets = await self.extract_and_enrich_assets(discovered_tables)
-        
-        processing_time = (datetime.now() - start_time).total_seconds()
-        
-        stats = {
-            'total_assets': total_assets,
-            'tables_analyzed': len(discovered_tables),
-            'processing_time': processing_time,
-            'database_path': self.db_path,
-            'discovery_method': 'enhanced_ao1',
-            'source_systems_found': list(set(table['source_system'] for table in discovered_tables))
-        }
-        
-        queries = self._generate_ao1_queries()
-        
-        return stats, queries
-    
-    def _generate_ao1_queries(self) -> Dict[str, str]:
-        return {
-            'ao1_overview': """
-                SELECT 
-                    COUNT(*) as total_assets,
-                    AVG(host_parity_score) as avg_host_parity,
-                    AVG(cmdb_asset_visibility_score) as avg_cmdb_visibility,
-                    AVG(data_completeness_score) as avg_completeness
-                FROM ao1_asset_visibility;
-            """,
+    def _verify_ultra_database(self) -> Dict[str, Any]:
+        try:
+            count_result = self.conn.execute("SELECT COUNT(*) FROM ao1_ultra_assets").fetchone()
+            total_count = count_result[0] if count_result else 0
             
-            'visibility_gaps': """
+            sample_result = self.conn.execute("""
+                SELECT hostname, infrastructure_type, global_region, edr_coverage, 
+                       found_in_cmdb, found_in_splunk, found_in_chronicle, found_in_crowdstrike
+                FROM ao1_ultra_assets LIMIT 10
+            """).fetchall()
+            
+            coverage_stats = self.conn.execute("""
                 SELECT 
-                    visibility_gap_severity,
-                    COUNT(*) as asset_count,
-                    ROUND(AVG(host_parity_score), 2) as avg_parity_score
-                FROM ao1_asset_visibility
+                    SUM(CASE WHEN found_in_cmdb THEN 1 ELSE 0 END) as cmdb_count,
+                    SUM(CASE WHEN found_in_splunk THEN 1 ELSE 0 END) as splunk_count,
+                    SUM(CASE WHEN found_in_chronicle THEN 1 ELSE 0 END) as chronicle_count,
+                    SUM(CASE WHEN found_in_crowdstrike THEN 1 ELSE 0 END) as crowdstrike_count,
+                    AVG(host_parity_score) as avg_parity_score,
+                    AVG(cmdb_asset_visibility_score) as avg_cmdb_score
+                FROM ao1_ultra_assets
+            """).fetchone()
+            
+            gap_analysis = self.conn.execute("""
+                SELECT visibility_gap_severity, COUNT(*) as count
+                FROM ao1_ultra_assets
                 GROUP BY visibility_gap_severity
                 ORDER BY 
                     CASE visibility_gap_severity 
@@ -746,41 +669,68 @@ class AdvancedAO1Discovery:
                         WHEN 'high' THEN 2 
                         WHEN 'medium' THEN 3 
                         WHEN 'low' THEN 4 
-                    END;
-            """,
+                    END
+            """).fetchall()
             
-            'source_coverage': """
+            return {
+                'total_records': total_count,
+                'sample_records': sample_result,
+                'coverage_statistics': {
+                    'cmdb_coverage': coverage_stats[0],
+                    'splunk_coverage': coverage_stats[1],
+                    'chronicle_coverage': coverage_stats[2],
+                    'crowdstrike_coverage': coverage_stats[3],
+                    'avg_parity_score': round(coverage_stats[4], 2) if coverage_stats[4] else 0,
+                    'avg_cmdb_score': round(coverage_stats[5], 2) if coverage_stats[5] else 0
+                },
+                'gap_analysis': gap_analysis
+            }
+        
+        except Exception as e:
+            logging.error(f"Database verification failed: {e}")
+            return {'error': str(e)}
+    
+    def get_ultra_queries(self) -> Dict[str, str]:
+        return {
+            'ao1_summary': """
                 SELECT 
                     COUNT(*) as total_assets,
-                    SUM(CASE WHEN found_in_cmdb THEN 1 ELSE 0 END) as cmdb_coverage,
-                    SUM(CASE WHEN found_in_splunk THEN 1 ELSE 0 END) as splunk_coverage,
-                    SUM(CASE WHEN found_in_chronicle THEN 1 ELSE 0 END) as chronicle_coverage,
-                    SUM(CASE WHEN found_in_crowdstrike THEN 1 ELSE 0 END) as crowdstrike_coverage,
-                    AVG(source_count) as avg_source_count
-                FROM ao1_asset_visibility;
+                    AVG(host_parity_score) as avg_host_parity,
+                    AVG(cmdb_asset_visibility_score) as avg_cmdb_visibility,
+                    SUM(CASE WHEN found_in_cmdb THEN 1 ELSE 0 END) as cmdb_assets,
+                    SUM(CASE WHEN found_in_splunk THEN 1 ELSE 0 END) as splunk_assets,
+                    SUM(CASE WHEN found_in_chronicle THEN 1 ELSE 0 END) as chronicle_assets,
+                    SUM(CASE WHEN found_in_crowdstrike THEN 1 ELSE 0 END) as crowdstrike_assets
+                FROM ao1_ultra_assets;
             """,
             
-            'critical_gaps': """
+            'visibility_gaps_detailed': """
                 SELECT 
-                    hostname, infrastructure_type, system_classification,
-                    host_parity_score, visibility_gap_severity,
-                    found_in_cmdb, found_in_splunk, found_in_chronicle, found_in_crowdstrike
-                FROM ao1_asset_visibility
-                WHERE visibility_gap_severity IN ('critical', 'high')
-                ORDER BY host_parity_score ASC
+                    visibility_gap_severity,
+                    COUNT(*) as asset_count,
+                    ROUND(AVG(host_parity_score), 2) as avg_parity,
+                    ROUND(AVG(cmdb_asset_visibility_score), 2) as avg_cmdb_score,
+                    ROUND(COUNT(*) * 100.0 / (SELECT COUNT(*) FROM ao1_ultra_assets), 2) as percentage
+                FROM ao1_ultra_assets
+                GROUP BY visibility_gap_severity
+                ORDER BY asset_count DESC;
+            """,
+            
+            'missing_cmdb_critical': """
+                SELECT hostname, infrastructure_type, global_region, edr_coverage
+                FROM ao1_ultra_assets
+                WHERE NOT found_in_cmdb AND (found_in_splunk OR found_in_chronicle OR found_in_crowdstrike)
+                ORDER BY host_parity_score DESC
                 LIMIT 50;
             """,
             
-            'infrastructure_analysis': """
-                SELECT 
-                    infrastructure_type,
-                    COUNT(*) as count,
-                    ROUND(AVG(host_parity_score), 2) as avg_parity,
-                    SUM(CASE WHEN edr_coverage = 'Yes' THEN 1 ELSE 0 END) as edr_protected
-                FROM ao1_asset_visibility
-                WHERE infrastructure_type != ''
-                GROUP BY infrastructure_type
-                ORDER BY count DESC;
+            'multi_source_assets': """
+                SELECT hostname, infrastructure_type, global_region, source_count,
+                       found_in_cmdb, found_in_splunk, found_in_chronicle, found_in_crowdstrike
+                FROM ao1_ultra_assets
+                WHERE source_count >= 2
+                ORDER BY source_count DESC, host_parity_score DESC
+                LIMIT 100;
             """
         }
     
