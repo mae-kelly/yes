@@ -67,7 +67,1272 @@ class TableAnalysisResult:
 
 class IntelligentFieldExtractor:
     
-    def __init__(self, client_manager: BigQueryClientManager, matcher: IntelligentContentMatcher, 
+    def _bulk_insert_assets_safe(self, asset_data_list: List[Dict]) -> Dict[str, int]:
+        """Safely insert assets with comprehensive error handling"""
+        result = {'successful': 0, 'failed': 0}
+        
+        if not asset_data_list:
+            logger.warning("No asset data to insert")
+            return result
+        
+        logger.info(f"Attempting to insert {len(asset_data_list)} assets into database")
+        
+        # Get all columns from the first asset (they should all have the same structure)
+        columns = list(asset_data_list[0].keys())
+        
+        # Prepare the INSERT statement
+        placeholders = ', '.join(['?' for _ in columns])
+        column_names = ', '.join([f'"{col}"' for col in columns])  # Quote column names
+        
+        query = f"""
+        INSERT OR REPLACE INTO ao1_log_visibility_inventory ({column_names}) 
+        VALUES ({placeholders})
+        """
+        
+        logger.debug(f"Insert query: {query}")
+        
+        # Prepare values with proper type conversion and validation
+        values_list = []
+        for i, asset_data in enumerate(asset_data_list):
+            try:
+                values = []
+                for col in columns:
+                    value = asset_data.get(col)
+                    
+                    # Handle None values
+                    if value is None:
+                        values.append(None)
+                    # Handle boolean values
+                    elif isinstance(value, bool):
+                        values.append(value)
+                    # Handle numeric values
+                    elif isinstance(value, (int, float)):
+                        values.append(value)
+                    # Handle string values
+                    else:
+                        str_value = str(value).strip()
+                        # Limit string length to prevent issues
+                        if len(str_value) > 1000:
+                            str_value = str_value[:1000]
+                        values.append(str_value if str_value else None)
+                
+                values_list.append(values)
+                
+            except Exception as e:
+                logger.error(f"Error preparing asset {i} for insertion: {e}")
+                result['failed'] += 1
+                continue
+        
+        if not values_list:
+            logger.error("No valid asset data to insert after preparation")
+            return result
+        
+        # Try bulk insert first
+        try:
+            logger.info(f"Attempting bulk insert of {len(values_list)} records")
+            self.conn.executemany(query, values_list)
+            result['successful'] = len(values_list)
+            logger.info(f"Successfully bulk inserted {len(values_list)} assets")
+            
+        except Exception as bulk_error:
+            logger.warning(f"Bulk insert failed: {bulk_error}")
+            logger.info("Attempting individual inserts as fallback")
+            
+            # Fallback to individual inserts
+            for i, values in enumerate(values_list):
+                try:
+                    self.conn.execute(query, values)
+                    result['successful'] += 1
+                    
+                    if (i + 1) % 100 == 0:
+                        logger.info(f"Inserted {i + 1}/{len(values_list)} assets individually")
+                        
+                except Exception as individual_error:
+                    logger.error(f"Failed to insert asset {i}: {individual_error}")
+                    logger.debug(f"Failed asset data: {values}")
+                    result['failed'] += 1
+                    continue
+        
+        # Verify the insertion
+        try:
+            verify_result = self.conn.execute("SELECT COUNT(*) FROM ao1_log_visibility_inventory").fetchone()
+            total_count = verify_result[0] if verify_result else 0
+            logger.info(f"Database verification: {total_count} total assets in inventory")
+        except Exception as e:
+            logger.error(f"Failed to verify insertion: {e}")
+        
+        logger.info(f"Insertion complete: {result['successful']} successful, {result['failed']} failed")
+        return result
+
+class SuperOptimizedAO1Discovery:
+    
+    def __init__(self, project_id: str, config: Dict[str, Any] = None):
+        self.project_id = project_id
+        self.config = config or {}
+        
+        self.client_manager = BigQueryClientManager(project_id)
+        self.chronicle_client_manager = None
+        
+        try:
+            self.chronicle_client_manager = BigQueryClientManager("chronicle-fisv")
+            if not self.chronicle_client_manager.test_connection():
+                self.chronicle_client_manager = None
+        except:
+            self.chronicle_client_manager = None
+        
+        self.matcher = IntelligentContentMatcher()
+        self.cache = IntelligentCacheManager(
+            cache_dir=self.config.get('cache_dir', '.cache'),
+            max_memory_mb=self.config.get('max_memory_mb', 1024),
+            max_disk_gb=self.config.get('max_disk_gb', 10)
+        )
+        
+        self.intelligence_engine = IntelligenceEngine(self.config)
+        
+        self.db_path = self.config.get('database_path', 'ao1_optimized_cmdb.db')
+        self.data_fusion = AdvancedDataFusion(self.db_path)
+        
+        self.batch_extractor = IntelligentFieldExtractor(
+            self.client_manager, 
+            self.matcher, 
+            self.chronicle_client_manager,
+            batch_size=self.config.get('batch_size', 500)
+        )
+        
+        self.max_workers = min(self.config.get('max_workers', 16), mp.cpu_count() * 2)
+        self.batch_size = self.config.get('batch_size', 500)
+        
+        self.discovery_context = {}
+        self.intelligence_results = {}
+    
+    async def execute_super_optimized_discovery(self) -> Tuple[Dict[str, Any], Dict[str, str]]:
+        start_time = time.time()
+        print("   Starting SuperOptimized AO1 Discovery with Intelligence Engine...")
+        
+        try:
+            print("   Phase 1: Intelligence-guided discovery planning...")
+            self.discovery_context = await self._prepare_discovery_context()
+            
+            self.intelligence_results = await self.intelligence_engine.enhance_discovery_intelligence(
+                self.discovery_context
+            )
+            
+            strategy_params = self.intelligence_results['strategy_recommendation']['parameters']
+            self._apply_intelligent_strategy(strategy_params)
+            
+            print("   Phase 2: Discovering prioritized tables...")
+            all_table_metadata = await asyncio.wait_for(
+                self._discover_prioritized_tables(), 
+                timeout=600
+            )
+            print(f"   Found {len(all_table_metadata)} prioritized tables")
+            
+            if not all_table_metadata:
+                print("   No tables found - check permissions")
+                return {'error': 'No tables found', 'total_assets': 0}, {}
+            
+            print("   Phase 3: Intelligent hostname discovery...")
+            all_hostnames = await asyncio.wait_for(
+                self._batch_hostname_discovery(all_table_metadata),
+                timeout=1200
+            )
+            print(f"   Discovered {len(all_hostnames)} unique hostnames")
+            
+            if not all_hostnames:
+                print("   No hostnames found")
+                return {'error': 'No hostnames found', 'total_assets': 0}, {}
+            
+            print("   Phase 4: Intelligence-enhanced batch enrichment...")
+            batched_enrichment_data = await asyncio.wait_for(
+                self._parallel_batch_enrichment(all_hostnames, all_table_metadata),
+                timeout=1800
+            )
+            print(f"   Processed {len(batched_enrichment_data)} enrichment batches")
+            
+            if not batched_enrichment_data:
+                logger.warning("No enrichment data available for inventory building")
+                return {'error': 'No enrichment data found', 'total_assets': 0}, {}
+            
+            print("   Phase 5: Building intelligent inventory...")
+            inventory_stats = self.data_fusion.build_intelligent_inventory(batched_enrichment_data)
+            
+            if inventory_stats['total_data_points'] == 0:
+                logger.error("No data was inserted into the database")
+                print("   ❌ No assets were successfully inserted into database")
+                return {'error': 'No data inserted into database', 'total_assets': 0}, {}
+            else:
+                print(f"   ✅ Successfully built inventory with {inventory_stats['total_data_points']} assets")
+            
+            print("   Phase 6: Learning from results...")
+            learning_results = await self.intelligence_engine.learn_from_discovery_results(
+                inventory_stats, self.intelligence_results.get('predictions', {})
+            )
+            
+            print("   Phase 7: Cache optimization...")
+            cache_optimization = self.cache.optimize()
+            print("   Cache optimized")
+            
+            final_stats = self._generate_optimized_stats(time.time() - start_time, inventory_stats)
+            final_stats['intelligence_results'] = self.intelligence_results
+            final_stats['learning_results'] = learning_results
+            final_stats['intelligence_summary'] = self.intelligence_engine.get_intelligence_summary()
+            
+            analysis_queries = self._create_optimized_queries()
+            
+            return final_stats, analysis_queries
+            
+        except asyncio.TimeoutError as timeout_error:
+            print(f"   SuperOptimized discovery timed out: {timeout_error}")
+            return {'error': 'Discovery timed out', 'total_assets': 0}, {}
+        except Exception as e:
+            print(f"   SuperOptimized discovery failed: {e}")
+            import traceback
+            print("   Full traceback:")
+            traceback.print_exc()
+            raise
+    
+    async def _prepare_discovery_context(self) -> Dict[str, Any]:
+        context = {
+            'project_id': self.project_id,
+            'timestamp': datetime.now().isoformat(),
+            'config': self.config.copy()
+        }
+        
+        try:
+            with self.client_manager.get_client() as client:
+                datasets = list(client.list_datasets(project=self.project_id))
+                context.update({
+                    'dataset_count': len(datasets),
+                    'dataset_names': [d.dataset_id for d in datasets],
+                    'has_chronicle_access': self.chronicle_client_manager is not None
+                })
+                
+                table_count = 0
+                table_names = []
+                for dataset in datasets[:10]:
+                    try:
+                        dataset_ref = client.dataset(dataset.dataset_id)
+                        tables = list(client.list_tables(dataset_ref))
+                        table_count += len(tables)
+                        table_names.extend([t.table_id for t in tables[:5]])
+                    except:
+                        continue
+                
+                context.update({
+                    'table_count': table_count,
+                    'table_names': table_names
+                })
+                
+        except Exception as e:
+            logger.warning(f"Failed to gather full discovery context: {e}")
+        
+        return context
+    
+    def _apply_intelligent_strategy(self, strategy_params: Dict[str, Any]):
+        self.batch_size = strategy_params.get('batch_size', self.batch_size)
+        self.max_workers = min(
+            strategy_params.get('parallel_workers', self.max_workers),
+            mp.cpu_count() * 2
+        )
+        
+        if hasattr(self.batch_extractor, 'batch_size'):
+            self.batch_extractor.batch_size = self.batch_size
+        
+        timeout_seconds = strategy_params.get('timeout_seconds', 300)
+        if hasattr(self, 'operation_timeout'):
+            self.operation_timeout = timeout_seconds
+        
+        validation_level = strategy_params.get('validation_level', 'standard')
+        if hasattr(self.matcher, 'validation_strictness'):
+            self.matcher.validation_strictness = validation_level
+        
+        print(f"   Applied intelligent strategy: batch_size={self.batch_size}, workers={self.max_workers}")
+    
+    async def _discover_prioritized_tables(self) -> List[Dict[str, Any]]:
+        print("   Starting table discovery across projects...")
+        
+        projects_to_analyze = [self.project_id]
+        if self.chronicle_client_manager:
+            projects_to_analyze.append('chronicle-fisv')
+            print("   Will analyze both primary project and Chronicle")
+        else:
+            print("   Will analyze primary project only")
+        
+        all_metadata = []
+        
+        for i, project_id in enumerate(projects_to_analyze):
+            print(f"   Processing project {i+1}/{len(projects_to_analyze)}: {project_id}")
+            client_mgr = self.chronicle_client_manager if project_id == 'chronicle-fisv' else self.client_manager
+            
+            try:
+                project_metadata = await asyncio.wait_for(
+                    self._discover_project_tables(client_mgr, project_id),
+                    timeout=400
+                )
+                all_metadata.extend(project_metadata)
+                print(f"   Project {project_id} contributed {len(project_metadata)} tables")
+            except asyncio.TimeoutError:
+                print(f"   Project {project_id} timed out after 400s")
+            except Exception as e:
+                print(f"   Project {project_id} failed: {e}")
+        
+        print(f"   Total tables collected: {len(all_metadata)}")
+        all_metadata.sort(key=lambda x: x.get('data_richness_score', 0), reverse=True)
+        return all_metadata
+    
+    async def _discover_project_tables(self, client_manager: BigQueryClientManager, project_id: str) -> List[Dict[str, Any]]:
+        print(f"   Starting discovery for project: {project_id}")
+        try:
+            with client_manager.get_client() as client:
+                print(f"   Getting datasets for {project_id}...")
+                
+                try:
+                    datasets = list(client.list_datasets(project=project_id))
+                    print(f"   Found {len(datasets)} datasets in {project_id}")
+                except Exception as e:
+                    print(f"   Failed to list datasets in {project_id}: {e}")
+                    return []
+                
+                if not datasets:
+                    print(f"   No datasets found in {project_id}")
+                    return []
+                
+                priority_datasets = self._prioritize_datasets([d.dataset_id for d in datasets])
+                print(f"   Will analyze {len(priority_datasets)} priority datasets")
+                
+                all_metadata = []
+                
+                for j, dataset_id in enumerate(priority_datasets):
+                    print(f"   Dataset {j+1}/{len(priority_datasets)}: {dataset_id}")
+                    
+                    try:
+                        dataset_metadata = await asyncio.wait_for(
+                            self._analyze_dataset_tables(client, project_id, dataset_id),
+                            timeout=120
+                        )
+                        all_metadata.extend(dataset_metadata)
+                        print(f"   Dataset {dataset_id} contributed {len(dataset_metadata)} tables")
+                    except asyncio.TimeoutError:
+                        print(f"   Dataset {dataset_id} timed out")
+                    except Exception as e:
+                        print(f"   Dataset {dataset_id} failed: {e}")
+                
+                print(f"   Project {project_id} complete: {len(all_metadata)} total tables")
+                return all_metadata
+                
+        except Exception as e:
+            print(f"   Project {project_id} discovery failed: {e}")
+            return []
+    
+    async def _analyze_dataset_tables(self, client, project_id: str, dataset_id: str) -> List[Dict[str, Any]]:
+        print(f"   Analyzing dataset: {project_id}.{dataset_id}")
+        try:
+            dataset_ref = client.dataset(dataset_id, project=project_id)
+            tables = list(client.list_tables(dataset_ref))
+            print(f"   Dataset {dataset_id} has {len(tables)} tables")
+            
+            if not tables:
+                return []
+            
+            table_metadata = []
+            analyzed_count = 0
+            
+            for table_ref in tables:
+                try:
+                    full_table = client.get_table(table_ref)
+                    
+                    if not full_table.schema or full_table.num_rows == 0:
+                        continue
+                    
+                    all_columns = [field.name for field in full_table.schema]
+                    
+                    hostname_indicators = ['host', 'endpoint', 'computer', 'device', 'server', 'machine', 'asset', 'node', 'system']
+                    has_hostname = any(
+                        any(indicator in col.lower() for indicator in hostname_indicators)
+                        for col in all_columns
+                    )
+                    
+                    if not has_hostname:
+                        continue
+                    
+                    analyzed_count += 1
+                    print(f"   Analyzing table {analyzed_count}: {table_ref.table_id}")
+                    
+                    sample_data = await self._get_optimized_sample(client, full_table)
+                    
+                    if not sample_data:
+                        print(f"   No sample data for {table_ref.table_id}")
+                        continue
+                    
+                    column_analysis = {}
+                    hostname_found = False
+                    
+                    table_context = {
+                        'table_name': table_ref.table_id,
+                        'dataset_name': dataset_id,
+                        'project_id': project_id
+                    }
+                    
+                    for column in all_columns:
+                        samples = sample_data.get(column, [])
+                        if not samples:
+                            continue
+                        
+                        analysis = self.matcher.analyze_column_intelligently(column, samples, table_context)
+                        if analysis:
+                            field_type, confidence, metadata = analysis
+                            column_analysis[column] = analysis
+                            
+                            if field_type in ['hostname', 'fqdn'] and confidence > 0.3:
+                                hostname_found = True
+                    
+                    if not hostname_found:
+                        print(f"   No hostname column found in {table_ref.table_id}")
+                        continue
+                    
+                    hostname_analysis = self._find_best_hostname_column(column_analysis, sample_data)
+                    
+                    if not hostname_analysis['primary_hostname_column']:
+                        print(f"   No primary hostname column in {table_ref.table_id}")
+                        continue
+                    
+                    data_richness = len(column_analysis) / max(len(all_columns), 1)
+                    
+                    table_metadata.append({
+                        'project_id': project_id,
+                        'dataset_id': dataset_id,
+                        'table_id': table_ref.table_id,
+                        'full_table_path': f"{project_id}.{dataset_id}.{table_ref.table_id}",
+                        'row_count': full_table.num_rows,
+                        'size_bytes': full_table.num_bytes or 0,
+                        'column_count': len(all_columns),
+                        'all_columns': all_columns,
+                        'column_analysis': column_analysis,
+                        'hostname_analysis': hostname_analysis,
+                        'data_richness_score': data_richness,
+                        'sample_data': sample_data,
+                        'is_partitioned': full_table.time_partitioning is not None,
+                        'partition_field': full_table.time_partitioning.field if full_table.time_partitioning else None
+                    })
+                    print(f"   Added table {table_ref.table_id} with richness {data_richness:.2f}")
+                    
+                except Exception as table_error:
+                    print(f"   Table analysis failed for {table_ref.table_id}: {table_error}")
+                    continue
+            
+            print(f"   Dataset {dataset_id} analysis complete: {len(table_metadata)} usable tables")
+            return table_metadata
+        except Exception as dataset_error:
+            print(f"   Dataset {dataset_id} analysis failed: {dataset_error}")
+            return []
+    
+    async def _get_optimized_sample(self, client, table_ref) -> Dict[str, List[str]]:
+        try:
+            sample_query = f"SELECT * FROM `{table_ref.project}.{table_ref.dataset_id}.{table_ref.table_id}`"
+            
+            if table_ref.time_partitioning and table_ref.time_partitioning.field:
+                partition_field = table_ref.time_partitioning.field
+                sample_query += f" WHERE `{partition_field}` >= DATE_SUB(CURRENT_DATE(), INTERVAL 3 DAY)"
+            
+            sample_query += " LIMIT 5"
+            
+            job_config = bigquery.QueryJobConfig(dry_run=False, use_query_cache=True)
+            job = client.query(sample_query, job_config=job_config)
+            results = list(job.result())
+            
+            if not results:
+                return {}
+            
+            sample_data = defaultdict(list)
+            for row in results:
+                for i, value in enumerate(row):
+                    if i < len(table_ref.schema) and value is not None:
+                        column_name = table_ref.schema[i].name
+                        str_value = str(value)
+                        if len(str_value) > 0 and len(str_value) < 200:
+                            sample_data[column_name].append(str_value)
+            
+            return dict(sample_data)
+        except Exception:
+            return {}
+    
+    def _find_best_hostname_column(self, column_analysis: Dict, sample_data: Dict) -> Dict[str, Any]:
+        hostname_candidates = []
+        
+        for column, analysis in column_analysis.items():
+            field_type, confidence, metadata = analysis
+            
+            if field_type in ['hostname', 'fqdn']:
+                samples = sample_data.get(column, [])
+                hostname_score = self._calculate_hostname_score(samples)
+                final_score = confidence * hostname_score
+                
+                hostname_candidates.append({
+                    'column': column,
+                    'field_type': field_type,
+                    'confidence': confidence,
+                    'hostname_score': hostname_score,
+                    'final_score': final_score
+                })
+        
+        hostname_candidates.sort(key=lambda x: x['final_score'], reverse=True)
+        
+        return {
+            'primary_hostname_column': hostname_candidates[0]['column'] if hostname_candidates else None,
+            'all_hostname_candidates': hostname_candidates
+        }
+    
+    def _calculate_hostname_score(self, samples: List[str]) -> float:
+        if not samples:
+            return 0.0
+        
+        valid_count = sum(1 for sample in samples if self.matcher._validate_hostname(sample))
+        unique_count = len(set(samples))
+        
+        return (valid_count / len(samples)) * (unique_count / len(samples))
+    
+    def _prioritize_datasets(self, dataset_ids: List[str]) -> List[str]:
+        priority_keywords = [
+            ('cmdb', 100), ('endpoint', 95), ('asset', 90), ('inventory', 85),
+            ('security', 80), ('crowdstrike', 75), ('splunk', 70), ('chronicle', 65),
+            ('monitoring', 60), ('infrastructure', 55), ('network', 50), ('server', 45)
+        ]
+        
+        scored_datasets = []
+        for dataset_id in dataset_ids:
+            score = 0
+            dataset_lower = dataset_id.lower()
+            
+            for keyword, points in priority_keywords:
+                if keyword in dataset_lower:
+                    score += points
+            
+            scored_datasets.append((dataset_id, score))
+        
+        scored_datasets.sort(key=lambda x: x[1], reverse=True)
+        return [dataset_id for dataset_id, _ in scored_datasets]
+    
+    async def _batch_hostname_discovery(self, table_metadata: List[Dict]) -> List[str]:
+        hostname_discovery_tasks = []
+        
+        for table_meta in table_metadata:
+            task = self._discover_table_hostnames(table_meta)
+            hostname_discovery_tasks.append(task)
+        
+        if hostname_discovery_tasks:
+            hostname_results = await asyncio.gather(*hostname_discovery_tasks, return_exceptions=True)
+            
+            all_hostnames = set()
+            
+            for result in hostname_results:
+                if isinstance(result, list):
+                    for hostname in result:
+                        normalized = self._normalize_hostname(hostname)
+                        if normalized and normalized not in all_hostnames:
+                            all_hostnames.add(normalized)
+            
+            return list(all_hostnames)
+        
+        return []
+    
+    async def _discover_table_hostnames(self, table_meta: Dict) -> List[str]:
+        hostname_column = table_meta['hostname_analysis']['primary_hostname_column']
+        if not hostname_column:
+            return []
+        
+        project_id = table_meta['project_id']
+        table_path = table_meta['full_table_path']
+        
+        client_mgr = self.chronicle_client_manager if project_id == 'chronicle-fisv' else self.client_manager
+        
+        partition_filter = ""
+        if table_meta.get('is_partitioned') and table_meta.get('partition_field'):
+            partition_field = table_meta['partition_field']
+            partition_filter = f"AND `{partition_field}` >= DATE_SUB(CURRENT_DATE(), INTERVAL 7 DAY)"
+        
+        row_count = table_meta.get('row_count', 0)
+        sampling_clause = ""
+        if row_count > 50000000:
+            sampling_clause = "TABLESAMPLE SYSTEM (5 PERCENT)"
+        
+        query = f"""
+        SELECT DISTINCT UPPER(TRIM(CAST(`{hostname_column}` AS STRING))) as hostname
+        FROM `{table_path}` {sampling_clause}
+        WHERE `{hostname_column}` IS NOT NULL
+        AND LENGTH(TRIM(CAST(`{hostname_column}` AS STRING))) >= 2
+        AND LENGTH(TRIM(CAST(`{hostname_column}` AS STRING))) <= 253
+        AND TRIM(CAST(`{hostname_column}` AS STRING)) NOT LIKE '%@%'
+        AND TRIM(CAST(`{hostname_column}` AS STRING)) NOT LIKE 'http%'
+        AND TRIM(CAST(`{hostname_column}` AS STRING)) NOT LIKE '%/%'
+        AND UPPER(TRIM(CAST(`{hostname_column}` AS STRING))) NOT IN ('UNKNOWN', 'NULL', 'N/A', 'NONE', 'EMPTY', 'TEST', 'EXAMPLE', 'LOCALHOST')
+        {partition_filter}
+        ORDER BY hostname
+        """
+        
+        try:
+            with client_mgr.get_client() as client:
+                job_config = bigquery.QueryJobConfig(
+                    dry_run=True,
+                    use_query_cache=False
+                )
+                
+                dry_run_job = client.query(query, job_config=job_config)
+                bytes_processed = dry_run_job.total_bytes_processed
+                
+                print(f"   Querying {table_path} (will process {bytes_processed / (1024*1024):.1f}MB)")
+                
+                job_config = bigquery.QueryJobConfig(
+                    dry_run=False,
+                    use_query_cache=True,
+                    job_timeout_ms=60000
+                )
+                
+                job = client.query(query, job_config=job_config)
+                results = list(job.result())
+                
+                hostnames = []
+                invalid_patterns = [
+                    r'^\d+',
+                    r'^[^a-zA-Z0-9]',
+                    r'[^a-zA-Z0-9\-]',
+                    r'\.{2,}',
+                    r'\-{2,}',
+                ]
+                
+                for row in results:
+                    if not row[0]:
+                        continue
+                    
+                    hostname = str(row[0]).strip()
+                    
+                    if not hostname or len(hostname) < 2 or len(hostname) > 253:
+                        continue
+                    
+                    is_valid = True
+                    for pattern in invalid_patterns:
+                        if re.search(pattern, hostname):
+                            is_valid = False
+                            break
+                    
+                    if is_valid:
+                        if self._is_likely_hostname(hostname):
+                            hostnames.append(hostname)
+                
+                print(f"   Found {len(hostnames)} valid hostnames in {table_path}")
+                return hostnames
+                
+        except Exception as e:
+            print(f"   Hostname discovery failed for {table_path}: {e}")
+            return []
+    
+    def _is_likely_hostname(self, hostname: str) -> bool:
+        hostname = hostname.upper()
+        
+        reject_patterns = [
+            'UNKNOWN', 'NULL', 'N/A', 'NONE', 'EMPTY', 'TEST', 'EXAMPLE', 
+            'LOCALHOST', 'DUMMY', 'SAMPLE', 'PLACEHOLDER', 'DEFAULT',
+            'ERROR', 'INVALID', 'MISSING', 'UNDEFINED', 'TEMP', 'TMP'
+        ]
+        
+        if any(pattern in hostname for pattern in reject_patterns):
+            return False
+        
+        error_indicators = ['ERROR', 'EXCEPTION', 'FAILED', 'TIMEOUT', 'CONNECTION']
+        if any(indicator in hostname for indicator in error_indicators):
+            return False
+        
+        if '\\' in hostname or hostname.count('/') > 1:
+            return False
+        
+        if hostname.startswith('.') or hostname.endswith('.'):
+            return False
+        
+        hostname_indicators = [
+            r'^[A-Z]{2,}[0-9]+',
+            r'^[A-Z]+-[A-Z0-9]',
+            r'^[A-Z0-9]+\-[A-Z0-9]',
+            r'(SERVER|SRV|WEB|APP|DB|DC|WIN|LIN)',
+        ]
+        
+        for pattern in hostname_indicators:
+            if re.search(pattern, hostname):
+                return True
+        
+        if re.match(r'^[A-Z0-9\-]+', hostname) and 3 <= len(hostname) <= 64:
+            if not hostname.isdigit() and len(set(hostname.replace('-', ''))) > 1:
+                return True
+        
+        return False
+    
+    def _normalize_hostname(self, hostname: str) -> str:
+        if not hostname:
+            return ""
+        
+        hostname = str(hostname).strip().upper()
+        
+        if len(hostname) < 2 or len(hostname) > 253:
+            return ""
+        
+        invalid_indicators = [
+            '@', 'HTTP', 'HTTPS', 'UNKNOWN', 'NULL', 'N/A', 'NONE', 'EMPTY', 
+            'TEST', 'EXAMPLE', 'LOCALHOST', 'DUMMY', 'SAMPLE', 'PLACEHOLDER'
+        ]
+        if any(indicator in hostname for indicator in invalid_indicators):
+            return ""
+        
+        hostname = re.sub(r'^[^A-Z0-9]+', '', hostname)
+        hostname = re.sub(r'[^A-Z0-9]+', '', hostname)
+        
+        if '.' in hostname:
+            hostname = hostname.split('.')[0]
+        
+        hostname = re.sub(r'[^A-Z0-9\-]', '', hostname)
+        
+        if len(hostname) < 2:
+            return ""
+        
+        return hostname
+    
+    async def _parallel_batch_enrichment(self, hostnames: List[str], table_metadata: List[Dict]) -> List[BatchedHostData]:
+        print(f"   Starting parallel enrichment for {len(hostnames)} hostnames using {len(table_metadata)} tables")
+        
+        hostname_batches = []
+        for i in range(0, len(hostnames), self.batch_size):
+            batch = hostnames[i:i + self.batch_size]
+            hostname_batches.append(batch)
+        
+        print(f"   Created {len(hostname_batches)} hostname batches")
+        
+        enrichment_tasks = []
+        for batch in hostname_batches:
+            task = self.batch_extractor.extract_fields_batch_intelligent(batch, table_metadata)
+            enrichment_tasks.append(task)
+        
+        if enrichment_tasks:
+            batch_results = await asyncio.gather(*enrichment_tasks, return_exceptions=True)
+            
+            valid_results = []
+            for result in batch_results:
+                if isinstance(result, BatchedHostData):
+                    valid_results.append(result)
+                elif isinstance(result, Exception):
+                    print(f"   Batch enrichment failed: {result}")
+            
+            print(f"   Enrichment complete: {len(valid_results)} successful batches")
+            return valid_results
+        
+        return []
+    
+    def _generate_optimized_stats(self, processing_time: float, inventory_stats: Dict) -> Dict[str, Any]:
+        return {
+            'processing_time': processing_time,
+            'total_assets': inventory_stats.get('total_data_points', 0),
+            'high_coverage_assets': inventory_stats.get('high_coverage_assets', 0),
+            'complete_visibility_assets': inventory_stats.get('complete_visibility_assets', 0),
+            'total_data_points': inventory_stats.get('total_data_points', 0),
+            'successful_insertions': inventory_stats.get('successful_insertions', 0),
+            'failed_insertions': inventory_stats.get('failed_insertions', 0),
+            'database_path': self.db_path,
+            'discovery_method': 'super_optimized_with_intelligence',
+            'engine_type': 'SuperOptimizedWithIntelligence',
+            'cache_stats': self.cache.get_stats() if hasattr(self.cache, 'get_stats') else {}
+        }
+    
+    def _create_optimized_queries(self) -> Dict[str, str]:
+        return {
+            'overview': """
+                SELECT * FROM ao1_log_visibility_inventory 
+                ORDER BY coverage_completeness_score DESC
+                LIMIT 100;
+            """,
+            'coverage_summary': """
+                SELECT 
+                    COUNT(*) as total_assets,
+                    SUM(CASE WHEN in_splunk THEN 1 ELSE 0 END) as splunk_coverage,
+                    SUM(CASE WHEN in_chronicle THEN 1 ELSE 0 END) as chronicle_coverage,
+                    SUM(CASE WHEN edr_coverage = 'Yes' THEN 1 ELSE 0 END) as edr_coverage,
+                    AVG(coverage_completeness_score) as avg_coverage_score
+                FROM ao1_log_visibility_inventory;
+            """,
+            'visibility_gaps': """
+                SELECT 
+                    visibility_gap_severity,
+                    COUNT(*) as asset_count,
+                    AVG(coverage_completeness_score) as avg_score
+                FROM ao1_log_visibility_inventory
+                GROUP BY visibility_gap_severity
+                ORDER BY avg_score DESC;
+            """,
+            'top_assets': """
+                SELECT hostname, infrastructure_type, system_classification, 
+                       coverage_completeness_score, visibility_gap_severity
+                FROM ao1_log_visibility_inventory
+                WHERE coverage_completeness_score > 70
+                ORDER BY coverage_completeness_score DESC
+                LIMIT 20;
+            """,
+            'infrastructure_breakdown': """
+                SELECT 
+                    infrastructure_type,
+                    COUNT(*) as count,
+                    AVG(coverage_completeness_score) as avg_coverage
+                FROM ao1_log_visibility_inventory
+                WHERE infrastructure_type != ''
+                GROUP BY infrastructure_type
+                ORDER BY count DESC;
+            """,
+            'endpoint_intelligence': """
+                SELECT 
+                    primary_hostname,
+                    original_hostnames,
+                    seen_count,
+                    confidence_score
+                FROM intelligent_endpoints
+                ORDER BY seen_count DESC
+                LIMIT 50;
+            """,
+            'intelligence_insights': """
+                SELECT 
+                    hostname,
+                    semantic_category,
+                    coverage_completeness_score,
+                    ao1_recommendations
+                FROM ao1_log_visibility_inventory
+                WHERE semantic_category IS NOT NULL
+                ORDER BY coverage_completeness_score DESC
+                LIMIT 30;
+            """
+        }
+    
+    def close(self):
+        if hasattr(self, 'data_fusion') and self.data_fusion:
+            if hasattr(self.data_fusion, 'conn') and self.data_fusion.conn:
+                try:
+                    self.data_fusion.conn.close()
+                except Exception as e:
+                    logger.error(f"Error closing database connection: {e}")
+
+class SimpleProgressReporter:
+    @staticmethod
+    def info(msg: str):
+        print(f"   {msg}")
+    
+    @staticmethod
+    def success(msg: str):
+        print(f"   {msg}")
+    
+    @staticmethod
+    def progress(step: int, total: int, msg: str):
+        pct = (step / total * 100) if total > 0 else 0
+        print(f"   {pct:5.1f}% ({step:,}/{total:,})   {msg}")
+
+class SimpleOptimizedAO1Discovery:
+    def __init__(self, project_id: str, config: Dict[str, Any] = None):
+        self.project_id = project_id
+        self.config = config or {}
+        
+        SimpleProgressReporter.info("Initializing simple discovery with intelligence...")
+        
+        self.client_manager = BigQueryClientManager(project_id)
+        
+        try:
+            self.chronicle_client_manager = BigQueryClientManager("chronicle-fisv")
+            if not self.chronicle_client_manager.test_connection():
+                self.chronicle_client_manager = None
+        except:
+            self.chronicle_client_manager = None
+        
+        self.matcher = IntelligentContentMatcher()
+        self.cache = IntelligentCacheManager(
+            cache_dir=self.config.get('cache_dir', '.cache'),
+            max_memory_mb=self.config.get('max_memory_mb', 512),
+            max_disk_gb=self.config.get('max_disk_gb', 5)
+        )
+        
+        self.intelligence_engine = IntelligenceEngine(self.config)
+        
+        self.db_path = self.config.get('database_path', 'ao1_simple_cmdb.db')
+        self.conn = duckdb.connect(self.db_path)
+        self._setup_simple_tables()
+        
+        SimpleProgressReporter.success("Simple discovery with intelligence ready")
+    
+    def _setup_simple_tables(self):
+        """Setup tables with proper constraints and error handling"""
+        try:
+            self.conn.execute("PRAGMA threads=4")
+            self.conn.execute("PRAGMA memory_limit='1GB'")
+            
+            # Create table with all necessary columns and proper defaults
+            self.conn.execute("""
+                CREATE TABLE IF NOT EXISTS simple_ao1_inventory (
+                    hostname VARCHAR PRIMARY KEY,
+                    infrastructure_type VARCHAR DEFAULT '',
+                    system_classification VARCHAR DEFAULT '',
+                    global_region VARCHAR DEFAULT '',
+                    business_unit VARCHAR DEFAULT '',
+                    in_splunk BOOLEAN DEFAULT FALSE,
+                    in_chronicle BOOLEAN DEFAULT FALSE,
+                    edr_coverage VARCHAR DEFAULT 'No',
+                    source_count INTEGER DEFAULT 0,
+                    coverage_completeness_score DOUBLE DEFAULT 0.0,
+                    visibility_gap_severity VARCHAR DEFAULT 'unknown',
+                    discovery_timestamp TIMESTAMP DEFAULT NOW()
+                )
+            """)
+            
+            # Add indexes
+            self.conn.execute("CREATE INDEX IF NOT EXISTS idx_simple_hostname ON simple_ao1_inventory(hostname)")
+            self.conn.execute("CREATE INDEX IF NOT EXISTS idx_simple_coverage ON simple_ao1_inventory(coverage_completeness_score DESC)")
+            
+            logger.info("Simple discovery tables setup complete")
+            
+        except Exception as e:
+            logger.error(f"Failed to setup simple tables: {e}")
+            raise
+    
+    async def execute_simple_discovery(self) -> Tuple[Dict[str, Any], Dict[str, str]]:
+        start_time = time.time()
+        SimpleProgressReporter.info("Starting intelligent simple discovery")
+        
+        try:
+            SimpleProgressReporter.info("Phase 1: Intelligence analysis")
+            discovery_context = {
+                'project_id': self.project_id,
+                'discovery_type': 'simple',
+                'timestamp': datetime.now().isoformat()
+            }
+            
+            intelligence_results = await self.intelligence_engine.enhance_discovery_intelligence(discovery_context)
+            strategy_params = intelligence_results['strategy_recommendation']['parameters']
+            
+            SimpleProgressReporter.info("Phase 2: Finding suitable tables")
+            table_metadata = await self._discover_simple_tables()
+            
+            if not table_metadata:
+                return {'error': 'No suitable tables found', 'total_assets': 0}, {}
+            
+            SimpleProgressReporter.info("Phase 3: Extracting hostnames")
+            all_hostnames = await self._extract_simple_hostnames(table_metadata)
+            
+            if not all_hostnames:
+                return {'error': 'No hostnames found', 'total_assets': 0}, {}
+            
+            SimpleProgressReporter.info("Phase 4: Building intelligent asset inventory")
+            asset_count = self._build_simple_inventory_safe(all_hostnames, table_metadata)
+            
+            if asset_count == 0:
+                return {'error': 'No assets inserted into database', 'total_assets': 0}, {}
+            
+            SimpleProgressReporter.info("Phase 5: Learning from results")
+            learning_results = await self.intelligence_engine.learn_from_discovery_results({
+                'total_assets': asset_count,
+                'processing_time': time.time() - start_time,
+                'strategy_used': intelligence_results['strategy_recommendation']['strategy_name']
+            })
+            
+            processing_time = time.time() - start_time
+            stats = {
+                'processing_time': processing_time,
+                'total_assets': asset_count,
+                'total_data_points': asset_count,
+                'database_path': self.db_path,
+                'discovery_method': 'simple_optimized_with_intelligence',
+                'engine_type': 'IntelligentSimpleOptimized',
+                'intelligence_results': intelligence_results,
+                'learning_results': learning_results,
+                'intelligence_summary': self.intelligence_engine.get_intelligence_summary()
+            }
+            
+            queries = {
+                'intelligent_overview': "SELECT * FROM simple_ao1_inventory ORDER BY coverage_completeness_score DESC;",
+                'coverage_summary': "SELECT COUNT(*) as total, SUM(CASE WHEN in_splunk THEN 1 ELSE 0 END) as splunk, SUM(CASE WHEN in_chronicle THEN 1 ELSE 0 END) as chronicle, SUM(CASE WHEN edr_coverage = 'Yes' THEN 1 ELSE 0 END) as edr_coverage FROM simple_ao1_inventory;"
+            }
+            
+            SimpleProgressReporter.success(f"Intelligent simple discovery complete: {asset_count} assets in {processing_time:.1f}s")
+            return stats, queries
+            
+        except Exception as e:
+            SimpleProgressReporter.info(f"Simple discovery failed: {e}")
+            return {'error': str(e), 'total_assets': 0}, {}
+    
+    async def _discover_simple_tables(self) -> List[Dict]:
+        tables = []
+        
+        try:
+            with self.client_manager.get_client() as client:
+                datasets = list(client.list_datasets(project=self.project_id))
+                SimpleProgressReporter.info(f"Found {len(datasets)} datasets")
+                
+                for i, dataset in enumerate(datasets):
+                    SimpleProgressReporter.progress(i+1, len(datasets), f"Checking {dataset.dataset_id}")
+                    
+                    try:
+                        dataset_ref = client.dataset(dataset.dataset_id)
+                        dataset_tables = list(client.list_tables(dataset_ref))
+                        
+                        for table_ref in dataset_tables:
+                            try:
+                                full_table = client.get_table(table_ref)
+                                if full_table.num_rows and full_table.num_rows > 0:
+                                    columns = [field.name for field in full_table.schema]
+                                    hostname_col = self._find_hostname_column(columns)
+                                    if hostname_col:
+                                        tables.append({
+                                            'project_id': self.project_id,
+                                            'table_path': f"{self.project_id}.{dataset.dataset_id}.{table_ref.table_id}",
+                                            'hostname_column': hostname_col,
+                                            'table_id': table_ref.table_id,
+                                            'row_count': full_table.num_rows
+                                        })
+                            except:
+                                continue
+                    except:
+                        continue
+        except Exception as e:
+            SimpleProgressReporter.info(f"Table discovery failed: {e}")
+        
+        SimpleProgressReporter.success(f"Found {len(tables)} usable tables")
+        return tables
+    
+    def _find_hostname_column(self, columns: List[str]) -> Optional[str]:
+        for col in columns:
+            col_lower = col.lower()
+            if any(term in col_lower for term in ['host', 'endpoint', 'computer', 'device', 'server', 'machine']):
+                return col
+        return None
+    
+    async def _extract_simple_hostnames(self, tables: List[Dict]) -> List[str]:
+        all_hostnames = set()
+        
+        for i, table in enumerate(tables):
+            SimpleProgressReporter.progress(i+1, len(tables), f"Extracting from {table['table_id']}")
+            
+            row_count = table.get('row_count', 0)
+            sampling_clause = ""
+            if row_count > 10000000:
+                sampling_clause = "TABLESAMPLE SYSTEM (10 PERCENT)"
+            
+            query = f"SELECT DISTINCT UPPER(TRIM(`{table['hostname_column']}`)) as hostname FROM `{table['table_path']}` {sampling_clause} WHERE `{table['hostname_column']}` IS NOT NULL"
+            
+            try:
+                with self.client_manager.get_client() as client:
+                    job = client.query(query)
+                    results = list(job.result())
+                    
+                    for row in results:
+                        hostname = str(row[0]) if row[0] else ""
+                        if hostname and len(hostname) > 2:
+                            all_hostnames.add(hostname)
+            except:
+                continue
+        
+        SimpleProgressReporter.success(f"Extracted {len(all_hostnames)} unique hostnames")
+        return list(all_hostnames)
+    
+    def _build_simple_inventory_safe(self, hostnames: List[str], tables: List[Dict]) -> int:
+        """Build simple inventory with proper error handling"""
+        assets = []
+        
+        for i, hostname in enumerate(hostnames):
+            if i % 50 == 0:
+                SimpleProgressReporter.progress(i+1, len(hostnames), "Building assets")
+            
+            try:
+                asset = {
+                    'hostname': str(hostname).strip(),
+                    'infrastructure_type': '',
+                    'system_classification': '',
+                    'global_region': '',
+                    'business_unit': '',
+                    'in_splunk': any('splunk' in t['table_path'].lower() for t in tables),
+                    'in_chronicle': any('chronicle' in t['table_path'].lower() for t in tables),
+                    'edr_coverage': 'Yes' if any('crowdstrike' in t['table_path'].lower() for t in tables) else 'No',
+                    'source_count': len(tables),
+                    'coverage_completeness_score': 50.0,
+                    'visibility_gap_severity': 'medium'
+                }
+                assets.append(asset)
+            except Exception as e:
+                logger.error(f"Error building asset for hostname {hostname}: {e}")
+                continue
+        
+        if not assets:
+            SimpleProgressReporter.info("No assets to insert")
+            return 0
+        
+        # Insert with proper error handling
+        SimpleProgressReporter.info("Inserting assets into database")
+        columns = list(assets[0].keys())
+        placeholders = ', '.join(['?' for _ in columns])
+        column_names = ', '.join([f'"{col}"' for col in columns])
+        query = f"INSERT OR REPLACE INTO simple_ao1_inventory ({column_names}) VALUES ({placeholders})"
+        
+        successful_inserts = 0
+        
+        try:
+            # Try bulk insert first
+            values_list = []
+            for asset in assets:
+                values = []
+                for col in columns:
+                    value = asset[col]
+                    if isinstance(value, bool):
+                        values.append(value)
+                    elif value is None:
+                        values.append(None)
+                    else:
+                        str_value = str(value).strip()
+                        values.append(str_value if str_value else None)
+                values_list.append(values)
+            
+            self.conn.executemany(query, values_list)
+            successful_inserts = len(values_list)
+            SimpleProgressReporter.success(f"Successfully inserted {successful_inserts} assets")
+            
+        except Exception as bulk_error:
+            logger.warning(f"Bulk insert failed: {bulk_error}")
+            SimpleProgressReporter.info("Attempting individual inserts")
+            
+            # Fallback to individual inserts
+            for i, asset in enumerate(assets):
+                try:
+                    values = [asset[col] for col in columns]
+                    self.conn.execute(query, values)
+                    successful_inserts += 1
+                    
+                    if (i + 1) % 100 == 0:
+                        SimpleProgressReporter.progress(i+1, len(assets), "Individual inserts")
+                        
+                except Exception as e:
+                    logger.error(f"Failed to insert asset {i}: {e}")
+                    continue
+        
+        # Verify insertion
+        try:
+            result = self.conn.execute("SELECT COUNT(*) FROM simple_ao1_inventory").fetchone()
+            actual_count = result[0] if result else 0
+            SimpleProgressReporter.success(f"Database verification: {actual_count} total assets")
+            return actual_count
+        except Exception as e:
+            logger.error(f"Failed to verify insertion: {e}")
+            return successful_inserts
+    
+    def close(self):
+        if hasattr(self, 'conn') and self.conn:
+            try:
+                self.conn.close()
+            except Exception as e:
+                logger.error(f"Error closing simple discovery database: {e}")
+
+class IntelligentAO1Discovery:
+    def __init__(self, project_id: str, config: Dict[str, Any] = None):
+        self.project_id = project_id
+        self.config = config or {}
+        self.client_manager = BigQueryClientManager(project_id)
+        self.matcher = IntelligentContentMatcher()
+        self.cache = IntelligentCacheManager()
+        self.intelligence_engine = IntelligenceEngine(self.config)
+        self.db_path = self.config.get('database_path', 'ao1_intelligent_cmdb.db')
+        self.conn = duckdb.connect(self.db_path)
+        self._setup_basic_tables()
+    
+    def _setup_basic_tables(self):
+        try:
+            self.conn.execute("""CREATE TABLE IF NOT EXISTS intelligent_ao1_inventory (hostname VARCHAR PRIMARY KEY, infrastructure_type VARCHAR, system_classification VARCHAR, source_count INTEGER DEFAULT 0, intelligence_score DOUBLE DEFAULT 0.0, discovery_timestamp TIMESTAMP DEFAULT NOW())""")
+        except Exception as e:
+            logger.error(f"Failed to setup basic tables: {e}")
+            raise
+    
+    async def execute_intelligent_discovery(self) -> Tuple[Dict[str, Any], Dict[str, str]]:
+        start_time = time.time()
+        
+        discovery_context = {
+            'project_id': self.project_id,
+            'discovery_type': 'intelligent_basic',
+            'timestamp': datetime.now().isoformat()
+        }
+        
+        intelligence_results = await self.intelligence_engine.enhance_discovery_intelligence(discovery_context)
+        
+        learning_results = await self.intelligence_engine.learn_from_discovery_results({
+            'total_assets': 0,
+            'processing_time': time.time() - start_time,
+            'strategy_used': 'intelligent_basic'
+        })
+        
+        stats = {
+            'processing_time': time.time() - start_time,
+            'total_assets': 0,
+            'database_path': self.db_path,
+            'discovery_method': 'intelligent_basic',
+            'engine_type': 'IntelligentBasic',
+            'intelligence_results': intelligence_results,
+            'learning_results': learning_results,
+            'intelligence_summary': self.intelligence_engine.get_intelligence_summary()
+        }
+        queries = {
+            'intelligent_overview': "SELECT * FROM intelligent_ao1_inventory;"
+        }
+        return stats, queries
+    
+    def close(self):
+        if hasattr(self, 'conn') and self.conn:
+            try:
+                self.conn.close()
+            except Exception as e:
+                logger.error(f"Error closing intelligent discovery database: {e}")
+
+if __name__ == "__main__":
+    import sys
+    
+    def main():
+        if len(sys.argv) < 2:
+            print("Usage: python script.py <project_id> [discovery_type]")
+            print("Discovery types: simple, super (default: simple)")
+            sys.exit(1)
+        
+        project_id = sys.argv[1]
+        discovery_type = sys.argv[2] if len(sys.argv) > 2 else "simple"
+        
+        async def run_discovery():
+            if discovery_type.lower() == "super":
+                print("Starting SuperOptimized AO1 Discovery with Intelligence...")
+                discovery = SuperOptimizedAO1Discovery(project_id)
+                stats, queries = await discovery.execute_super_optimized_discovery()
+            else:
+                print("Starting Intelligent Simple AO1 Discovery...")
+                discovery = SimpleOptimizedAO1Discovery(project_id)
+                stats, queries = await discovery.execute_simple_discovery()
+            
+            print("\n" + "="*50)
+            print("INTELLIGENT DISCOVERY COMPLETE")
+            print("="*50)
+            print(f"Processing Time: {stats.get('processing_time', 0):.2f} seconds")
+            print(f"Total Assets: {stats.get('total_assets', 0):,}")
+            print(f"Database Path: {stats.get('database_path', 'N/A')}")
+            print(f"Discovery Method: {stats.get('discovery_method', 'N/A')}")
+            print(f"Engine Type: {stats.get('engine_type', 'N/A')}")
+            
+            if 'high_coverage_assets' in stats:
+                print(f"High Coverage Assets: {stats['high_coverage_assets']:,}")
+            
+            if 'intelligence_summary' in stats:
+                intel_summary = stats['intelligence_summary']
+                print(f"\nIntelligence Summary:")
+                print(f"Learning Iterations: {intel_summary.get('learning_iterations', 0)}")
+                print(f"Strategy Effectiveness: {intel_summary.get('strategy_effectiveness', {})}")
+            
+            print("\nSample Queries:")
+            for name, query in queries.items():
+                print(f"\n-- {name.upper()} --")
+                print(query.strip())
+            
+            discovery.close()
+        
+        asyncio.run(run_discovery())
+    
+    main() __init__(self, client_manager: BigQueryClientManager, matcher: IntelligentContentMatcher, 
                  chronicle_client_manager: Optional[BigQueryClientManager] = None, batch_size: int = 500):
         self.client_manager = client_manager
         self.chronicle_client_manager = chronicle_client_manager
@@ -1032,86 +2297,100 @@ class AdvancedDataFusion:
         self.batch_size = 1000
         
     def _setup_advanced_tables(self):
+        """Setup tables with proper error handling and constraints"""
         self.conn.execute("PRAGMA threads=8")
         self.conn.execute("PRAGMA memory_limit='4GB'")
         self.conn.execute("PRAGMA temp_directory='/tmp'")
         
-        self.conn.execute("""
-            CREATE TABLE IF NOT EXISTS intelligent_endpoints (
-                primary_hostname VARCHAR PRIMARY KEY,
-                original_hostnames TEXT,
-                hostname_variants TEXT,
-                semantic_category VARCHAR,
-                confidence_score DOUBLE DEFAULT 1.0,
-                extraction_priority INTEGER DEFAULT 50,
-                data_quality_score DOUBLE DEFAULT 0.0,
-                discovery_timestamp TIMESTAMP DEFAULT NOW(),
-                last_seen TIMESTAMP DEFAULT NOW(),
-                seen_count INTEGER DEFAULT 1,
-                intelligence_metadata JSON
-            )
-        """)
-        
-        self.conn.execute("""
-            CREATE TABLE IF NOT EXISTS ao1_log_visibility_inventory (
-                hostname VARCHAR PRIMARY KEY,
-                fqdn VARCHAR,
-                ip_address VARCHAR,
-                mac_address VARCHAR,
-                infrastructure_type VARCHAR,
-                system_classification VARCHAR,
-                semantic_category VARCHAR,
-                global_region VARCHAR,
-                country VARCHAR,
-                data_center VARCHAR,
-                cloud_region VARCHAR,
-                business_unit VARCHAR,
-                cio VARCHAR,
-                apm VARCHAR,
-                application_class VARCHAR,
-                edr_coverage VARCHAR DEFAULT 'No',
-                tanium_coverage VARCHAR DEFAULT 'No',
-                dlp_coverage VARCHAR DEFAULT 'No',
-                network_log_types TEXT,
-                endpoint_log_types TEXT,
-                cloud_log_types TEXT,
-                application_log_types TEXT,
-                identity_log_types TEXT,
-                url_fqdn_coverage VARCHAR DEFAULT 'No',
-                public_ip_coverage VARCHAR DEFAULT 'No',
-                cmdb_asset_visibility VARCHAR DEFAULT 'No',
-                network_zones VARCHAR,
-                ipam_coverage VARCHAR DEFAULT 'No',
-                geolocation VARCHAR,
-                vpc VARCHAR,
-                domain_visibility VARCHAR,
-                internal_external VARCHAR,
-                controls VARCHAR,
-                in_splunk BOOLEAN DEFAULT FALSE,
-                in_chronicle BOOLEAN DEFAULT FALSE,
-                in_gso BOOLEAN DEFAULT FALSE,
-                found_in_cmdb BOOLEAN DEFAULT FALSE,
-                log_volume_score DOUBLE DEFAULT 0.0,
-                coverage_completeness_score DOUBLE DEFAULT 0.0,
-                visibility_gap_severity VARCHAR DEFAULT 'unknown',
-                ao1_recommendations TEXT,
-                source_systems TEXT,
-                source_count INTEGER DEFAULT 0,
-                discovery_timestamp TIMESTAMP DEFAULT NOW(),
-                last_updated TIMESTAMP DEFAULT NOW()
-            )
-        """)
-        
-        indexes = [
-            "CREATE INDEX IF NOT EXISTS idx_hostname_seen ON intelligent_endpoints(seen_count DESC)",
-            "CREATE INDEX IF NOT EXISTS idx_coverage_score ON ao1_log_visibility_inventory(coverage_completeness_score DESC)",
-            "CREATE INDEX IF NOT EXISTS idx_visibility_gap ON ao1_log_visibility_inventory(visibility_gap_severity)"
-        ]
-        
-        for index_sql in indexes:
-            self.conn.execute(index_sql)
+        # Create tables with proper error handling
+        try:
+            self.conn.execute("""
+                CREATE TABLE IF NOT EXISTS intelligent_endpoints (
+                    primary_hostname VARCHAR PRIMARY KEY,
+                    original_hostnames TEXT,
+                    hostname_variants TEXT,
+                    semantic_category VARCHAR,
+                    confidence_score DOUBLE DEFAULT 1.0,
+                    extraction_priority INTEGER DEFAULT 50,
+                    data_quality_score DOUBLE DEFAULT 0.0,
+                    discovery_timestamp TIMESTAMP DEFAULT NOW(),
+                    last_seen TIMESTAMP DEFAULT NOW(),
+                    seen_count INTEGER DEFAULT 1,
+                    intelligence_metadata JSON
+                )
+            """)
+            
+            self.conn.execute("""
+                CREATE TABLE IF NOT EXISTS ao1_log_visibility_inventory (
+                    hostname VARCHAR PRIMARY KEY,
+                    fqdn VARCHAR DEFAULT '',
+                    ip_address VARCHAR DEFAULT '',
+                    mac_address VARCHAR DEFAULT '',
+                    infrastructure_type VARCHAR DEFAULT '',
+                    system_classification VARCHAR DEFAULT '',
+                    semantic_category VARCHAR DEFAULT '',
+                    global_region VARCHAR DEFAULT '',
+                    country VARCHAR DEFAULT '',
+                    data_center VARCHAR DEFAULT '',
+                    cloud_region VARCHAR DEFAULT '',
+                    business_unit VARCHAR DEFAULT '',
+                    cio VARCHAR DEFAULT '',
+                    apm VARCHAR DEFAULT '',
+                    application_class VARCHAR DEFAULT '',
+                    edr_coverage VARCHAR DEFAULT 'No',
+                    tanium_coverage VARCHAR DEFAULT 'No',
+                    dlp_coverage VARCHAR DEFAULT 'No',
+                    network_log_types TEXT DEFAULT '',
+                    endpoint_log_types TEXT DEFAULT '',
+                    cloud_log_types TEXT DEFAULT '',
+                    application_log_types TEXT DEFAULT '',
+                    identity_log_types TEXT DEFAULT '',
+                    url_fqdn_coverage VARCHAR DEFAULT 'No',
+                    public_ip_coverage VARCHAR DEFAULT 'No',
+                    cmdb_asset_visibility VARCHAR DEFAULT 'No',
+                    network_zones VARCHAR DEFAULT '',
+                    ipam_coverage VARCHAR DEFAULT 'No',
+                    geolocation VARCHAR DEFAULT '',
+                    vpc VARCHAR DEFAULT '',
+                    domain_visibility VARCHAR DEFAULT '',
+                    internal_external VARCHAR DEFAULT '',
+                    controls VARCHAR DEFAULT '',
+                    in_splunk BOOLEAN DEFAULT FALSE,
+                    in_chronicle BOOLEAN DEFAULT FALSE,
+                    in_gso BOOLEAN DEFAULT FALSE,
+                    found_in_cmdb BOOLEAN DEFAULT FALSE,
+                    log_volume_score DOUBLE DEFAULT 0.0,
+                    coverage_completeness_score DOUBLE DEFAULT 0.0,
+                    visibility_gap_severity VARCHAR DEFAULT 'unknown',
+                    ao1_recommendations TEXT DEFAULT '',
+                    source_systems TEXT DEFAULT '',
+                    source_count INTEGER DEFAULT 0,
+                    discovery_timestamp TIMESTAMP DEFAULT NOW(),
+                    last_updated TIMESTAMP DEFAULT NOW()
+                )
+            """)
+            
+            # Create indexes
+            indexes = [
+                "CREATE INDEX IF NOT EXISTS idx_hostname_seen ON intelligent_endpoints(seen_count DESC)",
+                "CREATE INDEX IF NOT EXISTS idx_coverage_score ON ao1_log_visibility_inventory(coverage_completeness_score DESC)",
+                "CREATE INDEX IF NOT EXISTS idx_visibility_gap ON ao1_log_visibility_inventory(visibility_gap_severity)",
+                "CREATE INDEX IF NOT EXISTS idx_hostname_lookup ON ao1_log_visibility_inventory(hostname)",
+                "CREATE INDEX IF NOT EXISTS idx_source_count ON ao1_log_visibility_inventory(source_count DESC)"
+            ]
+            
+            for index_sql in indexes:
+                try:
+                    self.conn.execute(index_sql)
+                except Exception as e:
+                    logger.warning(f"Failed to create index: {e}")
+                    
+        except Exception as e:
+            logger.error(f"Failed to setup tables: {e}")
+            raise
     
     def build_intelligent_inventory(self, batch_data: List[BatchedHostData]) -> Dict[str, Any]:
+        """Build inventory with proper error handling and data validation"""
         with self._lock:
             start_time = time.time()
             
@@ -1119,1207 +2398,183 @@ class AdvancedDataFusion:
                 'processed_endpoints': 0,
                 'high_coverage_assets': 0,
                 'complete_visibility_assets': 0,
-                'total_data_points': 0
+                'total_data_points': 0,
+                'failed_insertions': 0,
+                'successful_insertions': 0
             }
+            
+            if not batch_data:
+                logger.warning("No batch data provided to build_intelligent_inventory")
+                return stats
             
             all_asset_profiles = []
             
-            for batch in batch_data:
+            # Process each batch with better error handling
+            for batch_idx, batch in enumerate(batch_data):
+                logger.info(f"Processing batch {batch_idx + 1}/{len(batch_data)} with {len(batch.enrichment_data)} hosts")
+                
                 for hostname, enrichment_data in batch.enrichment_data.items():
-                    asset_profile = self._build_asset_profile(hostname, enrichment_data, batch.source_tables)
-                    if asset_profile:
-                        all_asset_profiles.append(asset_profile)
-                        stats['processed_endpoints'] += 1
-                        
-                        if asset_profile.get('coverage_completeness_score', 0) > 70:
-                            stats['high_coverage_assets'] += 1
-                        
-                        if asset_profile.get('source_count', 0) > 3:
-                            stats['complete_visibility_assets'] += 1
+                    try:
+                        asset_profile = self._build_asset_profile_safe(hostname, enrichment_data, batch.source_tables)
+                        if asset_profile:
+                            all_asset_profiles.append(asset_profile)
+                            stats['processed_endpoints'] += 1
+                            
+                            if asset_profile.get('coverage_completeness_score', 0) > 70:
+                                stats['high_coverage_assets'] += 1
+                            
+                            if asset_profile.get('source_count', 0) > 3:
+                                stats['complete_visibility_assets'] += 1
+                        else:
+                            logger.warning(f"Failed to build asset profile for hostname: {hostname}")
+                            
+                    except Exception as e:
+                        logger.error(f"Error processing hostname {hostname}: {e}")
+                        stats['failed_insertions'] += 1
+                        continue
             
+            logger.info(f"Built {len(all_asset_profiles)} asset profiles, attempting bulk insert")
+            
+            # Insert assets with better error handling
             if all_asset_profiles:
-                self._bulk_insert_assets(all_asset_profiles)
+                insertion_result = self._bulk_insert_assets_safe(all_asset_profiles)
+                stats['successful_insertions'] = insertion_result['successful']
+                stats['failed_insertions'] += insertion_result['failed']
+            else:
+                logger.warning("No asset profiles to insert")
             
+            # Update final stats
             processing_time = time.time() - start_time
             stats['processing_time'] = processing_time
-            stats['total_data_points'] = self.conn.execute(
-                "SELECT COUNT(*) FROM ao1_log_visibility_inventory"
-            ).fetchone()[0]
+            
+            # Get actual count from database
+            try:
+                result = self.conn.execute("SELECT COUNT(*) FROM ao1_log_visibility_inventory").fetchone()
+                stats['total_data_points'] = result[0] if result else 0
+                logger.info(f"Database now contains {stats['total_data_points']} total assets")
+            except Exception as e:
+                logger.error(f"Failed to get final count: {e}")
+                stats['total_data_points'] = stats['successful_insertions']
             
             return stats
     
-    def _build_asset_profile(self, hostname: str, enrichment_data: Dict, source_tables: Set[str]) -> Dict[str, Any]:
-        source_tables_list = list(source_tables) if source_tables else []
-        
-        asset_profile = {
-            'hostname': hostname,
-            'fqdn': enrichment_data.get('fqdn', ''),
-            'ip_address': enrichment_data.get('ip_address', ''),
-            'mac_address': enrichment_data.get('mac_address', ''),
-            'infrastructure_type': enrichment_data.get('infrastructure_type', ''),
-            'system_classification': enrichment_data.get('system_classification', ''),
-            'global_region': enrichment_data.get('global_region', ''),
-            'country': enrichment_data.get('country', ''),
-            'data_center': enrichment_data.get('data_center', ''),
-            'cloud_region': enrichment_data.get('cloud_region', ''),
-            'business_unit': enrichment_data.get('business_unit', ''),
-            'cio': enrichment_data.get('cio', ''),
-            'apm': enrichment_data.get('apm', ''),
-            'application_class': enrichment_data.get('application_class', ''),
-            'edr_coverage': enrichment_data.get('edr_coverage', 'No'),
-            'tanium_coverage': enrichment_data.get('tanium_coverage', 'No'),
-            'dlp_coverage': enrichment_data.get('dlp_coverage', 'No'),
-            'network_log_types': enrichment_data.get('network_log_types', ''),
-            'endpoint_log_types': enrichment_data.get('endpoint_log_types', ''),
-            'cloud_log_types': enrichment_data.get('cloud_log_types', ''),
-            'application_log_types': enrichment_data.get('application_log_types', ''),
-            'identity_log_types': enrichment_data.get('identity_log_types', ''),
-            'url_fqdn_coverage': enrichment_data.get('url_fqdn_coverage', 'No'),
-            'public_ip_coverage': enrichment_data.get('public_ip_coverage', 'No'),
-            'cmdb_asset_visibility': enrichment_data.get('cmdb_asset_visibility', 'No'),
-            'network_zones': enrichment_data.get('network_zones', ''),
-            'ipam_coverage': enrichment_data.get('ipam_coverage', 'No'),
-            'geolocation': enrichment_data.get('geolocation', ''),
-            'vpc': enrichment_data.get('vpc', ''),
-            'domain_visibility': enrichment_data.get('domain_visibility', ''),
-            'internal_external': enrichment_data.get('internal_external', ''),
-            'controls': enrichment_data.get('controls', ''),
-            'in_splunk': any('splunk' in str(table).lower() for table in source_tables_list),
-            'in_chronicle': any('chronicle' in str(table).lower() for table in source_tables_list),
-            'in_gso': any('gso' in str(table).lower() for table in source_tables_list),
-            'found_in_cmdb': len(source_tables_list) > 0,
-            'source_systems': ','.join(sorted(source_tables_list)),
-            'source_count': len(source_tables_list)
-        }
-        
-        log_coverage_factors = [
-            bool(asset_profile['network_log_types']),
-            bool(asset_profile['endpoint_log_types']),
-            bool(asset_profile['cloud_log_types']),
-            bool(asset_profile['application_log_types']),
-            bool(asset_profile['identity_log_types'])
-        ]
-        log_coverage_score = sum(log_coverage_factors) / len(log_coverage_factors) * 100
-        
-        security_coverage_factors = [
-            asset_profile['edr_coverage'] == 'Yes',
-            asset_profile['tanium_coverage'] == 'Yes', 
-            asset_profile['dlp_coverage'] == 'Yes'
-        ]
-        security_coverage_score = sum(security_coverage_factors) / len(security_coverage_factors) * 100
-        
-        visibility_factors = [
-            asset_profile['in_splunk'],
-            asset_profile['in_chronicle'],
-            asset_profile['in_gso'],
-            asset_profile['url_fqdn_coverage'] == 'Yes',
-            asset_profile['cmdb_asset_visibility'] == 'Yes'
-        ]
-        visibility_score = sum(visibility_factors) / len(visibility_factors) * 100
-        
-        asset_profile['log_volume_score'] = log_coverage_score
-        asset_profile['coverage_completeness_score'] = (log_coverage_score + security_coverage_score + visibility_score) / 3
-        
-        if asset_profile['coverage_completeness_score'] >= 80:
-            asset_profile['visibility_gap_severity'] = 'low'
-            asset_profile['ao1_recommendations'] = 'Excellent log visibility coverage across all domains'
-        elif asset_profile['coverage_completeness_score'] >= 60:
-            asset_profile['visibility_gap_severity'] = 'medium'
-            asset_profile['ao1_recommendations'] = 'Good coverage with opportunities to improve security control visibility'
-        elif asset_profile['coverage_completeness_score'] >= 40:
-            asset_profile['visibility_gap_severity'] = 'high'
-            asset_profile['ao1_recommendations'] = 'Significant visibility gaps - expand log collection and security tool coverage'
-        else:
-            asset_profile['visibility_gap_severity'] = 'critical'
-            asset_profile['ao1_recommendations'] = 'Critical visibility gaps - immediate action required for CSOC monitoring'
-        
-        return asset_profile
-    
-    def _bulk_insert_assets(self, asset_data_list: List[Dict]):
-        if not asset_data_list:
-            return
-        
-        columns = list(asset_data_list[0].keys())
-        placeholders = ', '.join(['?' for _ in columns])
-        column_names = ', '.join(columns)
-        
-        query = f"INSERT OR REPLACE INTO ao1_log_visibility_inventory ({column_names}) VALUES ({placeholders})"
-        
-        values_list = []
-        for asset_data in asset_data_list:
-            values = []
-            for col in columns:
-                value = asset_data[col]
+    def _build_asset_profile_safe(self, hostname: str, enrichment_data: Dict, source_tables: Set[str]) -> Optional[Dict[str, Any]]:
+        """Build asset profile with comprehensive data validation"""
+        try:
+            if not hostname or not isinstance(hostname, str):
+                logger.warning(f"Invalid hostname: {hostname}")
+                return None
+                
+            # Clean hostname
+            hostname = str(hostname).strip()
+            if len(hostname) < 2:
+                logger.warning(f"Hostname too short: {hostname}")
+                return None
+            
+            source_tables_list = list(source_tables) if source_tables else []
+            
+            # Helper function to safely get string values
+            def safe_str(value, default=''):
+                if value is None:
+                    return default
+                return str(value).strip() if str(value).strip() else default
+            
+            # Helper function to safely get boolean values
+            def safe_bool(value, default=False):
                 if isinstance(value, bool):
-                    values.append(value)
-                elif value is None:
-                    values.append(None)
-                else:
-                    values.append(value)
-            values_list.append(values)
-        
-        try:
-            self.conn.executemany(query, values_list)
-        except Exception as e:
-            logger.error(f"Failed to insert assets: {e}")
-
-class SuperOptimizedAO1Discovery:
-    
-    def __init__(self, project_id: str, config: Dict[str, Any] = None):
-        self.project_id = project_id
-        self.config = config or {}
-        
-        self.client_manager = BigQueryClientManager(project_id)
-        self.chronicle_client_manager = None
-        
-        try:
-            self.chronicle_client_manager = BigQueryClientManager("chronicle-fisv")
-            if not self.chronicle_client_manager.test_connection():
-                self.chronicle_client_manager = None
-        except:
-            self.chronicle_client_manager = None
-        
-        self.matcher = IntelligentContentMatcher()
-        self.cache = IntelligentCacheManager(
-            cache_dir=self.config.get('cache_dir', '.cache'),
-            max_memory_mb=self.config.get('max_memory_mb', 1024),
-            max_disk_gb=self.config.get('max_disk_gb', 10)
-        )
-        
-        self.intelligence_engine = IntelligenceEngine(self.config)
-        
-        self.db_path = self.config.get('database_path', 'ao1_optimized_cmdb.db')
-        self.data_fusion = AdvancedDataFusion(self.db_path)
-        
-        self.batch_extractor = IntelligentFieldExtractor(
-            self.client_manager, 
-            self.matcher, 
-            self.chronicle_client_manager,
-            batch_size=self.config.get('batch_size', 500)
-        )
-        
-        self.max_workers = min(self.config.get('max_workers', 16), mp.cpu_count() * 2)
-        self.batch_size = self.config.get('batch_size', 500)
-        
-        self.discovery_context = {}
-        self.intelligence_results = {}
-    
-    async def execute_super_optimized_discovery(self) -> Tuple[Dict[str, Any], Dict[str, str]]:
-        start_time = time.time()
-        print("   Starting SuperOptimized AO1 Discovery with Intelligence Engine...")
-        
-        try:
-            print("   Phase 1: Intelligence-guided discovery planning...")
-            self.discovery_context = await self._prepare_discovery_context()
+                    return value
+                if isinstance(value, str):
+                    return value.lower() in ['true', 'yes', '1', 'enabled', 'active']
+                return default
             
-            self.intelligence_results = await self.intelligence_engine.enhance_discovery_intelligence(
-                self.discovery_context
-            )
-            
-            strategy_params = self.intelligence_results['strategy_recommendation']['parameters']
-            self._apply_intelligent_strategy(strategy_params)
-            
-            print("   Phase 2: Discovering prioritized tables...")
-            all_table_metadata = await asyncio.wait_for(
-                self._discover_prioritized_tables(), 
-                timeout=600
-            )
-            print(f"   Found {len(all_table_metadata)} prioritized tables")
-            
-            if not all_table_metadata:
-                print("   No tables found - check permissions")
-                return {'error': 'No tables found', 'total_assets': 0}, {}
-            
-            print("   Phase 3: Intelligent hostname discovery...")
-            all_hostnames = await asyncio.wait_for(
-                self._batch_hostname_discovery(all_table_metadata),
-                timeout=1200
-            )
-            print(f"   Discovered {len(all_hostnames)} unique hostnames")
-            
-            if not all_hostnames:
-                print("   No hostnames found")
-                return {'error': 'No hostnames found', 'total_assets': 0}, {}
-            
-            print("   Phase 4: Intelligence-enhanced batch enrichment...")
-            batched_enrichment_data = await asyncio.wait_for(
-                self._parallel_batch_enrichment(all_hostnames, all_table_metadata),
-                timeout=1800
-            )
-            print(f"   Processed {len(batched_enrichment_data)} enrichment batches")
-            
-            print("   Phase 5: Building intelligent inventory...")
-            inventory_stats = self.data_fusion.build_intelligent_inventory(batched_enrichment_data)
-            print(f"   Built inventory with {inventory_stats.get('processed_endpoints', 0)} assets")
-            
-            print("   Phase 6: Learning from results...")
-            learning_results = await self.intelligence_engine.learn_from_discovery_results(
-                inventory_stats, self.intelligence_results.get('predictions', {})
-            )
-            
-            print("   Phase 7: Cache optimization...")
-            cache_optimization = self.cache.optimize()
-            print("   Cache optimized")
-            
-            final_stats = self._generate_optimized_stats(time.time() - start_time, inventory_stats)
-            final_stats['intelligence_results'] = self.intelligence_results
-            final_stats['learning_results'] = learning_results
-            final_stats['intelligence_summary'] = self.intelligence_engine.get_intelligence_summary()
-            
-            analysis_queries = self._create_optimized_queries()
-            
-            return final_stats, analysis_queries
-            
-        except asyncio.TimeoutError as timeout_error:
-            print(f"   SuperOptimized discovery timed out: {timeout_error}")
-            return {'error': 'Discovery timed out', 'total_assets': 0}, {}
-        except Exception as e:
-            print(f"   SuperOptimized discovery failed: {e}")
-            import traceback
-            print("   Full traceback:")
-            traceback.print_exc()
-            raise
-    
-    async def _prepare_discovery_context(self) -> Dict[str, Any]:
-        context = {
-            'project_id': self.project_id,
-            'timestamp': datetime.now().isoformat(),
-            'config': self.config.copy()
-        }
-        
-        try:
-            with self.client_manager.get_client() as client:
-                datasets = list(client.list_datasets(project=self.project_id))
-                context.update({
-                    'dataset_count': len(datasets),
-                    'dataset_names': [d.dataset_id for d in datasets],
-                    'has_chronicle_access': self.chronicle_client_manager is not None
-                })
-                
-                table_count = 0
-                table_names = []
-                for dataset in datasets[:10]:
-                    try:
-                        dataset_ref = client.dataset(dataset.dataset_id)
-                        tables = list(client.list_tables(dataset_ref))
-                        table_count += len(tables)
-                        table_names.extend([t.table_id for t in tables[:5]])
-                    except:
-                        continue
-                
-                context.update({
-                    'table_count': table_count,
-                    'table_names': table_names
-                })
-                
-        except Exception as e:
-            logger.warning(f"Failed to gather full discovery context: {e}")
-        
-        return context
-    
-    def _apply_intelligent_strategy(self, strategy_params: Dict[str, Any]):
-        self.batch_size = strategy_params.get('batch_size', self.batch_size)
-        self.max_workers = min(
-            strategy_params.get('parallel_workers', self.max_workers),
-            mp.cpu_count() * 2
-        )
-        
-        if hasattr(self.batch_extractor, 'batch_size'):
-            self.batch_extractor.batch_size = self.batch_size
-        
-        timeout_seconds = strategy_params.get('timeout_seconds', 300)
-        if hasattr(self, 'operation_timeout'):
-            self.operation_timeout = timeout_seconds
-        
-        validation_level = strategy_params.get('validation_level', 'standard')
-        if hasattr(self.matcher, 'validation_strictness'):
-            self.matcher.validation_strictness = validation_level
-        
-        print(f"   Applied intelligent strategy: batch_size={self.batch_size}, workers={self.max_workers}")
-    
-    async def _discover_prioritized_tables(self) -> List[Dict[str, Any]]:
-        print("   Starting table discovery across projects...")
-        
-        projects_to_analyze = [self.project_id]
-        if self.chronicle_client_manager:
-            projects_to_analyze.append('chronicle-fisv')
-            print("   Will analyze both primary project and Chronicle")
-        else:
-            print("   Will analyze primary project only")
-        
-        all_metadata = []
-        
-        for i, project_id in enumerate(projects_to_analyze):
-            print(f"   Processing project {i+1}/{len(projects_to_analyze)}: {project_id}")
-            client_mgr = self.chronicle_client_manager if project_id == 'chronicle-fisv' else self.client_manager
-            
-            try:
-                project_metadata = await asyncio.wait_for(
-                    self._discover_project_tables(client_mgr, project_id),
-                    timeout=400
-                )
-                all_metadata.extend(project_metadata)
-                print(f"   Project {project_id} contributed {len(project_metadata)} tables")
-            except asyncio.TimeoutError:
-                print(f"   Project {project_id} timed out after 400s")
-            except Exception as e:
-                print(f"   Project {project_id} failed: {e}")
-        
-        print(f"   Total tables collected: {len(all_metadata)}")
-        all_metadata.sort(key=lambda x: x.get('data_richness_score', 0), reverse=True)
-        return all_metadata
-    
-    async def _discover_project_tables(self, client_manager: BigQueryClientManager, project_id: str) -> List[Dict[str, Any]]:
-        print(f"   Starting discovery for project: {project_id}")
-        try:
-            with client_manager.get_client() as client:
-                print(f"   Getting datasets for {project_id}...")
-                
-                try:
-                    datasets = list(client.list_datasets(project=project_id))
-                    print(f"   Found {len(datasets)} datasets in {project_id}")
-                except Exception as e:
-                    print(f"   Failed to list datasets in {project_id}: {e}")
-                    return []
-                
-                if not datasets:
-                    print(f"   No datasets found in {project_id}")
-                    return []
-                
-                priority_datasets = self._prioritize_datasets([d.dataset_id for d in datasets])
-                print(f"   Will analyze {len(priority_datasets)} priority datasets")
-                
-                all_metadata = []
-                
-                for j, dataset_id in enumerate(priority_datasets):
-                    print(f"   Dataset {j+1}/{len(priority_datasets)}: {dataset_id}")
-                    
-                    try:
-                        dataset_metadata = await asyncio.wait_for(
-                            self._analyze_dataset_tables(client, project_id, dataset_id),
-                            timeout=120
-                        )
-                        all_metadata.extend(dataset_metadata)
-                        print(f"   Dataset {dataset_id} contributed {len(dataset_metadata)} tables")
-                    except asyncio.TimeoutError:
-                        print(f"   Dataset {dataset_id} timed out")
-                    except Exception as e:
-                        print(f"   Dataset {dataset_id} failed: {e}")
-                
-                print(f"   Project {project_id} complete: {len(all_metadata)} total tables")
-                return all_metadata
-                
-        except Exception as e:
-            print(f"   Project {project_id} discovery failed: {e}")
-            return []
-    
-    async def _analyze_dataset_tables(self, client, project_id: str, dataset_id: str) -> List[Dict[str, Any]]:
-        print(f"   Analyzing dataset: {project_id}.{dataset_id}")
-        try:
-            dataset_ref = client.dataset(dataset_id, project=project_id)
-            tables = list(client.list_tables(dataset_ref))
-            print(f"   Dataset {dataset_id} has {len(tables)} tables")
-            
-            if not tables:
-                return []
-            
-            table_metadata = []
-            analyzed_count = 0
-            
-            for table_ref in tables:
-                try:
-                    full_table = client.get_table(table_ref)
-                    
-                    if not full_table.schema or full_table.num_rows == 0:
-                        continue
-                    
-                    all_columns = [field.name for field in full_table.schema]
-                    
-                    hostname_indicators = ['host', 'endpoint', 'computer', 'device', 'server', 'machine', 'asset', 'node', 'system']
-                    has_hostname = any(
-                        any(indicator in col.lower() for indicator in hostname_indicators)
-                        for col in all_columns
-                    )
-                    
-                    if not has_hostname:
-                        continue
-                    
-                    analyzed_count += 1
-                    print(f"   Analyzing table {analyzed_count}: {table_ref.table_id}")
-                    
-                    sample_data = await self._get_optimized_sample(client, full_table)
-                    
-                    if not sample_data:
-                        print(f"   No sample data for {table_ref.table_id}")
-                        continue
-                    
-                    column_analysis = {}
-                    hostname_found = False
-                    
-                    table_context = {
-                        'table_name': table_ref.table_id,
-                        'dataset_name': dataset_id,
-                        'project_id': project_id
-                    }
-                    
-                    for column in all_columns:
-                        samples = sample_data.get(column, [])
-                        if not samples:
-                            continue
-                        
-                        analysis = self.matcher.analyze_column_intelligently(column, samples, table_context)
-                        if analysis:
-                            field_type, confidence, metadata = analysis
-                            column_analysis[column] = analysis
-                            
-                            if field_type in ['hostname', 'fqdn'] and confidence > 0.3:
-                                hostname_found = True
-                    
-                    if not hostname_found:
-                        print(f"   No hostname column found in {table_ref.table_id}")
-                        continue
-                    
-                    hostname_analysis = self._find_best_hostname_column(column_analysis, sample_data)
-                    
-                    if not hostname_analysis['primary_hostname_column']:
-                        print(f"   No primary hostname column in {table_ref.table_id}")
-                        continue
-                    
-                    data_richness = len(column_analysis) / max(len(all_columns), 1)
-                    
-                    table_metadata.append({
-                        'project_id': project_id,
-                        'dataset_id': dataset_id,
-                        'table_id': table_ref.table_id,
-                        'full_table_path': f"{project_id}.{dataset_id}.{table_ref.table_id}",
-                        'row_count': full_table.num_rows,
-                        'size_bytes': full_table.num_bytes or 0,
-                        'column_count': len(all_columns),
-                        'all_columns': all_columns,
-                        'column_analysis': column_analysis,
-                        'hostname_analysis': hostname_analysis,
-                        'data_richness_score': data_richness,
-                        'sample_data': sample_data,
-                        'is_partitioned': full_table.time_partitioning is not None,
-                        'partition_field': full_table.time_partitioning.field if full_table.time_partitioning else None
-                    })
-                    print(f"   Added table {table_ref.table_id} with richness {data_richness:.2f}")
-                    
-                except Exception as table_error:
-                    print(f"   Table analysis failed for {table_ref.table_id}: {table_error}")
-                    continue
-            
-            print(f"   Dataset {dataset_id} analysis complete: {len(table_metadata)} usable tables")
-            return table_metadata
-        except Exception as dataset_error:
-            print(f"   Dataset {dataset_id} analysis failed: {dataset_error}")
-            return []
-    
-    async def _get_optimized_sample(self, client, table_ref) -> Dict[str, List[str]]:
-        try:
-            sample_query = f"SELECT * FROM `{table_ref.project}.{table_ref.dataset_id}.{table_ref.table_id}`"
-            
-            if table_ref.time_partitioning and table_ref.time_partitioning.field:
-                partition_field = table_ref.time_partitioning.field
-                sample_query += f" WHERE `{partition_field}` >= DATE_SUB(CURRENT_DATE(), INTERVAL 3 DAY)"
-            
-            sample_query += " LIMIT 5"
-            
-            job_config = bigquery.QueryJobConfig(dry_run=False, use_query_cache=True)
-            job = client.query(sample_query, job_config=job_config)
-            results = list(job.result())
-            
-            if not results:
-                return {}
-            
-            sample_data = defaultdict(list)
-            for row in results:
-                for i, value in enumerate(row):
-                    if i < len(table_ref.schema) and value is not None:
-                        column_name = table_ref.schema[i].name
-                        str_value = str(value)
-                        if len(str_value) > 0 and len(str_value) < 200:
-                            sample_data[column_name].append(str_value)
-            
-            return dict(sample_data)
-        except Exception:
-            return {}
-    
-    def _find_best_hostname_column(self, column_analysis: Dict, sample_data: Dict) -> Dict[str, Any]:
-        hostname_candidates = []
-        
-        for column, analysis in column_analysis.items():
-            field_type, confidence, metadata = analysis
-            
-            if field_type in ['hostname', 'fqdn']:
-                samples = sample_data.get(column, [])
-                hostname_score = self._calculate_hostname_score(samples)
-                final_score = confidence * hostname_score
-                
-                hostname_candidates.append({
-                    'column': column,
-                    'field_type': field_type,
-                    'confidence': confidence,
-                    'hostname_score': hostname_score,
-                    'final_score': final_score
-                })
-        
-        hostname_candidates.sort(key=lambda x: x['final_score'], reverse=True)
-        
-        return {
-            'primary_hostname_column': hostname_candidates[0]['column'] if hostname_candidates else None,
-            'all_hostname_candidates': hostname_candidates
-        }
-    
-    def _calculate_hostname_score(self, samples: List[str]) -> float:
-        if not samples:
-            return 0.0
-        
-        valid_count = sum(1 for sample in samples if self.matcher._validate_hostname(sample))
-        unique_count = len(set(samples))
-        
-        return (valid_count / len(samples)) * (unique_count / len(samples))
-    
-    def _prioritize_datasets(self, dataset_ids: List[str]) -> List[str]:
-        priority_keywords = [
-            ('cmdb', 100), ('endpoint', 95), ('asset', 90), ('inventory', 85),
-            ('security', 80), ('crowdstrike', 75), ('splunk', 70), ('chronicle', 65),
-            ('monitoring', 60), ('infrastructure', 55), ('network', 50), ('server', 45)
-        ]
-        
-        scored_datasets = []
-        for dataset_id in dataset_ids:
-            score = 0
-            dataset_lower = dataset_id.lower()
-            
-            for keyword, points in priority_keywords:
-                if keyword in dataset_lower:
-                    score += points
-            
-            scored_datasets.append((dataset_id, score))
-        
-        scored_datasets.sort(key=lambda x: x[1], reverse=True)
-        return [dataset_id for dataset_id, _ in scored_datasets]
-    
-    async def _batch_hostname_discovery(self, table_metadata: List[Dict]) -> List[str]:
-        hostname_discovery_tasks = []
-        
-        for table_meta in table_metadata:
-            task = self._discover_table_hostnames(table_meta)
-            hostname_discovery_tasks.append(task)
-        
-        if hostname_discovery_tasks:
-            hostname_results = await asyncio.gather(*hostname_discovery_tasks, return_exceptions=True)
-            
-            all_hostnames = set()
-            
-            for result in hostname_results:
-                if isinstance(result, list):
-                    for hostname in result:
-                        normalized = self._normalize_hostname(hostname)
-                        if normalized and normalized not in all_hostnames:
-                            all_hostnames.add(normalized)
-            
-            return list(all_hostnames)
-        
-        return []
-    
-    async def _discover_table_hostnames(self, table_meta: Dict) -> List[str]:
-        hostname_column = table_meta['hostname_analysis']['primary_hostname_column']
-        if not hostname_column:
-            return []
-        
-        project_id = table_meta['project_id']
-        table_path = table_meta['full_table_path']
-        
-        client_mgr = self.chronicle_client_manager if project_id == 'chronicle-fisv' else self.client_manager
-        
-        partition_filter = ""
-        if table_meta.get('is_partitioned') and table_meta.get('partition_field'):
-            partition_field = table_meta['partition_field']
-            partition_filter = f"AND `{partition_field}` >= DATE_SUB(CURRENT_DATE(), INTERVAL 7 DAY)"
-        
-        row_count = table_meta.get('row_count', 0)
-        sampling_clause = ""
-        if row_count > 50000000:
-            sampling_clause = "TABLESAMPLE SYSTEM (5 PERCENT)"
-        
-        query = f"""
-        SELECT DISTINCT UPPER(TRIM(CAST(`{hostname_column}` AS STRING))) as hostname
-        FROM `{table_path}` {sampling_clause}
-        WHERE `{hostname_column}` IS NOT NULL
-        AND LENGTH(TRIM(CAST(`{hostname_column}` AS STRING))) >= 2
-        AND LENGTH(TRIM(CAST(`{hostname_column}` AS STRING))) <= 253
-        AND TRIM(CAST(`{hostname_column}` AS STRING)) NOT LIKE '%@%'
-        AND TRIM(CAST(`{hostname_column}` AS STRING)) NOT LIKE 'http%'
-        AND TRIM(CAST(`{hostname_column}` AS STRING)) NOT LIKE '%/%'
-        AND UPPER(TRIM(CAST(`{hostname_column}` AS STRING))) NOT IN ('UNKNOWN', 'NULL', 'N/A', 'NONE', 'EMPTY', 'TEST', 'EXAMPLE', 'LOCALHOST')
-        {partition_filter}
-        ORDER BY hostname
-        """
-        
-        try:
-            with client_mgr.get_client() as client:
-                job_config = bigquery.QueryJobConfig(
-                    dry_run=True,
-                    use_query_cache=False
-                )
-                
-                dry_run_job = client.query(query, job_config=job_config)
-                bytes_processed = dry_run_job.total_bytes_processed
-                
-                print(f"   Querying {table_path} (will process {bytes_processed / (1024*1024):.1f}MB)")
-                
-                job_config = bigquery.QueryJobConfig(
-                    dry_run=False,
-                    use_query_cache=True,
-                    job_timeout_ms=60000
-                )
-                
-                job = client.query(query, job_config=job_config)
-                results = list(job.result())
-                
-                hostnames = []
-                invalid_patterns = [
-                    r'^\d+',
-                    r'^[^a-zA-Z0-9]',
-                    r'[^a-zA-Z0-9\-]',
-                    r'\.{2,}',
-                    r'\-{2,}',
-                ]
-                
-                for row in results:
-                    if not row[0]:
-                        continue
-                    
-                    hostname = str(row[0]).strip()
-                    
-                    if not hostname or len(hostname) < 2 or len(hostname) > 253:
-                        continue
-                    
-                    is_valid = True
-                    for pattern in invalid_patterns:
-                        if re.search(pattern, hostname):
-                            is_valid = False
-                            break
-                    
-                    if is_valid:
-                        if self._is_likely_hostname(hostname):
-                            hostnames.append(hostname)
-                
-                print(f"   Found {len(hostnames)} valid hostnames in {table_path}")
-                return hostnames
-                
-        except Exception as e:
-            print(f"   Hostname discovery failed for {table_path}: {e}")
-            return []
-    
-    def _is_likely_hostname(self, hostname: str) -> bool:
-        hostname = hostname.upper()
-        
-        reject_patterns = [
-            'UNKNOWN', 'NULL', 'N/A', 'NONE', 'EMPTY', 'TEST', 'EXAMPLE', 
-            'LOCALHOST', 'DUMMY', 'SAMPLE', 'PLACEHOLDER', 'DEFAULT',
-            'ERROR', 'INVALID', 'MISSING', 'UNDEFINED', 'TEMP', 'TMP'
-        ]
-        
-        if any(pattern in hostname for pattern in reject_patterns):
-            return False
-        
-        error_indicators = ['ERROR', 'EXCEPTION', 'FAILED', 'TIMEOUT', 'CONNECTION']
-        if any(indicator in hostname for indicator in error_indicators):
-            return False
-        
-        if '\\' in hostname or hostname.count('/') > 1:
-            return False
-        
-        if hostname.startswith('.') or hostname.endswith('.'):
-            return False
-        
-        hostname_indicators = [
-            r'^[A-Z]{2,}[0-9]+',
-            r'^[A-Z]+-[A-Z0-9]',
-            r'^[A-Z0-9]+\-[A-Z0-9]',
-            r'(SERVER|SRV|WEB|APP|DB|DC|WIN|LIN)',
-        ]
-        
-        for pattern in hostname_indicators:
-            if re.search(pattern, hostname):
-                return True
-        
-        if re.match(r'^[A-Z0-9\-]+', hostname) and 3 <= len(hostname) <= 64:
-            if not hostname.isdigit() and len(set(hostname.replace('-', ''))) > 1:
-                return True
-        
-        return False
-    
-    def _normalize_hostname(self, hostname: str) -> str:
-        if not hostname:
-            return ""
-        
-        hostname = str(hostname).strip().upper()
-        
-        if len(hostname) < 2 or len(hostname) > 253:
-            return ""
-        
-        invalid_indicators = [
-            '@', 'HTTP', 'HTTPS', 'UNKNOWN', 'NULL', 'N/A', 'NONE', 'EMPTY', 
-            'TEST', 'EXAMPLE', 'LOCALHOST', 'DUMMY', 'SAMPLE', 'PLACEHOLDER'
-        ]
-        if any(indicator in hostname for indicator in invalid_indicators):
-            return ""
-        
-        hostname = re.sub(r'^[^A-Z0-9]+', '', hostname)
-        hostname = re.sub(r'[^A-Z0-9]+', '', hostname)
-        
-        if '.' in hostname:
-            hostname = hostname.split('.')[0]
-        
-        hostname = re.sub(r'[^A-Z0-9\-]', '', hostname)
-        
-        if len(hostname) < 2:
-            return ""
-        
-        return hostname
-    
-    async def _parallel_batch_enrichment(self, hostnames: List[str], table_metadata: List[Dict]) -> List[BatchedHostData]:
-        print(f"   Starting parallel enrichment for {len(hostnames)} hostnames using {len(table_metadata)} tables")
-        
-        hostname_batches = []
-        for i in range(0, len(hostnames), self.batch_size):
-            batch = hostnames[i:i + self.batch_size]
-            hostname_batches.append(batch)
-        
-        print(f"   Created {len(hostname_batches)} hostname batches")
-        
-        enrichment_tasks = []
-        for batch in hostname_batches:
-            task = self.batch_extractor.extract_fields_batch_intelligent(batch, table_metadata)
-            enrichment_tasks.append(task)
-        
-        if enrichment_tasks:
-            batch_results = await asyncio.gather(*enrichment_tasks, return_exceptions=True)
-            
-            valid_results = []
-            for result in batch_results:
-                if isinstance(result, BatchedHostData):
-                    valid_results.append(result)
-                elif isinstance(result, Exception):
-                    print(f"   Batch enrichment failed: {result}")
-            
-            print(f"   Enrichment complete: {len(valid_results)} successful batches")
-            return valid_results
-        
-        return []
-    
-    def _generate_optimized_stats(self, processing_time: float, inventory_stats: Dict) -> Dict[str, Any]:
-        return {
-            'processing_time': processing_time,
-            'total_assets': inventory_stats.get('processed_endpoints', 0),
-            'high_coverage_assets': inventory_stats.get('high_coverage_assets', 0),
-            'complete_visibility_assets': inventory_stats.get('complete_visibility_assets', 0),
-            'total_data_points': inventory_stats.get('total_data_points', 0),
-            'database_path': self.db_path,
-            'discovery_method': 'super_optimized_with_intelligence',
-            'engine_type': 'SuperOptimizedWithIntelligence',
-            'cache_stats': self.cache.get_stats() if hasattr(self.cache, 'get_stats') else {}
-        }
-    
-    def _create_optimized_queries(self) -> Dict[str, str]:
-        return {
-            'overview': """
-                SELECT * FROM ao1_log_visibility_inventory 
-                ORDER BY coverage_completeness_score DESC
-                LIMIT 100;
-            """,
-            'coverage_summary': """
-                SELECT 
-                    COUNT(*) as total_assets,
-                    SUM(CASE WHEN in_splunk THEN 1 ELSE 0 END) as splunk_coverage,
-                    SUM(CASE WHEN in_chronicle THEN 1 ELSE 0 END) as chronicle_coverage,
-                    SUM(CASE WHEN edr_coverage = 'Yes' THEN 1 ELSE 0 END) as edr_coverage,
-                    AVG(coverage_completeness_score) as avg_coverage_score
-                FROM ao1_log_visibility_inventory;
-            """,
-            'visibility_gaps': """
-                SELECT 
-                    visibility_gap_severity,
-                    COUNT(*) as asset_count,
-                    AVG(coverage_completeness_score) as avg_score
-                FROM ao1_log_visibility_inventory
-                GROUP BY visibility_gap_severity
-                ORDER BY avg_score DESC;
-            """,
-            'top_assets': """
-                SELECT hostname, infrastructure_type, system_classification, 
-                       coverage_completeness_score, visibility_gap_severity
-                FROM ao1_log_visibility_inventory
-                WHERE coverage_completeness_score > 70
-                ORDER BY coverage_completeness_score DESC
-                LIMIT 20;
-            """,
-            'infrastructure_breakdown': """
-                SELECT 
-                    infrastructure_type,
-                    COUNT(*) as count,
-                    AVG(coverage_completeness_score) as avg_coverage
-                FROM ao1_log_visibility_inventory
-                WHERE infrastructure_type != ''
-                GROUP BY infrastructure_type
-                ORDER BY count DESC;
-            """,
-            'endpoint_intelligence': """
-                SELECT 
-                    primary_hostname,
-                    original_hostnames,
-                    seen_count,
-                    confidence_score
-                FROM intelligent_endpoints
-                ORDER BY seen_count DESC
-                LIMIT 50;
-            """,
-            'intelligence_insights': """
-                SELECT 
-                    hostname,
-                    semantic_category,
-                    coverage_completeness_score,
-                    ao1_recommendations
-                FROM ao1_log_visibility_inventory
-                WHERE semantic_category IS NOT NULL
-                ORDER BY coverage_completeness_score DESC
-                LIMIT 30;
-            """
-        }
-    
-    def close(self):
-        if hasattr(self, 'data_fusion') and self.data_fusion:
-            if hasattr(self.data_fusion, 'conn') and self.data_fusion.conn:
-                self.data_fusion.conn.close()
-
-class SimpleProgressReporter:
-    @staticmethod
-    def info(msg: str):
-        print(f"   {msg}")
-    
-    @staticmethod
-    def success(msg: str):
-        print(f"   {msg}")
-    
-    @staticmethod
-    def progress(step: int, total: int, msg: str):
-        pct = (step / total * 100) if total > 0 else 0
-        print(f"   {pct:5.1f}% ({step:,}/{total:,})   {msg}")
-
-class SimpleOptimizedAO1Discovery:
-    def __init__(self, project_id: str, config: Dict[str, Any] = None):
-        self.project_id = project_id
-        self.config = config or {}
-        
-        SimpleProgressReporter.info("Initializing simple discovery with intelligence...")
-        
-        self.client_manager = BigQueryClientManager(project_id)
-        
-        try:
-            self.chronicle_client_manager = BigQueryClientManager("chronicle-fisv")
-            if not self.chronicle_client_manager.test_connection():
-                self.chronicle_client_manager = None
-        except:
-            self.chronicle_client_manager = None
-        
-        self.matcher = IntelligentContentMatcher()
-        self.cache = IntelligentCacheManager(
-            cache_dir=self.config.get('cache_dir', '.cache'),
-            max_memory_mb=self.config.get('max_memory_mb', 512),
-            max_disk_gb=self.config.get('max_disk_gb', 5)
-        )
-        
-        self.intelligence_engine = IntelligenceEngine(self.config)
-        
-        self.db_path = self.config.get('database_path', 'ao1_simple_cmdb.db')
-        self.conn = duckdb.connect(self.db_path)
-        self._setup_simple_tables()
-        
-        SimpleProgressReporter.success("Simple discovery with intelligence ready")
-    
-    def _setup_simple_tables(self):
-        self.conn.execute("PRAGMA threads=4")
-        self.conn.execute("PRAGMA memory_limit='1GB'")
-        
-        self.conn.execute("""CREATE TABLE IF NOT EXISTS simple_ao1_inventory (hostname VARCHAR PRIMARY KEY, infrastructure_type VARCHAR, system_classification VARCHAR, global_region VARCHAR, business_unit VARCHAR, in_splunk BOOLEAN DEFAULT FALSE, in_chronicle BOOLEAN DEFAULT FALSE, edr_coverage VARCHAR DEFAULT 'No', source_count INTEGER DEFAULT 0, coverage_completeness_score DOUBLE DEFAULT 0.0, visibility_gap_severity VARCHAR DEFAULT 'unknown', discovery_timestamp TIMESTAMP DEFAULT NOW())""")
-    
-    async def execute_simple_discovery(self) -> Tuple[Dict[str, Any], Dict[str, str]]:
-        start_time = time.time()
-        SimpleProgressReporter.info("Starting intelligent simple discovery")
-        
-        try:
-            SimpleProgressReporter.info("Phase 1: Intelligence analysis")
-            discovery_context = {
-                'project_id': self.project_id,
-                'discovery_type': 'simple',
-                'timestamp': datetime.now().isoformat()
-            }
-            
-            intelligence_results = await self.intelligence_engine.enhance_discovery_intelligence(discovery_context)
-            strategy_params = intelligence_results['strategy_recommendation']['parameters']
-            
-            SimpleProgressReporter.info("Phase 2: Finding suitable tables")
-            table_metadata = await self._discover_simple_tables()
-            
-            if not table_metadata:
-                return {'error': 'No suitable tables found', 'total_assets': 0}, {}
-            
-            SimpleProgressReporter.info("Phase 3: Extracting hostnames")
-            all_hostnames = await self._extract_simple_hostnames(table_metadata)
-            
-            if not all_hostnames:
-                return {'error': 'No hostnames found', 'total_assets': 0}, {}
-            
-            SimpleProgressReporter.info("Phase 4: Building intelligent asset inventory")
-            asset_count = self._build_simple_inventory(all_hostnames, table_metadata)
-            
-            SimpleProgressReporter.info("Phase 5: Learning from results")
-            learning_results = await self.intelligence_engine.learn_from_discovery_results({
-                'total_assets': asset_count,
-                'processing_time': time.time() - start_time,
-                'strategy_used': intelligence_results['strategy_recommendation']['strategy_name']
-            })
-            
-            processing_time = time.time() - start_time
-            stats = {
-                'processing_time': processing_time,
-                'total_assets': asset_count,
-                'database_path': self.db_path,
-                'discovery_method': 'simple_optimized_with_intelligence',
-                'engine_type': 'IntelligentSimpleOptimized',
-                'intelligence_results': intelligence_results,
-                'learning_results': learning_results,
-                'intelligence_summary': self.intelligence_engine.get_intelligence_summary()
-            }
-            
-            queries = {
-                'intelligent_overview': "SELECT * FROM simple_ao1_inventory ORDER BY coverage_completeness_score DESC;",
-                'coverage_summary': "SELECT COUNT(*) as total, SUM(CASE WHEN in_splunk THEN 1 ELSE 0 END) as splunk, SUM(CASE WHEN in_chronicle THEN 1 ELSE 0 END) as chronicle, SUM(CASE WHEN edr_coverage = 'Yes' THEN 1 ELSE 0 END) as edr_coverage FROM simple_ao1_inventory;"
-            }
-            
-            SimpleProgressReporter.success(f"Intelligent simple discovery complete: {asset_count} assets in {processing_time:.1f}s")
-            return stats, queries
-            
-        except Exception as e:
-            SimpleProgressReporter.info(f"Simple discovery failed: {e}")
-            return {'error': str(e), 'total_assets': 0}, {}
-    
-    async def _discover_simple_tables(self) -> List[Dict]:
-        tables = []
-        
-        try:
-            with self.client_manager.get_client() as client:
-                datasets = list(client.list_datasets(project=self.project_id))
-                SimpleProgressReporter.info(f"Found {len(datasets)} datasets")
-                
-                for i, dataset in enumerate(datasets):
-                    SimpleProgressReporter.progress(i+1, len(datasets), f"Checking {dataset.dataset_id}")
-                    
-                    try:
-                        dataset_ref = client.dataset(dataset.dataset_id)
-                        dataset_tables = list(client.list_tables(dataset_ref))
-                        
-                        for table_ref in dataset_tables:
-                            try:
-                                full_table = client.get_table(table_ref)
-                                if full_table.num_rows and full_table.num_rows > 0:
-                                    columns = [field.name for field in full_table.schema]
-                                    hostname_col = self._find_hostname_column(columns)
-                                    if hostname_col:
-                                        tables.append({
-                                            'project_id': self.project_id,
-                                            'table_path': f"{self.project_id}.{dataset.dataset_id}.{table_ref.table_id}",
-                                            'hostname_column': hostname_col,
-                                            'table_id': table_ref.table_id,
-                                            'row_count': full_table.num_rows
-                                        })
-                            except:
-                                continue
-                    except:
-                        continue
-        except Exception as e:
-            SimpleProgressReporter.info(f"Table discovery failed: {e}")
-        
-        SimpleProgressReporter.success(f"Found {len(tables)} usable tables")
-        return tables
-    
-    def _find_hostname_column(self, columns: List[str]) -> Optional[str]:
-        for col in columns:
-            col_lower = col.lower()
-            if any(term in col_lower for term in ['host', 'endpoint', 'computer', 'device', 'server', 'machine']):
-                return col
-        return None
-    
-    async def _extract_simple_hostnames(self, tables: List[Dict]) -> List[str]:
-        all_hostnames = set()
-        
-        for i, table in enumerate(tables):
-            SimpleProgressReporter.progress(i+1, len(tables), f"Extracting from {table['table_id']}")
-            
-            row_count = table.get('row_count', 0)
-            sampling_clause = ""
-            if row_count > 10000000:
-                sampling_clause = "TABLESAMPLE SYSTEM (10 PERCENT)"
-            
-            query = f"SELECT DISTINCT UPPER(TRIM(`{table['hostname_column']}`)) as hostname FROM `{table['table_path']}` {sampling_clause} WHERE `{table['hostname_column']}` IS NOT NULL"
-            
-            try:
-                with self.client_manager.get_client() as client:
-                    job = client.query(query)
-                    results = list(job.result())
-                    
-                    for row in results:
-                        hostname = str(row[0]) if row[0] else ""
-                        if hostname and len(hostname) > 2:
-                            all_hostnames.add(hostname)
-            except:
-                continue
-        
-        SimpleProgressReporter.success(f"Extracted {len(all_hostnames)} unique hostnames")
-        return list(all_hostnames)
-    
-    def _build_simple_inventory(self, hostnames: List[str], tables: List[Dict]) -> int:
-        assets = []
-        
-        for i, hostname in enumerate(hostnames):
-            if i % 50 == 0:
-                SimpleProgressReporter.progress(i+1, len(hostnames), "Building assets")
-            
-            asset = {
+            asset_profile = {
                 'hostname': hostname,
-                'infrastructure_type': '',
-                'system_classification': '',
-                'global_region': '',
-                'business_unit': '',
-                'in_splunk': any('splunk' in t['table_path'].lower() for t in tables),
-                'in_chronicle': any('chronicle' in t['table_path'].lower() for t in tables),
-                'edr_coverage': 'Yes' if any('crowdstrike' in t['table_path'].lower() for t in tables) else 'No',
-                'source_count': len(tables),
-                'coverage_completeness_score': 50.0,
-                'visibility_gap_severity': 'medium'
+                'fqdn': safe_str(enrichment_data.get('fqdn')),
+                'ip_address': safe_str(enrichment_data.get('ip_address')),
+                'mac_address': safe_str(enrichment_data.get('mac_address')),
+                'infrastructure_type': safe_str(enrichment_data.get('infrastructure_type')),
+                'system_classification': safe_str(enrichment_data.get('system_classification')),
+                'global_region': safe_str(enrichment_data.get('global_region')),
+                'country': safe_str(enrichment_data.get('country')),
+                'data_center': safe_str(enrichment_data.get('data_center')),
+                'cloud_region': safe_str(enrichment_data.get('cloud_region')),
+                'business_unit': safe_str(enrichment_data.get('business_unit')),
+                'cio': safe_str(enrichment_data.get('cio')),
+                'apm': safe_str(enrichment_data.get('apm')),
+                'application_class': safe_str(enrichment_data.get('application_class')),
+                'edr_coverage': safe_str(enrichment_data.get('edr_coverage', 'No')),
+                'tanium_coverage': safe_str(enrichment_data.get('tanium_coverage', 'No')),
+                'dlp_coverage': safe_str(enrichment_data.get('dlp_coverage', 'No')),
+                'network_log_types': safe_str(enrichment_data.get('network_log_types')),
+                'endpoint_log_types': safe_str(enrichment_data.get('endpoint_log_types')),
+                'cloud_log_types': safe_str(enrichment_data.get('cloud_log_types')),
+                'application_log_types': safe_str(enrichment_data.get('application_log_types')),
+                'identity_log_types': safe_str(enrichment_data.get('identity_log_types')),
+                'url_fqdn_coverage': safe_str(enrichment_data.get('url_fqdn_coverage', 'No')),
+                'public_ip_coverage': safe_str(enrichment_data.get('public_ip_coverage', 'No')),
+                'cmdb_asset_visibility': safe_str(enrichment_data.get('cmdb_asset_visibility', 'No')),
+                'network_zones': safe_str(enrichment_data.get('network_zones')),
+                'ipam_coverage': safe_str(enrichment_data.get('ipam_coverage', 'No')),
+                'geolocation': safe_str(enrichment_data.get('geolocation')),
+                'vpc': safe_str(enrichment_data.get('vpc')),
+                'domain_visibility': safe_str(enrichment_data.get('domain_visibility')),
+                'internal_external': safe_str(enrichment_data.get('internal_external')),
+                'controls': safe_str(enrichment_data.get('controls')),
+                'in_splunk': any('splunk' in str(table).lower() for table in source_tables_list),
+                'in_chronicle': any('chronicle' in str(table).lower() for table in source_tables_list),
+                'in_gso': any('gso' in str(table).lower() for table in source_tables_list),
+                'found_in_cmdb': len(source_tables_list) > 0,
+                'source_systems': ','.join(sorted(source_tables_list)) if source_tables_list else '',
+                'source_count': len(source_tables_list)
             }
-            assets.append(asset)
-        
-        if assets:
-            SimpleProgressReporter.info("Inserting assets into database")
-            columns = list(assets[0].keys())
-            placeholders = ', '.join(['?' for _ in columns])
-            query = f"INSERT OR REPLACE INTO simple_ao1_inventory ({', '.join(columns)}) VALUES ({placeholders})"
             
-            try:
-                values_list = [[asset[col] for col in columns] for asset in assets]
-                self.conn.executemany(query, values_list)
-            except Exception as e:
-                SimpleProgressReporter.info(f"Database insert failed: {e}")
-        
-        return len(assets)
-    
-    def close(self):
-        if hasattr(self, 'conn') and self.conn:
-            self.conn.close()
-
-class IntelligentAO1Discovery:
-    def __init__(self, project_id: str, config: Dict[str, Any] = None):
-        self.project_id = project_id
-        self.config = config or {}
-        self.client_manager = BigQueryClientManager(project_id)
-        self.matcher = IntelligentContentMatcher()
-        self.cache = IntelligentCacheManager()
-        self.intelligence_engine = IntelligenceEngine(self.config)
-        self.db_path = self.config.get('database_path', 'ao1_intelligent_cmdb.db')
-        self.conn = duckdb.connect(self.db_path)
-        self._setup_basic_tables()
-    
-    def _setup_basic_tables(self):
-        self.conn.execute("""CREATE TABLE IF NOT EXISTS intelligent_ao1_inventory (hostname VARCHAR PRIMARY KEY, infrastructure_type VARCHAR, system_classification VARCHAR, source_count INTEGER DEFAULT 0, intelligence_score DOUBLE DEFAULT 0.0, discovery_timestamp TIMESTAMP DEFAULT NOW())""")
-    
-    async def execute_intelligent_discovery(self) -> Tuple[Dict[str, Any], Dict[str, str]]:
-        start_time = time.time()
-        
-        discovery_context = {
-            'project_id': self.project_id,
-            'discovery_type': 'intelligent_basic',
-            'timestamp': datetime.now().isoformat()
-        }
-        
-        intelligence_results = await self.intelligence_engine.enhance_discovery_intelligence(discovery_context)
-        
-        learning_results = await self.intelligence_engine.learn_from_discovery_results({
-            'total_assets': 0,
-            'processing_time': time.time() - start_time,
-            'strategy_used': 'intelligent_basic'
-        })
-        
-        stats = {
-            'processing_time': time.time() - start_time,
-            'total_assets': 0,
-            'database_path': self.db_path,
-            'discovery_method': 'intelligent_basic',
-            'engine_type': 'IntelligentBasic',
-            'intelligence_results': intelligence_results,
-            'learning_results': learning_results,
-            'intelligence_summary': self.intelligence_engine.get_intelligence_summary()
-        }
-        queries = {
-            'intelligent_overview': "SELECT * FROM intelligent_ao1_inventory;"
-        }
-        return stats, queries
-    
-    def close(self):
-        if hasattr(self, 'conn') and self.conn:
-            self.conn.close()
-
-if __name__ == "__main__":
-    import sys
-    
-    def main():
-        if len(sys.argv) < 2:
-            print("Usage: python script.py <project_id> [discovery_type]")
-            print("Discovery types: simple, super (default: simple)")
-            sys.exit(1)
-        
-        project_id = sys.argv[1]
-        discovery_type = sys.argv[2] if len(sys.argv) > 2 else "simple"
-        
-        async def run_discovery():
-            if discovery_type.lower() == "super":
-                print("Starting SuperOptimized AO1 Discovery with Intelligence...")
-                discovery = SuperOptimizedAO1Discovery(project_id)
-                stats, queries = await discovery.execute_super_optimized_discovery()
+            # Calculate coverage scores
+            log_coverage_factors = [
+                bool(asset_profile['network_log_types']),
+                bool(asset_profile['endpoint_log_types']),
+                bool(asset_profile['cloud_log_types']),
+                bool(asset_profile['application_log_types']),
+                bool(asset_profile['identity_log_types'])
+            ]
+            log_coverage_score = sum(log_coverage_factors) / len(log_coverage_factors) * 100
+            
+            security_coverage_factors = [
+                asset_profile['edr_coverage'].lower() in ['yes', 'true', 'enabled'],
+                asset_profile['tanium_coverage'].lower() in ['yes', 'true', 'enabled'], 
+                asset_profile['dlp_coverage'].lower() in ['yes', 'true', 'enabled']
+            ]
+            security_coverage_score = sum(security_coverage_factors) / len(security_coverage_factors) * 100
+            
+            visibility_factors = [
+                asset_profile['in_splunk'],
+                asset_profile['in_chronicle'],
+                asset_profile['in_gso'],
+                asset_profile['url_fqdn_coverage'].lower() in ['yes', 'true', 'enabled'],
+                asset_profile['cmdb_asset_visibility'].lower() in ['yes', 'true', 'enabled']
+            ]
+            visibility_score = sum(visibility_factors) / len(visibility_factors) * 100
+            
+            asset_profile['log_volume_score'] = log_coverage_score
+            asset_profile['coverage_completeness_score'] = (log_coverage_score + security_coverage_score + visibility_score) / 3
+            
+            # Set visibility gap severity and recommendations
+            if asset_profile['coverage_completeness_score'] >= 80:
+                asset_profile['visibility_gap_severity'] = 'low'
+                asset_profile['ao1_recommendations'] = 'Excellent log visibility coverage across all domains'
+            elif asset_profile['coverage_completeness_score'] >= 60:
+                asset_profile['visibility_gap_severity'] = 'medium'
+                asset_profile['ao1_recommendations'] = 'Good coverage with opportunities to improve security control visibility'
+            elif asset_profile['coverage_completeness_score'] >= 40:
+                asset_profile['visibility_gap_severity'] = 'high'
+                asset_profile['ao1_recommendations'] = 'Significant visibility gaps - expand log collection and security tool coverage'
             else:
-                print("Starting Intelligent Simple AO1 Discovery...")
-                discovery = SimpleOptimizedAO1Discovery(project_id)
-                stats, queries = await discovery.execute_simple_discovery()
+                asset_profile['visibility_gap_severity'] = 'critical'
+                asset_profile['ao1_recommendations'] = 'Critical visibility gaps - immediate action required for CSOC monitoring'
             
-            print("\n" + "="*50)
-            print("INTELLIGENT DISCOVERY COMPLETE")
-            print("="*50)
-            print(f"Processing Time: {stats.get('processing_time', 0):.2f} seconds")
-            print(f"Total Assets: {stats.get('total_assets', 0):,}")
-            print(f"Database Path: {stats.get('database_path', 'N/A')}")
-            print(f"Discovery Method: {stats.get('discovery_method', 'N/A')}")
-            print(f"Engine Type: {stats.get('engine_type', 'N/A')}")
+            return asset_profile
             
-            if 'high_coverage_assets' in stats:
-                print(f"High Coverage Assets: {stats['high_coverage_assets']:,}")
-            
-            if 'intelligence_summary' in stats:
-                intel_summary = stats['intelligence_summary']
-                print(f"\nIntelligence Summary:")
-                print(f"Learning Iterations: {intel_summary.get('learning_iterations', 0)}")
-                print(f"Strategy Effectiveness: {intel_summary.get('strategy_effectiveness', {})}")
-            
-            print("\nSample Queries:")
-            for name, query in queries.items():
-                print(f"\n-- {name.upper()} --")
-                print(query.strip())
-            
-            discovery.close()
-        
-        asyncio.run(run_discovery())
+        except Exception as e:
+            logger.error(f"Error building asset profile for {hostname}: {e}")
+            return None
     
-    main()
+    def
