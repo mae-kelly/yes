@@ -23,6 +23,7 @@ import functools
 from gcp_client import BigQueryClientManager
 from intelligent_content_matcher import IntelligentContentMatcher
 from intelligent_cache_manager import IntelligentCacheManager
+from intelligence_engine import IntelligenceEngine
 from progress_tracker import ProgressTracker
 from checkpoint_manager import CheckpointManager
 from signal_handler import SignalHandler
@@ -1285,6 +1286,8 @@ class SuperOptimizedAO1Discovery:
             max_disk_gb=self.config.get('max_disk_gb', 10)
         )
         
+        self.intelligence_engine = IntelligenceEngine(self.config)
+        
         self.db_path = self.config.get('database_path', 'ao1_optimized_cmdb.db')
         self.data_fusion = AdvancedDataFusion(self.db_path)
         
@@ -1298,12 +1301,25 @@ class SuperOptimizedAO1Discovery:
         self.max_workers = min(self.config.get('max_workers', 16), mp.cpu_count() * 2)
         self.batch_size = self.config.get('batch_size', 500)
         
+        self.discovery_context = {}
+        self.intelligence_results = {}
+    
     async def execute_super_optimized_discovery(self) -> Tuple[Dict[str, Any], Dict[str, str]]:
         start_time = time.time()
-        print("   Starting SuperOptimized AO1 Discovery...")
+        print("   Starting SuperOptimized AO1 Discovery with Intelligence Engine...")
         
         try:
-            print("   Step 1: Discovering prioritized tables...")
+            print("   Phase 1: Intelligence-guided discovery planning...")
+            self.discovery_context = await self._prepare_discovery_context()
+            
+            self.intelligence_results = await self.intelligence_engine.enhance_discovery_intelligence(
+                self.discovery_context
+            )
+            
+            strategy_params = self.intelligence_results['strategy_recommendation']['parameters']
+            self._apply_intelligent_strategy(strategy_params)
+            
+            print("   Phase 2: Discovering prioritized tables...")
             all_table_metadata = await asyncio.wait_for(
                 self._discover_prioritized_tables(), 
                 timeout=600
@@ -1314,7 +1330,7 @@ class SuperOptimizedAO1Discovery:
                 print("   No tables found - check permissions")
                 return {'error': 'No tables found', 'total_assets': 0}, {}
             
-            print("   Step 2: Batch hostname discovery...")
+            print("   Phase 3: Intelligent hostname discovery...")
             all_hostnames = await asyncio.wait_for(
                 self._batch_hostname_discovery(all_table_metadata),
                 timeout=1200
@@ -1325,22 +1341,31 @@ class SuperOptimizedAO1Discovery:
                 print("   No hostnames found")
                 return {'error': 'No hostnames found', 'total_assets': 0}, {}
             
-            print("   Step 3: Parallel batch enrichment...")
+            print("   Phase 4: Intelligence-enhanced batch enrichment...")
             batched_enrichment_data = await asyncio.wait_for(
                 self._parallel_batch_enrichment(all_hostnames, all_table_metadata),
                 timeout=1800
             )
             print(f"   Processed {len(batched_enrichment_data)} enrichment batches")
             
-            print("   Step 4: Building intelligent inventory...")
+            print("   Phase 5: Building intelligent inventory...")
             inventory_stats = self.data_fusion.build_intelligent_inventory(batched_enrichment_data)
             print(f"   Built inventory with {inventory_stats.get('processed_endpoints', 0)} assets")
             
-            print("   Step 5: Cache optimization...")
+            print("   Phase 6: Learning from results...")
+            learning_results = await self.intelligence_engine.learn_from_discovery_results(
+                inventory_stats, self.intelligence_results.get('predictions', {})
+            )
+            
+            print("   Phase 7: Cache optimization...")
             cache_optimization = self.cache.optimize()
             print("   Cache optimized")
             
             final_stats = self._generate_optimized_stats(time.time() - start_time, inventory_stats)
+            final_stats['intelligence_results'] = self.intelligence_results
+            final_stats['learning_results'] = learning_results
+            final_stats['intelligence_summary'] = self.intelligence_engine.get_intelligence_summary()
+            
             analysis_queries = self._create_optimized_queries()
             
             return final_stats, analysis_queries
@@ -1354,6 +1379,63 @@ class SuperOptimizedAO1Discovery:
             print("   Full traceback:")
             traceback.print_exc()
             raise
+    
+    async def _prepare_discovery_context(self) -> Dict[str, Any]:
+        context = {
+            'project_id': self.project_id,
+            'timestamp': datetime.now().isoformat(),
+            'config': self.config.copy()
+        }
+        
+        try:
+            with self.client_manager.get_client() as client:
+                datasets = list(client.list_datasets(project=self.project_id))
+                context.update({
+                    'dataset_count': len(datasets),
+                    'dataset_names': [d.dataset_id for d in datasets],
+                    'has_chronicle_access': self.chronicle_client_manager is not None
+                })
+                
+                table_count = 0
+                table_names = []
+                for dataset in datasets[:10]:
+                    try:
+                        dataset_ref = client.dataset(dataset.dataset_id)
+                        tables = list(client.list_tables(dataset_ref))
+                        table_count += len(tables)
+                        table_names.extend([t.table_id for t in tables[:5]])
+                    except:
+                        continue
+                
+                context.update({
+                    'table_count': table_count,
+                    'table_names': table_names
+                })
+                
+        except Exception as e:
+            logger.warning(f"Failed to gather full discovery context: {e}")
+        
+        return context
+    
+    def _apply_intelligent_strategy(self, strategy_params: Dict[str, Any]):
+        self.batch_size = strategy_params.get('batch_size', self.batch_size)
+        self.max_workers = min(
+            strategy_params.get('parallel_workers', self.max_workers),
+            mp.cpu_count() * 2
+        )
+        
+        if hasattr(self.batch_extractor, 'batch_size'):
+            self.batch_extractor.batch_size = self.batch_size
+        
+        timeout_seconds = strategy_params.get('timeout_seconds', 300)
+        if hasattr(self, 'operation_timeout'):
+            self.operation_timeout = timeout_seconds
+        
+        validation_level = strategy_params.get('validation_level', 'standard')
+        if hasattr(self.matcher, 'validation_strictness'):
+            self.matcher.validation_strictness = validation_level
+        
+        print(f"   Applied intelligent strategy: batch_size={self.batch_size}, workers={self.max_workers}")
     
     async def _discover_prioritized_tables(self) -> List[Dict[str, Any]]:
         print("   Starting table discovery across projects...")
@@ -1474,12 +1556,18 @@ class SuperOptimizedAO1Discovery:
                     column_analysis = {}
                     hostname_found = False
                     
+                    table_context = {
+                        'table_name': table_ref.table_id,
+                        'dataset_name': dataset_id,
+                        'project_id': project_id
+                    }
+                    
                     for column in all_columns:
                         samples = sample_data.get(column, [])
                         if not samples:
                             continue
                         
-                        analysis = self.matcher.analyze_column_intelligently(column, samples)
+                        analysis = self.matcher.analyze_column_intelligently(column, samples, table_context)
                         if analysis:
                             field_type, confidence, metadata = analysis
                             column_analysis[column] = analysis
@@ -1832,8 +1920,8 @@ class SuperOptimizedAO1Discovery:
             'complete_visibility_assets': inventory_stats.get('complete_visibility_assets', 0),
             'total_data_points': inventory_stats.get('total_data_points', 0),
             'database_path': self.db_path,
-            'discovery_method': 'super_optimized',
-            'engine_type': 'SuperOptimized',
+            'discovery_method': 'super_optimized_with_intelligence',
+            'engine_type': 'SuperOptimizedWithIntelligence',
             'cache_stats': self.cache.get_stats() if hasattr(self.cache, 'get_stats') else {}
         }
     
@@ -1889,6 +1977,17 @@ class SuperOptimizedAO1Discovery:
                 FROM intelligent_endpoints
                 ORDER BY seen_count DESC
                 LIMIT 50;
+            """,
+            'intelligence_insights': """
+                SELECT 
+                    hostname,
+                    semantic_category,
+                    coverage_completeness_score,
+                    ao1_recommendations
+                FROM ao1_log_visibility_inventory
+                WHERE semantic_category IS NOT NULL
+                ORDER BY coverage_completeness_score DESC
+                LIMIT 30;
             """
         }
     
@@ -1916,7 +2015,7 @@ class SimpleOptimizedAO1Discovery:
         self.project_id = project_id
         self.config = config or {}
         
-        SimpleProgressReporter.info("Initializing simple discovery components...")
+        SimpleProgressReporter.info("Initializing simple discovery with intelligence...")
         
         self.client_manager = BigQueryClientManager(project_id)
         
@@ -1934,11 +2033,13 @@ class SimpleOptimizedAO1Discovery:
             max_disk_gb=self.config.get('max_disk_gb', 5)
         )
         
+        self.intelligence_engine = IntelligenceEngine(self.config)
+        
         self.db_path = self.config.get('database_path', 'ao1_simple_cmdb.db')
         self.conn = duckdb.connect(self.db_path)
         self._setup_simple_tables()
         
-        SimpleProgressReporter.success("Simple discovery components ready")
+        SimpleProgressReporter.success("Simple discovery with intelligence ready")
     
     def _setup_simple_tables(self):
         self.conn.execute("PRAGMA threads=4")
@@ -1948,39 +2049,59 @@ class SimpleOptimizedAO1Discovery:
     
     async def execute_simple_discovery(self) -> Tuple[Dict[str, Any], Dict[str, str]]:
         start_time = time.time()
-        SimpleProgressReporter.info("Starting simple optimized discovery")
+        SimpleProgressReporter.info("Starting intelligent simple discovery")
         
         try:
-            SimpleProgressReporter.info("Phase 1: Finding suitable tables")
+            SimpleProgressReporter.info("Phase 1: Intelligence analysis")
+            discovery_context = {
+                'project_id': self.project_id,
+                'discovery_type': 'simple',
+                'timestamp': datetime.now().isoformat()
+            }
+            
+            intelligence_results = await self.intelligence_engine.enhance_discovery_intelligence(discovery_context)
+            strategy_params = intelligence_results['strategy_recommendation']['parameters']
+            
+            SimpleProgressReporter.info("Phase 2: Finding suitable tables")
             table_metadata = await self._discover_simple_tables()
             
             if not table_metadata:
                 return {'error': 'No suitable tables found', 'total_assets': 0}, {}
             
-            SimpleProgressReporter.info("Phase 2: Extracting hostnames")
+            SimpleProgressReporter.info("Phase 3: Extracting hostnames")
             all_hostnames = await self._extract_simple_hostnames(table_metadata)
             
             if not all_hostnames:
                 return {'error': 'No hostnames found', 'total_assets': 0}, {}
             
-            SimpleProgressReporter.info("Phase 3: Building asset inventory")
+            SimpleProgressReporter.info("Phase 4: Building intelligent asset inventory")
             asset_count = self._build_simple_inventory(all_hostnames, table_metadata)
+            
+            SimpleProgressReporter.info("Phase 5: Learning from results")
+            learning_results = await self.intelligence_engine.learn_from_discovery_results({
+                'total_assets': asset_count,
+                'processing_time': time.time() - start_time,
+                'strategy_used': intelligence_results['strategy_recommendation']['strategy_name']
+            })
             
             processing_time = time.time() - start_time
             stats = {
                 'processing_time': processing_time,
                 'total_assets': asset_count,
                 'database_path': self.db_path,
-                'discovery_method': 'simple_optimized',
-                'engine_type': 'SimpleOptimized'
+                'discovery_method': 'simple_optimized_with_intelligence',
+                'engine_type': 'IntelligentSimpleOptimized',
+                'intelligence_results': intelligence_results,
+                'learning_results': learning_results,
+                'intelligence_summary': self.intelligence_engine.get_intelligence_summary()
             }
             
             queries = {
-                'simple_overview': "SELECT * FROM simple_ao1_inventory ORDER BY coverage_completeness_score DESC;",
+                'intelligent_overview': "SELECT * FROM simple_ao1_inventory ORDER BY coverage_completeness_score DESC;",
                 'coverage_summary': "SELECT COUNT(*) as total, SUM(CASE WHEN in_splunk THEN 1 ELSE 0 END) as splunk, SUM(CASE WHEN in_chronicle THEN 1 ELSE 0 END) as chronicle, SUM(CASE WHEN edr_coverage = 'Yes' THEN 1 ELSE 0 END) as edr_coverage FROM simple_ao1_inventory;"
             }
             
-            SimpleProgressReporter.success(f"Simple discovery complete: {asset_count} assets in {processing_time:.1f}s")
+            SimpleProgressReporter.success(f"Intelligent simple discovery complete: {asset_count} assets in {processing_time:.1f}s")
             return stats, queries
             
         except Exception as e:
@@ -2108,21 +2229,40 @@ class IntelligentAO1Discovery:
         self.client_manager = BigQueryClientManager(project_id)
         self.matcher = IntelligentContentMatcher()
         self.cache = IntelligentCacheManager()
+        self.intelligence_engine = IntelligenceEngine(self.config)
         self.db_path = self.config.get('database_path', 'ao1_intelligent_cmdb.db')
         self.conn = duckdb.connect(self.db_path)
         self._setup_basic_tables()
     
     def _setup_basic_tables(self):
-        self.conn.execute("""CREATE TABLE IF NOT EXISTS intelligent_ao1_inventory (hostname VARCHAR PRIMARY KEY, infrastructure_type VARCHAR, system_classification VARCHAR, source_count INTEGER DEFAULT 0, discovery_timestamp TIMESTAMP DEFAULT NOW())""")
+        self.conn.execute("""CREATE TABLE IF NOT EXISTS intelligent_ao1_inventory (hostname VARCHAR PRIMARY KEY, infrastructure_type VARCHAR, system_classification VARCHAR, source_count INTEGER DEFAULT 0, intelligence_score DOUBLE DEFAULT 0.0, discovery_timestamp TIMESTAMP DEFAULT NOW())""")
     
     async def execute_intelligent_discovery(self) -> Tuple[Dict[str, Any], Dict[str, str]]:
         start_time = time.time()
+        
+        discovery_context = {
+            'project_id': self.project_id,
+            'discovery_type': 'intelligent_basic',
+            'timestamp': datetime.now().isoformat()
+        }
+        
+        intelligence_results = await self.intelligence_engine.enhance_discovery_intelligence(discovery_context)
+        
+        learning_results = await self.intelligence_engine.learn_from_discovery_results({
+            'total_assets': 0,
+            'processing_time': time.time() - start_time,
+            'strategy_used': 'intelligent_basic'
+        })
+        
         stats = {
             'processing_time': time.time() - start_time,
             'total_assets': 0,
             'database_path': self.db_path,
-            'discovery_method': 'intelligent',
-            'engine_type': 'Intelligent'
+            'discovery_method': 'intelligent_basic',
+            'engine_type': 'IntelligentBasic',
+            'intelligence_results': intelligence_results,
+            'learning_results': learning_results,
+            'intelligence_summary': self.intelligence_engine.get_intelligence_summary()
         }
         queries = {
             'intelligent_overview': "SELECT * FROM intelligent_ao1_inventory;"
@@ -2147,24 +2287,31 @@ if __name__ == "__main__":
         
         async def run_discovery():
             if discovery_type.lower() == "super":
-                print("Starting SuperOptimized AO1 Discovery...")
+                print("Starting SuperOptimized AO1 Discovery with Intelligence...")
                 discovery = SuperOptimizedAO1Discovery(project_id)
                 stats, queries = await discovery.execute_super_optimized_discovery()
             else:
-                print("Starting Simple AO1 Discovery...")
+                print("Starting Intelligent Simple AO1 Discovery...")
                 discovery = SimpleOptimizedAO1Discovery(project_id)
                 stats, queries = await discovery.execute_simple_discovery()
             
             print("\n" + "="*50)
-            print("DISCOVERY COMPLETE")
+            print("INTELLIGENT DISCOVERY COMPLETE")
             print("="*50)
             print(f"Processing Time: {stats.get('processing_time', 0):.2f} seconds")
             print(f"Total Assets: {stats.get('total_assets', 0):,}")
             print(f"Database Path: {stats.get('database_path', 'N/A')}")
             print(f"Discovery Method: {stats.get('discovery_method', 'N/A')}")
+            print(f"Engine Type: {stats.get('engine_type', 'N/A')}")
             
             if 'high_coverage_assets' in stats:
                 print(f"High Coverage Assets: {stats['high_coverage_assets']:,}")
+            
+            if 'intelligence_summary' in stats:
+                intel_summary = stats['intelligence_summary']
+                print(f"\nIntelligence Summary:")
+                print(f"Learning Iterations: {intel_summary.get('learning_iterations', 0)}")
+                print(f"Strategy Effectiveness: {intel_summary.get('strategy_effectiveness', {})}")
             
             print("\nSample Queries:")
             for name, query in queries.items():
