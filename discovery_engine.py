@@ -214,7 +214,7 @@ class IntelligentFieldExtractor:
         prioritized_tables = self._prioritize_tables_for_extraction(table_metadata, all_variants)
         
         extraction_tasks = []
-        for table_meta in prioritized_tables[:50]:
+        for table_meta in prioritized_tables:
             if await self._should_extract_from_table(table_meta, all_variants):
                 task = self._extract_intelligent_batch_from_table(
                     all_variants, table_meta, hostname_intelligence
@@ -459,11 +459,6 @@ class IntelligentFieldExtractor:
         if cache_key in self.table_analysis_cache:
             return self.table_analysis_cache[cache_key]
         
-        row_count = table_meta.get('row_count', 0)
-        if row_count > 500_000_000:
-            self.table_analysis_cache[cache_key] = False
-            return False
-        
         data_richness = table_meta.get('data_richness_score', 0)
         if data_richness < 0.1:
             self.table_analysis_cache[cache_key] = False
@@ -579,7 +574,7 @@ class IntelligentFieldExtractor:
                         select_fields.append(presence_column)
                         field_mappings[f"{ao1_field}_from_table_presence"] = ao1_field
         
-        variant_list = list(variants)[:1000]
+        variant_list = list(variants)
         hostname_filter = "', '".join([h.replace("'", "''") for h in variant_list])
         
         partition_filter = ""
@@ -587,15 +582,19 @@ class IntelligentFieldExtractor:
             partition_field = table_meta['partition_field']
             partition_filter = f"AND `{partition_field}` >= DATE_SUB(CURRENT_DATE(), INTERVAL 30 DAY)"
         
+        row_count = table_meta.get('row_count', 0)
+        sampling_clause = ""
+        if row_count > 10000000:
+            sampling_clause = "TABLESAMPLE SYSTEM (10 PERCENT)"
+        
         query = f"""
         SELECT {', '.join(select_fields)}
-        FROM `{table_path}`
+        FROM `{table_path}` {sampling_clause}
         WHERE UPPER(TRIM(CAST(`{hostname_column}` AS STRING))) IN ('{hostname_filter}')
         AND `{hostname_column}` IS NOT NULL
         AND LENGTH(TRIM(CAST(`{hostname_column}` AS STRING))) >= 2
         AND LENGTH(TRIM(CAST(`{hostname_column}` AS STRING))) <= 253
         {partition_filter}
-        LIMIT 10000
         """
         
         return {
@@ -655,20 +654,15 @@ class IntelligentFieldExtractor:
         with client_mgr.get_client() as client:
             job_config = bigquery.QueryJobConfig(
                 dry_run=True,
-                use_query_cache=False,
-                maximum_bytes_billed=500 * 1024 * 1024
+                use_query_cache=False
             )
             
             dry_run_job = client.query(query_components['query'], job_config=job_config)
             
-            if dry_run_job.total_bytes_processed > 200 * 1024 * 1024:
-                logger.warning(f"Large query for {table_path}: {dry_run_job.total_bytes_processed / (1024*1024):.1f}MB")
-            
             job_config = bigquery.QueryJobConfig(
                 dry_run=False,
                 use_query_cache=True,
-                maximum_bytes_billed=500 * 1024 * 1024,
-                job_timeout_ms=60000
+                job_timeout_ms=120000
             )
             
             job = client.query(query_components['query'], job_config=job_config)
@@ -1306,45 +1300,45 @@ class SuperOptimizedAO1Discovery:
         
     async def execute_super_optimized_discovery(self) -> Tuple[Dict[str, Any], Dict[str, str]]:
         start_time = time.time()
-        print("   🚀 Starting SuperOptimized AO1 Discovery...")
+        print("   Starting SuperOptimized AO1 Discovery...")
         
         try:
-            print("   📋 Step 1: Discovering prioritized tables...")
+            print("   Step 1: Discovering prioritized tables...")
             all_table_metadata = await asyncio.wait_for(
                 self._discover_prioritized_tables(), 
-                timeout=300
-            )
-            print(f"   ✅ Found {len(all_table_metadata)} prioritized tables")
-            
-            if not all_table_metadata:
-                print("   ⚠️  No tables found - check permissions")
-                return {'error': 'No tables found', 'total_assets': 0}, {}
-            
-            print("   🔍 Step 2: Batch hostname discovery...")
-            all_hostnames = await asyncio.wait_for(
-                self._batch_hostname_discovery(all_table_metadata),
                 timeout=600
             )
-            print(f"   ✅ Discovered {len(all_hostnames)} unique hostnames")
+            print(f"   Found {len(all_table_metadata)} prioritized tables")
+            
+            if not all_table_metadata:
+                print("   No tables found - check permissions")
+                return {'error': 'No tables found', 'total_assets': 0}, {}
+            
+            print("   Step 2: Batch hostname discovery...")
+            all_hostnames = await asyncio.wait_for(
+                self._batch_hostname_discovery(all_table_metadata),
+                timeout=1200
+            )
+            print(f"   Discovered {len(all_hostnames)} unique hostnames")
             
             if not all_hostnames:
-                print("   ⚠️  No hostnames found")
+                print("   No hostnames found")
                 return {'error': 'No hostnames found', 'total_assets': 0}, {}
             
-            print("   🔄 Step 3: Parallel batch enrichment...")
+            print("   Step 3: Parallel batch enrichment...")
             batched_enrichment_data = await asyncio.wait_for(
                 self._parallel_batch_enrichment(all_hostnames, all_table_metadata),
-                timeout=900
+                timeout=1800
             )
-            print(f"   ✅ Processed {len(batched_enrichment_data)} enrichment batches")
+            print(f"   Processed {len(batched_enrichment_data)} enrichment batches")
             
-            print("   📊 Step 4: Building intelligent inventory...")
+            print("   Step 4: Building intelligent inventory...")
             inventory_stats = self.data_fusion.build_intelligent_inventory(batched_enrichment_data)
-            print(f"   ✅ Built inventory with {inventory_stats.get('processed_endpoints', 0)} assets")
+            print(f"   Built inventory with {inventory_stats.get('processed_endpoints', 0)} assets")
             
-            print("   🎯 Step 5: Cache optimization...")
+            print("   Step 5: Cache optimization...")
             cache_optimization = self.cache.optimize()
-            print("   ✅ Cache optimized")
+            print("   Cache optimized")
             
             final_stats = self._generate_optimized_stats(time.time() - start_time, inventory_stats)
             analysis_queries = self._create_optimized_queries()
@@ -1352,100 +1346,97 @@ class SuperOptimizedAO1Discovery:
             return final_stats, analysis_queries
             
         except asyncio.TimeoutError as timeout_error:
-            print(f"   ⚠️  SuperOptimized discovery timed out: {timeout_error}")
+            print(f"   SuperOptimized discovery timed out: {timeout_error}")
             return {'error': 'Discovery timed out', 'total_assets': 0}, {}
         except Exception as e:
-            print(f"   ❌ SuperOptimized discovery failed: {e}")
+            print(f"   SuperOptimized discovery failed: {e}")
             import traceback
-            print("   🐛 Full traceback:")
+            print("   Full traceback:")
             traceback.print_exc()
             raise
     
     async def _discover_prioritized_tables(self) -> List[Dict[str, Any]]:
-        print("   📋 Starting table discovery across projects...")
+        print("   Starting table discovery across projects...")
         
         projects_to_analyze = [self.project_id]
         if self.chronicle_client_manager:
             projects_to_analyze.append('chronicle-fisv')
-            print("   📋 Will analyze both primary project and Chronicle")
+            print("   Will analyze both primary project and Chronicle")
         else:
-            print("   📋 Will analyze primary project only")
+            print("   Will analyze primary project only")
         
         all_metadata = []
         
         for i, project_id in enumerate(projects_to_analyze):
-            print(f"   📋 Processing project {i+1}/{len(projects_to_analyze)}: {project_id}")
+            print(f"   Processing project {i+1}/{len(projects_to_analyze)}: {project_id}")
             client_mgr = self.chronicle_client_manager if project_id == 'chronicle-fisv' else self.client_manager
             
             try:
                 project_metadata = await asyncio.wait_for(
                     self._discover_project_tables(client_mgr, project_id),
-                    timeout=200
+                    timeout=400
                 )
                 all_metadata.extend(project_metadata)
-                print(f"   📋 Project {project_id} contributed {len(project_metadata)} tables")
+                print(f"   Project {project_id} contributed {len(project_metadata)} tables")
             except asyncio.TimeoutError:
-                print(f"   ⚠️  Project {project_id} timed out after 200s")
+                print(f"   Project {project_id} timed out after 400s")
             except Exception as e:
-                print(f"   ⚠️  Project {project_id} failed: {e}")
+                print(f"   Project {project_id} failed: {e}")
         
-        print(f"   📋 Total tables collected: {len(all_metadata)}")
+        print(f"   Total tables collected: {len(all_metadata)}")
         all_metadata.sort(key=lambda x: x.get('data_richness_score', 0), reverse=True)
-        limited_metadata = all_metadata[:100]
-        print(f"   📋 Limited to top {len(limited_metadata)} tables for processing")
-        return limited_metadata
+        return all_metadata
     
     async def _discover_project_tables(self, client_manager: BigQueryClientManager, project_id: str) -> List[Dict[str, Any]]:
-        print(f"   🔍 Starting discovery for project: {project_id}")
+        print(f"   Starting discovery for project: {project_id}")
         try:
             with client_manager.get_client() as client:
-                print(f"   🔍 Getting datasets for {project_id}...")
+                print(f"   Getting datasets for {project_id}...")
                 
                 try:
                     datasets = list(client.list_datasets(project=project_id))
-                    print(f"   🔍 Found {len(datasets)} datasets in {project_id}")
+                    print(f"   Found {len(datasets)} datasets in {project_id}")
                 except Exception as e:
-                    print(f"   ⚠️  Failed to list datasets in {project_id}: {e}")
+                    print(f"   Failed to list datasets in {project_id}: {e}")
                     return []
                 
                 if not datasets:
-                    print(f"   ⚠️  No datasets found in {project_id}")
+                    print(f"   No datasets found in {project_id}")
                     return []
                 
                 priority_datasets = self._prioritize_datasets([d.dataset_id for d in datasets])
-                limited_datasets = priority_datasets[:20]
-                print(f"   🔍 Will analyze top {len(limited_datasets)} priority datasets")
+                print(f"   Will analyze {len(priority_datasets)} priority datasets")
                 
                 all_metadata = []
                 
-                for j, dataset_id in enumerate(limited_datasets):
-                    print(f"   🔍 Dataset {j+1}/{len(limited_datasets)}: {dataset_id}")
+                for j, dataset_id in enumerate(priority_datasets):
+                    print(f"   Dataset {j+1}/{len(priority_datasets)}: {dataset_id}")
                     
                     try:
                         dataset_metadata = await asyncio.wait_for(
                             self._analyze_dataset_tables(client, project_id, dataset_id),
-                            timeout=60
+                            timeout=120
                         )
                         all_metadata.extend(dataset_metadata)
-                        print(f"   🔍 Dataset {dataset_id} contributed {len(dataset_metadata)} tables")
+                        print(f"   Dataset {dataset_id} contributed {len(dataset_metadata)} tables")
                     except asyncio.TimeoutError:
-                        print(f"   ⚠️  Dataset {dataset_id} timed out")
+                        print(f"   Dataset {dataset_id} timed out")
                     except Exception as e:
-                        print(f"   ⚠️  Dataset {dataset_id} failed: {e}")
+                        print(f"   Dataset {dataset_id} failed: {e}")
                 
-                print(f"   🔍 Project {project_id} complete: {len(all_metadata)} total tables")
+                print(f"   Project {project_id} complete: {len(all_metadata)} total tables")
                 return all_metadata
                 
         except Exception as e:
-            print(f"   ❌ Project {project_id} discovery failed: {e}")
+            print(f"   Project {project_id} discovery failed: {e}")
             return []
     
     async def _analyze_dataset_tables(self, client, project_id: str, dataset_id: str) -> List[Dict[str, Any]]:
-        print(f"   📊 Analyzing dataset: {project_id}.{dataset_id}")
+        print(f"   Analyzing dataset: {project_id}.{dataset_id}")
         try:
             dataset_ref = client.dataset(dataset_id, project=project_id)
             tables = list(client.list_tables(dataset_ref))
-            print(f"   📊 Dataset {dataset_id} has {len(tables)} tables")
+            print(f"   Dataset {dataset_id} has {len(tables)} tables")
             
             if not tables:
                 return []
@@ -1453,15 +1444,11 @@ class SuperOptimizedAO1Discovery:
             table_metadata = []
             analyzed_count = 0
             
-            for table_ref in tables[:25]:
+            for table_ref in tables:
                 try:
                     full_table = client.get_table(table_ref)
                     
                     if not full_table.schema or full_table.num_rows == 0:
-                        continue
-                    
-                    if full_table.num_rows and full_table.num_rows > 100000000:
-                        print(f"   📊 Skipping large table: {table_ref.table_id} ({full_table.num_rows:,} rows)")
                         continue
                     
                     all_columns = [field.name for field in full_table.schema]
@@ -1476,12 +1463,12 @@ class SuperOptimizedAO1Discovery:
                         continue
                     
                     analyzed_count += 1
-                    print(f"   📊 Analyzing table {analyzed_count}: {table_ref.table_id}")
+                    print(f"   Analyzing table {analyzed_count}: {table_ref.table_id}")
                     
                     sample_data = await self._get_optimized_sample(client, full_table)
                     
                     if not sample_data:
-                        print(f"   📊 No sample data for {table_ref.table_id}")
+                        print(f"   No sample data for {table_ref.table_id}")
                         continue
                     
                     column_analysis = {}
@@ -1501,13 +1488,13 @@ class SuperOptimizedAO1Discovery:
                                 hostname_found = True
                     
                     if not hostname_found:
-                        print(f"   📊 No hostname column found in {table_ref.table_id}")
+                        print(f"   No hostname column found in {table_ref.table_id}")
                         continue
                     
                     hostname_analysis = self._find_best_hostname_column(column_analysis, sample_data)
                     
                     if not hostname_analysis['primary_hostname_column']:
-                        print(f"   📊 No primary hostname column in {table_ref.table_id}")
+                        print(f"   No primary hostname column in {table_ref.table_id}")
                         continue
                     
                     data_richness = len(column_analysis) / max(len(all_columns), 1)
@@ -1528,16 +1515,16 @@ class SuperOptimizedAO1Discovery:
                         'is_partitioned': full_table.time_partitioning is not None,
                         'partition_field': full_table.time_partitioning.field if full_table.time_partitioning else None
                     })
-                    print(f"   📊 Added table {table_ref.table_id} with richness {data_richness:.2f}")
+                    print(f"   Added table {table_ref.table_id} with richness {data_richness:.2f}")
                     
                 except Exception as table_error:
-                    print(f"   ⚠️  Table analysis failed for {table_ref.table_id}: {table_error}")
+                    print(f"   Table analysis failed for {table_ref.table_id}: {table_error}")
                     continue
             
-            print(f"   📊 Dataset {dataset_id} analysis complete: {len(table_metadata)} usable tables")
+            print(f"   Dataset {dataset_id} analysis complete: {len(table_metadata)} usable tables")
             return table_metadata
         except Exception as dataset_error:
-            print(f"   ❌ Dataset {dataset_id} analysis failed: {dataset_error}")
+            print(f"   Dataset {dataset_id} analysis failed: {dataset_error}")
             return []
     
     async def _get_optimized_sample(self, client, table_ref) -> Dict[str, List[str]]:
@@ -1664,9 +1651,14 @@ class SuperOptimizedAO1Discovery:
             partition_field = table_meta['partition_field']
             partition_filter = f"AND `{partition_field}` >= DATE_SUB(CURRENT_DATE(), INTERVAL 7 DAY)"
         
+        row_count = table_meta.get('row_count', 0)
+        sampling_clause = ""
+        if row_count > 50000000:
+            sampling_clause = "TABLESAMPLE SYSTEM (5 PERCENT)"
+        
         query = f"""
         SELECT DISTINCT UPPER(TRIM(CAST(`{hostname_column}` AS STRING))) as hostname
-        FROM `{table_path}`
+        FROM `{table_path}` {sampling_clause}
         WHERE `{hostname_column}` IS NOT NULL
         AND LENGTH(TRIM(CAST(`{hostname_column}` AS STRING))) >= 2
         AND LENGTH(TRIM(CAST(`{hostname_column}` AS STRING))) <= 253
@@ -1676,7 +1668,6 @@ class SuperOptimizedAO1Discovery:
         AND UPPER(TRIM(CAST(`{hostname_column}` AS STRING))) NOT IN ('UNKNOWN', 'NULL', 'N/A', 'NONE', 'EMPTY', 'TEST', 'EXAMPLE', 'LOCALHOST')
         {partition_filter}
         ORDER BY hostname
-        LIMIT 5000
         """
         
         try:
@@ -1689,17 +1680,12 @@ class SuperOptimizedAO1Discovery:
                 dry_run_job = client.query(query, job_config=job_config)
                 bytes_processed = dry_run_job.total_bytes_processed
                 
-                if bytes_processed > 100 * 1024 * 1024:
-                    print(f"   ⚠️  Skipping {table_path}: would process {bytes_processed / (1024*1024):.1f}MB")
-                    return []
-                
-                print(f"   🔍 Querying {table_path} (will process {bytes_processed / (1024*1024):.1f}MB)")
+                print(f"   Querying {table_path} (will process {bytes_processed / (1024*1024):.1f}MB)")
                 
                 job_config = bigquery.QueryJobConfig(
                     dry_run=False,
                     use_query_cache=True,
-                    maximum_bytes_billed=200 * 1024 * 1024,
-                    job_timeout_ms=30000
+                    job_timeout_ms=60000
                 )
                 
                 job = client.query(query, job_config=job_config)
@@ -1707,9 +1693,9 @@ class SuperOptimizedAO1Discovery:
                 
                 hostnames = []
                 invalid_patterns = [
-                    r'^\d+,
+                    r'^\d+',
                     r'^[^a-zA-Z0-9]',
-                    r'[^a-zA-Z0-9\-],
+                    r'[^a-zA-Z0-9\-]',
                     r'\.{2,}',
                     r'\-{2,}',
                 ]
@@ -1733,11 +1719,11 @@ class SuperOptimizedAO1Discovery:
                         if self._is_likely_hostname(hostname):
                             hostnames.append(hostname)
                 
-                print(f"   ✅ Found {len(hostnames)} valid hostnames in {table_path}")
+                print(f"   Found {len(hostnames)} valid hostnames in {table_path}")
                 return hostnames
                 
         except Exception as e:
-            print(f"   ⚠️  Hostname discovery failed for {table_path}: {e}")
+            print(f"   Hostname discovery failed for {table_path}: {e}")
             return []
     
     def _is_likely_hostname(self, hostname: str) -> bool:
@@ -1763,7 +1749,7 @@ class SuperOptimizedAO1Discovery:
             return False
         
         hostname_indicators = [
-            r'^[A-Z]{2,}[0-9]+,
+            r'^[A-Z]{2,}[0-9]+',
             r'^[A-Z]+-[A-Z0-9]',
             r'^[A-Z0-9]+\-[A-Z0-9]',
             r'(SERVER|SRV|WEB|APP|DB|DC|WIN|LIN)',
@@ -1773,7 +1759,7 @@ class SuperOptimizedAO1Discovery:
             if re.search(pattern, hostname):
                 return True
         
-        if re.match(r'^[A-Z0-9\-]+, hostname) and 3 <= len(hostname) <= 64:
+        if re.match(r'^[A-Z0-9\-]+', hostname) and 3 <= len(hostname) <= 64:
             if not hostname.isdigit() and len(set(hostname.replace('-', ''))) > 1:
                 return True
         
@@ -1796,7 +1782,7 @@ class SuperOptimizedAO1Discovery:
             return ""
         
         hostname = re.sub(r'^[^A-Z0-9]+', '', hostname)
-        hostname = re.sub(r'[^A-Z0-9]+, '', hostname)
+        hostname = re.sub(r'[^A-Z0-9]+', '', hostname)
         
         if '.' in hostname:
             hostname = hostname.split('.')[0]
@@ -1809,14 +1795,14 @@ class SuperOptimizedAO1Discovery:
         return hostname
     
     async def _parallel_batch_enrichment(self, hostnames: List[str], table_metadata: List[Dict]) -> List[BatchedHostData]:
-        print(f"   🔄 Starting parallel enrichment for {len(hostnames)} hostnames using {len(table_metadata)} tables")
+        print(f"   Starting parallel enrichment for {len(hostnames)} hostnames using {len(table_metadata)} tables")
         
         hostname_batches = []
         for i in range(0, len(hostnames), self.batch_size):
             batch = hostnames[i:i + self.batch_size]
             hostname_batches.append(batch)
         
-        print(f"   🔄 Created {len(hostname_batches)} hostname batches")
+        print(f"   Created {len(hostname_batches)} hostname batches")
         
         enrichment_tasks = []
         for batch in hostname_batches:
@@ -1831,9 +1817,9 @@ class SuperOptimizedAO1Discovery:
                 if isinstance(result, BatchedHostData):
                     valid_results.append(result)
                 elif isinstance(result, Exception):
-                    print(f"   ⚠️  Batch enrichment failed: {result}")
+                    print(f"   Batch enrichment failed: {result}")
             
-            print(f"   🔄 Enrichment complete: {len(valid_results)} successful batches")
+            print(f"   Enrichment complete: {len(valid_results)} successful batches")
             return valid_results
         
         return []
@@ -1914,16 +1900,16 @@ class SuperOptimizedAO1Discovery:
 class SimpleProgressReporter:
     @staticmethod
     def info(msg: str):
-        print(f"   ⭐ {msg}")
+        print(f"   {msg}")
     
     @staticmethod
     def success(msg: str):
-        print(f"   ✅ {msg}")
+        print(f"   {msg}")
     
     @staticmethod
     def progress(step: int, total: int, msg: str):
         pct = (step / total * 100) if total > 0 else 0
-        print(f"   📊 {pct:5.1f}% ({step:,}/{total:,})   {msg}")
+        print(f"   {pct:5.1f}% ({step:,}/{total:,})   {msg}")
 
 class SimpleOptimizedAO1Discovery:
     def __init__(self, project_id: str, config: Dict[str, Any] = None):
@@ -2009,14 +1995,14 @@ class SimpleOptimizedAO1Discovery:
                 datasets = list(client.list_datasets(project=self.project_id))
                 SimpleProgressReporter.info(f"Found {len(datasets)} datasets")
                 
-                for i, dataset in enumerate(datasets[:10]):
-                    SimpleProgressReporter.progress(i+1, min(10, len(datasets)), f"Checking {dataset.dataset_id}")
+                for i, dataset in enumerate(datasets):
+                    SimpleProgressReporter.progress(i+1, len(datasets), f"Checking {dataset.dataset_id}")
                     
                     try:
                         dataset_ref = client.dataset(dataset.dataset_id)
                         dataset_tables = list(client.list_tables(dataset_ref))
                         
-                        for table_ref in dataset_tables[:5]:
+                        for table_ref in dataset_tables:
                             try:
                                 full_table = client.get_table(table_ref)
                                 if full_table.num_rows and full_table.num_rows > 0:
@@ -2027,7 +2013,8 @@ class SimpleOptimizedAO1Discovery:
                                             'project_id': self.project_id,
                                             'table_path': f"{self.project_id}.{dataset.dataset_id}.{table_ref.table_id}",
                                             'hostname_column': hostname_col,
-                                            'table_id': table_ref.table_id
+                                            'table_id': table_ref.table_id,
+                                            'row_count': full_table.num_rows
                                         })
                             except:
                                 continue
@@ -2052,7 +2039,12 @@ class SimpleOptimizedAO1Discovery:
         for i, table in enumerate(tables):
             SimpleProgressReporter.progress(i+1, len(tables), f"Extracting from {table['table_id']}")
             
-            query = f"SELECT DISTINCT UPPER(TRIM(`{table['hostname_column']}`)) as hostname FROM `{table['table_path']}` WHERE `{table['hostname_column']}` IS NOT NULL LIMIT 1000"
+            row_count = table.get('row_count', 0)
+            sampling_clause = ""
+            if row_count > 10000000:
+                sampling_clause = "TABLESAMPLE SYSTEM (10 PERCENT)"
+            
+            query = f"SELECT DISTINCT UPPER(TRIM(`{table['hostname_column']}`)) as hostname FROM `{table['table_path']}` {sampling_clause} WHERE `{table['hostname_column']}` IS NOT NULL"
             
             try:
                 with self.client_manager.get_client() as client:
@@ -2109,6 +2101,38 @@ class SimpleOptimizedAO1Discovery:
         if hasattr(self, 'conn') and self.conn:
             self.conn.close()
 
+class IntelligentAO1Discovery:
+    def __init__(self, project_id: str, config: Dict[str, Any] = None):
+        self.project_id = project_id
+        self.config = config or {}
+        self.client_manager = BigQueryClientManager(project_id)
+        self.matcher = IntelligentContentMatcher()
+        self.cache = IntelligentCacheManager()
+        self.db_path = self.config.get('database_path', 'ao1_intelligent_cmdb.db')
+        self.conn = duckdb.connect(self.db_path)
+        self._setup_basic_tables()
+    
+    def _setup_basic_tables(self):
+        self.conn.execute("""CREATE TABLE IF NOT EXISTS intelligent_ao1_inventory (hostname VARCHAR PRIMARY KEY, infrastructure_type VARCHAR, system_classification VARCHAR, source_count INTEGER DEFAULT 0, discovery_timestamp TIMESTAMP DEFAULT NOW())""")
+    
+    async def execute_intelligent_discovery(self) -> Tuple[Dict[str, Any], Dict[str, str]]:
+        start_time = time.time()
+        stats = {
+            'processing_time': time.time() - start_time,
+            'total_assets': 0,
+            'database_path': self.db_path,
+            'discovery_method': 'intelligent',
+            'engine_type': 'Intelligent'
+        }
+        queries = {
+            'intelligent_overview': "SELECT * FROM intelligent_ao1_inventory;"
+        }
+        return stats, queries
+    
+    def close(self):
+        if hasattr(self, 'conn') and self.conn:
+            self.conn.close()
+
 if __name__ == "__main__":
     import sys
     
@@ -2123,11 +2147,11 @@ if __name__ == "__main__":
         
         async def run_discovery():
             if discovery_type.lower() == "super":
-                print("🚀 Starting SuperOptimized AO1 Discovery...")
+                print("Starting SuperOptimized AO1 Discovery...")
                 discovery = SuperOptimizedAO1Discovery(project_id)
                 stats, queries = await discovery.execute_super_optimized_discovery()
             else:
-                print("🌟 Starting Simple AO1 Discovery...")
+                print("Starting Simple AO1 Discovery...")
                 discovery = SimpleOptimizedAO1Discovery(project_id)
                 stats, queries = await discovery.execute_simple_discovery()
             
