@@ -1087,7 +1087,10 @@ class SuperOptimizedAO1Discovery:
         print("   ⋆｡‧˚ʚ♡ɞ˚‧｡⋆   Step 1: Discovering prioritized tables...")
         
         try:
-            all_table_metadata = await self._discover_prioritized_tables()
+            all_table_metadata = await asyncio.wait_for(
+                self._discover_prioritized_tables(), 
+                timeout=300
+            )
             print(f"   ✅ Found {len(all_table_metadata)} prioritized tables")
             
             if not all_table_metadata:
@@ -1095,7 +1098,10 @@ class SuperOptimizedAO1Discovery:
                 return {'error': 'No tables found', 'total_assets': 0}, {}
             
             print("   ⋆｡‧˚ʚ♡ɞ˚‧｡⋆   Step 2: Batch hostname discovery...")
-            all_hostnames = await self._batch_hostname_discovery(all_table_metadata)
+            all_hostnames = await asyncio.wait_for(
+                self._batch_hostname_discovery(all_table_metadata),
+                timeout=600
+            )
             print(f"   ✅ Discovered {len(all_hostnames)} unique hostnames")
             
             if not all_hostnames:
@@ -1103,7 +1109,10 @@ class SuperOptimizedAO1Discovery:
                 return {'error': 'No hostnames found', 'total_assets': 0}, {}
             
             print("   ⋆｡‧˚ʚ♡ɞ˚‧｡⋆   Step 3: Parallel batch enrichment...")
-            batched_enrichment_data = await self._parallel_batch_enrichment(all_hostnames, all_table_metadata)
+            batched_enrichment_data = await asyncio.wait_for(
+                self._parallel_batch_enrichment(all_hostnames, all_table_metadata),
+                timeout=900
+            )
             print(f"   ✅ Processed {len(batched_enrichment_data)} enrichment batches")
             
             print("   ⋆｡‧˚ʚ♡ɞ˚‧｡⋆   Step 4: Building optimized inventory...")
@@ -1119,15 +1128,18 @@ class SuperOptimizedAO1Discovery:
             
             return final_stats, analysis_queries
             
+        except asyncio.TimeoutError as timeout_error:
+            print(f"   ⚠°｡⋆⸜ ♡   SuperOptimized discovery timed out at step: {timeout_error}")
+            return {'error': 'Discovery timed out', 'total_assets': 0}, {}
         except Exception as e:
-            print(f"   ✗°｡⋆⸜ ♡   SuperOptimized discovery failed at step: {e}")
+            print(f"   ✗°｡⋆⸜ ♡   SuperOptimized discovery failed: {e}")
             import traceback
+            print("   🐛 Full traceback:")
             traceback.print_exc()
             raise
     
     async def _discover_prioritized_tables(self) -> List[Dict[str, Any]]:
         print("   📋 Starting table discovery across projects...")
-        discovery_tasks = []
         
         projects_to_analyze = [self.project_id]
         if self.chronicle_client_manager:
@@ -1136,76 +1148,71 @@ class SuperOptimizedAO1Discovery:
         else:
             print("   📋 Will analyze primary project only")
         
-        for project_id in projects_to_analyze:
-            print(f"   📋 Queuing discovery for project: {project_id}")
+        all_metadata = []
+        
+        for i, project_id in enumerate(projects_to_analyze):
+            print(f"   📋 Processing project {i+1}/{len(projects_to_analyze)}: {project_id}")
             client_mgr = self.chronicle_client_manager if project_id == 'chronicle-fisv' else self.client_manager
-            task = self._discover_project_tables(client_mgr, project_id)
-            discovery_tasks.append(task)
-        
-        if discovery_tasks:
-            print(f"   📋 Executing {len(discovery_tasks)} discovery tasks...")
-            results = await asyncio.gather(*discovery_tasks, return_exceptions=True)
             
-            all_metadata = []
-            for i, result in enumerate(results):
-                if isinstance(result, list):
-                    print(f"   📋 Project {i+1} returned {len(result)} tables")
-                    all_metadata.extend(result)
-                elif isinstance(result, Exception):
-                    print(f"   ⚠°｡⋆⸜ ♡   Project {i+1} failed: {result}")
-                else:
-                    print(f"   ⚠°｡⋆⸜ ♡   Project {i+1} returned unexpected result: {type(result)}")
-            
-            print(f"   📋 Total tables collected: {len(all_metadata)}")
-            all_metadata.sort(key=lambda x: x.get('data_richness_score', 0), reverse=True)
-            limited_metadata = all_metadata[:200]
-            print(f"   📋 Limited to top {len(limited_metadata)} tables for processing")
-            return limited_metadata
+            try:
+                project_metadata = await asyncio.wait_for(
+                    self._discover_project_tables(client_mgr, project_id),
+                    timeout=200
+                )
+                all_metadata.extend(project_metadata)
+                print(f"   📋 Project {project_id} contributed {len(project_metadata)} tables")
+            except asyncio.TimeoutError:
+                print(f"   ⚠°｡⋆⸜ ♡   Project {project_id} timed out after 200s")
+            except Exception as e:
+                print(f"   ⚠°｡⋆⸜ ♡   Project {project_id} failed: {e}")
         
-        print("   ⚠°｡⋆⸜ ♡   No discovery tasks created")
-        return []
+        print(f"   📋 Total tables collected: {len(all_metadata)}")
+        all_metadata.sort(key=lambda x: x.get('data_richness_score', 0), reverse=True)
+        limited_metadata = all_metadata[:100]
+        print(f"   📋 Limited to top {len(limited_metadata)} tables for processing")
+        return limited_metadata
     
     async def _discover_project_tables(self, client_manager: BigQueryClientManager, project_id: str) -> List[Dict[str, Any]]:
         print(f"   🔍 Starting discovery for project: {project_id}")
         try:
             with client_manager.get_client() as client:
                 print(f"   🔍 Getting datasets for {project_id}...")
-                datasets = list(client.list_datasets(project=project_id))
-                print(f"   🔍 Found {len(datasets)} datasets in {project_id}")
+                
+                try:
+                    datasets = list(client.list_datasets(project=project_id))
+                    print(f"   🔍 Found {len(datasets)} datasets in {project_id}")
+                except Exception as e:
+                    print(f"   ⚠°｡⋆⸜ ♡   Failed to list datasets in {project_id}: {e}")
+                    return []
                 
                 if not datasets:
                     print(f"   ⚠°｡⋆⸜ ♡   No datasets found in {project_id}")
                     return []
                 
                 priority_datasets = self._prioritize_datasets([d.dataset_id for d in datasets])
-                limited_datasets = priority_datasets[:50]
+                limited_datasets = priority_datasets[:20]
                 print(f"   🔍 Will analyze top {len(limited_datasets)} priority datasets")
                 
-                metadata_tasks = []
-                for dataset_id in limited_datasets:
-                    print(f"   🔍 Queuing analysis for dataset: {dataset_id}")
-                    task = self._analyze_dataset_tables(client, project_id, dataset_id)
-                    metadata_tasks.append(task)
+                all_metadata = []
                 
-                if metadata_tasks:
-                    print(f"   🔍 Executing {len(metadata_tasks)} dataset analysis tasks...")
-                    dataset_results = await asyncio.gather(*metadata_tasks, return_exceptions=True)
+                for j, dataset_id in enumerate(limited_datasets):
+                    print(f"   🔍 Dataset {j+1}/{len(limited_datasets)}: {dataset_id}")
                     
-                    all_metadata = []
-                    successful_datasets = 0
-                    for i, result in enumerate(dataset_results):
-                        if isinstance(result, list):
-                            print(f"   🔍 Dataset {i+1} returned {len(result)} tables")
-                            all_metadata.extend(result)
-                            successful_datasets += 1
-                        elif isinstance(result, Exception):
-                            print(f"   ⚠°｡⋆⸜ ♡   Dataset {i+1} failed: {result}")
-                    
-                    print(f"   🔍 Project {project_id} complete: {successful_datasets}/{len(metadata_tasks)} datasets, {len(all_metadata)} tables")
-                    return all_metadata
-                else:
-                    print(f"   ⚠°｡⋆⸜ ♡   No dataset tasks created for {project_id}")
-                    return []
+                    try:
+                        dataset_metadata = await asyncio.wait_for(
+                            self._analyze_dataset_tables(client, project_id, dataset_id),
+                            timeout=60
+                        )
+                        all_metadata.extend(dataset_metadata)
+                        print(f"   🔍 Dataset {dataset_id} contributed {len(dataset_metadata)} tables")
+                    except asyncio.TimeoutError:
+                        print(f"   ⚠°｡⋆⸜ ♡   Dataset {dataset_id} timed out")
+                    except Exception as e:
+                        print(f"   ⚠°｡⋆⸜ ♡   Dataset {dataset_id} failed: {e}")
+                
+                print(f"   🔍 Project {project_id} complete: {len(all_metadata)} total tables")
+                return all_metadata
+                
         except Exception as e:
             print(f"   ✗°｡⋆⸜ ♡   Project {project_id} discovery failed: {e}")
             return []
