@@ -362,29 +362,27 @@ class CoveragePredictor:
 
 class PerformancePredictor:
     def __init__(self):
-        self.time_factors = {
-            'base_processing': 60,
-            'per_dataset': 5,
-            'per_table': 0.5,
-            'per_thousand_assets': 10
+        self.base_processing_times = {
+            'table_analysis': 2.0,
+            'hostname_extraction': 5.0,
+            'field_enrichment': 10.0,
+            'data_fusion': 3.0
         }
     
     def predict(self, context: Dict) -> float:
-        dataset_count = context.get('dataset_count', 0)
         table_count = context.get('table_count', 0)
+        dataset_count = context.get('dataset_count', 0)
         estimated_assets = context.get('estimated_assets', 0)
         
-        base_time = self.time_factors['base_processing']
-        dataset_time = dataset_count * self.time_factors['per_dataset']
-        table_time = table_count * self.time_factors['per_table']
-        asset_time = (estimated_assets / 1000) * self.time_factors['per_thousand_assets']
+        total_time = 0
         
-        total_time = base_time + dataset_time + table_time + asset_time
+        total_time += self.base_processing_times['table_analysis'] * table_count / 10
+        total_time += self.base_processing_times['hostname_extraction'] * dataset_count / 5
+        total_time += self.base_processing_times['field_enrichment'] * estimated_assets / 1000
+        total_time += self.base_processing_times['data_fusion']
         
-        parallel_workers = context.get('parallel_workers', 16)
-        parallelism_factor = min(1.0, parallel_workers / 32)
-        
-        return max(30, total_time * (1 - parallelism_factor * 0.7))
+        parallelism_factor = context.get('parallel_workers', 16) / 16
+        return max(30, total_time / parallelism_factor)
 
 class IntelligentContentMatcher:
     def __init__(self):
