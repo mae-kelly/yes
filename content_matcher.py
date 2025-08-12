@@ -29,40 +29,145 @@ class IntelligentContentMatcher:
                 'validators': ['_validate_mac'],
                 'priority': 85
             },
-            'region': {
-                'keywords': ['region', 'geo', 'location', 'site', 'area', 'zone', 'datacenter', 'center', 'country', 'locale'],
-                'validators': ['_validate_region'],
+            'infrastructure_type': {
+                'keywords': ['type', 'infra', 'infrastructure', 'platform', 'onprem', 'cloud', 'saas', 'api'],
+                'validators': ['_validate_infrastructure_type'],
+                'priority': 95
+            },
+            'system_classification': {
+                'keywords': ['classification', 'category', 'class', 'webserver', 'windows', 'linux', 'nix', 'mainframe', 'database', 'appliance'],
+                'validators': ['_validate_system_classification'],
+                'priority': 90
+            },
+            'global_region': {
+                'keywords': ['region', 'global_region', 'location', 'geo', 'area'],
+                'validators': ['_validate_global_region'],
+                'priority': 85
+            },
+            'country': {
+                'keywords': ['country', 'nation', 'countrycode', 'cc'],
+                'validators': ['_validate_country'],
                 'priority': 80
             },
-            'environment': {
-                'keywords': ['env', 'environment', 'stage', 'tier', 'level'],
-                'validators': ['_validate_environment'],
+            'data_center': {
+                'keywords': ['datacenter', 'dc', 'facility', 'site'],
+                'validators': ['_validate_data_center'],
                 'priority': 75
             },
-            'operating_system': {
-                'keywords': ['os', 'operating', 'platform', 'system'],
-                'validators': ['_validate_os'],
-                'priority': 70
-            },
-            'application': {
-                'keywords': ['app', 'application', 'service', 'software', 'program'],
-                'validators': ['_validate_application'],
-                'priority': 65
+            'cloud_region': {
+                'keywords': ['cloud_region', 'aws_region', 'azure_region', 'gcp_region'],
+                'validators': ['_validate_cloud_region'],
+                'priority': 80
             },
             'business_unit': {
-                'keywords': ['business', 'unit', 'org', 'organization', 'department', 'team', 'division'],
+                'keywords': ['business_unit', 'bu', 'org', 'organization', 'department'],
                 'validators': ['_validate_business_unit'],
+                'priority': 70
+            },
+            'cio': {
+                'keywords': ['cio', 'chief_information_officer'],
+                'validators': ['_validate_cio'],
+                'priority': 65
+            },
+            'apm': {
+                'keywords': ['apm', 'application_performance_monitoring'],
+                'validators': ['_validate_apm'],
                 'priority': 60
             },
-            'infrastructure_type': {
-                'keywords': ['type', 'category', 'class', 'kind', 'classification', 'infra', 'infrastructure'],
-                'validators': ['_validate_infrastructure'],
-                'priority': 55
+            'application_class': {
+                'keywords': ['application_class', 'app_class', 'application_type'],
+                'validators': ['_validate_application_class'],
+                'priority': 65
             },
-            'status': {
-                'keywords': ['status', 'state', 'active', 'enabled', 'online', 'condition'],
-                'validators': ['_validate_status'],
-                'priority': 50
+            'edr_coverage': {
+                'keywords': ['edr', 'endpoint_detection', 'crowdstrike', 'defender'],
+                'validators': ['_validate_coverage'],
+                'priority': 85
+            },
+            'tanium_coverage': {
+                'keywords': ['tanium', 'tanium_agent'],
+                'validators': ['_validate_coverage'],
+                'priority': 80
+            },
+            'dlp_coverage': {
+                'keywords': ['dlp', 'data_loss_prevention'],
+                'validators': ['_validate_coverage'],
+                'priority': 80
+            },
+            'network_log_types': {
+                'keywords': ['firewall', 'ids', 'ips', 'ndr', 'proxy', 'dns', 'waf'],
+                'validators': ['_validate_log_types'],
+                'priority': 90
+            },
+            'endpoint_log_types': {
+                'keywords': ['oslog', 'winlog', 'syslog', 'edr_log', 'dlp_log', 'fim'],
+                'validators': ['_validate_log_types'],
+                'priority': 90
+            },
+            'cloud_log_types': {
+                'keywords': ['cloudtrail', 'cloudconfig', 'cloudlb', 'theom', 'wiz'],
+                'validators': ['_validate_log_types'],
+                'priority': 85
+            },
+            'application_log_types': {
+                'keywords': ['weblog', 'applog', 'api_gateway'],
+                'validators': ['_validate_log_types'],
+                'priority': 80
+            },
+            'identity_log_types': {
+                'keywords': ['auth', 'identity', 'authentication', 'privilege'],
+                'validators': ['_validate_log_types'],
+                'priority': 85
+            },
+            'url_fqdn_coverage': {
+                'keywords': ['url', 'fqdn', 'domain', 'dns_name'],
+                'validators': ['_validate_coverage'],
+                'priority': 75
+            },
+            'public_ip_coverage': {
+                'keywords': ['public_ip', 'external_ip', 'wan_ip'],
+                'validators': ['_validate_coverage'],
+                'priority': 70
+            },
+            'cmdb_asset_visibility': {
+                'keywords': ['cmdb', 'asset_db', 'inventory'],
+                'validators': ['_validate_coverage'],
+                'priority': 85
+            },
+            'network_zones': {
+                'keywords': ['zone', 'network_zone', 'security_zone', 'vlan'],
+                'validators': ['_validate_network_zones'],
+                'priority': 70
+            },
+            'ipam_coverage': {
+                'keywords': ['ipam', 'ip_management', 'subnet'],
+                'validators': ['_validate_coverage'],
+                'priority': 70
+            },
+            'geolocation': {
+                'keywords': ['geo', 'location', 'physical_location'],
+                'validators': ['_validate_geolocation'],
+                'priority': 65
+            },
+            'vpc': {
+                'keywords': ['vpc', 'virtual_private_cloud', 'vnet'],
+                'validators': ['_validate_vpc'],
+                'priority': 70
+            },
+            'domain_visibility': {
+                'keywords': ['domain', 'ad_domain', 'dns_domain'],
+                'validators': ['_validate_domain_visibility'],
+                'priority': 75
+            },
+            'internal_external': {
+                'keywords': ['internal', 'external', 'dmz'],
+                'validators': ['_validate_internal_external'],
+                'priority': 70
+            },
+            'controls': {
+                'keywords': ['control', 'security_control', 'compliance'],
+                'validators': ['_validate_controls'],
+                'priority': 65
             }
         }
         
@@ -397,51 +502,79 @@ class IntelligentContentMatcher:
         
         return any(re.match(pattern, value.strip()) for pattern in mac_patterns)
     
-    def _validate_region(self, value: str) -> bool:
-        if not isinstance(value, str) or len(value) < 2 or len(value) > 100:
+    def _validate_infrastructure_type(self, value: str) -> bool:
+        if not isinstance(value, str) or len(value) < 2:
             return False
         
-        region_patterns = [
-            r'^[a-zA-Z][a-zA-Z\s\-_]+$',
-            r'^[A-Z]{2,4}[-_]?[A-Z]{2,4}[-_]?\d*$',
-            r'^(us|eu|ap|ca|sa)[-_](east|west|central|north|south)[-_]?\d*$',
-            r'^[A-Z]{2,3}\d*$'
-        ]
-        
-        return any(re.match(pattern, value.strip(), re.IGNORECASE) for pattern in region_patterns)
-    
-    def _validate_environment(self, value: str) -> bool:
-        if not isinstance(value, str):
-            return False
-        
-        env_values = [
-            'prod', 'production', 'dev', 'development', 'test', 'testing',
-            'stage', 'staging', 'qa', 'uat', 'sit', 'preprod', 'demo', 'sandbox',
-            'int', 'integration', 'perf', 'performance', 'load', 'stress'
-        ]
-        
-        return value.lower().strip() in env_values
-    
-    def _validate_os(self, value: str) -> bool:
-        if not isinstance(value, str) or len(value) < 3:
-            return False
-        
-        os_indicators = [
-            'windows', 'linux', 'unix', 'macos', 'centos', 'ubuntu', 'redhat',
-            'debian', 'suse', 'aix', 'solaris', 'freebsd', 'win', 'rhel'
+        infra_types = [
+            'onprem', 'on-prem', 'on-premises', 'physical', 'bare', 'metal',
+            'cloud', 'aws', 'azure', 'gcp', 'saas', 'software', 'service',
+            'api', 'interface', 'gateway'
         ]
         
         value_lower = value.lower()
-        return any(indicator in value_lower for indicator in os_indicators)
+        return any(infra_type in value_lower for infra_type in infra_types)
     
-    def _validate_application(self, value: str) -> bool:
-        if not isinstance(value, str) or len(value) < 2 or len(value) > 200:
+    def _validate_system_classification(self, value: str) -> bool:
+        if not isinstance(value, str) or len(value) < 2:
             return False
         
-        if value.isdigit():
+        system_types = [
+            'web', 'webserver', 'iis', 'apache', 'windows', 'win', 'microsoft',
+            'linux', 'unix', 'centos', 'ubuntu', 'nix', 'aix', 'solaris',
+            'mainframe', 'mf', 'zos', 'database', 'db', 'sql', 'oracle',
+            'appliance', 'firewall', 'switch', 'router'
+        ]
+        
+        value_lower = value.lower()
+        return any(system_type in value_lower for system_type in system_types)
+    
+    def _validate_global_region(self, value: str) -> bool:
+        if not isinstance(value, str) or len(value) < 2:
             return False
         
-        return len(value.strip()) > 1 and not value.strip().isspace()
+        regions = [
+            'us', 'usa', 'america', 'north america', 'eu', 'europe', 'emea',
+            'ap', 'asia', 'pacific', 'apac', 'latam', 'south america'
+        ]
+        
+        value_lower = value.lower()
+        return any(region in value_lower for region in regions)
+    
+    def _validate_country(self, value: str) -> bool:
+        if not isinstance(value, str) or len(value) < 2:
+            return False
+        
+        country_indicators = [
+            'us', 'usa', 'united states', 'canada', 'uk', 'united kingdom',
+            'germany', 'france', 'japan', 'australia', 'brazil', 'india'
+        ]
+        
+        value_lower = value.lower()
+        return any(country in value_lower for country in country_indicators) or len(value) == 2
+    
+    def _validate_data_center(self, value: str) -> bool:
+        if not isinstance(value, str) or len(value) < 2:
+            return False
+        
+        dc_indicators = ['dc', 'datacenter', 'data center', 'facility', 'site']
+        value_lower = value.lower()
+        return any(indicator in value_lower for indicator in dc_indicators)
+    
+    def _validate_cloud_region(self, value: str) -> bool:
+        if not isinstance(value, str) or len(value) < 2:
+            return False
+        
+        cloud_patterns = [
+            r'us-(east|west|central)-\d+',
+            r'eu-(west|central|north)-\d+',
+            r'ap-(southeast|northeast|south)-\d+',
+            r'(aws|azure|gcp)[-_]',
+            r'(eastus|westus|centralus)',
+            r'(us-east-1|us-west-2|eu-west-1)'
+        ]
+        
+        return any(re.search(pattern, value, re.IGNORECASE) for pattern in cloud_patterns)
     
     def _validate_business_unit(self, value: str) -> bool:
         if not isinstance(value, str) or len(value) < 2 or len(value) > 100:
@@ -449,29 +582,103 @@ class IntelligentContentMatcher:
         
         return value.replace(' ', '').replace('-', '').replace('_', '').isalnum()
     
-    def _validate_infrastructure(self, value: str) -> bool:
+    def _validate_cio(self, value: str) -> bool:
         if not isinstance(value, str) or len(value) < 2:
             return False
         
-        infra_types = [
-            'physical', 'virtual', 'cloud', 'container', 'vm', 'bare', 'metal',
-            'aws', 'azure', 'gcp', 'vmware', 'hyper', 'kvm', 'xen', 'docker'
-        ]
-        
+        cio_indicators = ['cio', 'chief', 'information', 'officer']
         value_lower = value.lower()
-        return any(infra_type in value_lower for infra_type in infra_types)
+        return any(indicator in value_lower for indicator in cio_indicators)
     
-    def _validate_status(self, value: str) -> bool:
+    def _validate_apm(self, value: str) -> bool:
+        if not isinstance(value, str) or len(value) < 2:
+            return False
+        
+        apm_indicators = ['apm', 'application', 'performance', 'monitoring']
+        value_lower = value.lower()
+        return any(indicator in value_lower for indicator in apm_indicators)
+    
+    def _validate_application_class(self, value: str) -> bool:
+        if not isinstance(value, str) or len(value) < 2:
+            return False
+        
+        app_indicators = ['web', 'database', 'api', 'service', 'application', 'batch']
+        value_lower = value.lower()
+        return any(indicator in value_lower for indicator in app_indicators)
+    
+    def _validate_coverage(self, value: str) -> bool:
         if not isinstance(value, str):
             return False
         
-        status_values = [
-            'active', 'inactive', 'enabled', 'disabled', 'online', 'offline',
-            'running', 'stopped', 'up', 'down', 'healthy', 'unhealthy',
-            'available', 'unavailable', 'ok', 'error', 'warning'
+        coverage_values = [
+            'true', 'false', 'yes', 'no', 'enabled', 'disabled', 'active', 
+            'inactive', 'installed', 'not installed', 'covered', 'not covered'
         ]
         
-        return value.lower().strip() in status_values
+        return value.lower().strip() in coverage_values
+    
+    def _validate_log_types(self, value: str) -> bool:
+        if not isinstance(value, str) or len(value) < 2:
+            return False
+        
+        log_indicators = [
+            'firewall', 'ids', 'ips', 'ndr', 'proxy', 'dns', 'waf',
+            'syslog', 'winlog', 'edr', 'dlp', 'fim', 'cloudtrail',
+            'weblog', 'applog', 'auth', 'authentication'
+        ]
+        
+        value_lower = value.lower()
+        return any(indicator in value_lower for indicator in log_indicators)
+    
+    def _validate_network_zones(self, value: str) -> bool:
+        if not isinstance(value, str) or len(value) < 2:
+            return False
+        
+        zone_indicators = ['dmz', 'internal', 'external', 'vlan', 'subnet', 'zone']
+        value_lower = value.lower()
+        return any(indicator in value_lower for indicator in zone_indicators)
+    
+    def _validate_geolocation(self, value: str) -> bool:
+        if not isinstance(value, str) or len(value) < 2:
+            return False
+        
+        geo_indicators = ['building', 'floor', 'room', 'location', 'address']
+        value_lower = value.lower()
+        return any(indicator in value_lower for indicator in geo_indicators)
+    
+    def _validate_vpc(self, value: str) -> bool:
+        if not isinstance(value, str) or len(value) < 2:
+            return False
+        
+        vpc_patterns = [
+            r'vpc-[a-zA-Z0-9]+',
+            r'vnet-[a-zA-Z0-9]+',
+            r'virtual.*private.*cloud'
+        ]
+        
+        return any(re.search(pattern, value, re.IGNORECASE) for pattern in vpc_patterns)
+    
+    def _validate_domain_visibility(self, value: str) -> bool:
+        if not isinstance(value, str) or len(value) < 2:
+            return False
+        
+        domain_indicators = ['domain', 'ad', 'dns', 'ldap']
+        value_lower = value.lower()
+        return any(indicator in value_lower for indicator in domain_indicators)
+    
+    def _validate_internal_external(self, value: str) -> bool:
+        if not isinstance(value, str):
+            return False
+        
+        return value.lower().strip() in ['internal', 'external', 'dmz', 'public', 'private']
+    
+    def _validate_controls(self, value: str) -> bool:
+        if not isinstance(value, str) or len(value) < 2:
+            return False
+        
+        control_indicators = ['control', 'compliance', 'security', 'policy', 'standard']
+        value_lower = value.lower()
+        return any(indicator in value_lower for indicator in control_indicators)
     
     def _extract_ip_addresses(self, text: str) -> List[str]:
         ip_pattern = r'\b(?:[0-9]{1,3}\.){3}[0-9]{1,3}\b'

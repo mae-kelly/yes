@@ -113,45 +113,35 @@ class BatchedFieldExtractor:
         select_fields = [f"UPPER(TRIM(CAST(`{hostname_column}` AS STRING))) as hostname"]
         field_mappings = {}
         
-        priority_fields = {
-            'operating_system': ['os', 'operating', 'platform', 'system_type', 'osversion', 'os_name'],
-            'criticality': ['critical', 'priority', 'tier', 'importance', 'level', 'class'],
-            'cost_center': ['cost', 'billing', 'charge', 'budget', 'financial', 'accounting'],
-            'owner': ['owner', 'responsible', 'admin', 'contact', 'manager', 'user'],
-            'system_classification': ['classification', 'category', 'type', 'class', 'kind', 'nature'],
-            'country': ['country', 'nation', 'countrycode', 'cc', 'nationality'],
-            'data_center': ['datacenter', 'dc', 'facility', 'site', 'location_detail'],
-            'cloud_region': ['cloud_region', 'aws_region', 'azure_region', 'gcp_region', 'region_cloud'],
-            'cio': ['cio', 'chief', 'information', 'officer'],
-            'apm': ['apm', 'application', 'performance', 'monitoring'],
-            'serial_number': ['serial', 'sn', 'serialno', 'serialnumber', 'asset_tag'],
-            'model': ['model', 'hardware', 'device_model', 'machine_type'],
-            'manufacturer': ['manufacturer', 'vendor', 'make', 'brand', 'oem'],
-            'location': ['location', 'physical', 'building', 'floor', 'room'],
-            'department': ['department', 'dept', 'division', 'team', 'group'],
-            'function': ['function', 'purpose', 'role', 'service_type'],
-            'compliance': ['compliance', 'regulation', 'standard', 'certification'],
-            'backup_status': ['backup', 'backup_status', 'protected', 'recovery'],
-            'patching_group': ['patch', 'update', 'maintenance', 'group'],
-            'support_group': ['support', 'support_group', 'team_support'],
-            'monitoring_group': ['monitoring', 'monitor', 'observation'],
-            'network_zone': ['zone', 'network_zone', 'security_zone', 'segment'],
-            'vlan': ['vlan', 'network', 'subnet_vlan', 'net_id'],
-            'domain': ['domain', 'ad_domain', 'dns_domain', 'realm'],
-            'cluster': ['cluster', 'cluster_name', 'group_cluster'],
-            'virtualization': ['virtual', 'hypervisor', 'vm_host', 'container_host'],
-            'licensing': ['license', 'licensing', 'software_license'],
-            'encryption': ['encryption', 'encrypted', 'crypto', 'secure'],
-            'antivirus': ['antivirus', 'av', 'endpoint_protection', 'security_agent'],
-            'installed_software': ['software', 'applications', 'installed', 'programs'],
-            'cpu_info': ['cpu', 'processor', 'cores', 'cpu_model'],
-            'memory_gb': ['memory', 'ram', 'mem_gb', 'total_memory'],
-            'disk_gb': ['disk', 'storage', 'disk_gb', 'total_disk'],
-            'last_boot': ['boot', 'startup', 'last_boot', 'uptime'],
-            'install_date': ['install', 'installation', 'deployed', 'created'],
-            'last_seen': ['seen', 'last_seen', 'last_contact', 'heartbeat'],
-            'status': ['status', 'state', 'condition', 'health'],
-            'availability': ['availability', 'uptime_pct', 'sla', 'available']
+        ao1_priority_fields = {
+            'infrastructure_type': ['type', 'infra', 'infrastructure', 'platform', 'onprem', 'cloud', 'saas', 'api'],
+            'system_classification': ['classification', 'category', 'class', 'webserver', 'windows', 'linux', 'nix', 'mainframe', 'database', 'appliance'],
+            'global_region': ['region', 'global_region', 'location', 'geo', 'area'],
+            'country': ['country', 'nation', 'countrycode', 'cc'],
+            'data_center': ['datacenter', 'dc', 'facility', 'site'],
+            'cloud_region': ['cloud_region', 'aws_region', 'azure_region', 'gcp_region'],
+            'business_unit': ['business_unit', 'bu', 'org', 'organization', 'department'],
+            'cio': ['cio', 'chief_information_officer'],
+            'apm': ['apm', 'application_performance_monitoring'],
+            'application_class': ['application_class', 'app_class', 'application_type'],
+            'edr_coverage': ['edr', 'endpoint_detection', 'crowdstrike', 'defender'],
+            'tanium_coverage': ['tanium', 'tanium_agent'],
+            'dlp_coverage': ['dlp', 'data_loss_prevention'],
+            'network_log_types': ['firewall', 'ids', 'ips', 'ndr', 'proxy', 'dns', 'waf'],
+            'endpoint_log_types': ['oslog', 'winlog', 'syslog', 'edr_log', 'dlp_log', 'fim'],
+            'cloud_log_types': ['cloudtrail', 'cloudconfig', 'cloudlb', 'theom', 'wiz'],
+            'application_log_types': ['weblog', 'applog', 'api_gateway'],
+            'identity_log_types': ['auth', 'identity', 'authentication', 'privilege'],
+            'url_fqdn_coverage': ['url', 'fqdn', 'domain', 'dns_name'],
+            'public_ip_coverage': ['public_ip', 'external_ip', 'wan_ip'],
+            'cmdb_asset_visibility': ['cmdb', 'asset_db', 'inventory'],
+            'network_zones': ['zone', 'network_zone', 'security_zone', 'vlan'],
+            'ipam_coverage': ['ipam', 'ip_management', 'subnet'],
+            'geolocation': ['geo', 'location', 'physical_location'],
+            'vpc': ['vpc', 'virtual_private_cloud', 'vnet'],
+            'domain_visibility': ['domain', 'ad_domain', 'dns_domain'],
+            'internal_external': ['internal', 'external', 'dmz'],
+            'controls': ['control', 'security_control', 'compliance']
         }
         
         for column, analysis in column_analysis.items():
@@ -169,7 +159,7 @@ class BatchedFieldExtractor:
                 continue
             
             column_lower = column.lower()
-            for target_field, keywords in priority_fields.items():
+            for target_field, keywords in ao1_priority_fields.items():
                 if any(keyword in column_lower for keyword in keywords):
                     safe_column = column.replace('`', '``')
                     select_fields.append(f"CAST(`{safe_column}` AS STRING) as `{safe_column}`")
@@ -242,7 +232,7 @@ class BatchedFieldExtractor:
                             value = str(row[i]).strip()
                             
                             if value and len(value) > 0 and value.upper() not in ['NULL', 'N/A', 'UNKNOWN', 'NONE', '', 'NAN']:
-                                processed_value = self._process_field_value(field_type, value, clean_field_name)
+                                processed_value = self._process_ao1_field_value(field_type, value, clean_field_name)
                                 if processed_value:
                                     host_data_map[original_hostname][field_type] = processed_value
                 
@@ -251,68 +241,44 @@ class BatchedFieldExtractor:
         except Exception as e:
             return {}
     
-    def _process_field_value(self, field_type: str, value: str, column_name: str) -> Optional[str]:
+    def _process_ao1_field_value(self, field_type: str, value: str, column_name: str) -> Optional[str]:
         value = value.strip()
         column_lower = column_name.lower()
         
-        if field_type == 'operating_system' or any(os_term in column_lower for os_term in ['os', 'operating', 'platform']):
-            os_mappings = {
-                'windows': 'Windows', 'win': 'Windows', 'microsoft': 'Windows',
-                'linux': 'Linux', 'ubuntu': 'Ubuntu', 'centos': 'CentOS', 'rhel': 'Red Hat',
-                'redhat': 'Red Hat', 'debian': 'Debian', 'suse': 'SUSE', 'fedora': 'Fedora',
-                'macos': 'macOS', 'darwin': 'macOS', 'osx': 'macOS',
-                'unix': 'Unix', 'aix': 'AIX', 'solaris': 'Solaris', 'freebsd': 'FreeBSD'
-            }
-            value_lower = value.lower()
-            for pattern, normalized in os_mappings.items():
-                if pattern in value_lower:
-                    return normalized
-            return value if len(value) > 2 else None
-        
-        elif field_type == 'criticality' or any(crit_term in column_lower for crit_term in ['critical', 'priority', 'tier']):
-            crit_mappings = {
-                'critical': 'Critical', 'high': 'High', 'medium': 'Medium', 'low': 'Low',
-                'tier1': 'Tier 1', 'tier2': 'Tier 2', 'tier3': 'Tier 3',
-                'production': 'Critical', 'prod': 'Critical', 'mission': 'Critical'
-            }
-            value_lower = value.lower()
-            for pattern, normalized in crit_mappings.items():
-                if pattern in value_lower:
-                    return normalized
-            return value if len(value) > 1 else None
-        
-        elif field_type == 'environment' or 'env' in column_lower:
-            env_mappings = {
-                'production': 'Production', 'prod': 'Production',
-                'development': 'Development', 'dev': 'Development',
-                'test': 'Test', 'testing': 'Test', 'qa': 'QA',
-                'staging': 'Staging', 'stage': 'Staging', 'preprod': 'Pre-Production',
-                'uat': 'UAT', 'sit': 'SIT', 'demo': 'Demo', 'sandbox': 'Sandbox'
-            }
-            value_lower = value.lower()
-            for pattern, normalized in env_mappings.items():
-                if pattern in value_lower:
-                    return normalized
-            return value if len(value) > 1 else None
-        
-        elif field_type == 'infrastructure_type' or any(infra_term in column_lower for infra_term in ['type', 'infra', 'platform']):
+        if field_type == 'infrastructure_type':
             infra_mappings = {
-                'physical': 'Physical', 'bare': 'Physical', 'metal': 'Physical',
-                'virtual': 'Virtual', 'vm': 'Virtual', 'vmware': 'Virtual',
-                'cloud': 'Cloud', 'aws': 'AWS', 'azure': 'Azure', 'gcp': 'GCP',
-                'container': 'Container', 'docker': 'Container', 'kubernetes': 'Container'
+                'onprem': 'On-Prem', 'on-premises': 'On-Prem', 'physical': 'On-Prem', 'bare': 'On-Prem',
+                'cloud': 'Cloud', 'aws': 'Cloud', 'azure': 'Cloud', 'gcp': 'Cloud',
+                'saas': 'SaaS', 'software': 'SaaS', 'service': 'SaaS',
+                'api': 'API', 'interface': 'API', 'gateway': 'API'
             }
             value_lower = value.lower()
             for pattern, normalized in infra_mappings.items():
                 if pattern in value_lower:
                     return normalized
+            return value if len(value) > 1 else None
+        
+        elif field_type == 'system_classification':
+            system_mappings = {
+                'web': 'Web Server', 'webserver': 'Web Server', 'iis': 'Web Server', 'apache': 'Web Server',
+                'windows': 'Windows Server', 'win': 'Windows Server', 'microsoft': 'Windows Server',
+                'linux': 'Linux Server', 'unix': 'Linux Server', 'centos': 'Linux Server', 'ubuntu': 'Linux Server',
+                'nix': '*Nix (AIX, Solaris, etc)', 'aix': '*Nix (AIX, Solaris, etc)', 'solaris': '*Nix (AIX, Solaris, etc)',
+                'mainframe': 'Mainframe', 'mf': 'Mainframe', 'zos': 'Mainframe',
+                'database': 'Database', 'db': 'Database', 'sql': 'Database', 'oracle': 'Database',
+                'appliance': 'Network Appliance', 'firewall': 'Network Appliance', 'switch': 'Network Appliance'
+            }
+            value_lower = value.lower()
+            for pattern, normalized in system_mappings.items():
+                if pattern in value_lower:
+                    return normalized
             return value if len(value) > 2 else None
         
-        elif field_type == 'region' or any(region_term in column_lower for region_term in ['region', 'location', 'geo']):
+        elif field_type == 'global_region':
             region_mappings = {
-                'us-east': 'US East', 'us-west': 'US West', 'us-central': 'US Central',
-                'eu-west': 'EU West', 'eu-central': 'EU Central', 'eu-north': 'EU North',
-                'ap-southeast': 'AP Southeast', 'ap-northeast': 'AP Northeast'
+                'us': 'US', 'usa': 'US', 'america': 'US', 'north america': 'US',
+                'eu': 'EU', 'europe': 'EU', 'emea': 'EU',
+                'ap': 'APAC', 'asia': 'APAC', 'pacific': 'APAC', 'apac': 'APAC'
             }
             value_lower = value.lower()
             for pattern, normalized in region_mappings.items():
@@ -320,23 +286,45 @@ class BatchedFieldExtractor:
                     return normalized
             return value if len(value) > 1 else None
         
-        elif field_type == 'status' or 'status' in column_lower:
-            status_mappings = {
-                'active': 'Active', 'running': 'Active', 'online': 'Online',
-                'inactive': 'Inactive', 'offline': 'Offline', 'down': 'Down',
-                'maintenance': 'Maintenance', 'maint': 'Maintenance'
+        elif field_type in ['edr_coverage', 'tanium_coverage', 'dlp_coverage']:
+            coverage_mappings = {
+                'true': 'Yes', 'yes': 'Yes', 'enabled': 'Yes', 'active': 'Yes', 'installed': 'Yes',
+                'false': 'No', 'no': 'No', 'disabled': 'No', 'inactive': 'No', 'not installed': 'No'
             }
             value_lower = value.lower()
-            for pattern, normalized in status_mappings.items():
+            for pattern, normalized in coverage_mappings.items():
                 if pattern in value_lower:
                     return normalized
-            return value if len(value) > 1 else None
+            return 'Yes' if any(x in value_lower for x in ['agent', 'client', 'service']) else 'No'
         
-        elif any(numeric_term in column_lower for numeric_term in ['memory', 'disk', 'cpu', 'cores']):
-            numeric_value = re.search(r'(\d+(?:\.\d+)?)', value)
-            if numeric_value:
-                return numeric_value.group(1)
-            return None
+        elif 'log_types' in field_type:
+            log_type_mappings = {
+                'firewall': 'Firewall Traffic', 'fw': 'Firewall Traffic',
+                'ids': 'IDS/IPS', 'ips': 'IDS/IPS', 'intrusion': 'IDS/IPS',
+                'ndr': 'NDR', 'network detection': 'NDR',
+                'proxy': 'Proxy', 'web proxy': 'Proxy',
+                'dns': 'DNS', 'domain': 'DNS',
+                'waf': 'WAF', 'web application firewall': 'WAF',
+                'syslog': 'OS logs (WinEvt, Linux syslog)', 'winlog': 'OS logs (WinEvt, Linux syslog)',
+                'edr': 'EDR', 'endpoint': 'EDR',
+                'dlp': 'DLP', 'data loss': 'DLP',
+                'fim': 'FIM', 'file integrity': 'FIM',
+                'cloudtrail': 'Cloud Event', 'cloud': 'Cloud Event',
+                'weblog': 'Web Logs (HTTP Access)', 'http': 'Web Logs (HTTP Access)',
+                'api': 'API Gateway', 'gateway': 'API Gateway',
+                'auth': 'Authentication attempts', 'authentication': 'Authentication attempts'
+            }
+            value_lower = value.lower()
+            for pattern, normalized in log_type_mappings.items():
+                if pattern in value_lower:
+                    return normalized
+            return value if len(value) > 2 else None
+        
+        elif field_type in ['url_fqdn_coverage', 'public_ip_coverage', 'cmdb_asset_visibility']:
+            return 'Yes' if value.lower() in ['true', 'yes', '1', 'enabled', 'covered'] else 'No'
+        
+        elif field_type in ['internal_external']:
+            return 'Internal' if 'internal' in value.lower() else 'External' if 'external' in value.lower() else value
         
         return value if len(value) > 0 and len(value) < 500 else None
     
@@ -422,12 +410,12 @@ class OptimizedDataFusion:
     def __init__(self, db_path: str):
         self.db_path = db_path
         self.conn = duckdb.connect(db_path)
-        self._setup_optimized_tables()
+        self._setup_ao1_tables()
         self._lock = threading.RLock()
         self.batch_insert_cache = defaultdict(list)
         self.batch_size = 1000
         
-    def _setup_optimized_tables(self):
+    def _setup_ao1_tables(self):
         self.conn.execute("PRAGMA threads=8")
         self.conn.execute("PRAGMA memory_limit='4GB'")
         
@@ -460,14 +448,14 @@ class OptimizedDataFusion:
         """)
         
         self.conn.execute("""
-        CREATE TABLE IF NOT EXISTS intelligent_asset_inventory (
+        CREATE TABLE IF NOT EXISTS ao1_log_visibility_inventory (
             hostname VARCHAR PRIMARY KEY,
             fqdn VARCHAR,
-            ip_addresses TEXT,
-            mac_addresses TEXT,
+            ip_address VARCHAR,
+            mac_address VARCHAR,
+            
             infrastructure_type VARCHAR,
             system_classification VARCHAR,
-            operating_system VARCHAR,
             global_region VARCHAR,
             country VARCHAR,
             data_center VARCHAR,
@@ -476,78 +464,48 @@ class OptimizedDataFusion:
             cio VARCHAR,
             apm VARCHAR,
             application_class VARCHAR,
-            cost_center VARCHAR,
-            owner VARCHAR,
-            environment VARCHAR,
-            criticality VARCHAR,
-            serial_number VARCHAR,
-            model VARCHAR,
-            manufacturer VARCHAR,
-            location VARCHAR,
-            department VARCHAR,
-            function VARCHAR,
-            compliance VARCHAR,
-            backup_status VARCHAR,
-            patching_group VARCHAR,
-            support_group VARCHAR,
-            monitoring_group VARCHAR,
-            network_zone VARCHAR,
-            vlan VARCHAR,
-            domain VARCHAR,
-            cluster VARCHAR,
-            virtualization VARCHAR,
-            licensing VARCHAR,
-            encryption VARCHAR,
-            antivirus VARCHAR,
-            installed_software TEXT,
-            cpu_info VARCHAR,
-            memory_gb INTEGER,
-            disk_gb INTEGER,
-            last_boot TIMESTAMP,
-            install_date TIMESTAMP,
-            last_seen TIMESTAMP,
-            status VARCHAR,
-            availability VARCHAR,
+            
+            edr_coverage VARCHAR DEFAULT 'No',
+            tanium_coverage VARCHAR DEFAULT 'No',
+            dlp_coverage VARCHAR DEFAULT 'No',
+            
+            network_log_types TEXT,
+            endpoint_log_types TEXT,
+            cloud_log_types TEXT,
+            application_log_types TEXT,
+            identity_log_types TEXT,
+            
+            url_fqdn_coverage VARCHAR DEFAULT 'No',
+            public_ip_coverage VARCHAR DEFAULT 'No',
+            cmdb_asset_visibility VARCHAR DEFAULT 'No',
+            network_zones VARCHAR,
+            ipam_coverage VARCHAR DEFAULT 'No',
+            geolocation VARCHAR,
+            vpc VARCHAR,
+            domain_visibility VARCHAR,
+            internal_external VARCHAR,
+            controls VARCHAR,
             
             in_splunk BOOLEAN DEFAULT FALSE,
             in_chronicle BOOLEAN DEFAULT FALSE,
             in_gso BOOLEAN DEFAULT FALSE,
-            has_crowdstrike BOOLEAN DEFAULT FALSE,
             found_in_cmdb BOOLEAN DEFAULT FALSE,
             
-            splunk_log_volume INTEGER DEFAULT 0,
-            chronicle_event_count INTEGER DEFAULT 0,
-            last_splunk_log TIMESTAMP,
-            last_chronicle_event TIMESTAMP,
-            
-            has_edr BOOLEAN DEFAULT FALSE,
-            has_tanium BOOLEAN DEFAULT FALSE,
-            has_dlp BOOLEAN DEFAULT FALSE,
-            agent_coverage_score DOUBLE DEFAULT 0.0,
-            
-            cmdb_last_updated TIMESTAMP,
-            data_quality_score DOUBLE DEFAULT 0.0,
-            url_fqdn_coverage BOOLEAN DEFAULT FALSE,
-            public_ip_space_mapped BOOLEAN DEFAULT FALSE,
-            domain_visibility VARCHAR,
-            ao1_visibility_score DOUBLE DEFAULT 0.0,
-            ao1_gap_severity VARCHAR DEFAULT 'unknown',
-            ao1_recommendation TEXT,
+            log_volume_score DOUBLE DEFAULT 0.0,
+            coverage_completeness_score DOUBLE DEFAULT 0.0,
+            visibility_gap_severity VARCHAR DEFAULT 'unknown',
+            ao1_recommendations TEXT,
             
             source_systems TEXT,
             source_count INTEGER DEFAULT 0,
-            data_completeness_score DOUBLE DEFAULT 0.0,
-            intelligence_score DOUBLE DEFAULT 0.0,
-            
             discovery_timestamp TIMESTAMP DEFAULT NOW(),
-            last_updated TIMESTAMP DEFAULT NOW(),
-            enrichment_metadata TEXT
+            last_updated TIMESTAMP DEFAULT NOW()
         )
         """)
         
         self.conn.execute("CREATE INDEX IF NOT EXISTS idx_hostname_seen ON intelligent_endpoints(seen_count DESC)")
-        self.conn.execute("CREATE INDEX IF NOT EXISTS idx_data_quality ON intelligent_asset_inventory(data_quality_score DESC)")
-        self.conn.execute("CREATE INDEX IF NOT EXISTS idx_intelligence ON intelligent_asset_inventory(intelligence_score DESC)")
+        self.conn.execute("CREATE INDEX IF NOT EXISTS idx_coverage_score ON ao1_log_visibility_inventory(coverage_completeness_score DESC)")
+        self.conn.execute("CREATE INDEX IF NOT EXISTS idx_visibility_gap ON ao1_log_visibility_inventory(visibility_gap_severity)")
     
     def batch_register_endpoints(self, hostname_data: List[Tuple[str, str]]):
         with self._lock:
@@ -599,8 +557,8 @@ class OptimizedDataFusion:
         with self._lock:
             stats = {
                 'processed_endpoints': 0,
-                'high_quality_assets': 0,
-                'enriched_assets': 0,
+                'high_coverage_assets': 0,
+                'complete_visibility_assets': 0,
                 'total_data_points': 0
             }
             
@@ -608,19 +566,19 @@ class OptimizedDataFusion:
             
             for batch in batch_data:
                 for hostname, enrichment_data in batch.enrichment_data.items():
-                    asset_data = self._build_complete_asset_profile(hostname, enrichment_data, batch.source_tables)
+                    asset_data = self._build_ao1_asset_profile(hostname, enrichment_data, batch.source_tables)
                     if asset_data:
                         all_asset_data.append(asset_data)
                         stats['processed_endpoints'] += 1
                         
-                        if asset_data.get('data_quality_score', 0) > 70:
-                            stats['high_quality_assets'] += 1
+                        if asset_data.get('coverage_completeness_score', 0) > 70:
+                            stats['high_coverage_assets'] += 1
                         
-                        if asset_data.get('source_count', 0) > 2:
-                            stats['enriched_assets'] += 1
+                        if asset_data.get('source_count', 0) > 3:
+                            stats['complete_visibility_assets'] += 1
             
             if all_asset_data:
-                self._batch_insert_assets(all_asset_data)
+                self._batch_insert_ao1_assets(all_asset_data)
             
             self._flush_endpoint_batch()
             
@@ -630,15 +588,15 @@ class OptimizedDataFusion:
             
             return stats
     
-    def _build_complete_asset_profile(self, hostname: str, enrichment_data: Dict, source_tables: Set[str]) -> Dict[str, Any]:
+    def _build_ao1_asset_profile(self, hostname: str, enrichment_data: Dict, source_tables: Set[str]) -> Dict[str, Any]:
         asset_profile = {
             'hostname': hostname,
             'fqdn': enrichment_data.get('fqdn', ''),
-            'ip_addresses': ','.join(enrichment_data.get('ip_addresses', [])),
-            'mac_addresses': ','.join(enrichment_data.get('mac_addresses', [])),
+            'ip_address': enrichment_data.get('ip_address', ''),
+            'mac_address': enrichment_data.get('mac_address', ''),
+            
             'infrastructure_type': enrichment_data.get('infrastructure_type', ''),
             'system_classification': enrichment_data.get('system_classification', ''),
-            'operating_system': enrichment_data.get('operating_system', ''),
             'global_region': enrichment_data.get('global_region', ''),
             'country': enrichment_data.get('country', ''),
             'data_center': enrichment_data.get('data_center', ''),
@@ -647,147 +605,81 @@ class OptimizedDataFusion:
             'cio': enrichment_data.get('cio', ''),
             'apm': enrichment_data.get('apm', ''),
             'application_class': enrichment_data.get('application_class', ''),
-            'cost_center': enrichment_data.get('cost_center', ''),
-            'owner': enrichment_data.get('owner', ''),
-            'environment': enrichment_data.get('environment', ''),
-            'criticality': enrichment_data.get('criticality', ''),
-            'serial_number': enrichment_data.get('serial_number', ''),
-            'model': enrichment_data.get('model', ''),
-            'manufacturer': enrichment_data.get('manufacturer', ''),
-            'location': enrichment_data.get('location', ''),
-            'department': enrichment_data.get('department', ''),
-            'function': enrichment_data.get('function', ''),
-            'compliance': enrichment_data.get('compliance', ''),
-            'backup_status': enrichment_data.get('backup_status', ''),
-            'patching_group': enrichment_data.get('patching_group', ''),
-            'support_group': enrichment_data.get('support_group', ''),
-            'monitoring_group': enrichment_data.get('monitoring_group', ''),
-            'network_zone': enrichment_data.get('network_zone', ''),
-            'vlan': enrichment_data.get('vlan', ''),
-            'domain': enrichment_data.get('domain', ''),
-            'cluster': enrichment_data.get('cluster', ''),
-            'virtualization': enrichment_data.get('virtualization', ''),
-            'licensing': enrichment_data.get('licensing', ''),
-            'encryption': enrichment_data.get('encryption', ''),
-            'antivirus': enrichment_data.get('antivirus', ''),
-            'installed_software': enrichment_data.get('installed_software', ''),
-            'cpu_info': enrichment_data.get('cpu_info', ''),
-            'memory_gb': self._parse_numeric(enrichment_data.get('memory_gb', '')),
-            'disk_gb': self._parse_numeric(enrichment_data.get('disk_gb', '')),
-            'last_boot': self._parse_timestamp(enrichment_data.get('last_boot', '')),
-            'install_date': self._parse_timestamp(enrichment_data.get('install_date', '')),
-            'last_seen': self._parse_timestamp(enrichment_data.get('last_seen', '')),
-            'status': enrichment_data.get('status', ''),
-            'availability': enrichment_data.get('availability', ''),
+            
+            'edr_coverage': enrichment_data.get('edr_coverage', 'No'),
+            'tanium_coverage': enrichment_data.get('tanium_coverage', 'No'),
+            'dlp_coverage': enrichment_data.get('dlp_coverage', 'No'),
+            
+            'network_log_types': enrichment_data.get('network_log_types', ''),
+            'endpoint_log_types': enrichment_data.get('endpoint_log_types', ''),
+            'cloud_log_types': enrichment_data.get('cloud_log_types', ''),
+            'application_log_types': enrichment_data.get('application_log_types', ''),
+            'identity_log_types': enrichment_data.get('identity_log_types', ''),
+            
+            'url_fqdn_coverage': enrichment_data.get('url_fqdn_coverage', 'No'),
+            'public_ip_coverage': enrichment_data.get('public_ip_coverage', 'No'),
+            'cmdb_asset_visibility': enrichment_data.get('cmdb_asset_visibility', 'No'),
+            'network_zones': enrichment_data.get('network_zones', ''),
+            'ipam_coverage': enrichment_data.get('ipam_coverage', 'No'),
+            'geolocation': enrichment_data.get('geolocation', ''),
+            'vpc': enrichment_data.get('vpc', ''),
+            'domain_visibility': enrichment_data.get('domain_visibility', ''),
+            'internal_external': enrichment_data.get('internal_external', ''),
+            'controls': enrichment_data.get('controls', ''),
             
             'in_splunk': any('splunk' in table.lower() for table in source_tables),
             'in_chronicle': any('chronicle' in table.lower() for table in source_tables),
             'in_gso': any('gso' in table.lower() for table in source_tables),
-            'has_crowdstrike': any('crowdstrike' in table.lower() or 'cs' in table.lower() for table in source_tables),
             'found_in_cmdb': True,
             
-            'splunk_log_volume': 1000 if any('splunk' in table.lower() for table in source_tables) else 0,
-            'chronicle_event_count': 500 if any('chronicle' in table.lower() for table in source_tables) else 0,
-            'last_splunk_log': datetime.now() if any('splunk' in table.lower() for table in source_tables) else None,
-            'last_chronicle_event': datetime.now() if any('chronicle' in table.lower() for table in source_tables) else None,
-            
-            'has_edr': any('edr' in table.lower() or 'endpoint' in table.lower() for table in source_tables),
-            'has_tanium': any('tanium' in table.lower() for table in source_tables),
-            'has_dlp': any('dlp' in table.lower() for table in source_tables),
-            
-            'cmdb_last_updated': datetime.now(),
-            'url_fqdn_coverage': bool(enrichment_data.get('fqdn')),
-            'domain_visibility': enrichment_data.get('fqdn', '').split('.', 1)[-1] if '.' in enrichment_data.get('fqdn', '') else '',
-            
             'source_systems': ','.join(sorted(source_tables)),
-            'source_count': len(source_tables),
-            'enrichment_metadata': json.dumps(enrichment_data)
+            'source_count': len(source_tables)
         }
         
-        security_tools = [
-            asset_profile['has_crowdstrike'], 
-            asset_profile['has_tanium'], 
-            asset_profile['has_dlp'], 
-            asset_profile['has_edr']
+        log_coverage_factors = [
+            bool(asset_profile['network_log_types']),
+            bool(asset_profile['endpoint_log_types']),
+            bool(asset_profile['cloud_log_types']),
+            bool(asset_profile['application_log_types']),
+            bool(asset_profile['identity_log_types'])
         ]
-        asset_profile['agent_coverage_score'] = sum(security_tools) / len(security_tools) * 100
+        log_coverage_score = sum(log_coverage_factors) / len(log_coverage_factors) * 100
+        
+        security_coverage_factors = [
+            asset_profile['edr_coverage'] == 'Yes',
+            asset_profile['tanium_coverage'] == 'Yes', 
+            asset_profile['dlp_coverage'] == 'Yes'
+        ]
+        security_coverage_score = sum(security_coverage_factors) / len(security_coverage_factors) * 100
         
         visibility_factors = [
             asset_profile['in_splunk'],
-            asset_profile['in_chronicle'], 
+            asset_profile['in_chronicle'],
             asset_profile['in_gso'],
-            bool(asset_profile['ip_addresses']),
-            bool(asset_profile['fqdn'])
+            asset_profile['url_fqdn_coverage'] == 'Yes',
+            asset_profile['cmdb_asset_visibility'] == 'Yes'
         ]
-        asset_profile['ao1_visibility_score'] = sum(visibility_factors) / len(visibility_factors) * 100
+        visibility_score = sum(visibility_factors) / len(visibility_factors) * 100
         
-        critical_fields = [
-            'fqdn', 'ip_addresses', 'infrastructure_type', 'operating_system', 'global_region',
-            'business_unit', 'environment', 'criticality', 'owner', 'cost_center'
-        ]
-        populated_fields = sum(1 for field in critical_fields if asset_profile.get(field))
-        asset_profile['data_completeness_score'] = (populated_fields / len(critical_fields)) * 100
+        asset_profile['log_volume_score'] = log_coverage_score
+        asset_profile['coverage_completeness_score'] = (log_coverage_score + security_coverage_score + visibility_score) / 3
         
-        intelligence_factors = [
-            asset_profile['data_completeness_score'] / 100,
-            asset_profile['ao1_visibility_score'] / 100,
-            min(asset_profile['source_count'] / 5, 1.0),
-            0.8 if asset_profile['operating_system'] else 0.3,
-            0.9 if asset_profile['criticality'] else 0.2
-        ]
-        asset_profile['intelligence_score'] = sum(intelligence_factors) / len(intelligence_factors)
-        
-        if asset_profile['ao1_visibility_score'] >= 80:
-            asset_profile['ao1_gap_severity'] = 'low'
-            asset_profile['ao1_recommendation'] = 'Excellent visibility coverage maintained'
-        elif asset_profile['ao1_visibility_score'] >= 60:
-            asset_profile['ao1_gap_severity'] = 'medium'
-            asset_profile['ao1_recommendation'] = 'Improve security tool coverage and log collection'
+        if asset_profile['coverage_completeness_score'] >= 80:
+            asset_profile['visibility_gap_severity'] = 'low'
+            asset_profile['ao1_recommendations'] = 'Excellent log visibility coverage across all domains'
+        elif asset_profile['coverage_completeness_score'] >= 60:
+            asset_profile['visibility_gap_severity'] = 'medium'
+            asset_profile['ao1_recommendations'] = 'Good coverage with opportunities to improve security control visibility'
+        elif asset_profile['coverage_completeness_score'] >= 40:
+            asset_profile['visibility_gap_severity'] = 'high'
+            asset_profile['ao1_recommendations'] = 'Significant visibility gaps - expand log collection and security tool coverage'
         else:
-            asset_profile['ao1_gap_severity'] = 'high'
-            asset_profile['ao1_recommendation'] = 'Critical visibility gaps - immediate attention required'
-        
-        try:
-            ip_list = asset_profile['ip_addresses'].split(',') if asset_profile['ip_addresses'] else []
-            asset_profile['public_ip_space_mapped'] = any(
-                not ipaddress.ip_address(ip.strip()).is_private 
-                for ip in ip_list 
-                if ip.strip() and self._is_valid_ip(ip.strip())
-            )
-        except:
-            asset_profile['public_ip_space_mapped'] = False
-        
-        asset_profile['data_quality_score'] = (
-            asset_profile['data_completeness_score'] * 0.6 +
-            asset_profile['intelligence_score'] * 100 * 0.4
-        )
+            asset_profile['visibility_gap_severity'] = 'critical'
+            asset_profile['ao1_recommendations'] = 'Critical visibility gaps - immediate action required for CSOC monitoring'
         
         return asset_profile
     
-    def _parse_numeric(self, value: str) -> Optional[int]:
-        if not value:
-            return None
-        try:
-            return int(float(str(value).strip()))
-        except:
-            return None
-    
-    def _parse_timestamp(self, value: str) -> Optional[datetime]:
-        if not value:
-            return None
-        try:
-            return datetime.fromisoformat(str(value).strip())
-        except:
-            return None
-    
-    def _is_valid_ip(self, value: str) -> bool:
-        try:
-            ipaddress.ip_address(value.strip())
-            return True
-        except ValueError:
-            return False
-    
-    def _batch_insert_assets(self, asset_data_list: List[Dict]):
+    def _batch_insert_ao1_assets(self, asset_data_list: List[Dict]):
         if not asset_data_list:
             return
         
@@ -796,7 +688,7 @@ class OptimizedDataFusion:
         column_names = ', '.join(columns)
         
         query = f"""
-        INSERT OR REPLACE INTO intelligent_asset_inventory ({column_names})
+        INSERT OR REPLACE INTO ao1_log_visibility_inventory ({column_names})
         VALUES ({placeholders})
         """
         
@@ -866,19 +758,18 @@ class SimpleOptimizedAO1Discovery:
         self.conn.execute("PRAGMA memory_limit='1GB'")
         
         self.conn.execute("""
-        CREATE TABLE IF NOT EXISTS simple_asset_inventory (
+        CREATE TABLE IF NOT EXISTS simple_ao1_inventory (
             hostname VARCHAR PRIMARY KEY,
-            fqdn VARCHAR,
-            ip_addresses TEXT,
-            operating_system VARCHAR,
+            infrastructure_type VARCHAR,
+            system_classification VARCHAR,
             global_region VARCHAR,
             business_unit VARCHAR,
-            environment VARCHAR,
             in_splunk BOOLEAN DEFAULT FALSE,
             in_chronicle BOOLEAN DEFAULT FALSE,
-            has_crowdstrike BOOLEAN DEFAULT FALSE,
+            edr_coverage VARCHAR DEFAULT 'No',
             source_count INTEGER DEFAULT 0,
-            data_quality_score DOUBLE DEFAULT 0.0,
+            coverage_completeness_score DOUBLE DEFAULT 0.0,
+            visibility_gap_severity VARCHAR DEFAULT 'unknown',
             discovery_timestamp TIMESTAMP DEFAULT NOW()
         )
         """)
@@ -913,14 +804,14 @@ class SimpleOptimizedAO1Discovery:
             }
             
             queries = {
-                'simple_overview': "SELECT * FROM simple_asset_inventory ORDER BY data_quality_score DESC;",
+                'simple_overview': "SELECT * FROM simple_ao1_inventory ORDER BY coverage_completeness_score DESC;",
                 'coverage_summary': """
                 SELECT 
                     COUNT(*) as total,
                     SUM(CASE WHEN in_splunk THEN 1 ELSE 0 END) as splunk,
                     SUM(CASE WHEN in_chronicle THEN 1 ELSE 0 END) as chronicle,
-                    SUM(CASE WHEN has_crowdstrike THEN 1 ELSE 0 END) as crowdstrike
-                FROM simple_asset_inventory;
+                    SUM(CASE WHEN edr_coverage = 'Yes' THEN 1 ELSE 0 END) as edr_coverage
+                FROM simple_ao1_inventory;
                 """
             }
             
@@ -1013,17 +904,16 @@ class SimpleOptimizedAO1Discovery:
             
             asset = {
                 'hostname': hostname,
-                'fqdn': '',
-                'ip_addresses': '',
-                'operating_system': '',
+                'infrastructure_type': '',
+                'system_classification': '',
                 'global_region': '',
                 'business_unit': '',
-                'environment': '',
                 'in_splunk': any('splunk' in t['table_path'].lower() for t in tables),
                 'in_chronicle': any('chronicle' in t['table_path'].lower() for t in tables),
-                'has_crowdstrike': any('crowdstrike' in t['table_path'].lower() for t in tables),
+                'edr_coverage': 'Yes' if any('crowdstrike' in t['table_path'].lower() for t in tables) else 'No',
                 'source_count': len(tables),
-                'data_quality_score': 50.0
+                'coverage_completeness_score': 50.0,
+                'visibility_gap_severity': 'medium'
             }
             assets.append(asset)
         
@@ -1031,7 +921,7 @@ class SimpleOptimizedAO1Discovery:
             SimpleProgressReporter.info("Inserting assets into database")
             columns = list(assets[0].keys())
             placeholders = ', '.join(['?' for _ in columns])
-            query = f"INSERT OR REPLACE INTO simple_asset_inventory ({', '.join(columns)}) VALUES ({placeholders})"
+            query = f"INSERT OR REPLACE INTO simple_ao1_inventory ({', '.join(columns)}) VALUES ({placeholders})"
             
             try:
                 values_list = [[asset[col] for col in columns] for asset in assets]
@@ -1501,7 +1391,8 @@ class SuperOptimizedAO1Discovery:
             return ""
         
         hostname = re.sub(r'^[^A-Z0-9]+', '', hostname)
-        hostname = re.sub(r'[^A-Z0-9]+$', '', hostname)
+        hostname = re.sub(r'[^A-Z0-9]+
+            , '', hostname)
         
         if '.' in hostname:
             hostname = hostname.split('.')[0]
@@ -1534,10 +1425,9 @@ class SuperOptimizedAO1Discovery:
         intelligence_stats = self.data_fusion.conn.execute("""
             SELECT 
                 COUNT(*) as total_assets,
-                AVG(intelligence_score) as avg_intelligence,
-                AVG(data_quality_score) as avg_quality,
-                COUNT(CASE WHEN data_quality_score > 80 THEN 1 END) as high_quality_assets
-            FROM intelligent_asset_inventory
+                AVG(coverage_completeness_score) as avg_coverage,
+                COUNT(CASE WHEN coverage_completeness_score > 80 THEN 1 END) as high_coverage_assets
+            FROM ao1_log_visibility_inventory
         """).fetchone()
         
         cache_stats = self.cache.get_stats()
@@ -1545,89 +1435,290 @@ class SuperOptimizedAO1Discovery:
         return {
             'processing_time': processing_time,
             'database_path': self.db_path,
-            'discovery_method': 'super_optimized_batch_processing',
+            'discovery_method': 'super_optimized_ao1_batch_processing',
             'total_assets': intelligence_stats[0] if intelligence_stats else 0,
-            'avg_intelligence_score': intelligence_stats[1] if intelligence_stats else 0.0,
-            'avg_data_quality_score': intelligence_stats[2] if intelligence_stats else 0.0,
-            'high_quality_assets': intelligence_stats[3] if intelligence_stats else 0,
+            'avg_coverage_score': intelligence_stats[1] if intelligence_stats else 0.0,
+            'high_coverage_assets': intelligence_stats[2] if intelligence_stats else 0,
             'batch_size': self.batch_size,
             'max_workers': self.max_workers,
             'cache_performance': cache_stats,
             'inventory_build_stats': inventory_stats,
             'optimization_features': {
+                'ao1_log_visibility_focused': True,
                 'batch_processing': True,
                 'parallel_enrichment': True,
                 'optimized_queries': True,
                 'intelligent_caching': True,
-                'complete_field_population': True
+                'complete_ao1_field_population': True
             }
         }
     
     def _create_optimized_queries(self) -> Dict[str, str]:
         return {
-            'complete_asset_inventory': """
-            SELECT * FROM intelligent_asset_inventory 
-            ORDER BY intelligence_score DESC, data_quality_score DESC;
+            'ao1_complete_inventory': """
+            SELECT * FROM ao1_log_visibility_inventory 
+            ORDER BY coverage_completeness_score DESC, source_count DESC;
             """,
             
-            'field_completeness_analysis': """
+            'ao1_visibility_gaps': """
             SELECT 
-                'Operating System' as field_name,
-                COUNT(CASE WHEN operating_system IS NOT NULL AND operating_system != '' THEN 1 END) as populated,
-                COUNT(*) as total,
-                ROUND(COUNT(CASE WHEN operating_system IS NOT NULL AND operating_system != '' THEN 1 END) * 100.0 / COUNT(*), 2) as completeness_pct
-            FROM intelligent_asset_inventory
-            UNION ALL
-            SELECT 
-                'Criticality' as field_name,
-                COUNT(CASE WHEN criticality IS NOT NULL AND criticality != '' THEN 1 END) as populated,
-                COUNT(*) as total,
-                ROUND(COUNT(CASE WHEN criticality IS NOT NULL AND criticality != '' THEN 1 END) * 100.0 / COUNT(*), 2) as completeness_pct
-            FROM intelligent_asset_inventory
-            UNION ALL
-            SELECT 
-                'Owner' as field_name,
-                COUNT(CASE WHEN owner IS NOT NULL AND owner != '' THEN 1 END) as populated,
-                COUNT(*) as total,
-                ROUND(COUNT(CASE WHEN owner IS NOT NULL AND owner != '' THEN 1 END) * 100.0 / COUNT(*), 2) as completeness_pct
-            FROM intelligent_asset_inventory
-            UNION ALL
-            SELECT 
-                'Cost Center' as field_name,
-                COUNT(CASE WHEN cost_center IS NOT NULL AND cost_center != '' THEN 1 END) as populated,
-                COUNT(*) as total,
-                ROUND(COUNT(CASE WHEN cost_center IS NOT NULL AND cost_center != '' THEN 1 END) * 100.0 / COUNT(*), 2) as completeness_pct
-            FROM intelligent_asset_inventory
-            ORDER BY completeness_pct DESC;
+                hostname, infrastructure_type, system_classification, global_region, business_unit,
+                edr_coverage, tanium_coverage, dlp_coverage,
+                network_log_types, endpoint_log_types, cloud_log_types, application_log_types,
+                coverage_completeness_score, visibility_gap_severity, ao1_recommendations
+            FROM ao1_log_visibility_inventory
+            WHERE visibility_gap_severity IN ('high', 'critical')
+            ORDER BY 
+                CASE visibility_gap_severity 
+                    WHEN 'critical' THEN 1 
+                    WHEN 'high' THEN 2 
+                    ELSE 3 
+                END,
+                coverage_completeness_score ASC;
             """,
             
-            'high_intelligence_assets': """
+            'ao1_coverage_by_infrastructure': """
             SELECT 
-                hostname, operating_system, criticality, owner, cost_center,
-                infrastructure_type, environment, business_unit,
-                intelligence_score, data_quality_score, data_completeness_score
-            FROM intelligent_asset_inventory
-            WHERE intelligence_score > 0.8
-            ORDER BY intelligence_score DESC;
+                infrastructure_type,
+                COUNT(*) as total_assets,
+                AVG(coverage_completeness_score) as avg_coverage,
+                SUM(CASE WHEN edr_coverage = 'Yes' THEN 1 ELSE 0 END) as edr_covered,
+                SUM(CASE WHEN tanium_coverage = 'Yes' THEN 1 ELSE 0 END) as tanium_covered,
+                SUM(CASE WHEN dlp_coverage = 'Yes' THEN 1 ELSE 0 END) as dlp_covered,
+                SUM(CASE WHEN in_splunk THEN 1 ELSE 0 END) as splunk_coverage,
+                SUM(CASE WHEN in_chronicle THEN 1 ELSE 0 END) as chronicle_coverage
+            FROM ao1_log_visibility_inventory
+            WHERE infrastructure_type IS NOT NULL AND infrastructure_type != ''
+            GROUP BY infrastructure_type
+            ORDER BY avg_coverage DESC;
             """,
             
-            'missing_critical_fields': """
+            'ao1_log_type_coverage': """
             SELECT 
-                hostname, fqdn, ip_addresses, environment, business_unit,
-                CASE WHEN operating_system IS NULL OR operating_system = '' THEN 'Missing OS' ELSE NULL END as os_status,
-                CASE WHEN criticality IS NULL OR criticality = '' THEN 'Missing Criticality' ELSE NULL END as crit_status,
-                CASE WHEN owner IS NULL OR owner = '' THEN 'Missing Owner' ELSE NULL END as owner_status,
-                CASE WHEN cost_center IS NULL OR cost_center = '' THEN 'Missing Cost Center' ELSE NULL END as cc_status,
-                data_completeness_score
-            FROM intelligent_asset_inventory
-            WHERE (operating_system IS NULL OR operating_system = '')
-               OR (criticality IS NULL OR criticality = '')
-               OR (owner IS NULL OR owner = '')
-               OR (cost_center IS NULL OR cost_center = '')
-            ORDER BY data_completeness_score ASC;
+                'Network Logs' as log_category,
+                COUNT(CASE WHEN network_log_types IS NOT NULL AND network_log_types != '' THEN 1 END) as assets_with_logs,
+                COUNT(*) as total_assets,
+                ROUND(COUNT(CASE WHEN network_log_types IS NOT NULL AND network_log_types != '' THEN 1 END) * 100.0 / COUNT(*), 2) as coverage_percentage
+            FROM ao1_log_visibility_inventory
+            UNION ALL
+            SELECT 
+                'Endpoint Logs' as log_category,
+                COUNT(CASE WHEN endpoint_log_types IS NOT NULL AND endpoint_log_types != '' THEN 1 END) as assets_with_logs,
+                COUNT(*) as total_assets,
+                ROUND(COUNT(CASE WHEN endpoint_log_types IS NOT NULL AND endpoint_log_types != '' THEN 1 END) * 100.0 / COUNT(*), 2) as coverage_percentage
+            FROM ao1_log_visibility_inventory
+            UNION ALL
+            SELECT 
+                'Cloud Logs' as log_category,
+                COUNT(CASE WHEN cloud_log_types IS NOT NULL AND cloud_log_types != '' THEN 1 END) as assets_with_logs,
+                COUNT(*) as total_assets,
+                ROUND(COUNT(CASE WHEN cloud_log_types IS NOT NULL AND cloud_log_types != '' THEN 1 END) * 100.0 / COUNT(*), 2) as coverage_percentage
+            FROM ao1_log_visibility_inventory
+            UNION ALL
+            SELECT 
+                'Application Logs' as log_category,
+                COUNT(CASE WHEN application_log_types IS NOT NULL AND application_log_types != '' THEN 1 END) as assets_with_logs,
+                COUNT(*) as total_assets,
+                ROUND(COUNT(CASE WHEN application_log_types IS NOT NULL AND application_log_types != '' THEN 1 END) * 100.0 / COUNT(*), 2) as coverage_percentage
+            FROM ao1_log_visibility_inventory
+            UNION ALL
+            SELECT 
+                'Identity Logs' as log_category,
+                COUNT(CASE WHEN identity_log_types IS NOT NULL AND identity_log_types != '' THEN 1 END) as assets_with_logs,
+                COUNT(*) as total_assets,
+                ROUND(COUNT(CASE WHEN identity_log_types IS NOT NULL AND identity_log_types != '' THEN 1 END) * 100.0 / COUNT(*), 2) as coverage_percentage
+            FROM ao1_log_visibility_inventory
+            ORDER BY coverage_percentage DESC;
+            """,
+            
+            'ao1_regional_coverage': """
+            SELECT 
+                global_region,
+                country,
+                COUNT(*) as total_assets,
+                AVG(coverage_completeness_score) as avg_coverage_score,
+                COUNT(CASE WHEN visibility_gap_severity = 'low' THEN 1 END) as low_risk,
+                COUNT(CASE WHEN visibility_gap_severity = 'medium' THEN 1 END) as medium_risk,
+                COUNT(CASE WHEN visibility_gap_severity = 'high' THEN 1 END) as high_risk,
+                COUNT(CASE WHEN visibility_gap_severity = 'critical' THEN 1 END) as critical_risk
+            FROM ao1_log_visibility_inventory
+            WHERE global_region IS NOT NULL AND global_region != ''
+            GROUP BY global_region, country
+            ORDER BY avg_coverage_score DESC;
             """
         }
     
     def close(self):
         if hasattr(self.data_fusion, 'conn') and self.data_fusion.conn:
             self.data_fusion.conn.close()
+
+class IntelligentAO1Discovery:
+    def __init__(self, project_id: str, config: Dict[str, Any] = None):
+        self.project_id = project_id
+        self.config = config or {}
+        
+        self.client_manager = BigQueryClientManager(project_id)
+        self.matcher = IntelligentContentMatcher()
+        self.cache = IntelligentCacheManager(
+            cache_dir=self.config.get('cache_dir', '.cache'),
+            max_memory_mb=self.config.get('max_memory_mb', 256),
+            max_disk_gb=self.config.get('max_disk_gb', 2)
+        )
+        
+        self.db_path = self.config.get('database_path', 'ao1_basic_cmdb.db')
+        self.conn = duckdb.connect(self.db_path)
+        self._setup_basic_tables()
+        
+    def _setup_basic_tables(self):
+        self.conn.execute("PRAGMA threads=2")
+        self.conn.execute("PRAGMA memory_limit='512MB'")
+        
+        self.conn.execute("""
+        CREATE TABLE IF NOT EXISTS basic_ao1_inventory (
+            hostname VARCHAR PRIMARY KEY,
+            infrastructure_type VARCHAR,
+            system_classification VARCHAR,
+            global_region VARCHAR,
+            edr_coverage VARCHAR DEFAULT 'No',
+            in_splunk BOOLEAN DEFAULT FALSE,
+            coverage_score DOUBLE DEFAULT 0.0,
+            discovery_timestamp TIMESTAMP DEFAULT NOW()
+        )
+        """)
+    
+    async def execute_intelligent_discovery(self) -> Tuple[Dict[str, Any], Dict[str, str]]:
+        start_time = time.time()
+        
+        try:
+            tables = await self._discover_basic_tables()
+            if not tables:
+                return {'error': 'No tables found', 'total_assets': 0}, {}
+            
+            hostnames = await self._extract_basic_hostnames(tables)
+            if not hostnames:
+                return {'error': 'No hostnames found', 'total_assets': 0}, {}
+            
+            asset_count = self._build_basic_inventory(hostnames, tables)
+            
+            processing_time = time.time() - start_time
+            stats = {
+                'processing_time': processing_time,
+                'total_assets': asset_count,
+                'database_path': self.db_path,
+                'discovery_method': 'basic_intelligent',
+                'engine_type': 'Basic_Intelligent'
+            }
+            
+            queries = {
+                'basic_overview': "SELECT * FROM basic_ao1_inventory ORDER BY coverage_score DESC;",
+                'coverage_summary': """
+                SELECT 
+                    COUNT(*) as total,
+                    SUM(CASE WHEN in_splunk THEN 1 ELSE 0 END) as splunk,
+                    SUM(CASE WHEN edr_coverage = 'Yes' THEN 1 ELSE 0 END) as edr_coverage
+                FROM basic_ao1_inventory;
+                """
+            }
+            
+            return stats, queries
+            
+        except Exception as e:
+            return {'error': str(e), 'total_assets': 0}, {}
+    
+    async def _discover_basic_tables(self) -> List[Dict]:
+        tables = []
+        
+        try:
+            with self.client_manager.get_client() as client:
+                datasets = list(client.list_datasets(project=self.project_id))
+                
+                for dataset in datasets[:5]:
+                    try:
+                        dataset_ref = client.dataset(dataset.dataset_id)
+                        dataset_tables = list(client.list_tables(dataset_ref))
+                        
+                        for table_ref in dataset_tables[:3]:
+                            try:
+                                full_table = client.get_table(table_ref)
+                                if full_table.num_rows and full_table.num_rows > 0:
+                                    columns = [field.name for field in full_table.schema]
+                                    hostname_col = self._find_hostname_column(columns)
+                                    if hostname_col:
+                                        tables.append({
+                                            'project_id': self.project_id,
+                                            'table_path': f"{self.project_id}.{dataset.dataset_id}.{table_ref.table_id}",
+                                            'hostname_column': hostname_col,
+                                            'table_id': table_ref.table_id
+                                        })
+                            except:
+                                continue
+                    except:
+                        continue
+        except Exception:
+            pass
+        
+        return tables
+    
+    def _find_hostname_column(self, columns: List[str]) -> Optional[str]:
+        for col in columns:
+            col_lower = col.lower()
+            if any(term in col_lower for term in ['host', 'endpoint', 'computer', 'device', 'server', 'machine']):
+                return col
+        return None
+    
+    async def _extract_basic_hostnames(self, tables: List[Dict]) -> List[str]:
+        all_hostnames = set()
+        
+        for table in tables:
+            query = f"""
+            SELECT DISTINCT UPPER(TRIM(`{table['hostname_column']}`)) as hostname
+            FROM `{table['table_path']}`
+            WHERE `{table['hostname_column']}` IS NOT NULL
+            LIMIT 500
+            """
+            
+            try:
+                with self.client_manager.get_client() as client:
+                    job = client.query(query)
+                    results = list(job.result())
+                    
+                    for row in results:
+                        hostname = str(row[0]) if row[0] else ""
+                        if hostname and len(hostname) > 2:
+                            all_hostnames.add(hostname)
+            except:
+                continue
+        
+        return list(all_hostnames)
+    
+    def _build_basic_inventory(self, hostnames: List[str], tables: List[Dict]) -> int:
+        assets = []
+        
+        for hostname in hostnames:
+            asset = {
+                'hostname': hostname,
+                'infrastructure_type': '',
+                'system_classification': '',
+                'global_region': '',
+                'edr_coverage': 'Yes' if any('crowdstrike' in t['table_path'].lower() for t in tables) else 'No',
+                'in_splunk': any('splunk' in t['table_path'].lower() for t in tables),
+                'coverage_score': 25.0
+            }
+            assets.append(asset)
+        
+        if assets:
+            columns = list(assets[0].keys())
+            placeholders = ', '.join(['?' for _ in columns])
+            query = f"INSERT OR REPLACE INTO basic_ao1_inventory ({', '.join(columns)}) VALUES ({placeholders})"
+            
+            try:
+                values_list = [[asset[col] for col in columns] for asset in assets]
+                self.conn.executemany(query, values_list)
+            except Exception:
+                pass
+        
+        return len(assets)
+    
+    def close(self):
+        if hasattr(self, 'conn') and self.conn:
+            self.conn.close()
