@@ -6,12 +6,6 @@ import logging
 import duckdb
 import time
 import threading
-import torch
-import torch.nn as nn
-import torch.optim as optim
-import numpy as np
-import networkx as nx
-import ipaddress
 import re
 import json
 import hashlib
@@ -22,12 +16,7 @@ from dataclasses import dataclass, asdict
 from collections import defaultdict, Counter
 from datetime import datetime, timedelta
 import statistics
-from itertools import combinations, islice
-import pickle
 import multiprocessing as mp
-from functools import partial
-import asyncpg
-import aiofiles
 
 from gcp_client import BigQueryClientManager
 from intelligent_content_matcher import IntelligentContentMatcher
@@ -247,10 +236,20 @@ class BatchedFieldExtractor:
         
         if field_type == 'infrastructure_type':
             infra_mappings = {
-                'onprem': 'On-Prem', 'on-premises': 'On-Prem', 'physical': 'On-Prem', 'bare': 'On-Prem',
-                'cloud': 'Cloud', 'aws': 'Cloud', 'azure': 'Cloud', 'gcp': 'Cloud',
-                'saas': 'SaaS', 'software': 'SaaS', 'service': 'SaaS',
-                'api': 'API', 'interface': 'API', 'gateway': 'API'
+                'onprem': 'On-Prem', 
+                'on-premises': 'On-Prem', 
+                'physical': 'On-Prem', 
+                'bare': 'On-Prem',
+                'cloud': 'Cloud', 
+                'aws': 'Cloud', 
+                'azure': 'Cloud', 
+                'gcp': 'Cloud',
+                'saas': 'SaaS', 
+                'software': 'SaaS', 
+                'service': 'SaaS',
+                'api': 'API', 
+                'interface': 'API', 
+                'gateway': 'API'
             }
             value_lower = value.lower()
             for pattern, normalized in infra_mappings.items():
@@ -260,13 +259,30 @@ class BatchedFieldExtractor:
         
         elif field_type == 'system_classification':
             system_mappings = {
-                'web': 'Web Server', 'webserver': 'Web Server', 'iis': 'Web Server', 'apache': 'Web Server',
-                'windows': 'Windows Server', 'win': 'Windows Server', 'microsoft': 'Windows Server',
-                'linux': 'Linux Server', 'unix': 'Linux Server', 'centos': 'Linux Server', 'ubuntu': 'Linux Server',
-                'nix': '*Nix (AIX, Solaris, etc)', 'aix': '*Nix (AIX, Solaris, etc)', 'solaris': '*Nix (AIX, Solaris, etc)',
-                'mainframe': 'Mainframe', 'mf': 'Mainframe', 'zos': 'Mainframe',
-                'database': 'Database', 'db': 'Database', 'sql': 'Database', 'oracle': 'Database',
-                'appliance': 'Network Appliance', 'firewall': 'Network Appliance', 'switch': 'Network Appliance'
+                'web': 'Web Server', 
+                'webserver': 'Web Server', 
+                'iis': 'Web Server', 
+                'apache': 'Web Server',
+                'windows': 'Windows Server', 
+                'win': 'Windows Server', 
+                'microsoft': 'Windows Server',
+                'linux': 'Linux Server', 
+                'unix': 'Linux Server', 
+                'centos': 'Linux Server', 
+                'ubuntu': 'Linux Server',
+                'nix': '*Nix (AIX, Solaris, etc)', 
+                'aix': '*Nix (AIX, Solaris, etc)', 
+                'solaris': '*Nix (AIX, Solaris, etc)',
+                'mainframe': 'Mainframe', 
+                'mf': 'Mainframe', 
+                'zos': 'Mainframe',
+                'database': 'Database', 
+                'db': 'Database', 
+                'sql': 'Database', 
+                'oracle': 'Database',
+                'appliance': 'Network Appliance', 
+                'firewall': 'Network Appliance', 
+                'switch': 'Network Appliance'
             }
             value_lower = value.lower()
             for pattern, normalized in system_mappings.items():
@@ -276,9 +292,17 @@ class BatchedFieldExtractor:
         
         elif field_type == 'global_region':
             region_mappings = {
-                'us': 'US', 'usa': 'US', 'america': 'US', 'north america': 'US',
-                'eu': 'EU', 'europe': 'EU', 'emea': 'EU',
-                'ap': 'APAC', 'asia': 'APAC', 'pacific': 'APAC', 'apac': 'APAC'
+                'us': 'US', 
+                'usa': 'US', 
+                'america': 'US', 
+                'north america': 'US',
+                'eu': 'EU', 
+                'europe': 'EU', 
+                'emea': 'EU',
+                'ap': 'APAC', 
+                'asia': 'APAC', 
+                'pacific': 'APAC', 
+                'apac': 'APAC'
             }
             value_lower = value.lower()
             for pattern, normalized in region_mappings.items():
@@ -288,8 +312,16 @@ class BatchedFieldExtractor:
         
         elif field_type in ['edr_coverage', 'tanium_coverage', 'dlp_coverage']:
             coverage_mappings = {
-                'true': 'Yes', 'yes': 'Yes', 'enabled': 'Yes', 'active': 'Yes', 'installed': 'Yes',
-                'false': 'No', 'no': 'No', 'disabled': 'No', 'inactive': 'No', 'not installed': 'No'
+                'true': 'Yes', 
+                'yes': 'Yes', 
+                'enabled': 'Yes', 
+                'active': 'Yes', 
+                'installed': 'Yes',
+                'false': 'No', 
+                'no': 'No', 
+                'disabled': 'No', 
+                'inactive': 'No', 
+                'not installed': 'No'
             }
             value_lower = value.lower()
             for pattern, normalized in coverage_mappings.items():
@@ -299,20 +331,35 @@ class BatchedFieldExtractor:
         
         elif 'log_types' in field_type:
             log_type_mappings = {
-                'firewall': 'Firewall Traffic', 'fw': 'Firewall Traffic',
-                'ids': 'IDS/IPS', 'ips': 'IDS/IPS', 'intrusion': 'IDS/IPS',
-                'ndr': 'NDR', 'network detection': 'NDR',
-                'proxy': 'Proxy', 'web proxy': 'Proxy',
-                'dns': 'DNS', 'domain': 'DNS',
-                'waf': 'WAF', 'web application firewall': 'WAF',
-                'syslog': 'OS logs (WinEvt, Linux syslog)', 'winlog': 'OS logs (WinEvt, Linux syslog)',
-                'edr': 'EDR', 'endpoint': 'EDR',
-                'dlp': 'DLP', 'data loss': 'DLP',
-                'fim': 'FIM', 'file integrity': 'FIM',
-                'cloudtrail': 'Cloud Event', 'cloud': 'Cloud Event',
-                'weblog': 'Web Logs (HTTP Access)', 'http': 'Web Logs (HTTP Access)',
-                'api': 'API Gateway', 'gateway': 'API Gateway',
-                'auth': 'Authentication attempts', 'authentication': 'Authentication attempts'
+                'firewall': 'Firewall Traffic', 
+                'fw': 'Firewall Traffic',
+                'ids': 'IDS/IPS', 
+                'ips': 'IDS/IPS', 
+                'intrusion': 'IDS/IPS',
+                'ndr': 'NDR', 
+                'network detection': 'NDR',
+                'proxy': 'Proxy', 
+                'web proxy': 'Proxy',
+                'dns': 'DNS', 
+                'domain': 'DNS',
+                'waf': 'WAF', 
+                'web application firewall': 'WAF',
+                'syslog': 'OS logs (WinEvt, Linux syslog)', 
+                'winlog': 'OS logs (WinEvt, Linux syslog)',
+                'edr': 'EDR', 
+                'endpoint': 'EDR',
+                'dlp': 'DLP', 
+                'data loss': 'DLP',
+                'fim': 'FIM', 
+                'file integrity': 'FIM',
+                'cloudtrail': 'Cloud Event', 
+                'cloud': 'Cloud Event',
+                'weblog': 'Web Logs (HTTP Access)', 
+                'http': 'Web Logs (HTTP Access)',
+                'api': 'API Gateway', 
+                'gateway': 'API Gateway',
+                'auth': 'Authentication attempts', 
+                'authentication': 'Authentication attempts'
             }
             value_lower = value.lower()
             for pattern, normalized in log_type_mappings.items():
@@ -1299,6 +1346,9 @@ class SuperOptimizedAO1Discovery:
     async def _batch_hostname_discovery(self, table_metadata: List[Dict]) -> List[str]:
         hostname_discovery_tasks = []
         
+    async def _batch_hostname_discovery(self, table_metadata: List[Dict]) -> List[str]:
+        hostname_discovery_tasks = []
+        
         for table_meta in table_metadata:
             task = self._discover_table_hostnames(table_meta)
             hostname_discovery_tasks.append(task)
@@ -1310,7 +1360,7 @@ class SuperOptimizedAO1Discovery:
             hostname_registrations = []
             
             for result in hostname_results:
-                                        if isinstance(result, list):
+                if isinstance(result, list):
                     for hostname in result:
                         normalized = self._normalize_hostname(hostname)
                         if normalized and normalized not in all_hostnames:
