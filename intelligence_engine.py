@@ -5,7 +5,7 @@ import logging
 import json
 import numpy as np
 from typing import Dict, List, Any, Optional, Tuple
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, asdict
 from collections import defaultdict
 import re
 from datetime import datetime
