@@ -13,20 +13,37 @@ import signal
 import multiprocessing as mp
 
 try:
-    from discovery_engine import SuperOptimizedAO1Discovery
-except ImportError:
-    print("   ⚠°｡⋆⸜ ♡   Enhanced discovery engine not found")
+    from discovery_engine import SuperOptimizedAO1Discovery, SimpleOptimizedAO1Discovery, IntelligentAO1Discovery
+    print("   ✅ All discovery engines loaded successfully")
+except ImportError as e:
+    print(f"   ⚠°｡⋆⸜ ♡   Engine import failed: {e}")
+    print("   ⚠°｡⋆⸜ ♡   Attempting partial imports...")
+    
     SuperOptimizedAO1Discovery = None
-
-try:
-    from simple_discovery import SimpleOptimizedDiscovery
-except ImportError:
-    SimpleOptimizedDiscovery = None
-
-try:
-    from discovery_engine import IntelligentAO1Discovery
-except ImportError:
+    SimpleOptimizedAO1Discovery = None
     IntelligentAO1Discovery = None
+    
+    try:
+        from discovery_engine import SuperOptimizedAO1Discovery
+        print("   ✅ SuperOptimized engine available")
+    except ImportError:
+        pass
+    
+    try:
+        from discovery_engine import SimpleOptimizedAO1Discovery
+        print("   ✅ SimpleOptimized engine available")
+    except ImportError:
+        pass
+    
+    try:
+        from discovery_engine import IntelligentAO1Discovery
+        print("   ✅ Basic Intelligent engine available")
+    except ImportError:
+        pass
+    
+    if not any([SuperOptimizedAO1Discovery, SimpleOptimizedAO1Discovery, IntelligentAO1Discovery]):
+        print("   ✗°｡⋆⸜ ♡   No discovery engines available!")
+        sys.exit(1)
 
 from config_loader import ConfigLoader
 
@@ -56,33 +73,37 @@ class OptimizedAO1Runner:
         
         try:
             if SuperOptimizedAO1Discovery:
+                print("   🚀 Attempting SuperOptimized engine...")
                 self.engine = SuperOptimizedAO1Discovery(project_id, self.config)
                 self.engine_type = "SuperOptimized"
-                print("   ✅ SuperOptimized engine initialized successfully")
+                print("   ✅ SuperOptimized engine initialized")
             else:
                 raise Exception("SuperOptimized engine not available")
         except Exception as e:
-            print(f"   ⚠°｡⋆⸜ ♡   SuperOptimized engine failed: {e}")
+            print(f"   ⚠°｡⋆⸜ ♡   SuperOptimized failed: {e}")
             
             try:
-                if SimpleOptimizedDiscovery:
-                    self.engine = SimpleOptimizedDiscovery(project_id, self.config)
+                if SimpleOptimizedAO1Discovery:
+                    print("   🔧 Attempting SimpleOptimized engine...")
+                    self.engine = SimpleOptimizedAO1Discovery(project_id, self.config)
                     self.engine_type = "SimpleOptimized"
-                    print("   ✅ SimpleOptimized engine initialized successfully")
+                    print("   ✅ SimpleOptimized engine initialized")
                 else:
                     raise Exception("SimpleOptimized engine not available")
             except Exception as simple_error:
-                print(f"   ⚠°｡⋆⸜ ♡   SimpleOptimized engine failed: {simple_error}")
+                print(f"   ⚠°｡⋆⸜ ♡   SimpleOptimized failed: {simple_error}")
                 
                 try:
                     if IntelligentAO1Discovery:
+                        print("   🔄 Attempting Basic Intelligent engine...")
                         self.engine = IntelligentAO1Discovery(project_id, self.config)
                         self.engine_type = "Basic_Intelligent"
-                        print("   ✅ Basic intelligent engine initialized successfully")
+                        print("   ✅ Basic Intelligent engine initialized")
                     else:
                         raise Exception("No discovery engines available")
                 except Exception as final_error:
                     print(f"   ✗°｡⋆⸜ ♡   All engines failed: {final_error}")
+                    print("   💡 Try checking your dependencies and authentication")
                     raise
         
         self.shutdown_requested = False
@@ -111,11 +132,11 @@ class OptimizedAO1Runner:
                     print("   ⚠°｡⋆⸜ ♡   Discovery timed out, attempting graceful recovery...")
                     return {'error': 'Discovery timed out', 'engine_type': self.engine_type}, {}
                 except Exception as discovery_error:
-                    print(f"   ⚠°｡⋆⸜ ♡   SuperOptimized engine failed: {discovery_error}")
-                    print("   ⚠°｡⋆⸜ ♡   Falling back to simple discovery...")
+                    print(f"   ⚠°｡⋆⸜ ♡   SuperOptimized execution failed: {discovery_error}")
+                    print("   ⚠°｡⋆⸜ ♡   Falling back to SimpleOptimized...")
                     
-                    if SimpleOptimizedDiscovery:
-                        fallback_engine = SimpleOptimizedDiscovery(self.project_id, self.config)
+                    if SimpleOptimizedAO1Discovery:
+                        fallback_engine = SimpleOptimizedAO1Discovery(self.project_id, self.config)
                         stats, queries = await fallback_engine.execute_simple_discovery()
                         stats['engine_type'] = "Fallback_Simple"
                         if hasattr(fallback_engine, 'close'):
