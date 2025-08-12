@@ -1310,7 +1310,7 @@ class SuperOptimizedAO1Discovery:
             hostname_registrations = []
             
             for result in hostname_results:
-                if isinstance(result, list):
+                                        if isinstance(result, list):
                     for hostname in result:
                         normalized = self._normalize_hostname(hostname)
                         if normalized and normalized not in all_hostnames:
@@ -1391,8 +1391,7 @@ class SuperOptimizedAO1Discovery:
             return ""
         
         hostname = re.sub(r'^[^A-Z0-9]+', '', hostname)
-        hostname = re.sub(r'[^A-Z0-9]+
-            , '', hostname)
+        hostname = re.sub(r'[^A-Z0-9]+, '', hostname)
         
         if '.' in hostname:
             hostname = hostname.split('.')[0]
