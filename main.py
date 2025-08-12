@@ -15,12 +15,18 @@ import multiprocessing as mp
 try:
     from discovery_engine import SuperOptimizedAO1Discovery
 except ImportError:
-    print("   ⚠°｡⋆⸜ ♡   Enhanced discovery engine not found, using basic version")
-    try:
-        from discovery_engine import IntelligentAO1Discovery as SuperOptimizedAO1Discovery
-    except ImportError:
-        print("   ✗°｡⋆⸜ ♡   No compatible discovery engine found")
-        sys.exit(1)
+    print("   ⚠°｡⋆⸜ ♡   Enhanced discovery engine not found")
+    SuperOptimizedAO1Discovery = None
+
+try:
+    from simple_discovery import SimpleOptimizedDiscovery
+except ImportError:
+    SimpleOptimizedDiscovery = None
+
+try:
+    from discovery_engine import IntelligentAO1Discovery
+except ImportError:
+    IntelligentAO1Discovery = None
 
 from config_loader import ConfigLoader
 
@@ -49,14 +55,35 @@ class OptimizedAO1Runner:
             })
         
         try:
-            self.engine = SuperOptimizedAO1Discovery(project_id, self.config)
-            self.engine_type = "SuperOptimized"
+            if SuperOptimizedAO1Discovery:
+                self.engine = SuperOptimizedAO1Discovery(project_id, self.config)
+                self.engine_type = "SuperOptimized"
+                print("   ✅ SuperOptimized engine initialized successfully")
+            else:
+                raise Exception("SuperOptimized engine not available")
         except Exception as e:
-            print(f"   ⚠°｡⋆⸜ ♡   Failed to initialize optimized engine: {e}")
-            print("   ⚠°｡⋆⸜ ♡   Falling back to basic discovery")
-            from discovery_engine import IntelligentAO1Discovery
-            self.engine = IntelligentAO1Discovery(project_id, self.config)
-            self.engine_type = "Basic"
+            print(f"   ⚠°｡⋆⸜ ♡   SuperOptimized engine failed: {e}")
+            
+            try:
+                if SimpleOptimizedDiscovery:
+                    self.engine = SimpleOptimizedDiscovery(project_id, self.config)
+                    self.engine_type = "SimpleOptimized"
+                    print("   ✅ SimpleOptimized engine initialized successfully")
+                else:
+                    raise Exception("SimpleOptimized engine not available")
+            except Exception as simple_error:
+                print(f"   ⚠°｡⋆⸜ ♡   SimpleOptimized engine failed: {simple_error}")
+                
+                try:
+                    if IntelligentAO1Discovery:
+                        self.engine = IntelligentAO1Discovery(project_id, self.config)
+                        self.engine_type = "Basic_Intelligent"
+                        print("   ✅ Basic intelligent engine initialized successfully")
+                    else:
+                        raise Exception("No discovery engines available")
+                except Exception as final_error:
+                    print(f"   ✗°｡⋆⸜ ♡   All engines failed: {final_error}")
+                    raise
         
         self.shutdown_requested = False
         
@@ -75,9 +102,34 @@ class OptimizedAO1Runner:
         try:
             if hasattr(self.engine, 'execute_super_optimized_discovery'):
                 print(f"   ⚡ ｡⋅˚♡   Running {self.engine_type} batch discovery engine")
-                stats, queries = await self.engine.execute_super_optimized_discovery()
+                print("   ⋆｡‧˚ʚ♡ɞ˚‧｡⋆   Initializing discovery components...")
+                
+                try:
+                    discovery_task = asyncio.create_task(self.engine.execute_super_optimized_discovery())
+                    stats, queries = await asyncio.wait_for(discovery_task, timeout=self.config.get('operation_timeout', 1200))
+                except asyncio.TimeoutError:
+                    print("   ⚠°｡⋆⸜ ♡   Discovery timed out, attempting graceful recovery...")
+                    return {'error': 'Discovery timed out', 'engine_type': self.engine_type}, {}
+                except Exception as discovery_error:
+                    print(f"   ⚠°｡⋆⸜ ♡   SuperOptimized engine failed: {discovery_error}")
+                    print("   ⚠°｡⋆⸜ ♡   Falling back to simple discovery...")
+                    
+                    if SimpleOptimizedDiscovery:
+                        fallback_engine = SimpleOptimizedDiscovery(self.project_id, self.config)
+                        stats, queries = await fallback_engine.execute_simple_discovery()
+                        stats['engine_type'] = "Fallback_Simple"
+                        if hasattr(fallback_engine, 'close'):
+                            fallback_engine.close()
+                    else:
+                        return {'error': str(discovery_error), 'engine_type': self.engine_type}, {}
+                        
+            elif hasattr(self.engine, 'execute_simple_discovery'):
+                print(f"   ⚡ ｡⋅˚♡   Running {self.engine_type} discovery engine")
+                stats, queries = await self.engine.execute_simple_discovery()
+                
             elif hasattr(self.engine, 'execute_intelligent_discovery'):
                 print(f"   ⚡ ｡⋅˚♡   Running {self.engine_type} discovery engine")
+                print("   ⋆｡‧˚ʚ♡ɞ˚‧｡⋆   Starting intelligent discovery...")
                 stats, queries = await self.engine.execute_intelligent_discovery()
             else:
                 raise Exception("No compatible discovery method found")
@@ -87,11 +139,18 @@ class OptimizedAO1Runner:
             stats['engine_type'] = self.engine_type
             return stats, queries
         except Exception as e:
-            print(f"   ✗°｡⋆⸜ ♡   Optimized discovery failed: {e}")
+            print(f"   ✗°｡⋆⸜ ♡   Discovery failed: {e}")
+            import traceback
+            if self.config.get('debug_mode', False):
+                print("   🐛 Debug traceback:")
+                traceback.print_exc()
             return {'error': str(e), 'engine_type': self.engine_type}, {}
         finally:
             if hasattr(self.engine, 'close'):
-                self.engine.close()
+                try:
+                    self.engine.close()
+                except Exception:
+                    pass
 
 def parse_arguments():
     parser = argparse.ArgumentParser(description="Super Optimized AO1 Log Visibility Measurement System")
@@ -332,8 +391,17 @@ async def main():
         runner = OptimizedAO1Runner(args.project, args.config, args)
         
         print("   ⋆｡‧˚ʚ♡ɞ˚‧｡⋆   Starting super optimized batch discovery with complete field population")
+        print("   ⋆｡‧˚ʚ♡ɞ˚‧｡⋆   This may take several minutes depending on data size...")
         
-        stats, queries = await runner.execute_optimized_discovery()
+        try:
+            stats, queries = await asyncio.wait_for(
+                runner.execute_optimized_discovery(), 
+                timeout=args.timeout * 2
+            )
+        except asyncio.TimeoutError:
+            print(f"   ⚠°｡⋆⸜ ♡   Discovery timed out after {args.timeout * 2} seconds")
+            print("   ･ﾟ✧ ◞ ♡   Try reducing batch size or increasing timeout")
+            sys.exit(1)
         
         if 'error' in stats:
             print(f"   ✗°｡⋆⸜ ♡   Optimized discovery failed: {stats['error']}")
