@@ -44,177 +44,176 @@ class AO1AssetRecord:
     host_parity_score: float = 0.0
     cmdb_asset_visibility_score: float = 0.0
     visibility_gap_severity: str = "unknown"
-    last_updated: str = ""
+    raw_data_sources: Dict[str, Dict[str, Any]] = field(default_factory=dict)
+    completeness_score: float = 0.0
 
-class UltraIntelligentFieldDetector:
+class IntelligentFieldAnalyzer:
     def __init__(self):
-        self.conservative_patterns = {
+        self.field_patterns = {
             'hostname': {
-                'exact_names': ['hostname', 'host_name', 'computername', 'computer_name', 'endpoint_name'],
-                'content_validators': [self._is_hostname_content]
+                'name_patterns': ['hostname', 'host_name', 'computername', 'computer_name', 'endpoint_name', 'device_name', 'machine_name'],
+                'content_validator': self._validate_hostname_content
             },
             'fqdn': {
-                'exact_names': ['fqdn', 'full_qualified_domain_name', 'dns_name', 'domain_name'],
-                'content_validators': [self._is_fqdn_content]
+                'name_patterns': ['fqdn', 'full_qualified_domain_name', 'dns_name', 'domain_name', 'canonical_name'],
+                'content_validator': self._validate_fqdn_content
             },
             'ip_address': {
-                'exact_names': ['ip_address', 'ip_addr', 'ipaddress', 'host_ip', 'endpoint_ip'],
-                'content_validators': [self._is_ip_content]
+                'name_patterns': ['ip_address', 'ip_addr', 'ipaddress', 'host_ip', 'endpoint_ip', 'device_ip'],
+                'content_validator': self._validate_ip_content
             },
             'mac_address': {
-                'exact_names': ['mac_address', 'mac_addr', 'macaddress', 'physical_address'],
-                'content_validators': [self._is_mac_content]
+                'name_patterns': ['mac_address', 'mac_addr', 'macaddress', 'physical_address', 'ethernet_address'],
+                'content_validator': self._validate_mac_content
             },
             'infrastructure_type': {
-                'exact_names': ['infrastructure_type', 'infra_type', 'platform_type', 'deployment_type'],
-                'content_validators': [self._is_infrastructure_content]
+                'name_patterns': ['infrastructure_type', 'infra_type', 'platform_type', 'deployment_type', 'env_type'],
+                'content_validator': self._validate_infrastructure_content
             },
             'system_classification': {
-                'exact_names': ['system_classification', 'os_type', 'operating_system', 'platform'],
-                'content_validators': [self._is_system_classification_content]
+                'name_patterns': ['system_classification', 'os_type', 'operating_system', 'platform', 'os_name'],
+                'content_validator': self._validate_os_content
             },
             'global_region': {
-                'exact_names': ['global_region', 'region', 'geo_region', 'geographic_region'],
-                'content_validators': [self._is_region_content]
+                'name_patterns': ['global_region', 'region', 'geo_region', 'geographic_region', 'location'],
+                'content_validator': self._validate_region_content
             },
             'country': {
-                'exact_names': ['country', 'country_code', 'nation'],
-                'content_validators': [self._is_country_content]
+                'name_patterns': ['country', 'country_code', 'nation', 'country_name'],
+                'content_validator': self._validate_country_content
             },
             'business_unit': {
-                'exact_names': ['business_unit', 'bu', 'organization', 'org_unit'],
-                'content_validators': [self._is_business_unit_content]
-            },
-            'edr_coverage': {
-                'exact_names': ['crowdstrike_status', 'edr_status', 'cs_agent', 'falcon_status'],
-                'content_validators': [self._is_coverage_content]
+                'name_patterns': ['business_unit', 'bu', 'organization', 'org_unit', 'department'],
+                'content_validator': self._validate_business_unit_content
             }
         }
-    
-    def _is_hostname_content(self, values: List[str]) -> float:
+
+    def _validate_hostname_content(self, values: List[str]) -> float:
         if not values:
             return 0.0
         
-        hostname_count = 0
-        for value in values[:20]:
-            if self._validate_hostname(value):
-                hostname_count += 1
+        valid_count = 0
+        for value in values[:30]:
+            if self._is_valid_hostname(value):
+                valid_count += 1
         
-        return hostname_count / min(len(values), 20)
-    
-    def _is_fqdn_content(self, values: List[str]) -> float:
+        return valid_count / min(len(values), 30)
+
+    def _validate_fqdn_content(self, values: List[str]) -> float:
         if not values:
             return 0.0
         
-        fqdn_count = 0
-        for value in values[:20]:
-            if self._validate_fqdn(value):
-                fqdn_count += 1
+        valid_count = 0
+        for value in values[:30]:
+            if self._is_valid_fqdn(value):
+                valid_count += 1
         
-        return fqdn_count / min(len(values), 20)
-    
-    def _is_ip_content(self, values: List[str]) -> float:
+        return valid_count / min(len(values), 30)
+
+    def _validate_ip_content(self, values: List[str]) -> float:
         if not values:
             return 0.0
         
-        ip_count = 0
-        for value in values[:20]:
-            if self._validate_ip(value):
-                ip_count += 1
+        valid_count = 0
+        for value in values[:30]:
+            if self._is_valid_ip(value):
+                valid_count += 1
         
-        return ip_count / min(len(values), 20)
-    
-    def _is_mac_content(self, values: List[str]) -> float:
+        return valid_count / min(len(values), 30)
+
+    def _validate_mac_content(self, values: List[str]) -> float:
         if not values:
             return 0.0
         
-        mac_count = 0
-        for value in values[:20]:
-            if self._validate_mac(value):
-                mac_count += 1
+        valid_count = 0
+        for value in values[:30]:
+            if self._is_valid_mac(value):
+                valid_count += 1
         
-        return mac_count / min(len(values), 20)
-    
-    def _is_infrastructure_content(self, values: List[str]) -> float:
+        return valid_count / min(len(values), 30)
+
+    def _validate_infrastructure_content(self, values: List[str]) -> float:
         if not values:
             return 0.0
         
-        infra_keywords = ['cloud', 'on-prem', 'saas', 'api', 'physical', 'virtual', 'aws', 'azure', 'gcp']
-        match_count = 0
+        infra_keywords = [
+            'cloud', 'on-prem', 'on-premises', 'saas', 'api', 'physical', 'virtual', 
+            'aws', 'azure', 'gcp', 'vmware', 'hyper-v', 'bare-metal'
+        ]
         
-        for value in values[:20]:
+        valid_count = 0
+        for value in values[:30]:
             if any(keyword in str(value).lower() for keyword in infra_keywords):
-                match_count += 1
+                valid_count += 1
         
-        return match_count / min(len(values), 20)
-    
-    def _is_system_classification_content(self, values: List[str]) -> float:
+        return valid_count / min(len(values), 30)
+
+    def _validate_os_content(self, values: List[str]) -> float:
         if not values:
             return 0.0
         
-        os_keywords = ['windows', 'linux', 'unix', 'server', 'workstation', 'database', 'web']
-        match_count = 0
+        os_keywords = [
+            'windows', 'linux', 'unix', 'server', 'workstation', 'database', 'web',
+            'centos', 'ubuntu', 'rhel', 'debian', 'macos', 'aix', 'solaris'
+        ]
         
-        for value in values[:20]:
+        valid_count = 0
+        for value in values[:30]:
             if any(keyword in str(value).lower() for keyword in os_keywords):
-                match_count += 1
+                valid_count += 1
         
-        return match_count / min(len(values), 20)
-    
-    def _is_region_content(self, values: List[str]) -> float:
+        return valid_count / min(len(values), 30)
+
+    def _validate_region_content(self, values: List[str]) -> float:
         if not values:
             return 0.0
         
-        region_keywords = ['us', 'eu', 'apac', 'america', 'europe', 'asia', 'north', 'south', 'east', 'west']
-        match_count = 0
+        region_keywords = [
+            'us', 'usa', 'eu', 'europe', 'apac', 'asia', 'pacific', 'americas',
+            'north', 'south', 'east', 'west', 'central', 'emea'
+        ]
         
-        for value in values[:20]:
+        valid_count = 0
+        for value in values[:30]:
             if any(keyword in str(value).lower() for keyword in region_keywords):
-                match_count += 1
+                valid_count += 1
         
-        return match_count / min(len(values), 20)
-    
-    def _is_country_content(self, values: List[str]) -> float:
+        return valid_count / min(len(values), 30)
+
+    def _validate_country_content(self, values: List[str]) -> float:
         if not values:
             return 0.0
         
-        country_keywords = ['usa', 'canada', 'uk', 'germany', 'france', 'japan', 'australia']
-        match_count = 0
+        country_keywords = [
+            'usa', 'united states', 'canada', 'uk', 'united kingdom', 'germany', 
+            'france', 'japan', 'australia', 'brazil', 'india', 'china'
+        ]
         
-        for value in values[:20]:
+        valid_count = 0
+        for value in values[:30]:
             value_str = str(value).lower()
-            if any(keyword in value_str for keyword in country_keywords) or len(value_str) == 2:
-                match_count += 1
+            if any(keyword in value_str for keyword in country_keywords) or len(value_str.strip()) == 2:
+                valid_count += 1
         
-        return match_count / min(len(values), 20)
-    
-    def _is_business_unit_content(self, values: List[str]) -> float:
+        return valid_count / min(len(values), 30)
+
+    def _validate_business_unit_content(self, values: List[str]) -> float:
         if not values:
             return 0.0
         
-        bu_keywords = ['finance', 'marketing', 'sales', 'operations', 'hr', 'it', 'engineering']
-        match_count = 0
+        bu_keywords = [
+            'finance', 'marketing', 'sales', 'operations', 'hr', 'human resources',
+            'it', 'information technology', 'engineering', 'legal', 'compliance'
+        ]
         
-        for value in values[:20]:
+        valid_count = 0
+        for value in values[:30]:
             if any(keyword in str(value).lower() for keyword in bu_keywords):
-                match_count += 1
+                valid_count += 1
         
-        return match_count / min(len(values), 20)
-    
-    def _is_coverage_content(self, values: List[str]) -> float:
-        if not values:
-            return 0.0
-        
-        coverage_keywords = ['yes', 'no', 'true', 'false', 'enabled', 'disabled', 'active', 'inactive']
-        match_count = 0
-        
-        for value in values[:20]:
-            if str(value).lower() in coverage_keywords:
-                match_count += 1
-        
-        return match_count / min(len(values), 20)
-    
-    def _validate_hostname(self, value: str) -> bool:
+        return valid_count / min(len(values), 30)
+
+    def _is_valid_hostname(self, value: str) -> bool:
         if not value or not isinstance(value, str):
             return False
         
@@ -222,18 +221,18 @@ class UltraIntelligentFieldDetector:
         if len(value) < 2 or len(value) > 253:
             return False
         
-        if value.upper() in ['UNKNOWN', 'NULL', 'N/A', 'NONE', 'EMPTY']:
+        if value.upper() in ['UNKNOWN', 'NULL', 'N/A', 'NONE', 'EMPTY', 'LOCALHOST']:
             return False
         
         if re.match(r'^\d+\.\d+\.\d+\.\d+$', value):
             return False
         
-        if re.match(r'^[a-zA-Z0-9][a-zA-Z0-9\-]*[a-zA-Z0-9]$', value) or re.match(r'^[a-zA-Z0-9]+$', value):
-            return True
+        if '@' in value or '/' in value or '\\' in value or ' ' in value:
+            return False
         
-        return False
-    
-    def _validate_fqdn(self, value: str) -> bool:
+        return re.match(r'^[a-zA-Z0-9][a-zA-Z0-9\-\.]*[a-zA-Z0-9]$', value) or re.match(r'^[a-zA-Z0-9]+$', value)
+
+    def _is_valid_fqdn(self, value: str) -> bool:
         if not value or not isinstance(value, str):
             return False
         
@@ -242,8 +241,8 @@ class UltraIntelligentFieldDetector:
             return False
         
         return re.match(r'^[a-zA-Z0-9][a-zA-Z0-9\-\.]*\.[a-zA-Z]{2,}$', value) is not None
-    
-    def _validate_ip(self, value: str) -> bool:
+
+    def _is_valid_ip(self, value: str) -> bool:
         if not value:
             return False
         
@@ -252,8 +251,8 @@ class UltraIntelligentFieldDetector:
             return True
         except:
             return False
-    
-    def _validate_mac(self, value: str) -> bool:
+
+    def _is_valid_mac(self, value: str) -> bool:
         if not value:
             return False
         
@@ -263,39 +262,42 @@ class UltraIntelligentFieldDetector:
         ]
         
         return any(re.match(pattern, str(value).strip()) for pattern in mac_patterns)
-    
-    def analyze_column(self, column_name: str, sample_values: List[str]) -> Dict[str, float]:
-        results = {}
+
+    def analyze_column_for_field_type(self, column_name: str, sample_values: List[str], field_type: str) -> float:
+        if field_type not in self.field_patterns:
+            return 0.0
+        
+        config = self.field_patterns[field_type]
+        score = 0.0
+        
         column_lower = column_name.lower()
         
-        for field_type, config in self.conservative_patterns.items():
-            score = 0.0
-            
-            if any(exact_name == column_lower for exact_name in config['exact_names']):
-                score = 10.0
-            elif any(exact_name in column_lower for exact_name in config['exact_names']):
-                score = 5.0
-            
-            if config['content_validators'] and sample_values:
-                for validator in config['content_validators']:
-                    content_score = validator(sample_values)
-                    if content_score > 0.7:
-                        score += 8.0
-                    elif content_score > 0.5:
-                        score += 5.0
-                    elif content_score > 0.3:
-                        score += 2.0
-            
-            if score > 0:
-                results[field_type] = score
+        for pattern in config['name_patterns']:
+            if pattern == column_lower:
+                score += 10.0
+                break
+            elif pattern in column_lower:
+                score += 7.0
+                break
         
-        return results
+        if sample_values and config['content_validator']:
+            content_score = config['content_validator'](sample_values)
+            if content_score >= 0.8:
+                score += 10.0
+            elif content_score >= 0.6:
+                score += 8.0
+            elif content_score >= 0.4:
+                score += 5.0
+            elif content_score >= 0.2:
+                score += 2.0
+        
+        return score
 
-class UltraIntelligentAO1Discovery:
+class ComprehensiveCMDBBuilder:
     def __init__(self, project_id: str, config: Dict[str, Any] = None):
         self.project_id = project_id
         self.config = config or {}
-        self.field_detector = UltraIntelligentFieldDetector()
+        self.field_analyzer = IntelligentFieldAnalyzer()
         
         from gcp_client import BigQueryClientManager
         self.client_manager = BigQueryClientManager(project_id)
@@ -306,24 +308,26 @@ class UltraIntelligentAO1Discovery:
             self.chronicle_client_manager = None
             logging.warning("Chronicle access not available")
         
-        self.db_path = self.config.get('database_path', 'ao1_ultra_intelligent.db')
+        self.db_path = self.config.get('database_path', 'ao1_comprehensive_cmdb.db')
         self.conn = duckdb.connect(self.db_path)
-        self._setup_ultra_schema()
+        self._setup_comprehensive_schema()
         
-        self.known_tables = {
+        self.source_tables = {
             'cmdb': 'prj-fisv.SAS_BI.V_DIM_ENDPOINT',
-            'splunk': 'prj-fisv.SAS_BI.V_SPL_ENDPOINT_LOG',
+            'splunk': 'prj-fisv.SAS_BI.V_SPL_ENDPOINT_LOG', 
             'crowdstrike': 'prj-fisv.SAS_BI.V_DIM_ENDPOINTAGENT',
             'chronicle': 'chronicle-fisv.datalake.events'
         }
         
-        logging.info(f"UltraIntelligentAO1Discovery initialized with known tables: {list(self.known_tables.keys())}")
-    
-    def _setup_ultra_schema(self):
-        self.conn.execute("DROP TABLE IF EXISTS ao1_ultra_assets")
+        self.master_asset_registry = {}
+        
+        logging.info("ComprehensiveCMDBBuilder initialized - will build complete asset profiles")
+
+    def _setup_comprehensive_schema(self):
+        self.conn.execute("DROP TABLE IF EXISTS ao1_comprehensive_cmdb")
         
         self.conn.execute("""
-            CREATE TABLE ao1_ultra_assets (
+            CREATE TABLE ao1_comprehensive_cmdb (
                 hostname VARCHAR PRIMARY KEY,
                 fqdn VARCHAR DEFAULT '',
                 ip_address VARCHAR DEFAULT '',
@@ -357,21 +361,45 @@ class UltraIntelligentAO1Discovery:
                 host_parity_score DOUBLE DEFAULT 0.0,
                 cmdb_asset_visibility_score DOUBLE DEFAULT 0.0,
                 visibility_gap_severity VARCHAR DEFAULT 'unknown',
-                last_updated TIMESTAMP DEFAULT NOW()
+                completeness_score DOUBLE DEFAULT 0.0,
+                discovery_timestamp TIMESTAMP DEFAULT NOW()
             )
         """)
         
         self.conn.commit()
-        logging.info("Created ao1_ultra_assets table")
-    
-    def discover_and_populate_ultra_intelligent(self) -> Dict[str, Any]:
-        logging.info("Starting ultra-intelligent AO1 discovery")
+        logging.info("Created comprehensive CMDB schema")
+
+    def build_comprehensive_cmdb(self) -> Dict[str, Any]:
+        logging.info("Starting comprehensive CMDB build process")
         
-        master_assets = {}
-        tables_processed = 0
+        logging.info("PHASE 1: Collecting all raw asset data from source systems")
+        raw_data_collected = self._collect_all_raw_data()
         
-        for source_name, table_path in self.known_tables.items():
-            logging.info(f"Processing {source_name} table: {table_path}")
+        logging.info("PHASE 2: Processing each asset row-by-row for intelligent merging")
+        processed_assets = self._process_assets_intelligently()
+        
+        logging.info("PHASE 3: Validating completeness before database insertion")
+        complete_assets = self._validate_and_filter_complete_assets(processed_assets)
+        
+        logging.info("PHASE 4: Inserting only complete, high-quality asset records")
+        inserted_count = self._insert_complete_assets(complete_assets)
+        
+        verification = self._verify_comprehensive_database()
+        
+        return {
+            'raw_data_sources': raw_data_collected,
+            'processed_assets': len(processed_assets),
+            'complete_assets': len(complete_assets),
+            'inserted_count': inserted_count,
+            'database_path': self.db_path,
+            'verification': verification
+        }
+
+    def _collect_all_raw_data(self) -> Dict[str, int]:
+        collection_stats = {}
+        
+        for source_name, table_path in self.source_tables.items():
+            logging.info(f"Collecting raw data from {source_name}: {table_path}")
             
             try:
                 if source_name == 'chronicle' and self.chronicle_client_manager:
@@ -379,44 +407,34 @@ class UltraIntelligentAO1Discovery:
                 else:
                     client_manager = self.client_manager
                 
-                table_data = self._analyze_and_extract_from_table(client_manager, table_path, source_name)
+                raw_records = self._extract_all_raw_records(client_manager, table_path, source_name)
+                collection_stats[source_name] = len(raw_records)
                 
-                if table_data:
-                    logging.info(f"Extracted {len(table_data)} records from {source_name}")
+                logging.info(f"Collected {len(raw_records)} raw records from {source_name}")
+                
+                for hostname, record_data in raw_records.items():
+                    if hostname not in self.master_asset_registry:
+                        self.master_asset_registry[hostname] = AO1AssetRecord(hostname=hostname)
                     
-                    for hostname, asset_data in table_data.items():
-                        if hostname not in master_assets:
-                            master_assets[hostname] = AO1AssetRecord(hostname=hostname)
-                        
-                        self._merge_asset_data_intelligently(master_assets[hostname], asset_data, source_name)
+                    self.master_asset_registry[hostname].raw_data_sources[source_name] = record_data
                     
-                    tables_processed += 1
-                else:
-                    logging.warning(f"No data extracted from {source_name}")
-            
+                    if source_name == 'cmdb':
+                        self.master_asset_registry[hostname].found_in_cmdb = True
+                    elif source_name == 'splunk':
+                        self.master_asset_registry[hostname].found_in_splunk = True
+                    elif source_name == 'chronicle':
+                        self.master_asset_registry[hostname].found_in_chronicle = True
+                    elif source_name == 'crowdstrike':
+                        self.master_asset_registry[hostname].found_in_crowdstrike = True
+                
             except Exception as e:
-                logging.error(f"Failed to process {source_name}: {e}")
-                continue
+                logging.error(f"Failed to collect data from {source_name}: {e}")
+                collection_stats[source_name] = 0
         
-        if not master_assets:
-            return {'error': 'No assets discovered from any table', 'total_assets': 0}
-        
-        for asset in master_assets.values():
-            self._calculate_asset_scores(asset)
-        
-        inserted_count = self._upsert_assets_intelligently(list(master_assets.values()))
-        
-        verification = self._verify_ultra_database()
-        
-        return {
-            'total_assets': len(master_assets),
-            'inserted_count': inserted_count,
-            'tables_processed': tables_processed,
-            'database_path': self.db_path,
-            'verification': verification
-        }
-    
-    def _analyze_and_extract_from_table(self, client_manager, table_path: str, source_name: str) -> Dict[str, Dict[str, Any]]:
+        logging.info(f"Master registry now contains {len(self.master_asset_registry)} unique hostnames")
+        return collection_stats
+
+    def _extract_all_raw_records(self, client_manager, table_path: str, source_name: str) -> Dict[str, Dict[str, Any]]:
         try:
             with client_manager.get_client() as client:
                 table_ref = client.get_table(table_path)
@@ -426,74 +444,70 @@ class UltraIntelligentAO1Discovery:
                     return {}
                 
                 columns = [field.name for field in table_ref.schema]
-                logging.info(f"Analyzing {len(columns)} columns in {table_path}")
+                logging.info(f"Analyzing {len(columns)} columns in {source_name}")
                 
-                schema_analysis = self._sample_and_analyze_schema(client, table_path, columns)
-                
-                field_mappings = self._create_field_mappings(schema_analysis)
+                field_mappings = self._analyze_and_map_fields(client, table_path, columns)
                 
                 if 'hostname' not in field_mappings:
-                    logging.warning(f"No hostname field found in {table_path}")
+                    logging.warning(f"No hostname field identified in {source_name}")
                     return {}
                 
-                return self._extract_all_data_from_table(client, table_path, field_mappings)
+                logging.info(f"Field mappings for {source_name}: {field_mappings}")
+                
+                return self._extract_complete_records(client, table_path, field_mappings)
         
         except Exception as e:
-            logging.error(f"Failed to analyze table {table_path}: {e}")
+            logging.error(f"Failed to extract records from {table_path}: {e}")
             return {}
-    
-    def _sample_and_analyze_schema(self, client, table_path: str, columns: List[str]) -> Dict[str, Dict[str, Any]]:
+
+    def _analyze_and_map_fields(self, client, table_path: str, columns: List[str]) -> Dict[str, str]:
         sample_query = f"""
-        SELECT {', '.join([f'`{col}`' for col in columns[:50]])}
+        SELECT {', '.join([f'`{col}`' for col in columns[:60]])}
         FROM `{table_path}`
         WHERE RAND() < 0.001
-        LIMIT 100
+        LIMIT 200
         """
         
-        schema_analysis = {}
+        column_samples = {}
         
         try:
             job = client.query(sample_query)
             results = list(job.result())
             
-            for col_idx, column_name in enumerate(columns[:50]):
+            for col_idx, column_name in enumerate(columns[:60]):
                 sample_values = []
                 for row in results:
                     if col_idx < len(row) and row[col_idx] is not None:
                         sample_values.append(str(row[col_idx]))
                 
-                if sample_values:
-                    field_scores = self.field_detector.analyze_column(column_name, sample_values)
-                    if field_scores:
-                        schema_analysis[column_name] = {
-                            'field_scores': field_scores,
-                            'sample_values': sample_values[:10]
-                        }
+                column_samples[column_name] = sample_values[:50]
         
         except Exception as e:
-            logging.error(f"Failed to sample schema for {table_path}: {e}")
+            logging.error(f"Failed to sample columns for {table_path}: {e}")
+            return {}
         
-        return schema_analysis
-    
-    def _create_field_mappings(self, schema_analysis: Dict[str, Dict[str, Any]]) -> Dict[str, str]:
         field_mappings = {}
+        field_types = ['hostname', 'fqdn', 'ip_address', 'mac_address', 'infrastructure_type', 
+                      'system_classification', 'global_region', 'country', 'business_unit']
         
-        field_candidates = defaultdict(list)
-        
-        for column_name, analysis in schema_analysis.items():
-            for field_type, score in analysis['field_scores'].items():
-                if score >= 5.0:
-                    field_candidates[field_type].append((column_name, score))
-        
-        for field_type, candidates in field_candidates.items():
-            if candidates:
-                best_candidate = max(candidates, key=lambda x: x[1])
-                field_mappings[field_type] = best_candidate[0]
-                logging.info(f"Mapped {field_type} to {best_candidate[0]} (score: {best_candidate[1]:.1f})")
+        for field_type in field_types:
+            best_score = 0.0
+            best_column = None
+            
+            for column_name, sample_values in column_samples.items():
+                score = self.field_analyzer.analyze_column_for_field_type(column_name, sample_values, field_type)
+                
+                if score > best_score and score >= 8.0:
+                    best_score = score
+                    best_column = column_name
+            
+            if best_column:
+                field_mappings[field_type] = best_column
+                logging.info(f"Mapped {field_type} to {best_column} (score: {best_score:.1f})")
         
         return field_mappings
-    
-    def _extract_all_data_from_table(self, client, table_path: str, field_mappings: Dict[str, str]) -> Dict[str, Dict[str, Any]]:
+
+    def _extract_complete_records(self, client, table_path: str, field_mappings: Dict[str, str]) -> Dict[str, Dict[str, Any]]:
         hostname_col = field_mappings['hostname']
         
         select_parts = [f"UPPER(TRIM(`{hostname_col}`)) as hostname"]
@@ -509,10 +523,10 @@ class UltraIntelligentAO1Discovery:
         AND LENGTH(TRIM(`{hostname_col}`)) >= 2
         AND LENGTH(TRIM(`{hostname_col}`)) <= 253
         AND UPPER(TRIM(`{hostname_col}`)) NOT IN ('UNKNOWN', 'NULL', 'N/A', 'NONE', 'EMPTY')
-        LIMIT 50000
+        LIMIT 100000
         """
         
-        extracted_data = {}
+        extracted_records = {}
         
         try:
             job = client.query(query)
@@ -521,49 +535,81 @@ class UltraIntelligentAO1Discovery:
             for row in results:
                 hostname = row[0] if row[0] else None
                 
-                if hostname and self.field_detector._validate_hostname(hostname):
-                    asset_data = {'hostname': hostname}
+                if hostname and self.field_analyzer._is_valid_hostname(hostname):
+                    record_data = {'hostname': hostname}
                     
                     for idx, (field_type, _) in enumerate(field_mappings.items()):
                         if field_type != 'hostname' and idx < len(row) and row[idx]:
-                            asset_data[field_type] = str(row[idx]).strip()
+                            clean_value = str(row[idx]).strip()
+                            if clean_value and clean_value.upper() not in ['UNKNOWN', 'NULL', 'N/A', 'NONE', 'EMPTY']:
+                                record_data[field_type] = clean_value
                     
-                    extracted_data[hostname] = asset_data
+                    extracted_records[hostname] = record_data
         
         except Exception as e:
-            logging.error(f"Failed to extract data from {table_path}: {e}")
+            logging.error(f"Failed to extract complete records from {table_path}: {e}")
         
-        return extracted_data
-    
-    def _merge_asset_data_intelligently(self, asset: AO1AssetRecord, new_data: Dict[str, Any], source_name: str):
-        for field_name, new_value in new_data.items():
-            if field_name == 'hostname' or not new_value:
-                continue
+        return extracted_records
+
+    def _process_assets_intelligently(self) -> List[AO1AssetRecord]:
+        logging.info(f"Processing {len(self.master_asset_registry)} assets row-by-row")
+        
+        processed_assets = []
+        
+        for hostname, asset in self.master_asset_registry.items():
+            logging.debug(f"Processing asset: {hostname}")
             
-            if hasattr(asset, field_name):
-                current_value = getattr(asset, field_name)
-                
-                if not current_value or current_value in ['', 'No', 'unknown', 'Unknown']:
-                    setattr(asset, field_name, new_value)
-                elif current_value != new_value and new_value not in ['', 'No', 'unknown', 'Unknown']:
-                    if len(str(new_value)) > len(str(current_value)):
-                        setattr(asset, field_name, new_value)
+            self._merge_all_source_data(asset)
+            self._calculate_comprehensive_scores(asset)
+            
+            processed_assets.append(asset)
+            
+            if len(processed_assets) % 1000 == 0:
+                logging.info(f"Processed {len(processed_assets)} assets so far...")
         
-        if source_name == 'cmdb':
-            asset.found_in_cmdb = True
-        elif source_name == 'splunk':
-            asset.found_in_splunk = True
-            asset.in_splunk = True
-        elif source_name == 'chronicle':
-            asset.found_in_chronicle = True
-            asset.in_chronicle = True
-        elif source_name == 'crowdstrike':
-            asset.found_in_crowdstrike = True
+        logging.info(f"Completed processing {len(processed_assets)} assets")
+        return processed_assets
+
+    def _merge_all_source_data(self, asset: AO1AssetRecord):
+        field_priorities = {
+            'cmdb': 4,
+            'crowdstrike': 3,
+            'splunk': 2,
+            'chronicle': 1
+        }
+        
+        fields_to_merge = [
+            'fqdn', 'ip_address', 'mac_address', 'infrastructure_type', 
+            'system_classification', 'global_region', 'country', 'business_unit'
+        ]
+        
+        for field_name in fields_to_merge:
+            best_value = ""
+            best_priority = 0
+            
+            for source_name, raw_data in asset.raw_data_sources.items():
+                if field_name in raw_data and raw_data[field_name]:
+                    value = str(raw_data[field_name]).strip()
+                    source_priority = field_priorities.get(source_name, 0)
+                    
+                    if value and value.upper() not in ['UNKNOWN', 'NULL', 'N/A', 'NONE', 'EMPTY']:
+                        if source_priority > best_priority or (source_priority == best_priority and len(value) > len(best_value)):
+                            best_value = value
+                            best_priority = source_priority
+            
+            if best_value:
+                setattr(asset, field_name, best_value)
+        
+        if asset.found_in_crowdstrike:
             asset.edr_coverage = 'Yes'
         
-        asset.last_updated = datetime.now().isoformat()
-    
-    def _calculate_asset_scores(self, asset: AO1AssetRecord):
+        if asset.found_in_splunk:
+            asset.in_splunk = True
+        
+        if asset.found_in_chronicle:
+            asset.in_chronicle = True
+
+    def _calculate_comprehensive_scores(self, asset: AO1AssetRecord):
         source_count = sum([
             1 if asset.found_in_cmdb else 0,
             1 if asset.found_in_splunk else 0,
@@ -577,12 +623,20 @@ class UltraIntelligentAO1Discovery:
         cmdb_score = 0.0
         if asset.found_in_cmdb:
             cmdb_score += 40.0
-        if asset.infrastructure_type and asset.infrastructure_type != '':
+        if asset.infrastructure_type:
             cmdb_score += 30.0
-        if asset.system_classification and asset.system_classification != '':
+        if asset.system_classification:
             cmdb_score += 30.0
         
         asset.cmdb_asset_visibility_score = cmdb_score
+        
+        completeness_fields = [
+            asset.hostname, asset.fqdn, asset.ip_address, asset.infrastructure_type,
+            asset.system_classification, asset.global_region, asset.business_unit
+        ]
+        
+        filled_fields = sum(1 for field in completeness_fields if field and field.strip())
+        asset.completeness_score = (filled_fields / len(completeness_fields)) * 100
         
         if asset.host_parity_score >= 75:
             asset.visibility_gap_severity = 'low'
@@ -592,13 +646,32 @@ class UltraIntelligentAO1Discovery:
             asset.visibility_gap_severity = 'high'
         else:
             asset.visibility_gap_severity = 'critical'
-    
-    def _upsert_assets_intelligently(self, assets: List[AO1AssetRecord]) -> int:
-        if not assets:
+
+    def _validate_and_filter_complete_assets(self, processed_assets: List[AO1AssetRecord]) -> List[AO1AssetRecord]:
+        complete_assets = []
+        
+        for asset in processed_assets:
+            required_fields = [asset.hostname, asset.infrastructure_type, asset.system_classification]
+            
+            if all(field and field.strip() for field in required_fields):
+                if asset.completeness_score >= 60.0:
+                    complete_assets.append(asset)
+                    logging.debug(f"Asset {asset.hostname} passed completeness check (score: {asset.completeness_score:.1f}%)")
+                else:
+                    logging.debug(f"Asset {asset.hostname} rejected - low completeness (score: {asset.completeness_score:.1f}%)")
+            else:
+                logging.debug(f"Asset {asset.hostname} rejected - missing required fields")
+        
+        logging.info(f"Filtered to {len(complete_assets)} complete assets from {len(processed_assets)} processed")
+        return complete_assets
+
+    def _insert_complete_assets(self, complete_assets: List[AO1AssetRecord]) -> int:
+        if not complete_assets:
+            logging.warning("No complete assets to insert")
             return 0
         
-        upsert_query = """
-        INSERT OR REPLACE INTO ao1_ultra_assets (
+        insert_query = """
+        INSERT INTO ao1_comprehensive_cmdb (
             hostname, fqdn, ip_address, mac_address, infrastructure_type, 
             system_classification, global_region, country, data_center, cloud_region,
             business_unit, cio, apm, application_class, edr_coverage, tanium_coverage,
@@ -606,13 +679,13 @@ class UltraIntelligentAO1Discovery:
             endpoint_log_types, cloud_log_types, application_log_types, identity_log_types,
             found_in_cmdb, found_in_splunk, found_in_chronicle, found_in_crowdstrike,
             source_count, host_parity_score, cmdb_asset_visibility_score,
-            visibility_gap_severity, last_updated
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
+            visibility_gap_severity, completeness_score, discovery_timestamp
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
         """
         
         inserted = 0
         
-        for asset in assets:
+        for asset in complete_assets:
             try:
                 values = [
                     asset.hostname, asset.fqdn, asset.ip_address, asset.mac_address,
@@ -624,116 +697,140 @@ class UltraIntelligentAO1Discovery:
                     asset.cloud_log_types, asset.application_log_types, asset.identity_log_types,
                     asset.found_in_cmdb, asset.found_in_splunk, asset.found_in_chronicle,
                     asset.found_in_crowdstrike, asset.source_count, asset.host_parity_score,
-                    asset.cmdb_asset_visibility_score, asset.visibility_gap_severity
+                    asset.cmdb_asset_visibility_score, asset.visibility_gap_severity,
+                    asset.completeness_score
                 ]
                 
-                self.conn.execute(upsert_query, values)
+                self.conn.execute(insert_query, values)
                 inserted += 1
+                
+                if inserted % 500 == 0:
+                    logging.info(f"Inserted {inserted} complete assets...")
             
             except Exception as e:
-                logging.error(f"Failed to upsert asset {asset.hostname}: {e}")
+                logging.error(f"Failed to insert asset {asset.hostname}: {e}")
         
         self.conn.commit()
-        logging.info(f"Successfully upserted {inserted} assets")
+        logging.info(f"Successfully inserted {inserted} complete, high-quality assets")
         return inserted
-    
-    def _verify_ultra_database(self) -> Dict[str, Any]:
+
+    def _verify_comprehensive_database(self) -> Dict[str, Any]:
         try:
-            count_result = self.conn.execute("SELECT COUNT(*) FROM ao1_ultra_assets").fetchone()
+            count_result = self.conn.execute("SELECT COUNT(*) FROM ao1_comprehensive_cmdb").fetchone()
             total_count = count_result[0] if count_result else 0
             
-            sample_result = self.conn.execute("""
-                SELECT hostname, infrastructure_type, global_region, edr_coverage, 
-                       found_in_cmdb, found_in_splunk, found_in_chronicle, found_in_crowdstrike
-                FROM ao1_ultra_assets LIMIT 10
-            """).fetchall()
-            
-            coverage_stats = self.conn.execute("""
+            completeness_stats = self.conn.execute("""
                 SELECT 
-                    SUM(CASE WHEN found_in_cmdb THEN 1 ELSE 0 END) as cmdb_count,
-                    SUM(CASE WHEN found_in_splunk THEN 1 ELSE 0 END) as splunk_count,
-                    SUM(CASE WHEN found_in_chronicle THEN 1 ELSE 0 END) as chronicle_count,
-                    SUM(CASE WHEN found_in_crowdstrike THEN 1 ELSE 0 END) as crowdstrike_count,
-                    AVG(host_parity_score) as avg_parity_score,
+                    AVG(completeness_score) as avg_completeness,
+                    MIN(completeness_score) as min_completeness,
+                    MAX(completeness_score) as max_completeness,
+                    AVG(host_parity_score) as avg_parity,
                     AVG(cmdb_asset_visibility_score) as avg_cmdb_score
-                FROM ao1_ultra_assets
+                FROM ao1_comprehensive_cmdb
             """).fetchone()
             
-            gap_analysis = self.conn.execute("""
-                SELECT visibility_gap_severity, COUNT(*) as count
-                FROM ao1_ultra_assets
-                GROUP BY visibility_gap_severity
-                ORDER BY 
-                    CASE visibility_gap_severity 
-                        WHEN 'critical' THEN 1 
-                        WHEN 'high' THEN 2 
-                        WHEN 'medium' THEN 3 
-                        WHEN 'low' THEN 4 
-                    END
+            source_coverage = self.conn.execute("""
+                SELECT 
+                    SUM(CASE WHEN found_in_cmdb THEN 1 ELSE 0 END) as cmdb_coverage,
+                    SUM(CASE WHEN found_in_splunk THEN 1 ELSE 0 END) as splunk_coverage,
+                    SUM(CASE WHEN found_in_chronicle THEN 1 ELSE 0 END) as chronicle_coverage,
+                    SUM(CASE WHEN found_in_crowdstrike THEN 1 ELSE 0 END) as crowdstrike_coverage
+                FROM ao1_comprehensive_cmdb
+            """).fetchone()
+            
+            field_completeness = self.conn.execute("""
+                SELECT 
+                    SUM(CASE WHEN fqdn != '' THEN 1 ELSE 0 END) as fqdn_filled,
+                    SUM(CASE WHEN ip_address != '' THEN 1 ELSE 0 END) as ip_filled,
+                    SUM(CASE WHEN infrastructure_type != '' THEN 1 ELSE 0 END) as infra_filled,
+                    SUM(CASE WHEN system_classification != '' THEN 1 ELSE 0 END) as system_filled,
+                    SUM(CASE WHEN global_region != '' THEN 1 ELSE 0 END) as region_filled,
+                    SUM(CASE WHEN business_unit != '' THEN 1 ELSE 0 END) as bu_filled
+                FROM ao1_comprehensive_cmdb
+            """).fetchone()
+            
+            sample_assets = self.conn.execute("""
+                SELECT hostname, infrastructure_type, system_classification, global_region, 
+                       completeness_score, found_in_cmdb, found_in_splunk, found_in_chronicle, found_in_crowdstrike
+                FROM ao1_comprehensive_cmdb
+                ORDER BY completeness_score DESC
+                LIMIT 10
             """).fetchall()
             
             return {
                 'total_records': total_count,
-                'sample_records': sample_result,
-                'coverage_statistics': {
-                    'cmdb_coverage': coverage_stats[0],
-                    'splunk_coverage': coverage_stats[1],
-                    'chronicle_coverage': coverage_stats[2],
-                    'crowdstrike_coverage': coverage_stats[3],
-                    'avg_parity_score': round(coverage_stats[4], 2) if coverage_stats[4] else 0,
-                    'avg_cmdb_score': round(coverage_stats[5], 2) if coverage_stats[5] else 0
+                'quality_metrics': {
+                    'avg_completeness': round(completeness_stats[0], 2) if completeness_stats[0] else 0,
+                    'min_completeness': round(completeness_stats[1], 2) if completeness_stats[1] else 0,
+                    'max_completeness': round(completeness_stats[2], 2) if completeness_stats[2] else 0,
+                    'avg_parity_score': round(completeness_stats[3], 2) if completeness_stats[3] else 0,
+                    'avg_cmdb_score': round(completeness_stats[4], 2) if completeness_stats[4] else 0
                 },
-                'gap_analysis': gap_analysis
+                'source_coverage': {
+                    'cmdb': source_coverage[0],
+                    'splunk': source_coverage[1], 
+                    'chronicle': source_coverage[2],
+                    'crowdstrike': source_coverage[3]
+                },
+                'field_completeness': {
+                    'fqdn_filled': field_completeness[0],
+                    'ip_filled': field_completeness[1],
+                    'infrastructure_filled': field_completeness[2],
+                    'system_filled': field_completeness[3],
+                    'region_filled': field_completeness[4],
+                    'business_unit_filled': field_completeness[5]
+                },
+                'top_quality_assets': sample_assets
             }
         
         except Exception as e:
-            logging.error(f"Database verification failed: {e}")
+            logging.error(f"Verification failed: {e}")
             return {'error': str(e)}
-    
-    def get_ultra_queries(self) -> Dict[str, str]:
+
+    def get_comprehensive_queries(self) -> Dict[str, str]:
         return {
-            'ao1_summary': """
+            'quality_summary': """
                 SELECT 
                     COUNT(*) as total_assets,
-                    AVG(host_parity_score) as avg_host_parity,
-                    AVG(cmdb_asset_visibility_score) as avg_cmdb_visibility,
-                    SUM(CASE WHEN found_in_cmdb THEN 1 ELSE 0 END) as cmdb_assets,
-                    SUM(CASE WHEN found_in_splunk THEN 1 ELSE 0 END) as splunk_assets,
-                    SUM(CASE WHEN found_in_chronicle THEN 1 ELSE 0 END) as chronicle_assets,
-                    SUM(CASE WHEN found_in_crowdstrike THEN 1 ELSE 0 END) as crowdstrike_assets
-                FROM ao1_ultra_assets;
-            """,
-            
-            'visibility_gaps_detailed': """
-                SELECT 
-                    visibility_gap_severity,
-                    COUNT(*) as asset_count,
+                    ROUND(AVG(completeness_score), 2) as avg_completeness,
                     ROUND(AVG(host_parity_score), 2) as avg_parity,
-                    ROUND(AVG(cmdb_asset_visibility_score), 2) as avg_cmdb_score,
-                    ROUND(COUNT(*) * 100.0 / (SELECT COUNT(*) FROM ao1_ultra_assets), 2) as percentage
-                FROM ao1_ultra_assets
-                GROUP BY visibility_gap_severity
-                ORDER BY asset_count DESC;
+                    COUNT(CASE WHEN completeness_score >= 80 THEN 1 END) as high_quality_assets,
+                    COUNT(CASE WHEN source_count >= 3 THEN 1 END) as multi_source_assets
+                FROM ao1_comprehensive_cmdb;
             """,
             
-            'missing_cmdb_critical': """
-                SELECT hostname, infrastructure_type, global_region, edr_coverage
-                FROM ao1_ultra_assets
+            'source_distribution': """
+                SELECT 
+                    source_count,
+                    COUNT(*) as asset_count,
+                    ROUND(AVG(completeness_score), 2) as avg_completeness
+                FROM ao1_comprehensive_cmdb
+                GROUP BY source_count
+                ORDER BY source_count DESC;
+            """,
+            
+            'infrastructure_analysis': """
+                SELECT 
+                    infrastructure_type,
+                    COUNT(*) as count,
+                    ROUND(AVG(completeness_score), 2) as avg_completeness,
+                    SUM(CASE WHEN found_in_cmdb THEN 1 ELSE 0 END) as in_cmdb,
+                    SUM(CASE WHEN edr_coverage = 'Yes' THEN 1 ELSE 0 END) as edr_protected
+                FROM ao1_comprehensive_cmdb
+                WHERE infrastructure_type != ''
+                GROUP BY infrastructure_type
+                ORDER BY count DESC;
+            """,
+            
+            'missing_from_cmdb': """
+                SELECT hostname, infrastructure_type, system_classification, source_count
+                FROM ao1_comprehensive_cmdb
                 WHERE NOT found_in_cmdb AND (found_in_splunk OR found_in_chronicle OR found_in_crowdstrike)
-                ORDER BY host_parity_score DESC
-                LIMIT 50;
-            """,
-            
-            'multi_source_assets': """
-                SELECT hostname, infrastructure_type, global_region, source_count,
-                       found_in_cmdb, found_in_splunk, found_in_chronicle, found_in_crowdstrike
-                FROM ao1_ultra_assets
-                WHERE source_count >= 2
-                ORDER BY source_count DESC, host_parity_score DESC
+                ORDER BY source_count DESC, completeness_score DESC
                 LIMIT 100;
             """
         }
-    
+
     def close(self):
         if hasattr(self, 'conn') and self.conn:
             self.conn.close()
