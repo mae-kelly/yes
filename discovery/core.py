@@ -141,71 +141,146 @@ class FanSpinningMLModel(nn.Module):
 
 class IntensiveDatasetBuilder:
     def __init__(self):
+        # Initialize proxy tunnel manager
+        self.proxy_manager = self._setup_proxy_tunnel()
+        
+        # Try to load tokenizer with proxy support
+        self.tokenizer = self._load_tokenizer_with_proxy()
+        
+        if hasattr(self.tokenizer, 'pad_token') and self.tokenizer.pad_token is None:
+            self.tokenizer.pad_token = self.tokenizer.eos_token
+        
+        self.training_sources = [
+            'https://raw.githubusercontent.com/danielmiessler/SecLists/master/Discovery/Infrastructure/common-hostnames.txt',
+            'https://raw.githubusercontent.com/fuzzdb-project/fuzzdb/master/discovery/predictable-filepaths/filename-dirname-bruteforce/raft-large-words.txt'
+        ]
+        
+        self.cybersecurity_keywords = [
+            'server', 'workstation', 'desktop', 'laptop', 'endpoint', 'device', 'asset',
+            'infrastructure', 'network', 'security', 'firewall', 'router', 'switch',
+            'windows', 'linux', 'unix', 'macos', 'centos', 'ubuntu', 'redhat', 'debian',
+            'splunk', 'chronicle', 'crowdstrike', 'tanium', 'symantec', 'mcafee', 'carbon',
+            'production', 'staging', 'development', 'test', 'qa', 'sandbox', 'demo',
+            'datacenter', 'cloud', 'aws', 'azure', 'gcp', 'kubernetes', 'docker', 'vmware',
+            'critical', 'high', 'medium', 'low', 'finance', 'hr', 'legal', 'ops', 'it',
+            'edr', 'dlp', 'siem', 'soar', 'xdr', 'ndr', 'ueba', 'casb', 'ztna'
+        ]
+        
+        self.training_data = []
+        self.label_mappings = {}
+    
+    def _setup_proxy_tunnel(self):
+        """Setup proxy tunnel for model downloads"""
         try:
             import os
             import ssl
             import urllib3
             
-            # Set up proxy tunnel configuration
+            # Configure proxy tunnel
             ssl._create_default_https_context = ssl._create_unverified_context
             urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
             
-            os.environ['REQUESTS_CA_BUNDLE'] = ''
-            os.environ['CURL_CA_BUNDLE'] = ''
-            
-            # Configure proxy settings for huggingface downloads
             proxy_config = {
                 'http': 'http://127.0.0.1:8080',
                 'https': 'http://127.0.0.1:8080'
             }
             
-            os.environ['HTTP_PROXY'] = proxy_config['http']
-            os.environ['HTTPS_PROXY'] = proxy_config['https']
-            os.environ['http_proxy'] = proxy_config['http']
-            os.environ['https_proxy'] = proxy_config['https']
+            # Set all proxy environment variables
+            proxy_vars = {
+                'HTTP_PROXY': proxy_config['http'],
+                'HTTPS_PROXY': proxy_config['https'],
+                'http_proxy': proxy_config['http'],
+                'https_proxy': proxy_config['https'],
+                'ALL_PROXY': proxy_config['http'],
+                'all_proxy': proxy_config['http']
+            }
             
-            logger.info("Proxy tunnel configured for model downloads")
-            logger.info("Attempting to load DialoGPT tokenizer via proxy tunnel")
+            for var, value in proxy_vars.items():
+                os.environ[var] = value
             
+            # Clear certificate bundles
+            os.environ['REQUESTS_CA_BUNDLE'] = ''
+            os.environ['CURL_CA_BUNDLE'] = ''
+            os.environ['SSL_CERT_FILE'] = ''
+            
+            logger.info("🔧 Proxy tunnel configured for model downloads")
+            
+            # Test proxy
             try:
-                from transformers import AutoTokenizer
-                
-                # Force proxy usage for transformers
                 import requests
                 session = requests.Session()
-                session.proxies.update(proxy_config)
+                session.proxies = proxy_config
                 session.verify = False
                 
-                self.tokenizer = AutoTokenizer.from_pretrained(
+                response = session.get('https://httpbin.org/ip', timeout=5)
+                if response.status_code == 200:
+                    logger.info("✅ Proxy tunnel connectivity verified")
+                    return proxy_config
+                else:
+                    logger.warning(f"⚠️ Proxy test returned {response.status_code}")
+                    
+            except Exception as e:
+                logger.debug(f"Proxy test failed: {e}")
+            
+            return proxy_config
+            
+        except Exception as e:
+            logger.warning(f"Proxy setup failed: {e}")
+            return None
+    
+    def _load_tokenizer_with_proxy(self):
+        """Load tokenizer using proxy tunnel"""
+        logger.info("🤖 Loading DialoGPT tokenizer via proxy tunnel")
+        
+        try:
+            from transformers import AutoTokenizer
+            import requests
+            
+            # Configure transformers to use proxy
+            if self.proxy_manager:
+                logger.info("Using proxy for model download...")
+                
+                # Set huggingface hub environment variables for proxy
+                import os
+                os.environ['HF_HUB_DISABLE_TELEMETRY'] = '1'
+                os.environ['HF_HUB_OFFLINE'] = '0'
+                
+                # Try downloading DialoGPT with proxy
+                tokenizer = AutoTokenizer.from_pretrained(
                     'microsoft/DialoGPT-medium',
                     use_auth_token=False,
                     trust_remote_code=False,
                     local_files_only=False,
-                    proxies=proxy_config,
-                    use_fast=False  # Use slower tokenizer that works better with proxies
+                    use_fast=False,  # Slower but more compatible
+                    cache_dir='./cache/transformers'
                 )
-                logger.info("✅ Successfully loaded DialoGPT tokenizer via proxy tunnel")
                 
-            except Exception as e:
-                logger.warning(f"DialoGPT via proxy failed: {e}")
-                logger.info("Trying GPT2 tokenizer via proxy tunnel")
-                try:
-                    from transformers import GPT2Tokenizer
-                    self.tokenizer = GPT2Tokenizer.from_pretrained(
-                        'gpt2',
-                        proxies=proxy_config,
-                        use_fast=False
-                    )
-                    logger.info("✅ Successfully loaded GPT2 tokenizer via proxy tunnel")
-                except Exception as e2:
-                    logger.warning(f"GPT2 via proxy failed: {e2}")
-                    logger.info("Falling back to minimal tokenizer")
-                    self.tokenizer = self._create_minimal_tokenizer()
+                logger.info("✅ Successfully loaded DialoGPT tokenizer via proxy")
+                return tokenizer
+                
+        except Exception as e:
+            logger.warning(f"DialoGPT via proxy failed: {e}")
+            
+        # Fallback to GPT2
+        try:
+            logger.info("🔄 Falling back to GPT2 tokenizer via proxy")
+            from transformers import GPT2Tokenizer
+            
+            tokenizer = GPT2Tokenizer.from_pretrained(
+                'gpt2',
+                use_fast=False,
+                cache_dir='./cache/transformers'
+            )
+            
+            logger.info("✅ Successfully loaded GPT2 tokenizer via proxy")
+            return tokenizer
             
         except Exception as e:
-            logger.warning(f"Failed to initialize tokenizer with proxy: {e}")
-            logger.info("Using minimal tokenizer fallback")
-            self.tokenizer = self._create_minimal_tokenizer()
+            logger.warning(f"GPT2 via proxy failed: {e}")
+        
+        # Final fallback
+        logger.info("🔄 Using minimal tokenizer fallback")
+        return self._create_minimal_tokenizer()
         
         if hasattr(self.tokenizer, 'pad_token') and self.tokenizer.pad_token is None:
             self.tokenizer.pad_token = self.tokenizer.eos_token
