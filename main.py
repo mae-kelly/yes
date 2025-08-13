@@ -9,270 +9,185 @@ import asyncio
 import argparse
 from pathlib import Path
 from datetime import datetime
-import signal
-import multiprocessing as mp
 
-from content_based_discovery import ContentBasedCMDBBuilder
+from comprehensive_discovery_engine import UltimateCMDBBuilder
 from cache_manager import IntelligentCacheManager
 from content_matcher import IntelligentContentMatcher
-from intelligence_engine import IntelligenceEngine
+from gcp_client import BigQueryClientManager
 from config_loader import ConfigLoader
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-class IntelligentAO1System:
-    def __init__(self, project_id: str, config: dict, args=None):
-        self.project_id = project_id
+class UltimateAO1DiscoverySystem:
+    def __init__(self, projects: List[str], config: dict, args=None):
+        self.projects = projects
         self.config = config
         self.args = args
-        self.shutdown_requested = False
         
         self.cache_manager = IntelligentCacheManager(
             cache_dir=config.get('cache_dir', '.cache'),
-            max_memory_mb=config.get('max_memory_mb', 1024),
-            max_disk_gb=config.get('max_disk_gb', 10)
+            max_memory_mb=config.get('max_memory_mb', 2048),
+            max_disk_gb=config.get('max_disk_gb', 50)
         )
         
         self.content_matcher = IntelligentContentMatcher()
-        self.intelligence_engine = IntelligenceEngine(config)
         
-        self.discovery_engine = ContentBasedCMDBBuilder(
-            project_id=project_id,
+        self.client_managers = {}
+        for project_id in projects:
+            try:
+                self.client_managers[project_id] = BigQueryClientManager(project_id)
+                logger.info(f"Connected to project {project_id}")
+            except Exception as e:
+                logger.error(f"Failed to connect to project {project_id}: {e}")
+        
+        self.ultimate_builder = UltimateCMDBBuilder(
             config=config,
-            cache_manager=self.cache_manager,
             content_matcher=self.content_matcher,
-            intelligence_engine=self.intelligence_engine
+            cache_manager=self.cache_manager
+        )
+    
+    async def execute_ultimate_discovery(self):
+        logger.info("Starting ultimate CMDB discovery across all projects and tables")
+        
+        start_time = time.time()
+        
+        results = await self.ultimate_builder.build_ultimate_cmdb(
+            projects=self.projects,
+            client_managers=self.client_managers
         )
         
-        signal.signal(signal.SIGINT, self._signal_handler)
-        signal.signal(signal.SIGTERM, self._signal_handler)
+        processing_time = time.time() - start_time
+        results['total_processing_time'] = processing_time
+        
+        return results
     
-    def _signal_handler(self, signum, frame):
-        logger.warning(f"Received signal {signum}, initiating intelligent shutdown...")
-        self.shutdown_requested = True
-        self.discovery_engine.shutdown_requested = True
-    
-    async def execute_intelligent_discovery(self):
-        logger.info("Starting intelligent universal CMDB discovery...")
+    def generate_visibility_report(self) -> Dict[str, Any]:
+        queries = self.ultimate_builder.get_visibility_queries()
+        report = {}
         
-        discovery_context = {
-            'project_id': self.project_id,
-            'max_memory_mb': self.config.get('max_memory_mb', 1024),
-            'max_disk_gb': self.config.get('max_disk_gb', 10),
-            'parallel_workers': self.config.get('max_workers', 16),
-            'intelligence_level': self.config.get('intelligence_level', 'expert'),
-            'enable_deep_analysis': self.config.get('enable_deep_analysis', True),
-            'enable_semantic_matching': self.config.get('enable_semantic_matching', True),
-            'enable_predictive_enrichment': self.config.get('enable_predictive_enrichment', True)
-        }
+        for query_name, query_sql in queries.items():
+            try:
+                result = self.ultimate_builder.conn.execute(query_sql).fetchall()
+                if query_name == 'visibility_summary':
+                    columns = ['total_assets', 'in_cmdb', 'in_splunk', 'in_chronicle', 'in_crowdstrike', 'multi_source']
+                    report[query_name] = dict(zip(columns, result[0])) if result else {}
+                elif query_name == 'coverage_percentages':
+                    columns = ['cmdb_percentage', 'splunk_percentage', 'chronicle_percentage', 'crowdstrike_percentage']
+                    report[query_name] = dict(zip(columns, result[0])) if result else {}
+                elif query_name in ['missing_from_cmdb', 'visibility_gaps', 'best_visibility']:
+                    report[query_name] = result
+                else:
+                    report[query_name] = result[0][0] if result and result[0] else 0
+            except Exception as e:
+                logger.error(f"Failed to execute query {query_name}: {e}")
+                report[query_name] = f"Error: {e}"
         
-        intelligence_result = await self.intelligence_engine.enhance_discovery_intelligence(discovery_context)
-        
-        logger.info(f"Intelligence analysis complete. Strategy: {intelligence_result['strategy_recommendation']['strategy_name']}")
-        
-        discovery_stats = await self.discovery_engine.execute_content_based_discovery(intelligence_result)
-        
-        learning_result = await self.intelligence_engine.learn_from_discovery_results(
-            discovery_stats, intelligence_result.get('predictions', {})
-        )
-        
-        final_results = {
-            'discovery_stats': discovery_stats,
-            'intelligence_insights': intelligence_result,
-            'learning_results': learning_result,
-            'cache_performance': self.cache_manager.get_stats(),
-            'content_matching_insights': self.content_matcher.generate_discovery_insights({}),
-            'intelligence_summary': self.intelligence_engine.get_intelligence_summary()
-        }
-        
-        return final_results
+        return report
     
     def close(self):
-        if hasattr(self.discovery_engine, 'close'):
-            self.discovery_engine.close()
-        self.cache_manager.clear()
+        if hasattr(self.ultimate_builder, 'close'):
+            self.ultimate_builder.close()
 
 def parse_arguments():
-    parser = argparse.ArgumentParser(description="Intelligent AO1 Universal CMDB Discovery System")
+    parser = argparse.ArgumentParser(description="Ultimate AO1 CMDB Discovery System")
     
-    parser.add_argument('--project', '-p', required=True, help='GCP Project ID')
-    parser.add_argument('--intelligence-level', choices=['basic', 'advanced', 'expert'], default='expert', help='Intelligence level')
-    parser.add_argument('--max-memory', type=int, default=2048, help='Max memory cache (MB)')
-    parser.add_argument('--max-disk', type=int, default=20, help='Max disk cache (GB)')
-    parser.add_argument('--config', '-c', default='intelligent_config.yaml', help='Configuration file path')
-    parser.add_argument('--output-dir', default='output', help='Output directory')
-    parser.add_argument('--cache-dir', default='.cache', help='Cache directory')
-    parser.add_argument('--database', default='ao1_intelligent_cmdb.db', help='Database file')
-    parser.add_argument('--dry-run', action='store_true', help='Estimate scope with intelligence')
-    parser.add_argument('--debug', action='store_true', help='Enable debug mode')
-    parser.add_argument('--timeout', type=int, default=14400, help='Timeout in seconds (4 hours default)')
+    parser.add_argument('--projects', '-p', nargs='+', required=True, 
+                       help='List of GCP Project IDs (e.g., prj-fisv chronicle-fisv)')
+    parser.add_argument('--max-memory', type=int, default=4096, 
+                       help='Max memory cache (MB)')
+    parser.add_argument('--max-disk', type=int, default=100, 
+                       help='Max disk cache (GB)')
+    parser.add_argument('--config', '-c', default='config.yaml', 
+                       help='Configuration file path')
+    parser.add_argument('--output-dir', default='ultimate_output', 
+                       help='Output directory')
+    parser.add_argument('--database', default='ultimate_cmdb.db', 
+                       help='Ultimate CMDB database file')
+    parser.add_argument('--debug', action='store_true', 
+                       help='Enable debug mode')
+    parser.add_argument('--report-only', action='store_true',
+                       help='Generate report from existing database only')
     
     return parser.parse_args()
-
-async def estimate_intelligent_scope(project_id: str, config: dict):
-    logger.info("Performing intelligent scope estimation...")
-    
-    try:
-        from gcp_client import BigQueryClientManager
-        client_manager = BigQueryClientManager(project_id)
-        
-        with client_manager.get_client() as client:
-            datasets = list(client.list_datasets(project=project_id))
-            
-            intelligence_engine = IntelligenceEngine(config)
-            content_matcher = IntelligentContentMatcher()
-            
-            discovery_context = {
-                'project_id': project_id,
-                'dataset_count': len(datasets),
-                'estimated_tables': len(datasets) * 50,
-                'intelligence_level': config.get('intelligence_level', 'expert')
-            }
-            
-            for dataset in datasets[:5]:
-                try:
-                    dataset_ref = client.dataset(dataset.dataset_id, project=project_id)
-                    tables = list(client.list_tables(dataset_ref))
-                    discovery_context['table_count'] = len(tables)
-                    break
-                except:
-                    continue
-            
-            intelligence_result = await intelligence_engine.enhance_discovery_intelligence(discovery_context)
-            
-            estimate = {
-                'intelligent_analysis': intelligence_result,
-                'total_datasets': len(datasets),
-                'predicted_outcomes': intelligence_result.get('predictions', {}),
-                'recommended_strategy': intelligence_result.get('strategy_recommendation', {}),
-                'confidence_summary': intelligence_result.get('confidence_summary', {}),
-                'optimization_insights': intelligence_result.get('insights', [])
-            }
-            
-            logger.info(f"Intelligent estimation complete:")
-            logger.info(f"  Datasets: {estimate['total_datasets']:,}")
-            
-            predictions = intelligence_result.get('predictions', {})
-            if 'asset_count' in predictions and predictions['asset_count'].get('value'):
-                estimated_assets = predictions['asset_count']['value']
-                logger.info(f"  Predicted assets: {estimated_assets:,}")
-            
-            if 'processing_time' in predictions and predictions['processing_time'].get('value'):
-                estimated_time = predictions['processing_time']['value']
-                logger.info(f"  Predicted time: {estimated_time:.1f} seconds")
-            
-            strategy = intelligence_result.get('strategy_recommendation', {})
-            if strategy.get('strategy_name'):
-                logger.info(f"  Recommended strategy: {strategy['strategy_name']}")
-            
-            return estimate
-            
-    except Exception as e:
-        logger.error(f"Intelligent scope estimation failed: {e}")
-        return {'error': str(e)}
 
 async def main():
     args = parse_arguments()
     
     if args.debug:
         logging.getLogger().setLevel(logging.DEBUG)
-        logger.debug("Debug mode enabled for intelligent discovery")
+        logger.debug("Debug mode enabled for ultimate discovery")
     
     config = ConfigLoader.load_config(args.config) if Path(args.config).exists() else {}
     
     config.update({
         'max_memory_mb': args.max_memory,
         'max_disk_gb': args.max_disk,
-        'cache_dir': args.cache_dir,
         'database_path': args.database,
-        'intelligence_level': args.intelligence_level,
-        'output_dir': args.output_dir,
-        'enable_deep_analysis': True,
-        'enable_semantic_matching': True,
-        'enable_predictive_enrichment': True,
-        'enable_quality_scoring': True,
-        'enable_intelligent_caching': True,
-        'enable_multi_source_fusion': True,
-        'enable_conflict_resolution': True,
-        'enable_pattern_recognition': True,
-        'enable_anomaly_detection': True
+        'output_dir': args.output_dir
     })
     
     output_dir = Path(args.output_dir)
     output_dir.mkdir(exist_ok=True)
     
-    logger.info("Intelligent AO1 Universal CMDB Discovery System")
-    logger.info(f"Project: {args.project}")
-    logger.info(f"Intelligence Level: {args.intelligence_level}")
+    logger.info("Ultimate AO1 CMDB Discovery System")
+    logger.info(f"Projects: {', '.join(args.projects)}")
     logger.info(f"Memory: {args.max_memory:,}MB, Disk: {args.max_disk}GB")
     logger.info(f"Database: {args.database}")
     
     try:
-        if args.dry_run:
-            estimate = await estimate_intelligent_scope(args.project, config)
-            
-            if 'error' in estimate:
-                logger.error(f"Estimation failed: {estimate['error']}")
+        system = UltimateAO1DiscoverySystem(args.projects, config, args)
+        
+        if args.report_only:
+            logger.info("Generating visibility report from existing database")
+            if not Path(args.database).exists():
+                logger.error(f"Database {args.database} does not exist")
                 sys.exit(1)
             
+            report = system.generate_visibility_report()
+        else:
+            logger.info("Starting full discovery process")
+            results = await system.execute_ultimate_discovery()
+            
+            logger.info("Generating comprehensive visibility report")
+            report = system.generate_visibility_report()
+            results['visibility_report'] = report
+            
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            estimate_file = output_dir / f"intelligent_estimate_{timestamp}.json"
+            results_file = output_dir / f"ultimate_discovery_{timestamp}.json"
             
-            with open(estimate_file, 'w') as f:
-                json.dump(estimate, f, indent=2, default=str)
+            with open(results_file, 'w') as f:
+                json.dump(results, f, indent=2, default=str)
             
-            logger.info(f"Intelligent scope estimate saved: {estimate_file}")
-            return
+            logger.info(f"Results saved: {results_file}")
         
-        system = IntelligentAO1System(args.project, config, args)
+        logger.info("Ultimate CMDB Discovery Complete!")
         
-        start_time = time.time()
+        if 'visibility_report' in locals() and 'visibility_summary' in report:
+            summary = report['visibility_summary']
+            logger.info(f"Total assets discovered: {summary.get('total_assets', 0):,}")
+            logger.info(f"In original CMDB: {summary.get('in_cmdb', 0):,}")
+            logger.info(f"In Splunk: {summary.get('in_splunk', 0):,}")
+            logger.info(f"In Chronicle: {summary.get('in_chronicle', 0):,}")
+            logger.info(f"In CrowdStrike: {summary.get('in_crowdstrike', 0):,}")
+            logger.info(f"Multi-source assets: {summary.get('multi_source', 0):,}")
         
-        try:
-            results = await asyncio.wait_for(
-                system.execute_intelligent_discovery(),
-                timeout=args.timeout
-            )
-        except asyncio.TimeoutError:
-            logger.error(f"Discovery timed out after {args.timeout} seconds")
-            sys.exit(1)
-        
-        processing_time = time.time() - start_time
-        results['total_processing_time'] = processing_time
+        if 'coverage_percentages' in report:
+            percentages = report['coverage_percentages']
+            logger.info("Coverage Percentages:")
+            logger.info(f"  CMDB: {percentages.get('cmdb_percentage', 0):.1f}%")
+            logger.info(f"  Splunk: {percentages.get('splunk_percentage', 0):.1f}%")
+            logger.info(f"  Chronicle: {percentages.get('chronicle_percentage', 0):.1f}%")
+            logger.info(f"  CrowdStrike: {percentages.get('crowdstrike_percentage', 0):.1f}%")
         
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        report_file = output_dir / f"visibility_report_{timestamp}.json"
         
-        results_file = output_dir / f"intelligent_discovery_{timestamp}.json"
-        with open(results_file, 'w') as f:
-            json.dump(results, f, indent=2, default=str)
+        with open(report_file, 'w') as f:
+            json.dump(report, f, indent=2, default=str)
         
-        discovery_stats = results.get('discovery_stats', {})
-        total_assets = discovery_stats.get('total_assets', 0)
-        high_quality_assets = discovery_stats.get('high_quality_assets', 0)
-        
-        logger.info("Intelligent Discovery Complete!")
-        logger.info(f"Processing time: {processing_time:.2f} seconds")
-        logger.info(f"Total assets discovered: {total_assets:,}")
-        logger.info(f"High quality assets: {high_quality_assets:,}")
-        
-        cache_stats = results.get('cache_performance', {})
-        if cache_stats.get('hit_rate'):
-            logger.info(f"Cache hit rate: {cache_stats['hit_rate']:.1f}%")
-        
-        intelligence_summary = results.get('intelligence_summary', {})
-        if intelligence_summary.get('learning_iterations'):
-            logger.info(f"Learning iterations: {intelligence_summary['learning_iterations']}")
-        
-        logger.info(f"Results saved: {results_file}")
-        logger.info(f"Database: {args.database}")
-        
-        if processing_time > 0 and total_assets > 0:
-            rate = total_assets / processing_time
-            logger.info(f"Processing rate: {rate:.1f} assets/second")
-        
-        if total_assets == 0:
-            logger.warning("No assets discovered - check authentication and data availability")
+        logger.info(f"Visibility report saved: {report_file}")
+        logger.info(f"Ultimate CMDB database: {args.database}")
         
         system.close()
         
@@ -281,7 +196,7 @@ async def main():
         sys.exit(130)
         
     except Exception as e:
-        logger.error(f"Discovery failed: {e}")
+        logger.error(f"Ultimate discovery failed: {e}")
         
         if args.debug:
             import traceback
@@ -293,7 +208,7 @@ async def main():
                 'error': str(e),
                 'type': type(e).__name__,
                 'timestamp': datetime.now().isoformat(),
-                'project': args.project,
+                'projects': args.projects,
                 'config': config
             }, f, indent=2)
         
