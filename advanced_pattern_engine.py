@@ -291,12 +291,12 @@ class HierarchicalFieldClassifier:
     
     def _identify_common_patterns(self, values: List[str]) -> Dict[str, int]:
         patterns = {
-            'ip_like': sum(1 for v in values if re.match(r'^\d+\.\d+\.\d+\.\d+, v)),
-            'hostname_like': sum(1 for v in values if re.match(r'^[a-zA-Z0-9][a-zA-Z0-9\-]*[a-zA-Z0-9], v)),
+            'ip_like': sum(1 for v in values if re.match(r'^\d+\.\d+\.\d+\.\d+$', v)),
+            'hostname_like': sum(1 for v in values if re.match(r'^[a-zA-Z0-9][a-zA-Z0-9\-]*[a-zA-Z0-9]$', v)),
             'fqdn_like': sum(1 for v in values if '.' in v and len(v.split('.')) > 1),
-            'mac_like': sum(1 for v in values if re.match(r'^([0-9A-Fa-f]{2}[:-]){5}[0-9A-Fa-f]{2}, v)),
-            'uuid_like': sum(1 for v in values if re.match(r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}, v, re.I)),
-            'code_like': sum(1 for v in values if re.match(r'^[A-Z]{2,5}, v)),
+            'mac_like': sum(1 for v in values if re.match(r'^([0-9A-Fa-f]{2}[:-]){5}[0-9A-Fa-f]{2}$', v)),
+            'uuid_like': sum(1 for v in values if re.match(r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$', v, re.I)),
+            'code_like': sum(1 for v in values if re.match(r'^[A-Z]{2,5}$', v)),
             'number_like': sum(1 for v in values if v.isdigit()),
             'mixed_alphanumeric': sum(1 for v in values if any(c.isalpha() for c in v) and any(c.isdigit() for c in v))
         }
@@ -374,10 +374,10 @@ class HierarchicalFieldClassifier:
     
     def _validate_value(self, value: str, validator_name: str) -> bool:
         validators = {
-            'is_hostname_like': lambda v: bool(re.match(r'^[a-zA-Z0-9][a-zA-Z0-9\-]*[a-zA-Z0-9], v)) and len(v) <= 253,
-            'is_fqdn_like': lambda v: '.' in v and bool(re.match(r'^[a-zA-Z0-9][a-zA-Z0-9\-\.]*\.[a-zA-Z]{2,}, v)),
-            'is_ip_like': lambda v: bool(re.match(r'^\d+\.\d+\.\d+\.\d+, v)),
-            'is_mac_like': lambda v: bool(re.match(r'^([0-9A-Fa-f]{2}[:-]){5}[0-9A-Fa-f]{2}, v)),
+            'is_hostname_like': lambda v: bool(re.match(r'^[a-zA-Z0-9][a-zA-Z0-9\-]*[a-zA-Z0-9]$', v)) and len(v) <= 253,
+            'is_fqdn_like': lambda v: '.' in v and bool(re.match(r'^[a-zA-Z0-9][a-zA-Z0-9\-\.]*\.[a-zA-Z]{2,}$', v)),
+            'is_ip_like': lambda v: bool(re.match(r'^\d+\.\d+\.\d+\.\d+$', v)),
+            'is_mac_like': lambda v: bool(re.match(r'^([0-9A-Fa-f]{2}[:-]){5}[0-9A-Fa-f]{2}$', v)),
             'is_region_like': lambda v: any(term in v.lower() for term in ['us', 'eu', 'ap', 'americas', 'emea', 'apac']),
             'is_country_like': lambda v: len(v) == 2 or any(country in v.lower() for country in ['united states', 'canada', 'germany']),
             'is_datacenter_like': lambda v: any(term in v.lower() for term in ['dc', 'datacenter', 'facility']),

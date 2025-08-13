@@ -564,6 +564,7 @@ class AO1EnhancedDiscoveryEngine:
         
         visibility_scores = [asset.get('visibility_score', 0) for asset in self.discovered_assets]
         
+        from collections import defaultdict
         infrastructure_breakdown = defaultdict(int)
         for asset in self.discovered_assets:
             infra_type = asset.get('infrastructure_type', 'unknown')
@@ -598,4 +599,9 @@ class AO1EnhancedDiscoveryEngine:
         
         content_performance = self.ai_content_matcher.get_ao1_performance_stats()
         confidence_factors['content_matching'] = content_performance.get('ai_classification_rate', 0.5)
-        confidence_factors['visibility_focus'] = content_
+        confidence_factors['visibility_focus'] = content_performance.get('visibility_enhancement_rate', 0.5)
+        
+        overall_confidence = statistics.mean(confidence_factors.values()) if confidence_factors else 0.5
+        confidence_factors['overall'] = overall_confidence
+        
+        return confidence_factors
