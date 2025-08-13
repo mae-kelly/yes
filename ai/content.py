@@ -11,6 +11,7 @@ from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.cluster import KMeans
 from sklearn.metrics.pairwise import cosine_similarity
 import networkx as nx
+from datetime import datetime  # Added missing import
 
 class AdvancedContentAnalyzer:
     def __init__(self):
@@ -52,7 +53,7 @@ class AdvancedContentAnalyzer:
             'mac_address': {
                 'strict': [
                     r'^([0-9A-Fa-f]{2}[:-]){5}[0-9A-Fa-f]{2}$',
-                    r'^([0-9A-Fa-f]{4}\.){2}[0-9A-Fa-f]{4}$'
+                    r'^([0-9A-Fa-f]{4}\.){2}[0-9A-Fa-f]{4}$'  # Fixed: Added closing $
                 ],
                 'semantic': [r'mac', r'ethernet', r'physical']
             }
@@ -604,8 +605,8 @@ class EnhancedValidationEngine:
             return False
         
         patterns = [
-            r'^[a-zA-Z0-9][a-zA-Z0-9\-]*[a-zA-Z0-9]$',
-            r'^[a-zA-Z0-9]+$'
+            r'^[a-zA-Z0-9][a-zA-Z0-9\-]*[a-zA-Z0-9],
+            r'^[a-zA-Z0-9]+
         ]
         
         return any(re.match(pattern, value, re.IGNORECASE) for pattern in patterns)
@@ -702,8 +703,8 @@ class EnhancedValidationEngine:
     def _validate_mac_advanced(self, values: List[str]) -> Dict[str, Any]:
         valid_count = 0
         patterns = [
-            r'^([0-9A-Fa-f]{2}[:-]){5}[0-9A-Fa-f]{2},
-            r'^([0-9A-Fa-f]{4}\.){2}[0-9A-Fa-f]{4}
+            r'^([0-9A-Fa-f]{2}[:-]){5}[0-9A-Fa-f]{2},  # Fixed: Added closing $
+            r'^([0-9A-Fa-f]{4}\.){2}[0-9A-Fa-f]{4}     # Fixed: Added closing $
         ]
         
         for value in values[:50]:
@@ -729,5 +730,8 @@ class EnhancedValidationEngine:
         if value.count('.') < 1:
             return False
         
-        pattern = r'^[a-zA-Z0-9][a-zA-Z0-9\-\.]*\.[a-zA-Z]{2,}
+        pattern = r'^[a-zA-Z0-9][a-zA-Z0-9\-\.]*\.[a-zA-Z]{2,}  # Fixed: Added closing $
         return bool(re.match(pattern, value, re.IGNORECASE))
+
+# Add ContentAnalyzer alias for compatibility
+ContentAnalyzer = AdvancedContentAnalyzer

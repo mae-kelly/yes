@@ -1,4 +1,4 @@
-# main.py - hyper-intelligent version
+# main.py - corrected version
 
 import asyncio
 import logging
@@ -13,8 +13,8 @@ import torch
 from core.types import Discovery
 from gcp.client import BigQueryClientManager
 from cache.system import IntelligentCache
-from ai.intelligence import IntelligenceEngine
-from discovery.core import HyperAdvancedDiscoveryEngine, UltraAdvancedEntityResolver
+from ai.intelligence import EnhancedIntelligenceEngine
+from discovery.core import IntensiveDiscoveryEngine, IntensiveEntityResolver
 from discovery.content import ContentBasedEngine, UniversalTableScanner
 from discovery.ao1 import AO1SuperEngine
 from storage.database import DatabaseManager, ContentDatabase, EnhancedDatabaseManager
@@ -33,17 +33,26 @@ class HyperIntelligentDiscoverySystem:
             max_disk_gb=config.get('max_disk_gb', 100)
         )
         
-        self.intelligence = IntelligenceEngine(config)
+        self.intelligence = EnhancedIntelligenceEngine(config)
         
         self.client_managers = {}
         self._init_clients()
         
-        self.hyper_discovery_engine = HyperAdvancedDiscoveryEngine(
+        self.hyper_discovery_engine = IntensiveDiscoveryEngine(
             project_id, config, self.cache, self.intelligence
         )
         self.content_engine = ContentBasedEngine(project_id, config, self.cache, self.intelligence)
         self.ao1_engine = AO1SuperEngine(config)
-        self.scanner = UniversalTableScanner(self.content_engine.analyzer)
+        
+        # Fix: Check if ContentAnalyzer exists, otherwise use a basic analyzer
+        try:
+            from ai.content import ContentAnalyzer
+            analyzer = ContentAnalyzer()
+        except:
+            from ai.content import AdvancedContentAnalyzer
+            analyzer = AdvancedContentAnalyzer()
+        
+        self.scanner = UniversalTableScanner(analyzer)
         
         self.db = EnhancedDatabaseManager(config.get('database_path', 'hyperintelligent_cmdb.db'))
         self.content_db = ContentDatabase(config.get('content_db_path', 'content_cmdb.db'))
@@ -55,15 +64,20 @@ class HyperIntelligentDiscoverySystem:
             'total_cells_analyzed': 0,
             'processing_errors': 0,
             'hyperintelligent_mode': True,
-            'gpu_accelerated': torch.backends.mps.is_available(),
+            'gpu_accelerated': torch.backends.mps.is_available() if hasattr(torch.backends, 'mps') else False,
             'ml_model_loaded': False
         }
         
-        if torch.backends.mps.is_available():
-            logger.info("M1 GPU detected - enabling maximum performance mode")
-            torch.mps.set_per_process_memory_fraction(0.95)
-        else:
-            logger.warning("M1 GPU not detected - falling back to CPU")
+        # Safe GPU initialization
+        try:
+            if hasattr(torch.backends, 'mps') and torch.backends.mps.is_available():
+                logger.info("M1 GPU detected - enabling maximum performance mode")
+                torch.mps.set_per_process_memory_fraction(0.95)
+            else:
+                logger.warning("M1 GPU not detected - falling back to CPU")
+        except Exception as e:
+            logger.warning(f"GPU initialization failed: {e}")
+            self.stats['gpu_accelerated'] = False
     
     def _init_clients(self):
         try:
@@ -92,7 +106,7 @@ class HyperIntelligentDiscoverySystem:
                 'project_id': self.project_id,
                 'hyperintelligent_mode': True,
                 'gpu_accelerated': self.stats['gpu_accelerated'],
-                'device': 'mps' if torch.backends.mps.is_available() else 'cpu',
+                'device': 'mps' if self.stats['gpu_accelerated'] else 'cpu',
                 'config': {k: v for k, v in self.config.items() if not k.startswith('_')}
             }
         }
@@ -100,7 +114,8 @@ class HyperIntelligentDiscoverySystem:
         try:
             logger.info("🔥 Initializing hyper-advanced ML training - fans will spin intensely")
             
-            discovery = await self.hyper_discovery_engine.discover_assets_hyperintelligently(
+            # Fix: Use correct method name
+            discovery = await self.hyper_discovery_engine.discover_assets_intensively(
                 self.client_managers
             )
             
@@ -159,11 +174,7 @@ class HyperIntelligentDiscoverySystem:
         logger.info("Running legacy intelligent discovery for comparison")
         
         try:
-            from discovery.core import AdvancedSchemaAnalyzer, IntelligentAssetExtractor
-            
-            schema_analyzer = AdvancedSchemaAnalyzer(self.intelligence)
-            asset_extractor = IntelligentAssetExtractor(self.intelligence)
-            
+            # Simplified legacy discovery without missing classes
             discovery = Discovery()
             all_assets = {}
             
@@ -180,13 +191,18 @@ class HyperIntelligentDiscoverySystem:
                         continue
                     
                     with client_manager.get_client() as client:
-                        schema = await schema_analyzer.analyze_table_deeply(client, table_path)
-                        
-                        if schema:
-                            assets = await asset_extractor.extract_assets_intelligently(
-                                client, schema, source_name, {}
-                            )
-                            all_assets.update(assets)
+                        # Simple table check
+                        try:
+                            table = client.get_table(table_path)
+                            if table and table.schema:
+                                # Just count as a basic discovery
+                                all_assets[f"{source_name}_basic"] = {
+                                    'source': source_name,
+                                    'table': table_path,
+                                    'rows': table.num_rows
+                                }
+                        except Exception as inner_e:
+                            logger.debug(f"Table check failed for {table_path}: {inner_e}")
                 
                 except Exception as e:
                     logger.error(f"Legacy processing failed for {source_name}: {e}")
@@ -218,7 +234,7 @@ class HyperIntelligentDiscoverySystem:
     def _get_ml_performance_stats(self, discovery_stats: Dict[str, Any]) -> Dict[str, Any]:
         return {
             'gpu_utilized': self.stats['gpu_accelerated'],
-            'device_type': 'Apple M1 GPU' if torch.backends.mps.is_available() else 'CPU',
+            'device_type': 'Apple M1 GPU' if self.stats['gpu_accelerated'] else 'CPU',
             'cells_per_second': discovery_stats.get('cells_per_second', 0),
             'total_cells_processed': discovery_stats.get('total_cells_analyzed', 0),
             'ml_model_loaded': self.stats['ml_model_loaded'],
@@ -267,7 +283,7 @@ class HyperIntelligentDiscoverySystem:
             'hyperintelligent_mode': self.stats['hyperintelligent_mode'],
             'gpu_accelerated': self.stats['gpu_accelerated'],
             'ml_model_performance': {
-                'device': 'Apple M1 GPU' if torch.backends.mps.is_available() else 'CPU',
+                'device': 'Apple M1 GPU' if self.stats['gpu_accelerated'] else 'CPU',
                 'model_loaded': self.stats['ml_model_loaded'],
                 'training_completed': True,
                 'inference_speed': 'Maximum'
@@ -525,7 +541,7 @@ class HyperIntelligentDiscoverySystem:
     
     def close(self):
         try:
-            if torch.backends.mps.is_available():
+            if hasattr(torch.backends, 'mps') and torch.backends.mps.is_available():
                 torch.mps.empty_cache()
                 logger.info("GPU memory cache cleared")
             
@@ -586,7 +602,8 @@ async def main():
     if args.debug:
         logging.getLogger().setLevel(logging.DEBUG)
     
-    if args.gpu_only and not torch.backends.mps.is_available():
+    gpu_available = hasattr(torch.backends, 'mps') and torch.backends.mps.is_available()
+    if args.gpu_only and not gpu_available:
         logger.error("GPU acceleration required but M1 GPU not available")
         return 1
     
@@ -607,7 +624,7 @@ async def main():
     logger.info(f"🧠 ML Mode: Advanced Transformers + Deep Learning")
     logger.info(f"💾 Memory: {args.memory}MB, Disk: {args.disk}GB")
     logger.info(f"⚡ Workers: {args.workers}")
-    logger.info(f"🔥 GPU: {'M1 Accelerated' if torch.backends.mps.is_available() else 'CPU Only'}")
+    logger.info(f"🔥 GPU: {'M1 Accelerated' if gpu_available else 'CPU Only'}")
     logger.info(f"📱 Max Cells/Table: {args.max_cells:,}")
     
     system = None
@@ -645,7 +662,7 @@ async def main():
                 'estimated_tables': total_tables,
                 'estimated_cells_to_analyze': estimated_cells,
                 'estimated_processing_time_minutes': estimated_processing_time / 60,
-                'gpu_acceleration': torch.backends.mps.is_available(),
+                'gpu_acceleration': gpu_available,
                 'ml_model_size': 'Large (2048 dimensions, 24 layers)',
                 'expected_asset_discovery': 'Thousands to tens of thousands',
                 'timestamp': datetime.now().isoformat()
