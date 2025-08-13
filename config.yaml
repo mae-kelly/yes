@@ -1,0 +1,110 @@
+# config.yaml
+
+max_memory_mb: 4096
+max_disk_gb: 50
+cache_dir: ".cache"
+database_path: "smart_cmdb.db"
+content_db_path: "content_cmdb.db"
+max_workers: 32
+
+enable_machine_learning: true
+enable_deep_analysis: true
+enable_semantic_matching: true
+enable_predictive_enrichment: true
+use_universal_scanner: false
+
+intelligence_level: "expert"
+semantic_confidence_threshold: 0.5
+validation_confidence_threshold: 0.6
+data_quality_threshold: 0.7
+
+enable_pattern_recognition: true
+enable_statistical_analysis: true
+enable_anomaly_detection: true
+sample_size_adaptive: true
+min_sample_size: 5
+max_sample_size: 100
+
+enable_multi_source_fusion: true
+enable_conflict_resolution: true
+enable_confidence_weighting: true
+data_freshness_weight: 0.3
+source_reliability_weight: 0.4
+validation_score_weight: 0.3
+
+enable_network_discovery: true
+enable_ip_validation: true
+enable_mac_discovery: true
+enable_domain_extraction: true
+
+enable_security_classification: true
+enable_risk_scoring: true
+prioritize_security_sources: true
+
+enable_geo_intelligence: true
+enable_datacenter_mapping: true
+enable_cloud_detection: true
+
+enable_business_mapping: true
+enable_owner_identification: true
+enable_criticality_assessment: true
+
+source_priorities:
+  cmdb: 100
+  crowdstrike: 95
+  splunk: 90
+  chronicle: 85
+  security: 80
+
+field_type_priorities:
+  hostname: 100
+  fqdn: 95
+  ip_address: 90
+  mac_address: 85
+  infrastructure_type: 80
+  system_classification: 75
+  global_region: 70
+  business_unit: 65
+
+enable_parallel_processing: true
+max_concurrent_tables: 12
+intelligent_backoff: true
+adaptive_timeouts: true
+graceful_degradation: true
+
+intelligent_cache_eviction: true
+promote_hot_data: true
+compress_cold_data: true
+cache_hit_optimization: true
+
+enable_query_optimization: true
+enable_sampling_optimization: true
+max_query_cost_usd: 50.0
+
+intelligent_error_handling: true
+enable_retry_strategies: true
+enable_fallback_mechanisms: true
+adaptive_error_recovery: true
+
+log_level: "INFO"
+enable_performance_logging: true
+enable_quality_metrics: true
+
+generate_intelligent_reports: true
+enable_visualization_data: true
+enable_recommendation_engine: true
+export_formats: ["json", "sql"]
+
+enable_data_validation: true
+enable_format_validation: true
+enable_semantic_validation: true
+validation_strictness: "moderate"
+
+max_tables_per_dataset: 500
+max_rows_per_query: 1000000
+max_processing_time_hours: 12
+memory_safety_margin: 0.1
+disk_safety_margin: 0.05
+
+config_version: "1.0"
+created_by: "smart_discovery_system"
