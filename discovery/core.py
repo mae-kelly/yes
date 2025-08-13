@@ -37,7 +37,26 @@ class SchemaAnalyzer:
             
             samples = await self._sample_table(client, table_path, columns)
             
+            hostname_found = False
             for column_name, column_samples in samples.items():
+                if self._is_hostname_column(column_name, column_samples):
+                    mapping = FieldMapping(
+                        field_type='hostname',
+                        column=column_name,
+                        confidence=0.95,
+                        samples=column_samples[:10]
+                    )
+                    schema.mappings['hostname'] = mapping
+                    hostname_found = True
+                    break
+            
+            if not hostname_found:
+                return None
+            
+            for column_name, column_samples in samples.items():
+                if column_name == schema.mappings['hostname'].column:
+                    continue
+                
                 mapping = await self.intelligence.analyze_field_intelligently(
                     column_name, column_samples, {'table_path': table_path}
                 )
@@ -54,9 +73,41 @@ class SchemaAnalyzer:
             logger.warning(f"Schema analysis failed for {table_path}: {e}")
             return None
     
+    def _is_hostname_column(self, column_name: str, samples: List[str]) -> bool:
+        name_lower = column_name.lower()
+        hostname_indicators = ['hostname', 'host', 'computer', 'endpoint', 'device', 'machine', 'servername', 'computername']
+        
+        if any(indicator in name_lower for indicator in hostname_indicators):
+            return True
+        
+        if len(samples) < 5:
+            return False
+        
+        hostname_pattern_count = 0
+        for sample in samples[:20]:
+            if self._looks_like_hostname(sample):
+                hostname_pattern_count += 1
+        
+        return hostname_pattern_count / min(len(samples), 20) > 0.3
+    
+    def _looks_like_hostname(self, value: str) -> bool:
+        if not isinstance(value, str) or not (2 <= len(value) <= 253):
+            return False
+        
+        if any(char in value for char in ['@', '/', '\\', ' ', '\t', '\n']):
+            return False
+        
+        import re
+        patterns = [
+            r'^[a-zA-Z0-9][a-zA-Z0-9\-]*[a-zA-Z0-9]$',
+            r'^[a-zA-Z0-9]+$'
+        ]
+        
+        return any(re.match(pattern, value, re.IGNORECASE) for pattern in patterns)
+    
     async def _sample_table(self, client, table_path: str, columns: List[str]) -> Dict[str, List[str]]:
         sample_query = f"""
-        SELECT {', '.join([f'`{col}`' for col in columns[:50]])}
+        SELECT {', '.join([f'CAST(`{col}` AS STRING) as {col}' for col in columns[:50]])}
         FROM `{table_path}`
         WHERE RAND() < 0.05
         LIMIT 500
@@ -71,7 +122,9 @@ class SchemaAnalyzer:
                 column_samples = []
                 for row in results:
                     if col_idx < len(row) and row[col_idx] is not None:
-                        column_samples.append(str(row[col_idx]))
+                        value = str(row[col_idx]).strip()
+                        if value and value.upper() not in ['NULL', 'NONE', 'UNKNOWN', '']:
+                            column_samples.append(value)
                 samples[column_name] = column_samples[:20]
                 
         except Exception as e:
@@ -104,19 +157,18 @@ class AssetExtractor:
         assets = {}
         
         try:
-            select_fields = [f"UPPER(TRIM(`{hostname_mapping.column}`)) as hostname"]
+            select_fields = [f"CAST(`{hostname_mapping.column}` AS STRING) as hostname"]
             field_mappings = {'hostname': hostname_mapping.column}
             
             for field_type, mapping in schema.mappings.items():
                 if field_type != 'hostname':
-                    select_fields.append(f"`{mapping.column}` as {field_type}")
+                    select_fields.append(f"CAST(`{mapping.column}` AS STRING) as {field_type}")
                     field_mappings[field_type] = mapping.column
             
             extraction_query = f"""
             SELECT {', '.join(select_fields)}
             FROM `{schema.path}`
             WHERE `{hostname_mapping.column}` IS NOT NULL
-            AND TRIM(`{hostname_mapping.column}`) != ''
             LIMIT 500000
             """
             
@@ -140,7 +192,7 @@ class AssetExtractor:
                 for idx, field_type in enumerate(field_mappings.keys()):
                     if idx < len(row) and row[idx]:
                         value = str(row[idx]).strip()
-                        if value:
+                        if value and value.upper() not in ['NULL', 'NONE', 'UNKNOWN', '']:
                             setattr(asset, self._field_to_attr(field_type), value)
                 
                 self._set_source_flags(asset, source_name)
@@ -246,8 +298,8 @@ class AssetExtractor:
             return False
         
         patterns = [
-            r'^[a-zA-Z0-9][a-zA-Z0-9\-]*[a-zA-Z0-9],
-            r'^[a-zA-Z0-9]+
+            r'^[a-zA-Z0-9][a-zA-Z0-9\-]*[a-zA-Z0-9]$',
+            r'^[a-zA-Z0-9]+$'
         ]
         
         return any(re.match(pattern, hostname, re.IGNORECASE) for pattern in patterns)
@@ -268,7 +320,7 @@ class AssetExtractor:
         if fqdn.count('.') < 1:
             return False
         
-        pattern = r'^[a-zA-Z0-9][a-zA-Z0-9\-\.]*\.[a-zA-Z]{2,}
+        pattern = r'^[a-zA-Z0-9][a-zA-Z0-9\-\.]*\.[a-zA-Z]{2,}$'
         return bool(re.match(pattern, fqdn, re.IGNORECASE))
 
 class AssetMerger:
