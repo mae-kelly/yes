@@ -812,3 +812,27 @@ class EnhancedIntelligenceEngine:
         learning_results['classifications_performed'] = len(self.classification_history)
         
         return learning_results
+    
+    async def analyze_field_intelligently(self, column_name: str, samples: List[str], 
+                                        context: Dict[str, Any] = None) -> Optional[FieldMapping]:
+        
+        classification = await self._classify_field_with_ensemble(
+            column_name, samples, {}, context
+        )
+        
+        if not classification or classification['confidence'] < 0.4:
+            return None
+        
+        mapping = FieldMapping(
+            field_type=classification['field_type'],
+            column=column_name,
+            confidence=classification['confidence'],
+            samples=samples[:10]
+        )
+        
+        if self.learning_enabled:
+            self.recognizer.learn_from_classification(
+                column_name, samples, classification, classification['confidence'] > 0.7
+            )
+        
+        return mapping

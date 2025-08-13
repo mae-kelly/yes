@@ -517,6 +517,9 @@ class AdvancedContentAnalyzer:
         
         return f"{name_signature}:{value_pattern}"
     
+    def analyze_column(self, name: str, values: List[str], context: Dict = None) -> Optional[Tuple[str, float, Dict[str, Any]]]:
+        return self.analyze_column_intelligent(name, values, context)
+    
     def _calculate_semantic_distance(self, term1: str, term2: str) -> float:
         embedding1 = self._create_semantic_embedding(term1)
         embedding2 = self._create_semantic_embedding(term2)
