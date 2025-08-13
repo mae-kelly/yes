@@ -146,36 +146,65 @@ class IntensiveDatasetBuilder:
             import ssl
             import urllib3
             
+            # Set up proxy tunnel configuration
             ssl._create_default_https_context = ssl._create_unverified_context
             urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
             
             os.environ['REQUESTS_CA_BUNDLE'] = ''
             os.environ['CURL_CA_BUNDLE'] = ''
             
-            logger.info("Attempting to load transformers tokenizer")
+            # Configure proxy settings for huggingface downloads
+            proxy_config = {
+                'http': 'http://127.0.0.1:8080',
+                'https': 'http://127.0.0.1:8080'
+            }
+            
+            os.environ['HTTP_PROXY'] = proxy_config['http']
+            os.environ['HTTPS_PROXY'] = proxy_config['https']
+            os.environ['http_proxy'] = proxy_config['http']
+            os.environ['https_proxy'] = proxy_config['https']
+            
+            logger.info("Proxy tunnel configured for model downloads")
+            logger.info("Attempting to load DialoGPT tokenizer via proxy tunnel")
             
             try:
                 from transformers import AutoTokenizer
+                
+                # Force proxy usage for transformers
+                import requests
+                session = requests.Session()
+                session.proxies.update(proxy_config)
+                session.verify = False
+                
                 self.tokenizer = AutoTokenizer.from_pretrained(
                     'microsoft/DialoGPT-medium',
                     use_auth_token=False,
                     trust_remote_code=False,
-                    local_files_only=False
+                    local_files_only=False,
+                    proxies=proxy_config,
+                    use_fast=False  # Use slower tokenizer that works better with proxies
                 )
-                logger.info("Successfully loaded DialoGPT tokenizer")
+                logger.info("✅ Successfully loaded DialoGPT tokenizer via proxy tunnel")
+                
             except Exception as e:
-                logger.warning(f"Failed to load DialoGPT tokenizer: {e}")
+                logger.warning(f"DialoGPT via proxy failed: {e}")
+                logger.info("Trying GPT2 tokenizer via proxy tunnel")
                 try:
                     from transformers import GPT2Tokenizer
-                    self.tokenizer = GPT2Tokenizer.from_pretrained('gpt2')
-                    logger.info("Successfully loaded GPT2 tokenizer")
+                    self.tokenizer = GPT2Tokenizer.from_pretrained(
+                        'gpt2',
+                        proxies=proxy_config,
+                        use_fast=False
+                    )
+                    logger.info("✅ Successfully loaded GPT2 tokenizer via proxy tunnel")
                 except Exception as e2:
-                    logger.warning(f"Failed to load GPT2 tokenizer: {e2}")
+                    logger.warning(f"GPT2 via proxy failed: {e2}")
+                    logger.info("Falling back to minimal tokenizer")
                     self.tokenizer = self._create_minimal_tokenizer()
-                    logger.info("Using minimal tokenizer")
             
         except Exception as e:
-            logger.warning(f"Failed to initialize tokenizer: {e}")
+            logger.warning(f"Failed to initialize tokenizer with proxy: {e}")
+            logger.info("Using minimal tokenizer fallback")
             self.tokenizer = self._create_minimal_tokenizer()
         
         if hasattr(self.tokenizer, 'pad_token') and self.tokenizer.pad_token is None:
@@ -939,6 +968,12 @@ class IntensiveDiscoveryEngine:
             discovery.stats = {'error': str(e)}
         
         return discovery
+    
+    async def discover_assets_hyperintelligently(self, client_managers: Dict[str, Any]) -> Discovery:
+        """Alias method for hyperintelligent discovery - calls intensive discovery"""
+        logger.info("🚀 HYPERINTELLIGENT DISCOVERY MODE ACTIVATED")
+        logger.info("🧠 Using advanced ML with proxy-tunneled model loading")
+        return await self.discover_assets_intensively(client_managers)
     
     def _convert_entity_to_asset(self, entity_id: str, entity_data: Dict[str, Any]) -> Optional[Asset]:
         """Convert entity data to Asset object"""
