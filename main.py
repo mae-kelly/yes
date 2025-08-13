@@ -125,12 +125,19 @@ class HyperIntelligentDiscoverySystem:
             self.stats['engines_used'].append('hyperintelligent')
             self.stats['ml_model_loaded'] = True
             
+            try:
+                insights = await self.intelligence.generate_insights(discovery)
+                discovery.insights = insights
+            except Exception as e:
+                logger.warning(f"Failed to generate insights: {e}")
+                discovery.insights = []
+            
             hyperintelligent_results = {
                 'hyperintelligent_discovery': {
                     'assets': {k: self._asset_to_dict(v) for k, v in discovery.assets.items()},
                     'stats': discovery.stats,
-                    'insights': discovery.insights,
-                    'recommendations': discovery.recommendations,
+                    'insights': discovery.insights if hasattr(discovery, 'insights') else [],
+                    'recommendations': discovery.recommendations if hasattr(discovery, 'recommendations') else [],
                     'ml_performance': self._get_ml_performance_stats(discovery.stats)
                 },
                 'discovery_mode': 'hyperintelligent_content_analysis'
