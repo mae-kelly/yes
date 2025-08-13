@@ -8,7 +8,7 @@ from typing import Dict, List, Any, Optional
 from datetime import datetime
 from collections import defaultdict
 from core.types import Asset
-from ai.content import ContentAnalyzer
+from ai.content import AdvancedContentAnalyzer
 
 logger = logging.getLogger(__name__)
 
@@ -18,7 +18,7 @@ class ContentBasedEngine:
         self.config = config
         self.cache = cache_manager
         self.intelligence = intelligence
-        self.analyzer = ContentAnalyzer()
+        self.analyzer = AdvancedContentAnalyzer()
         
         self.discovered_assets = {}
         self.stats = {
@@ -335,7 +335,7 @@ class SmartColumnDetector:
         return False
 
 class UniversalTableScanner:
-    def __init__(self, content_analyzer: ContentAnalyzer):
+    def __init__(self, content_analyzer: AdvancedContentAnalyzer):
         self.analyzer = content_analyzer
         self.detector = SmartColumnDetector()
         self.processed_tables = set()
