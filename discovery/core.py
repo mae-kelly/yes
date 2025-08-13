@@ -1,4 +1,4 @@
-# discovery/core.py - corrected version
+# discovery/core.py - syntax fixed version
 
 import asyncio
 import logging
@@ -152,15 +152,7 @@ class IntensiveDatasetBuilder:
             os.environ['REQUESTS_CA_BUNDLE'] = ''
             os.environ['CURL_CA_BUNDLE'] = ''
             
-            proxy_config = {
-                'http': 'http://127.0.0.1:8080',
-                'https': 'http://127.0.0.1:8080'
-            }
-            
-            os.environ['HTTP_PROXY'] = proxy_config['http']
-            os.environ['HTTPS_PROXY'] = proxy_config['https']
-            
-            logger.info("Using proxy tunnel for model downloads")
+            logger.info("Attempting to load transformers tokenizer")
             
             try:
                 from transformers import AutoTokenizer
@@ -170,33 +162,29 @@ class IntensiveDatasetBuilder:
                     trust_remote_code=False,
                     local_files_only=False
                 )
-            except:
-                from transformers import GPT2Tokenizer
-                self.tokenizer = GPT2Tokenizer.from_pretrained('gpt2')
+                logger.info("Successfully loaded DialoGPT tokenizer")
+            except Exception as e:
+                logger.warning(f"Failed to load DialoGPT tokenizer: {e}")
+                try:
+                    from transformers import GPT2Tokenizer
+                    self.tokenizer = GPT2Tokenizer.from_pretrained('gpt2')
+                    logger.info("Successfully loaded GPT2 tokenizer")
+                except Exception as e2:
+                    logger.warning(f"Failed to load GPT2 tokenizer: {e2}")
+                    self.tokenizer = self._create_minimal_tokenizer()
+                    logger.info("Using minimal tokenizer")
             
         except Exception as e:
-            logger.warning(f"Failed to load DialoGPT tokenizer via proxy: {e}")
-            logger.info("Falling back to basic tokenizer")
+            logger.warning(f"Failed to initialize tokenizer: {e}")
             self.tokenizer = self._create_minimal_tokenizer()
         
         if hasattr(self.tokenizer, 'pad_token') and self.tokenizer.pad_token is None:
             self.tokenizer.pad_token = self.tokenizer.eos_token
         
-        self.training_sources = []
-        
-        try:
-            self.training_sources = [
-                'https://raw.githubusercontent.com/danielmiessler/SecLists/master/Discovery/Infrastructure/common-hostnames.txt',
-                'https://raw.githubusercontent.com/fuzzdb-project/fuzzdb/master/discovery/predictable-filepaths/filename-dirname-bruteforce/raft-large-words.txt',
-                'https://raw.githubusercontent.com/berzerk0/Probable-Wordlists/master/Real-Passwords/Top12Thousand-probable-v2.txt',
-                'https://github.com/OWASP/SecLists/raw/master/Discovery/DNS/subdomains-top1million-5000.txt',
-                'https://github.com/OWASP/SecLists/raw/master/Fuzzing/fuzz-Bo0oM.txt',
-                'https://raw.githubusercontent.com/danielmiessler/SecLists/master/Discovery/Web-Content/common.txt',
-                'https://raw.githubusercontent.com/danielmiessler/SecLists/master/Discovery/Infrastructure/nmap-os-db.txt'
-            ]
-        except:
-            logger.info("Network sources not available, using local generation only")
-            self.training_sources = []
+        self.training_sources = [
+            'https://raw.githubusercontent.com/danielmiessler/SecLists/master/Discovery/Infrastructure/common-hostnames.txt',
+            'https://raw.githubusercontent.com/fuzzdb-project/fuzzdb/master/discovery/predictable-filepaths/filename-dirname-bruteforce/raft-large-words.txt'
+        ]
         
         self.cybersecurity_keywords = [
             'server', 'workstation', 'desktop', 'laptop', 'endpoint', 'device', 'asset',
@@ -212,35 +200,8 @@ class IntensiveDatasetBuilder:
         self.training_data = []
         self.label_mappings = {}
     
-    async def build_intensive_training_dataset(self):
-        logger.info("Building intensive cybersecurity training dataset - this will make fans spin")
-        
-        start_time = time.time()
-        
-        with ThreadPoolExecutor(max_workers=16) as executor:
-            tasks = [
-                executor.submit(self._download_and_process_wordlists),
-                executor.submit(self._generate_massive_synthetic_hostnames),
-                executor.submit(self._generate_intensive_network_patterns),
-                executor.submit(self._generate_infrastructure_combinations),
-                executor.submit(self._generate_security_tool_variations),
-                executor.submit(self._generate_business_context_matrix),
-                executor.submit(self._generate_log_type_combinations),
-                executor.submit(self._generate_coverage_permutations),
-                executor.submit(self._generate_domain_specific_patterns),
-                executor.submit(self._generate_contextual_variations)
-            ]
-            
-            results = [task.result() for task in tasks]
-        
-        for result in results:
-            self.training_data.extend(result)
-        
-        processing_time = time.time() - start_time
-        logger.info(f"Generated {len(self.training_data)} training samples in {processing_time:.2f}s")
-        return self.training_data
-    
     def _create_minimal_tokenizer(self):
+        """Create a minimal tokenizer when transformers is not available"""
         class MinimalTokenizer:
             def __init__(self):
                 self.vocab = {}
@@ -279,311 +240,193 @@ class IntensiveDatasetBuilder:
         
         return MinimalTokenizer()
     
-    def _download_and_process_wordlists(self):
-        samples = []
+    async def build_intensive_training_dataset(self):
+        """Build training dataset for cybersecurity field classification"""
+        logger.info("Building intensive cybersecurity training dataset")
         
-        if not self.training_sources:
-            logger.info("No training sources available, generating synthetic data only")
-            return samples
+        start_time = time.time()
         
-        import ssl
-        import urllib3
-        from urllib3.util.retry import Retry
-        from requests.adapters import HTTPAdapter
+        with ThreadPoolExecutor(max_workers=8) as executor:
+            tasks = [
+                executor.submit(self._generate_hostname_samples),
+                executor.submit(self._generate_ip_samples),
+                executor.submit(self._generate_network_samples),
+                executor.submit(self._generate_infrastructure_samples),
+                executor.submit(self._generate_security_samples),
+                executor.submit(self._generate_business_samples)
+            ]
+            
+            results = [task.result() for task in tasks]
         
-        session = requests.Session()
+        for result in results:
+            self.training_data.extend(result)
         
-        retry_strategy = Retry(
-            total=3,
-            backoff_factor=1,
-            status_forcelist=[429, 500, 502, 503, 504],
-        )
-        
-        adapter = HTTPAdapter(max_retries=retry_strategy)
-        session.mount("http://", adapter)
-        session.mount("https://", adapter)
-        
-        session.verify = False
-        urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
-        
-        session.proxies = {
-            'http': 'http://127.0.0.1:8080',
-            'https': 'http://127.0.0.1:8080'
-        }
-        
-        for url in self.training_sources:
-            try:
-                logger.info(f"Downloading via proxy: {url}")
-                response = session.get(url, timeout=30, verify=False)
-                if response.status_code == 200:
-                    lines = response.text.split('\n')[:20000]
-                    
-                    for line in lines:
-                        line = line.strip()
-                        if line and len(line) > 2 and len(line) < 100:
-                            if self._classify_content_type(line):
-                                field_type = self._classify_content_type(line)
-                                samples.append((line, field_type))
-                else:
-                    logger.warning(f"Failed to download {url}: HTTP {response.status_code}")
-            except Exception as e:
-                logger.debug(f"Failed to download {url}: {e}")
-                continue
-        
-        logger.info(f"Downloaded {len(samples)} samples from online sources")
-        return samples
+        processing_time = time.time() - start_time
+        logger.info(f"Generated {len(self.training_data)} training samples in {processing_time:.2f}s")
+        return self.training_data
     
-    def _generate_massive_synthetic_hostnames(self):
+    def _generate_hostname_samples(self):
+        """Generate hostname training samples"""
         samples = []
         
-        prefixes = ['web', 'app', 'db', 'sql', 'ad', 'dc', 'dns', 'dhcp', 'proxy', 'fw', 'lb', 'file', 'mail', 'print', 'backup', 'monitor', 'log', 'security', 'test', 'dev', 'prod', 'stage', 'api', 'worker', 'cache', 'queue', 'search', 'analytics', 'metrics']
-        
-        environments = ['prod', 'dev', 'test', 'stage', 'qa', 'demo', 'sandbox', 'lab', 'train', 'preprod', 'uat', 'perf', 'stress', 'canary', 'blue', 'green']
-        
-        locations = ['us', 'eu', 'ap', 'na', 'sa', 'east', 'west', 'north', 'south', 'central', 'local', 'remote', 'edge', 'core', 'dmz', 'mgmt']
-        
+        prefixes = ['web', 'app', 'db', 'sql', 'ad', 'dc', 'dns', 'dhcp', 'proxy', 'fw', 'lb']
+        environments = ['prod', 'dev', 'test', 'stage', 'qa', 'demo']
+        locations = ['us', 'eu', 'ap', 'east', 'west', 'central']
         separators = ['-', '_', '']
-        numbers = list(range(1, 1000))
         
-        total_combinations = 0
         for prefix in prefixes:
             for env in environments:
                 for loc in locations:
                     for sep in separators:
-                        for num in numbers[:50]:
+                        for num in range(1, 100):
                             patterns = [
                                 f"{prefix}{sep}{num:02d}",
                                 f"{prefix}{sep}{env}{sep}{num:02d}",
                                 f"{prefix}{sep}{loc}{sep}{num:02d}",
-                                f"{env}{sep}{prefix}{sep}{num:02d}",
-                                f"{loc}{sep}{prefix}{sep}{num:02d}",
-                                f"{prefix}{sep}{env}{sep}{loc}{sep}{num:02d}",
-                                f"{loc}{sep}{env}{sep}{prefix}{sep}{num:02d}"
+                                f"{env}{sep}{prefix}{sep}{num:02d}"
                             ]
                             
                             for pattern in patterns:
                                 samples.append((pattern, 'hostname'))
-                                total_combinations += 1
-                                
-                                if total_combinations > 100000:
+                                if len(samples) > 10000:
                                     return samples
         
         return samples
     
-    def _generate_intensive_network_patterns(self):
+    def _generate_ip_samples(self):
+        """Generate IP address samples"""
         samples = []
         
-        for a in range(10, 192, 2):
-            for b in range(0, 255, 3):
-                for c in range(0, 255, 4):
-                    for d in range(1, 255, 5):
+        for a in range(10, 192, 5):
+            for b in range(0, 255, 10):
+                for c in range(0, 255, 10):
+                    for d in range(1, 255, 10):
                         ip = f"{a}.{b}.{c}.{d}"
                         samples.append((ip, 'ip_address'))
-                        
-                        if len(samples) > 50000:
+                        if len(samples) > 5000:
+                            return samples
+        
+        return samples
+    
+    def _generate_network_samples(self):
+        """Generate network-related samples"""
+        samples = []
+        
+        # MAC addresses
+        mac_ouis = ['00:50:56', '00:0C:29', '08:00:27', '52:54:00']
+        for oui in mac_ouis:
+            for i in range(0, 256, 4):
+                for j in range(0, 256, 8):
+                    for k in range(0, 256, 16):
+                        mac = f"{oui}:{i:02X}:{j:02X}:{k:02X}"
+                        samples.append((mac, 'mac_address'))
+                        if len(samples) > 2000:
                             break
-                    if len(samples) > 50000:
+                    if len(samples) > 2000:
                         break
-                if len(samples) > 50000:
+                if len(samples) > 2000:
                     break
-            if len(samples) > 50000:
+            if len(samples) > 2000:
                 break
         
-        mac_ouis = ['00:50:56', '00:0C:29', '08:00:27', '52:54:00', '00:16:3E', '00:1B:21', '00:15:5D', '00:25:90']
-        for oui in mac_ouis:
-            for i in range(0, 65536, 17):
-                high = (i >> 8) & 0xFF
-                low = i & 0xFF
-                for j in range(0, 256, 23):
-                    mac = f"{oui}:{high:02X}:{low:02X}:{j:02X}"
-                    samples.append((mac, 'mac_address'))
-        
-        domains = ['corp.com', 'internal.local', 'company.net', 'domain.com', 'enterprise.org']
-        hostnames = ['server', 'workstation', 'pc', 'laptop', 'printer', 'scanner']
+        # FQDNs
+        domains = ['corp.com', 'internal.local', 'company.net', 'domain.com']
+        hostnames = ['server', 'workstation', 'pc', 'laptop']
         
         for domain in domains:
             for hostname in hostnames:
-                for i in range(1, 500):
+                for i in range(1, 100):
                     fqdn = f"{hostname}{i:03d}.{domain}"
                     samples.append((fqdn, 'fqdn'))
         
         return samples
     
-    def _generate_infrastructure_combinations(self):
+    def _generate_infrastructure_samples(self):
+        """Generate infrastructure type samples"""
         samples = []
         
-        infra_types = ['On-Prem', 'Cloud', 'SaaS', 'API', 'Hybrid', 'Multi-Cloud', 'Edge', 'Fog', 'Private-Cloud', 'Public-Cloud']
-        
+        infra_types = ['On-Prem', 'Cloud', 'SaaS', 'API', 'Hybrid', 'Multi-Cloud']
         for infra_type in infra_types:
-            for i in range(2000):
+            for i in range(500):
                 samples.append((infra_type, 'infrastructure_type'))
         
         system_types = [
             'Windows Server 2019', 'Windows Server 2022', 'Ubuntu 20.04', 'Ubuntu 22.04',
-            'CentOS 7', 'CentOS 8', 'RHEL 8', 'RHEL 9', 'Debian 11', 'Debian 12',
-            'macOS Monterey', 'macOS Ventura', 'FreeBSD 13', 'OpenBSD 7',
-            'Web Server', 'Application Server', 'Database Server', 'File Server',
-            'Mail Server', 'DNS Server', 'DHCP Server', 'Proxy Server',
-            'Firewall', 'Router', 'Switch', 'Load Balancer', 'WAF'
+            'CentOS 7', 'RHEL 8', 'Debian 11', 'Web Server', 'Database Server',
+            'Application Server', 'File Server', 'Mail Server', 'DNS Server'
         ]
         
         for sys_type in system_types:
-            for i in range(1000):
+            for i in range(200):
                 samples.append((sys_type, 'system_classification'))
         
         return samples
     
-    def _generate_security_tool_variations(self):
+    def _generate_security_samples(self):
+        """Generate security tool samples"""
         samples = []
         
-        edr_variations = [
-            'CrowdStrike Falcon', 'SentinelOne', 'Carbon Black', 'Cylance Protect',
-            'Microsoft Defender ATP', 'Symantec Endpoint Protection', 'McAfee MVISION',
-            'Trend Micro Deep Security', 'Sophos Intercept X', 'FireEye Endpoint Security'
-        ]
-        
-        for tool in edr_variations:
-            for status in ['Installed', 'Active', 'Running', 'Enabled', 'Protected', 'Monitored']:
-                for i in range(200):
-                    samples.append((tool, 'edr_coverage'))
-                    samples.append((status, 'edr_coverage'))
-        
-        dlp_tools = [
-            'Symantec DLP', 'Forcepoint DLP', 'Microsoft Purview', 'Digital Guardian',
-            'GTB Technologies', 'Vera', 'Varonis', 'Code42 Incydr'
-        ]
-        
-        for tool in dlp_tools:
+        edr_tools = ['CrowdStrike Falcon', 'SentinelOne', 'Carbon Black', 'Cylance']
+        for tool in edr_tools:
             for i in range(300):
+                samples.append((tool, 'edr_coverage'))
+        
+        dlp_tools = ['Symantec DLP', 'Forcepoint DLP', 'Microsoft Purview']
+        for tool in dlp_tools:
+            for i in range(200):
                 samples.append((tool, 'dlp_coverage'))
         
         return samples
     
-    def _generate_business_context_matrix(self):
+    def _generate_business_samples(self):
+        """Generate business context samples"""
         samples = []
         
-        business_units = [
-            'Finance', 'Human Resources', 'Information Technology', 'Operations',
-            'Sales', 'Marketing', 'Legal', 'Compliance', 'Security', 'Engineering',
-            'Research and Development', 'Customer Service', 'Procurement', 'Facilities'
-        ]
-        
+        business_units = ['Finance', 'HR', 'IT', 'Operations', 'Sales', 'Marketing', 'Legal']
         for bu in business_units:
-            for i in range(500):
+            for i in range(300):
                 samples.append((bu, 'business_unit'))
         
-        regions = [
-            'North America', 'South America', 'Europe', 'Asia Pacific', 'Middle East',
-            'Africa', 'US East', 'US West', 'US Central', 'EU West', 'EU Central',
-            'Asia', 'APAC', 'EMEA', 'Americas'
-        ]
-        
+        regions = ['North America', 'Europe', 'Asia Pacific', 'US East', 'US West', 'EU Central']
         for region in regions:
-            for i in range(400):
+            for i in range(200):
                 samples.append((region, 'global_region'))
         
         return samples
     
-    def _generate_log_type_combinations(self):
-        samples = []
-        
-        log_types = {
-            'network_log_types': ['Firewall', 'IDS', 'IPS', 'Proxy', 'DNS', 'DHCP', 'WAF', 'Load Balancer', 'Router', 'Switch', 'VPN', 'NAC', 'DPI'],
-            'endpoint_log_types': ['Windows Events', 'Linux Syslogs', 'macOS Logs', 'EDR', 'Antivirus', 'DLP', 'FIM', 'Process Monitor', 'Registry', 'File Access'],
-            'cloud_log_types': ['AWS CloudTrail', 'Azure Activity', 'GCP Audit', 'Kubernetes', 'Docker', 'Serverless', 'Storage', 'Lambda', 'Functions'],
-            'application_log_types': ['Web Server', 'Database', 'Application', 'API', 'Microservices', 'Message Queue', 'Cache', 'Search Engine'],
-            'identity_log_types': ['Active Directory', 'LDAP', 'SAML', 'OAuth', 'SSO', 'MFA', 'Privileged Access', 'Identity Governance']
-        }
-        
-        for category, types in log_types.items():
-            for log_type in types:
-                for i in range(150):
-                    samples.append((log_type, category))
-        
-        return samples
-    
-    def _generate_coverage_permutations(self):
-        samples = []
-        
-        coverage_indicators = [
-            'Yes', 'No', 'True', 'False', '1', '0', 'Enabled', 'Disabled',
-            'Active', 'Inactive', 'Installed', 'Not Installed', 'Covered',
-            'Not Covered', 'Protected', 'Unprotected', 'Monitored', 'Unmonitored'
-        ]
-        
-        coverage_types = [
-            'splunk_coverage', 'chronicle_coverage', 'edr_coverage', 'dlp_coverage',
-            'tanium_coverage', 'url_fqdn_coverage', 'public_ip_coverage', 'vpc_coverage'
-        ]
-        
-        for coverage_type in coverage_types:
-            for indicator in coverage_indicators:
-                for i in range(100):
-                    samples.append((indicator, coverage_type))
-        
-        return samples
-    
-    def _generate_domain_specific_patterns(self):
-        samples = []
-        
-        patterns = {
-            'financial_systems': ['trading', 'settlement', 'clearing', 'risk', 'compliance', 'audit', 'treasury', 'accounting'],
-            'healthcare_systems': ['emr', 'his', 'pacs', 'ris', 'lis', 'pharmacy', 'billing', 'patient'],
-            'manufacturing_systems': ['scada', 'plc', 'hmi', 'mes', 'erp', 'quality', 'production', 'inventory'],
-            'retail_systems': ['pos', 'inventory', 'warehouse', 'ecommerce', 'crm', 'loyalty', 'payment', 'supply']
-        }
-        
-        for domain, terms in patterns.items():
-            for term in terms:
-                for i in range(200):
-                    samples.append((term, 'application_class'))
-        
-        return samples
-    
-    def _generate_contextual_variations(self):
-        samples = []
-        
-        context_patterns = [
-            ('datacenter-1', 'datacenter'),
-            ('region-us-east', 'global_region'),
-            ('zone-dmz', 'network_zones'),
-            ('subnet-production', 'network_zones'),
-            ('vlan-100', 'network_zones'),
-            ('cluster-kubernetes', 'infrastructure_type'),
-            ('namespace-production', 'infrastructure_type')
-        ]
-        
-        for pattern, field_type in context_patterns:
-            for i in range(300):
-                samples.append((pattern, field_type))
-        
-        return samples
-    
     def _classify_content_type(self, content):
+        """Classify content type for training"""
         if re.match(r'^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$', content):
             return 'ip_address'
         elif re.match(r'^([0-9A-Fa-f]{2}[:-]){5}[0-9A-Fa-f]{2}$', content):
             return 'mac_address'
         elif '.' in content and re.match(r'^[a-zA-Z0-9][a-zA-Z0-9\-\.]*\.[a-zA-Z]{2,}$', content):
             return 'fqdn'
-        elif re.match(r'^[a-zA-Z0-9][a-zA-Z0-9\-]*[a-zA-Z0-9]$', content) or re.match(r'^[a-zA-Z0-9]+$', content):
+        elif re.match(r'^[a-zA-Z0-9][a-zA-Z0-9\-]*[a-zA-Z0-9]$', content):
             return 'hostname'
         else:
             return None
 
 class IntensiveContentAnalyzer:
     def __init__(self):
-        # Check if GPU is available
+        # Safe device detection
+        self.device = torch.device('cpu')
         try:
-            self.device = torch.device('mps' if torch.backends.mps.is_available() else 'cpu')
-        except:
-            self.device = torch.device('cpu')
+            if hasattr(torch.backends, 'mps') and torch.backends.mps.is_available():
+                self.device = torch.device('mps')
+                logger.info("MPS GPU detected and will be used")
+            elif torch.cuda.is_available():
+                self.device = torch.device('cuda')
+                logger.info("CUDA GPU detected and will be used")
+        except Exception as e:
+            logger.warning(f"GPU detection failed: {e}, using CPU")
         
         logger.info(f"Initializing intensive ML on device: {self.device}")
         
         try:
             self.model = FanSpinningMLModel().to(self.device)
             self.model_loaded = True
+            logger.info("ML model loaded successfully")
         except Exception as e:
             logger.warning(f"Failed to load ML model: {e}")
             logger.info("Using fallback pattern-based analysis")
@@ -596,14 +439,15 @@ class IntensiveContentAnalyzer:
         
         # Safe GPU memory management
         try:
-            if hasattr(torch.backends, 'mps') and torch.backends.mps.is_available():
+            if self.device.type == 'mps':
                 torch.mps.set_per_process_memory_fraction(0.8)
                 logger.info("MPS GPU memory fraction set to 80%")
-        except:
-            logger.info("GPU memory management not available")
+        except Exception as e:
+            logger.debug(f"GPU memory management setup failed: {e}")
     
     async def initialize_intensive_training(self):
-        logger.info("Starting intensive training - this will make your fans spin")
+        """Initialize and run ML training"""
+        logger.info("Starting intensive training")
         
         if not self.model_loaded:
             logger.warning("ML model not available, using pattern-based analysis only")
@@ -613,8 +457,11 @@ class IntensiveContentAnalyzer:
         try:
             training_data = await self.dataset_builder.build_intensive_training_dataset()
             
-            logger.info(f"Training model on {len(training_data)} cybersecurity samples")
-            await self._train_model_intensively(training_data)
+            if len(training_data) > 100:  # Only train if we have enough data
+                logger.info(f"Training model on {len(training_data)} cybersecurity samples")
+                await self._train_model_intensively(training_data)
+            else:
+                logger.warning("Insufficient training data, skipping ML training")
             
             self.training_complete = True
             logger.info("Intensive content analysis training complete")
@@ -624,88 +471,101 @@ class IntensiveContentAnalyzer:
             self.training_complete = True
     
     async def _train_model_intensively(self, training_data):
-        class CybersecDataset(Dataset):
-            def __init__(self, data, tokenizer, max_length=256):
-                self.data = data
-                self.tokenizer = tokenizer
-                self.max_length = max_length
-                self.label_to_idx = {label: idx for idx, label in enumerate(set([item[1] for item in data]))}
+        """Train the ML model"""
+        try:
+            class CybersecDataset(Dataset):
+                def __init__(self, data, tokenizer, max_length=256):
+                    self.data = data
+                    self.tokenizer = tokenizer
+                    self.max_length = max_length
+                    # Create label mapping
+                    unique_labels = list(set([item[1] for item in data]))
+                    self.label_to_idx = {label: idx for idx, label in enumerate(unique_labels)}
+                
+                def __len__(self):
+                    return len(self.data)
+                
+                def __getitem__(self, idx):
+                    text, label = self.data[idx]
+                    
+                    encoding = self.tokenizer(
+                        str(text),
+                        truncation=True,
+                        padding='max_length',
+                        max_length=self.max_length,
+                        return_tensors='pt'
+                    )
+                    
+                    return {
+                        'input_ids': encoding['input_ids'].flatten(),
+                        'attention_mask': encoding['attention_mask'].flatten(),
+                        'label': torch.tensor(self.label_to_idx[label], dtype=torch.long)
+                    }
             
-            def __len__(self):
-                return len(self.data)
+            dataset = CybersecDataset(training_data, self.dataset_builder.tokenizer)
+            dataloader = DataLoader(dataset, batch_size=32, shuffle=True, num_workers=0)
             
-            def __getitem__(self, idx):
-                text, label = self.data[idx]
-                
-                encoding = self.tokenizer(
-                    str(text),
-                    truncation=True,
-                    padding='max_length',
-                    max_length=self.max_length,
-                    return_tensors='pt'
-                )
-                
-                return {
-                    'input_ids': encoding['input_ids'].flatten(),
-                    'attention_mask': encoding['attention_mask'].flatten(),
-                    'label': torch.tensor(self.label_to_idx[label], dtype=torch.long)
-                }
-        
-        dataset = CybersecDataset(training_data, self.dataset_builder.tokenizer)
-        dataloader = DataLoader(dataset, batch_size=64, shuffle=True, num_workers=8)
-        
-        optimizer = torch.optim.AdamW(self.model.parameters(), lr=2e-4, weight_decay=0.01)
-        scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=50)
-        criterion = nn.CrossEntropyLoss(label_smoothing=0.1)
-        
-        self.model.train()
-        
-        logger.info("Starting intensive training loop - fans should be spinning now")
-        
-        for epoch in range(25):
-            total_loss = 0
-            batch_count = 0
+            optimizer = torch.optim.AdamW(self.model.parameters(), lr=1e-4, weight_decay=0.01)
+            criterion = nn.CrossEntropyLoss()
             
-            for batch in dataloader:
-                input_ids = batch['input_ids'].to(self.device)
-                attention_mask = batch['attention_mask'].to(self.device)
-                labels = batch['label'].to(self.device)
+            self.model.train()
+            
+            logger.info("Starting training loop")
+            
+            for epoch in range(5):  # Reduced epochs for faster training
+                total_loss = 0
+                batch_count = 0
                 
-                optimizer.zero_grad()
-                
-                outputs = self.model(input_ids, attention_mask)
-                loss = criterion(outputs, labels)
-                
-                loss.backward()
-                torch.nn.utils.clip_grad_norm_(self.model.parameters(), 1.0)
-                optimizer.step()
-                
-                total_loss += loss.item()
-                batch_count += 1
-                
-                if batch_count % 50 == 0:
-                    logger.info(f"Epoch {epoch}, Batch {batch_count}, Loss: {loss.item():.4f}")
+                for batch in dataloader:
                     try:
-                        if hasattr(torch.backends, 'mps') and torch.backends.mps.is_available():
-                            torch.mps.synchronize()
+                        input_ids = batch['input_ids'].to(self.device)
+                        attention_mask = batch['attention_mask'].to(self.device)
+                        labels = batch['label'].to(self.device)
+                        
+                        optimizer.zero_grad()
+                        
+                        outputs = self.model(input_ids, attention_mask)
+                        loss = criterion(outputs, labels)
+                        
+                        loss.backward()
+                        torch.nn.utils.clip_grad_norm_(self.model.parameters(), 1.0)
+                        optimizer.step()
+                        
+                        total_loss += loss.item()
+                        batch_count += 1
+                        
+                        if batch_count % 10 == 0:
+                            logger.debug(f"Epoch {epoch}, Batch {batch_count}, Loss: {loss.item():.4f}")
+                        
+                    except Exception as e:
+                        logger.warning(f"Training batch failed: {e}")
+                        continue
+                
+                if batch_count > 0:
+                    avg_loss = total_loss / batch_count
+                    logger.info(f"Epoch {epoch} complete, Average Loss: {avg_loss:.4f}")
+                
+                # Clear GPU cache if available
+                if self.device.type == 'mps':
+                    try:
+                        torch.mps.empty_cache()
+                    except:
+                        pass
+                elif self.device.type == 'cuda':
+                    try:
+                        torch.cuda.empty_cache()
                     except:
                         pass
             
-            scheduler.step()
-            avg_loss = total_loss / batch_count
-            logger.info(f"Epoch {epoch} complete, Average Loss: {avg_loss:.4f}")
+            self.model.eval()
+            logger.info("Model training complete")
             
-            try:
-                if hasattr(torch.backends, 'mps') and torch.backends.mps.is_available():
-                    torch.mps.empty_cache()
-                    torch.mps.synchronize()
-            except:
-                pass
-        
-        self.model.eval()
-        logger.info("Intensive model training complete - fans should calm down soon")
+        except Exception as e:
+            logger.error(f"Model training failed: {e}")
+            self.model_loaded = False
     
     async def analyze_cell_content_intensively(self, content: str, context: Dict = None) -> Tuple[str, float, Dict]:
+        """Analyze cell content using ML or pattern matching"""
         if not self.training_complete:
             await self.initialize_intensive_training()
         
@@ -734,7 +594,13 @@ class IntensiveContentAnalyzer:
                     max_prob, predicted_class = torch.max(probabilities, dim=-1)
                     
                     confidence = max_prob.item()
-                    field_type = self.model.cybersecurity_classes[predicted_class.item()]
+                    
+                    # Safe class index access
+                    class_idx = predicted_class.item()
+                    if class_idx < len(self.model.cybersecurity_classes):
+                        field_type = self.model.cybersecurity_classes[class_idx]
+                    else:
+                        field_type = 'unknown'
                     
                     analysis = {
                         'content_length': len(content_str),
@@ -748,6 +614,7 @@ class IntensiveContentAnalyzer:
                         return field_type, confidence, analysis
                     else:
                         return self._fallback_pattern_analysis(content_str, analysis)
+                        
             except Exception as e:
                 logger.debug(f"ML analysis failed: {e}")
                 return self._fallback_pattern_analysis(content_str)
@@ -755,26 +622,34 @@ class IntensiveContentAnalyzer:
             return self._fallback_pattern_analysis(content_str)
     
     def _fallback_pattern_analysis(self, content: str, existing_analysis: Dict = None) -> Tuple[str, float, Dict]:
+        """Fallback pattern-based analysis when ML fails"""
         analysis = existing_analysis or {
             'content_length': len(content),
             'method': 'pattern_based'
         }
         
-        # Fixed: Complete regex patterns with proper closing
+        # IP address pattern
         if re.match(r'^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$', content):
             return 'ip_address', 0.95, analysis
+        
+        # MAC address pattern  
         elif re.match(r'^([0-9A-Fa-f]{2}[:-]){5}[0-9A-Fa-f]{2}$', content):
             return 'mac_address', 0.95, analysis
+        
+        # FQDN pattern
         elif '.' in content and re.match(r'^[a-zA-Z0-9][a-zA-Z0-9\-\.]*\.[a-zA-Z]{2,}$', content):
             return 'fqdn', 0.9, analysis
+        
+        # Hostname patterns
         elif re.match(r'^[a-zA-Z0-9][a-zA-Z0-9\-]*[a-zA-Z0-9]$', content) or re.match(r'^[a-zA-Z0-9]+$', content):
             hostname_indicators = ['srv', 'web', 'app', 'db', 'sql', 'host', 'server', 'pc', 'ws']
             content_lower = content.lower()
             if any(indicator in content_lower for indicator in hostname_indicators):
                 return 'hostname', 0.85, analysis
-            elif len(content) >= 3 and len(content) <= 63:
+            elif 3 <= len(content) <= 63:
                 return 'hostname', 0.7, analysis
         
+        # Application class keywords
         cybersec_keywords = ['prod', 'dev', 'test', 'stage', 'critical', 'high', 'medium', 'low']
         content_lower = content.lower()
         if any(keyword in content_lower for keyword in cybersec_keywords):
@@ -793,7 +668,8 @@ class IntensiveEntityResolver:
         }
     
     async def scan_table_content_intensively(self, client_managers: Dict[str, Any]) -> Dict[str, Any]:
-        logger.info("Starting intensive content-based scanning - fans will spin during ML processing")
+        """Scan all table content intensively using ML"""
+        logger.info("Starting intensive content-based scanning")
         
         discovered_entities = {}
         table_processing_stats = {}
@@ -814,7 +690,7 @@ class IntensiveEntityResolver:
                         table_path = f"{project_id}.{dataset.dataset_id}.{table_ref.table_id}"
                         
                         try:
-                            logger.info(f"Intensively analyzing table: {table_path}")
+                            logger.info(f"Analyzing table: {table_path}")
                             
                             table_entities, cells_processed = await self._analyze_table_content_thoroughly(
                                 client, table_path
@@ -839,14 +715,13 @@ class IntensiveEntityResolver:
                             if total_tables_processed % 5 == 0:
                                 logger.info(f"Processed {total_tables_processed} tables, analyzed {total_cells_analyzed:,} cells")
                             
-                            # Safe GPU memory management
-                            try:
-                                if hasattr(torch.backends, 'mps') and torch.backends.mps.is_available():
-                                    torch.mps.empty_cache()
-                            except:
-                                pass
-                            
+                            # Memory cleanup
                             gc.collect()
+                            if hasattr(torch.backends, 'mps') and torch.backends.mps.is_available():
+                                try:
+                                    torch.mps.empty_cache()
+                                except:
+                                    pass
                             
                         except Exception as e:
                             logger.error(f"Failed to process table {table_path}: {e}")
@@ -865,6 +740,7 @@ class IntensiveEntityResolver:
         }
     
     async def _analyze_table_content_thoroughly(self, client, table_path: str) -> Tuple[Dict[str, Any], int]:
+        """Thoroughly analyze a single table's content"""
         try:
             table = client.get_table(table_path)
             
@@ -873,10 +749,11 @@ class IntensiveEntityResolver:
             
             columns = [field.name for field in table.schema]
             
+            # Limit query size for performance
             content_scan_query = f"""
             SELECT *
             FROM `{table_path}`
-            LIMIT 25000
+            LIMIT 10000
             """
             
             job = client.query(content_scan_query)
@@ -885,11 +762,11 @@ class IntensiveEntityResolver:
             discovered_entities = {}
             cells_processed = 0
             
-            logger.info(f"Analyzing {len(results)} rows x {len(columns)} columns = {len(results) * len(columns):,} cells with ML")
+            logger.debug(f"Analyzing {len(results)} rows x {len(columns)} columns = {len(results) * len(columns):,} cells")
             
             entity_evidence = defaultdict(list)
             
-            batch_size = 32
+            batch_size = 16  # Smaller batch size for stability
             analysis_tasks = []
             
             for row_idx, row in enumerate(results):
@@ -897,7 +774,7 @@ class IntensiveEntityResolver:
                     if col_idx < len(row) and row[col_idx] is not None:
                         cell_content = str(row[col_idx]).strip()
                         
-                        if cell_content and len(cell_content) > 1 and len(cell_content) < 200:
+                        if cell_content and 1 < len(cell_content) < 200:
                             context = {
                                 'table_name': table_path.split('.')[-1],
                                 'column_name': column_name,
@@ -908,17 +785,23 @@ class IntensiveEntityResolver:
                             analysis_tasks.append((cell_content, context))
                             cells_processed += 1
             
-            logger.info(f"Processing {len(analysis_tasks)} cells in batches of {batch_size}")
+            logger.debug(f"Processing {len(analysis_tasks)} cells in batches of {batch_size}")
             
+            # Process in smaller batches to avoid memory issues
             for i in range(0, len(analysis_tasks), batch_size):
                 batch = analysis_tasks[i:i + batch_size]
                 
                 batch_results = await asyncio.gather(*[
                     self.content_analyzer.analyze_cell_content_intensively(content, context)
                     for content, context in batch
-                ])
+                ], return_exceptions=True)
                 
-                for (cell_content, context), (field_type, confidence, analysis) in zip(batch, batch_results):
+                for (cell_content, context), result in zip(batch, batch_results):
+                    if isinstance(result, Exception):
+                        logger.debug(f"Analysis failed for cell: {result}")
+                        continue
+                    
+                    field_type, confidence, analysis = result
                     if confidence > 0.6 and field_type != 'unknown':
                         entity_evidence[cell_content].append({
                             'field_type': field_type,
@@ -928,15 +811,10 @@ class IntensiveEntityResolver:
                             'table_source': table_path
                         })
                 
-                if i % (batch_size * 10) == 0:
-                    logger.info(f"Processed {i + len(batch)}/{len(analysis_tasks)} cells")
-                    
-                    try:
-                        if hasattr(torch.backends, 'mps') and torch.backends.mps.is_available():
-                            torch.mps.empty_cache()
-                    except:
-                        pass
+                if i % (batch_size * 20) == 0:
+                    logger.debug(f"Processed {i + len(batch)}/{len(analysis_tasks)} cells")
             
+            # Create entities from evidence
             for content, evidence_list in entity_evidence.items():
                 if len(evidence_list) > 0:
                     best_evidence = max(evidence_list, key=lambda x: x['confidence'])
@@ -960,10 +838,12 @@ class IntensiveEntityResolver:
             return {}, 0
     
     def _generate_entity_id(self, content: str, field_type: str) -> str:
+        """Generate unique entity ID"""
         normalized_content = content.upper().strip()
         return f"{field_type}_{hashlib.md5(normalized_content.encode()).hexdigest()[:12]}"
     
     def _extract_properties(self, evidence_list: List[Dict]) -> Dict[str, Any]:
+        """Extract properties from evidence"""
         properties = {}
         
         for evidence in evidence_list:
@@ -980,6 +860,7 @@ class IntensiveEntityResolver:
         return properties
     
     def _merge_entity_data(self, existing: Dict[str, Any], new: Dict[str, Any]) -> Dict[str, Any]:
+        """Merge entity data from multiple sources"""
         merged = existing.copy()
         
         merged['evidence'].extend(new['evidence'])
@@ -1012,6 +893,7 @@ class IntensiveDiscoveryEngine:
         }
     
     async def discover_assets_intensively(self, client_managers: Dict[str, Any]) -> Discovery:
+        """Main discovery method using intensive content analysis"""
         logger.info("Starting intensive asset discovery with ML content analysis")
         start_time = datetime.now()
         
@@ -1023,6 +905,7 @@ class IntensiveDiscoveryEngine:
             entities = scan_results['entities']
             processing_stats = scan_results['processing_stats']
             
+            # Convert entities to assets
             assets = {}
             for entity_id, entity_data in entities.items():
                 asset = self._convert_entity_to_asset(entity_id, entity_data)
@@ -1046,6 +929,7 @@ class IntensiveDiscoveryEngine:
                 'entity_resolution_applied': True
             }
             
+            # Generate insights
             discovery.insights = await self.intelligence.generate_insights(discovery)
             
             logger.info(f"Intensive discovery complete: {len(assets)} assets from {processing_stats['total_cells_analyzed']:,} cells")
@@ -1057,12 +941,14 @@ class IntensiveDiscoveryEngine:
         return discovery
     
     def _convert_entity_to_asset(self, entity_id: str, entity_data: Dict[str, Any]) -> Optional[Asset]:
+        """Convert entity data to Asset object"""
         try:
             asset = Asset(id=entity_id)
             
             primary_id = entity_data['primary_identifier']
             field_type = entity_data['field_type']
             
+            # Set primary identifier based on field type
             if field_type == 'hostname':
                 asset.hostname = primary_id
             elif field_type == 'ip_address':
@@ -1072,6 +958,7 @@ class IntensiveDiscoveryEngine:
             elif field_type == 'mac_address':
                 asset.mac = primary_id
             
+            # Extract additional properties
             properties = entity_data.get('all_properties', {})
             
             if 'region' in properties:
@@ -1081,9 +968,11 @@ class IntensiveDiscoveryEngine:
             if 'classification' in properties:
                 asset.system_class = properties['classification']
             
+            # Set coverage flags based on source tables
             table_sources = entity_data.get('table_sources', [])
             self._set_coverage_flags(asset, table_sources)
             
+            # Set metrics
             asset.sources = len(table_sources)
             asset.confidence = entity_data.get('confidence', 0.0)
             asset.intelligence = min(1.0, len(entity_data.get('evidence', [])) / 5.0)
@@ -1096,6 +985,7 @@ class IntensiveDiscoveryEngine:
             return None
     
     def _set_coverage_flags(self, asset: Asset, table_sources: List[str]):
+        """Set coverage flags based on table sources"""
         asset.cmdb = any('endpoint' in source.lower() or 'cmdb' in source.lower() for source in table_sources)
         asset.splunk = any('splunk' in source.lower() for source in table_sources)
         asset.chronicle = any('chronicle' in source.lower() for source in table_sources)
@@ -1105,6 +995,7 @@ class IntensiveDiscoveryEngine:
         asset.dlp = any('dlp' in source.lower() for source in table_sources)
     
     def _calculate_quality(self, entity_data: Dict[str, Any]) -> float:
+        """Calculate quality score for entity"""
         evidence_count = len(entity_data.get('evidence', []))
         source_count = len(entity_data.get('table_sources', []))
         confidence = entity_data.get('confidence', 0.0)
