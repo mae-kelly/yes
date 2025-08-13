@@ -1,4 +1,4 @@
-# main.py - corrected version
+# main.py
 
 import asyncio
 import logging
@@ -44,7 +44,6 @@ class HyperIntelligentDiscoverySystem:
         self.content_engine = ContentBasedEngine(project_id, config, self.cache, self.intelligence)
         self.ao1_engine = AO1SuperEngine(config)
         
-        # Fix: Check if ContentAnalyzer exists, otherwise use a basic analyzer
         try:
             from ai.content import ContentAnalyzer
             analyzer = ContentAnalyzer()
@@ -68,7 +67,6 @@ class HyperIntelligentDiscoverySystem:
             'ml_model_loaded': False
         }
         
-        # Safe GPU initialization
         try:
             if hasattr(torch.backends, 'mps') and torch.backends.mps.is_available():
                 logger.info("M1 GPU detected - enabling maximum performance mode")
@@ -96,9 +94,9 @@ class HyperIntelligentDiscoverySystem:
                 logger.warning(f"Additional project {project} not available: {e}")
     
     async def run_hyperintelligent_discovery(self) -> Dict[str, Any]:
-        logger.info("🚀 STARTING HYPER-INTELLIGENT DISCOVERY WITH ADVANCED ML/AI")
-        logger.info("🔥 MAXIMUM GPU UTILIZATION MODE ACTIVATED")
-        logger.info("🧠 TRAINING ON MASSIVE CYBERSECURITY DATASETS")
+        logger.info("STARTING HYPER-INTELLIGENT DISCOVERY WITH ADVANCED ML/AI")
+        logger.info("MAXIMUM GPU UTILIZATION MODE ACTIVATED")
+        logger.info("TRAINING ON MASSIVE CYBERSECURITY DATASETS")
         
         results = {
             'metadata': {
@@ -112,9 +110,8 @@ class HyperIntelligentDiscoverySystem:
         }
         
         try:
-            logger.info("🔥 Initializing hyper-advanced ML training - fans will spin intensely")
+            logger.info("Initializing hyper-advanced ML training - fans will spin intensely")
             
-            # Fix: Use correct method name
             discovery = await self.hyper_discovery_engine.discover_assets_intensively(
                 self.client_managers
             )
@@ -174,7 +171,6 @@ class HyperIntelligentDiscoverySystem:
         logger.info("Running legacy intelligent discovery for comparison")
         
         try:
-            # Simplified legacy discovery without missing classes
             discovery = Discovery()
             all_assets = {}
             
@@ -191,11 +187,9 @@ class HyperIntelligentDiscoverySystem:
                         continue
                     
                     with client_manager.get_client() as client:
-                        # Simple table check
                         try:
                             table = client.get_table(table_path)
                             if table and table.schema:
-                                # Just count as a basic discovery
                                 all_assets[f"{source_name}_basic"] = {
                                     'source': source_name,
                                     'table': table_path,
@@ -499,7 +493,7 @@ class HyperIntelligentDiscoverySystem:
                     'high_quality_percentage': sum(1 for q in quality_scores if q > 0.8) / len(quality_scores) * 100,
                     'high_confidence_percentage': sum(1 for c in confidence_scores if c > 0.8) / len(confidence_scores) * 100,
                     'data_completeness': self._calculate_data_completeness(assets),
-                    'entity_resolution_effectiveness': len(assets) / max(1, len(assets))  # Placeholder for actual calculation
+                    'entity_resolution_effectiveness': len(assets) / max(1, len(assets))
                 }
         
         return quality_assessment
@@ -619,20 +613,20 @@ async def main():
     output_dir = Path(args.output)
     output_dir.mkdir(exist_ok=True)
     
-    logger.info("🚀 HYPER-INTELLIGENT DISCOVERY SYSTEM")
-    logger.info(f"📊 Project: {args.project}")
-    logger.info(f"🧠 ML Mode: Advanced Transformers + Deep Learning")
-    logger.info(f"💾 Memory: {args.memory}MB, Disk: {args.disk}GB")
-    logger.info(f"⚡ Workers: {args.workers}")
-    logger.info(f"🔥 GPU: {'M1 Accelerated' if gpu_available else 'CPU Only'}")
-    logger.info(f"📱 Max Cells/Table: {args.max_cells:,}")
+    logger.info("HYPER-INTELLIGENT DISCOVERY SYSTEM")
+    logger.info(f"Project: {args.project}")
+    logger.info(f"ML Mode: Advanced Transformers + Deep Learning")
+    logger.info(f"Memory: {args.memory}MB, Disk: {args.disk}GB")
+    logger.info(f"Workers: {args.workers}")
+    logger.info(f"GPU: {'M1 Accelerated' if gpu_available else 'CPU Only'}")
+    logger.info(f"Max Cells/Table: {args.max_cells:,}")
     
     system = None
     try:
         system = HyperIntelligentDiscoverySystem(args.project, config)
         
         if args.dry_run:
-            logger.info("🔍 DRY RUN MODE - Estimating hyperintelligent discovery scope")
+            logger.info("DRY RUN MODE - Estimating hyperintelligent discovery scope")
             
             total_tables = 0
             estimated_cells = 0
@@ -653,7 +647,7 @@ async def main():
                             except:
                                 continue
             
-            estimated_processing_time = estimated_cells / 10000  # Rough estimate
+            estimated_processing_time = estimated_cells / 10000
             
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             dry_run_file = output_dir / f"hyperintelligent_dry_run_{timestamp}.json"
@@ -671,12 +665,12 @@ async def main():
             with open(dry_run_file, 'w') as f:
                 json.dump(dry_run_results, f, indent=2)
             
-            logger.info(f"📊 Estimated {total_tables} tables, {estimated_cells:,} cells")
-            logger.info(f"⏱️  Estimated processing time: {estimated_processing_time/60:.1f} minutes")
-            logger.info(f"💾 Dry run saved: {dry_run_file}")
+            logger.info(f"Estimated {total_tables} tables, {estimated_cells:,} cells")
+            logger.info(f"Estimated processing time: {estimated_processing_time/60:.1f} minutes")
+            logger.info(f"Dry run saved: {dry_run_file}")
             return 0
         
-        logger.info("🔥 INITIATING HYPERINTELLIGENT DISCOVERY - MAXIMUM INTENSITY")
+        logger.info("INITIATING HYPERINTELLIGENT DISCOVERY - MAXIMUM INTENSITY")
         
         results = await system.run_hyperintelligent_discovery()
         report = system.generate_hyperintelligent_report(results)
@@ -691,22 +685,22 @@ async def main():
         with open(report_file, 'w') as f:
             json.dump(report, f, indent=2, default=str)
         
-        logger.info("🎯 HYPERINTELLIGENT DISCOVERY COMPLETED SUCCESSFULLY")
-        logger.info(f"📄 Results: {results_file}")
-        logger.info(f"📊 Report: {report_file}")
-        logger.info(f"🏆 Assets discovered: {system.stats['total_assets']:,}")
-        logger.info(f"🔬 Cells analyzed: {system.stats['total_cells_analyzed']:,}")
-        logger.info(f"⚡ GPU accelerated: {system.stats['gpu_accelerated']}")
-        logger.info(f"🧠 ML model: {'Loaded & Trained' if system.stats['ml_model_loaded'] else 'Failed'}")
+        logger.info("HYPERINTELLIGENT DISCOVERY COMPLETED SUCCESSFULLY")
+        logger.info(f"Results: {results_file}")
+        logger.info(f"Report: {report_file}")
+        logger.info(f"Assets discovered: {system.stats['total_assets']:,}")
+        logger.info(f"Cells analyzed: {system.stats['total_cells_analyzed']:,}")
+        logger.info(f"GPU accelerated: {system.stats['gpu_accelerated']}")
+        logger.info(f"ML model: {'Loaded & Trained' if system.stats['ml_model_loaded'] else 'Failed'}")
         
         return 0
         
     except KeyboardInterrupt:
-        logger.warning("⚠️  Discovery interrupted by user")
+        logger.warning("Discovery interrupted by user")
         return 130
     
     except Exception as e:
-        logger.error(f"❌ Hyperintelligent discovery failed: {e}")
+        logger.error(f"Hyperintelligent discovery failed: {e}")
         
         if args.debug:
             import traceback
