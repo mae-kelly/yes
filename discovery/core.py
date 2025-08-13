@@ -1,713 +1,547 @@
-# discovery/core.py
+# discovery/core.py - enhanced version
 
 import asyncio
 import logging
 import hashlib
 import statistics
-from typing import Dict, List, Any, Optional, Tuple
-from datetime import datetime
+import networkx as nx
+import numpy as np
+from typing import Dict, List, Any, Optional, Tuple, Set
+from datetime import datetime, timedelta
 from collections import defaultdict
 from core.types import Asset, TableSchema, Discovery, FieldMapping
 from ai.intelligence import EnhancedIntelligenceEngine
+import ipaddress
+import re
 
 logger = logging.getLogger(__name__)
 
-class AdvancedSchemaAnalyzer:
-    def __init__(self, intelligence: EnhancedIntelligenceEngine):
-        self.intelligence = intelligence
-        self.cache = {}
-        self.table_insights = {}
-    
-    async def analyze_table_deeply(self, client, table_path: str) -> Optional[TableSchema]:
-        cache_key = f"deep_schema:{table_path}"
-        if cache_key in self.cache:
-            return self.cache[cache_key]
-        
-        try:
-            table_ref = client.get_table(table_path)
-            if not table_ref.schema:
-                return None
-            
-            columns = [field.name for field in table_ref.schema]
-            
-            schema = TableSchema(
-                path=table_path,
-                name=table_path.split('.')[-1],
-                rows=table_ref.num_rows or 0,
-                columns=len(columns)
-            )
-            
-            sample_data = await self._intelligent_sampling(client, table_path, columns)
-            
-            table_analysis = await self.intelligence.analyze_table_comprehensively(
-                table_path, columns, sample_data, {'table_ref': table_ref}
-            )
-            
-            for col_name, classification in table_analysis['field_classifications'].items():
-                if classification['confidence'] > 0.4:
-                    mapping = FieldMapping(
-                        field_type=classification['field_type'],
-                        column=col_name,
-                        confidence=classification['confidence'],
-                        samples=sample_data.get(col_name, [])[:10]
-                    )
-                    schema.mappings[classification['field_type']] = mapping
-            
-            schema.quality = self._calculate_advanced_schema_quality(schema, table_analysis)
-            
-            self.table_insights[table_path] = table_analysis
-            self.cache[cache_key] = schema
-            
-            logger.info(f"Deep analysis of {table_path}: {len(schema.mappings)} fields identified, quality {schema.quality:.3f}")
-            
-            return schema
-            
-        except Exception as e:
-            logger.warning(f"Deep schema analysis failed for {table_path}: {e}")
-            return None
-    
-    async def _intelligent_sampling(self, client, table_path: str, columns: List[str]) -> Dict[str, List[str]]:
-        limited_columns = columns[:100]
-        
-        base_sample_query = f"""
-        SELECT {', '.join([f'`{col}`' for col in limited_columns])}
-        FROM `{table_path}`
-        WHERE RAND() < 0.02
-        LIMIT 1000
-        """
-        
-        sample_data = {}
-        
-        try:
-            job = client.query(base_sample_query)
-            results = list(job.result())
-            
-            for col_idx, column_name in enumerate(limited_columns):
-                values = []
-                for row in results:
-                    if col_idx < len(row) and row[col_idx] is not None:
-                        value = str(row[col_idx]).strip()
-                        if value and value.upper() not in ['NULL', 'N/A', 'UNKNOWN', 'NONE']:
-                            values.append(value)
-                
-                if values:
-                    sample_data[column_name] = list(set(values))[:50]
-            
-            hostname_candidates = self._identify_potential_hostname_columns(sample_data)
-            
-            if hostname_candidates:
-                for candidate in hostname_candidates[:3]:
-                    col_name = candidate['column']
-                    enhanced_samples = await self._get_enhanced_samples(client, table_path, col_name)
-                    if enhanced_samples:
-                        sample_data[col_name] = enhanced_samples
-                        
-        except Exception as e:
-            logger.warning(f"Intelligent sampling failed for {table_path}: {e}")
-        
-        return sample_data
-    
-    def _identify_potential_hostname_columns(self, sample_data: Dict[str, List[str]]) -> List[Dict[str, Any]]:
-        candidates = []
-        
-        for col_name, samples in sample_data.items():
-            hostname_score = self._quick_hostname_assessment(col_name, samples)
-            
-            if hostname_score > 0.3:
-                candidates.append({
-                    'column': col_name,
-                    'score': hostname_score,
-                    'sample_count': len(samples)
-                })
-        
-        return sorted(candidates, key=lambda x: x['score'], reverse=True)
-    
-    def _quick_hostname_assessment(self, col_name: str, samples: List[str]) -> float:
-        name_score = 0.0
-        name_lower = col_name.lower()
-        
-        hostname_indicators = ['hostname', 'host', 'computer', 'machine', 'device', 'endpoint', 'server']
-        for indicator in hostname_indicators:
-            if indicator in name_lower:
-                name_score = len(indicator) / len(name_lower)
-                break
-        
-        if not samples:
-            return name_score * 0.5
-        
-        pattern_score = 0.0
-        for sample in samples[:20]:
-            if self._looks_like_hostname(sample):
-                pattern_score += 1
-        
-        pattern_score = pattern_score / min(len(samples), 20)
-        
-        return (name_score * 0.4) + (pattern_score * 0.6)
-    
-    def _looks_like_hostname(self, value: str) -> bool:
-        if not isinstance(value, str) or not (2 <= len(value) <= 253):
-            return False
-        
-        import re
-        patterns = [
-            r'^[a-zA-Z0-9][a-zA-Z0-9\-]*[a-zA-Z0-9]$',
-            r'^[a-zA-Z0-9]+$'
+class EntityResolver:
+    def __init__(self):
+        self.identity_graph = nx.Graph()
+        self.hostname_patterns = [
+            r'^([a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?)$',
+            r'^([a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?\.)*[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?$'
         ]
-        
-        return any(re.match(pattern, value, re.IGNORECASE) for pattern in patterns)
-    
-    async def _get_enhanced_samples(self, client, table_path: str, column_name: str) -> List[str]:
-        try:
-            enhanced_query = f"""
-            SELECT DISTINCT `{column_name}`
-            FROM `{table_path}`
-            WHERE `{column_name}` IS NOT NULL
-            AND LENGTH(`{column_name}`) BETWEEN 2 AND 253
-            LIMIT 200
-            """
-            
-            job = client.query(enhanced_query)
-            results = list(job.result())
-            
-            enhanced_samples = []
-            for row in results:
-                if row[0]:
-                    value = str(row[0]).strip()
-                    if value and value.upper() not in ['NULL', 'N/A', 'UNKNOWN', 'NONE']:
-                        enhanced_samples.append(value)
-            
-            return enhanced_samples[:100]
-            
-        except Exception as e:
-            logger.warning(f"Enhanced sampling failed for {column_name}: {e}")
-            return []
-    
-    def _calculate_advanced_schema_quality(self, schema: TableSchema, analysis: Dict[str, Any]) -> float:
-        if not schema.mappings:
-            return 0.0
-        
-        critical_fields = ['hostname', 'ip_address', 'infrastructure_type', 'system_classification']
-        critical_count = sum(1 for field in critical_fields if field in schema.mappings)
-        critical_score = critical_count / len(critical_fields)
-        
-        avg_confidence = statistics.mean([m.confidence for m in schema.mappings.values()])
-        
-        table_confidence = analysis.get('confidence_score', 0.5)
-        
-        hostname_bonus = 0.2 if 'hostname' in schema.mappings and schema.mappings['hostname'].confidence > 0.8 else 0.0
-        
-        return min(1.0, (critical_score * 0.3 + avg_confidence * 0.4 + table_confidence * 0.3) + hostname_bonus)
-
-class IntelligentAssetExtractor:
-    def __init__(self, intelligence: EnhancedIntelligenceEngine):
-        self.intelligence = intelligence
-        self.extraction_strategies = {
-            'direct_extraction': self._direct_extraction,
-            'careful_extraction': self._careful_extraction,
-            'exploratory_analysis': self._exploratory_analysis,
-            'deep_content_scan': self._deep_content_scan
+        self.identity_clusters = {}
+        self.confidence_thresholds = {
+            'exact_match': 1.0,
+            'hostname_variant': 0.95,
+            'ip_correlation': 0.8,
+            'subnet_correlation': 0.6,
+            'name_similarity': 0.7
         }
     
-    async def extract_assets_intelligently(self, client, schema: TableSchema, 
-                                         source_name: str, table_insights: Dict[str, Any] = None) -> Dict[str, Asset]:
+    def add_asset_evidence(self, identifiers: Dict[str, str], source: str, confidence: float = 1.0):
+        primary_id = self._generate_primary_id(identifiers)
         
-        if 'hostname' not in schema.mappings:
-            logger.info(f"No hostname field identified in {schema.path}, attempting deep extraction")
-            return await self._attempt_deep_hostname_extraction(client, schema, source_name)
-        
-        strategy_info = table_insights.get('processing_strategy', {}) if table_insights else {}
-        strategy = strategy_info.get('strategy', 'careful_extraction')
-        
-        logger.info(f"Using {strategy} for {schema.path}")
-        
-        extractor = self.extraction_strategies.get(strategy, self._careful_extraction)
-        return await extractor(client, schema, source_name, table_insights)
-    
-    async def _direct_extraction(self, client, schema: TableSchema, source_name: str, 
-                               insights: Dict[str, Any] = None) -> Dict[str, Asset]:
-        
-        hostname_mapping = schema.mappings['hostname']
-        assets = {}
-        
-        try:
-            select_fields = [f"CAST(`{hostname_mapping.column}` AS STRING) as hostname"]
-            field_mappings = {'hostname': hostname_mapping.column}
-            
-            for field_type, mapping in schema.mappings.items():
-                if field_type != 'hostname':
-                    select_fields.append(f"CAST(`{mapping.column}` AS STRING) as {field_type}")
-                    field_mappings[field_type] = mapping.column
-            
-            extraction_query = f"""
-            SELECT {', '.join(select_fields)}
-            FROM `{schema.path}`
-            WHERE `{hostname_mapping.column}` IS NOT NULL
-            AND LENGTH(`{hostname_mapping.column}`) BETWEEN 2 AND 253
-            LIMIT 1000000
-            """
-            
-            job = client.query(extraction_query)
-            results = list(job.result())
-            
-            for row in results:
-                if not row or not row[0]:
-                    continue
+        for id_type, value in identifiers.items():
+            if value and self._is_valid_identifier(id_type, value):
+                normalized = self._normalize_identifier(id_type, value)
+                self.identity_graph.add_node(normalized, type=id_type, source=source, confidence=confidence)
                 
-                hostname = str(row[0]).strip().upper()
-                if not self._is_valid_hostname_candidate(hostname):
-                    continue
-                
-                asset_id = self._generate_smart_asset_id(hostname, source_name)
-                asset = Asset(id=asset_id, hostname=hostname)
-                
-                for idx, field_type in enumerate(field_mappings.keys()):
-                    if idx < len(row) and row[idx]:
-                        value = str(row[idx]).strip()
-                        if self._is_valid_field_value(value):
-                            setattr(asset, self._field_to_attr(field_type), value)
-                
-                self._enrich_asset_with_intelligence(asset, source_name, insights)
-                assets[asset_id] = asset
-            
-            logger.info(f"Direct extraction from {schema.path}: {len(assets)} assets")
-            
-        except Exception as e:
-            logger.error(f"Direct extraction failed for {schema.path}: {e}")
-        
-        return assets
-    
-    async def _careful_extraction(self, client, schema: TableSchema, source_name: str, 
-                                insights: Dict[str, Any] = None) -> Dict[str, Asset]:
-        
-        hostname_mapping = schema.mappings['hostname']
-        assets = {}
-        
-        try:
-            validation_query = f"""
-            SELECT `{hostname_mapping.column}`, COUNT(*) as cnt
-            FROM `{schema.path}`
-            WHERE `{hostname_mapping.column}` IS NOT NULL
-            AND LENGTH(`{hostname_mapping.column}`) BETWEEN 2 AND 253
-            GROUP BY `{hostname_mapping.column}`
-            HAVING cnt >= 1
-            ORDER BY cnt DESC
-            LIMIT 500000
-            """
-            
-            job = client.query(validation_query)
-            hostname_candidates = list(job.result())
-            
-            validated_hostnames = []
-            for row in hostname_candidates:
-                hostname = str(row[0]).strip().upper()
-                if self._validate_hostname_semantically(hostname):
-                    validated_hostnames.append(hostname)
-            
-            if validated_hostnames:
-                hostname_list = "', '".join(validated_hostnames[:100000])
-                
-                select_fields = [f"CAST(`{hostname_mapping.column}` AS STRING) as hostname"]
-                field_mappings = {'hostname': hostname_mapping.column}
-                
-                for field_type, mapping in schema.mappings.items():
-                    if field_type != 'hostname':
-                        select_fields.append(f"CAST(`{mapping.column}` AS STRING) as {field_type}")
-                        field_mappings[field_type] = mapping.column
-                
-                final_query = f"""
-                SELECT {', '.join(select_fields)}
-                FROM `{schema.path}`
-                WHERE `{hostname_mapping.column}` IN ('{hostname_list}')
-                """
-                
-                job = client.query(final_query)
-                results = list(job.result())
-                
-                for row in results:
-                    if not row or not row[0]:
-                        continue
-                    
-                    hostname = str(row[0]).strip().upper()
-                    asset_id = self._generate_smart_asset_id(hostname, source_name)
-                    asset = Asset(id=asset_id, hostname=hostname)
-                    
-                    for idx, field_type in enumerate(field_mappings.keys()):
-                        if idx < len(row) and row[idx]:
-                            value = str(row[idx]).strip()
-                            if self._is_valid_field_value(value):
-                                setattr(asset, self._field_to_attr(field_type), value)
-                    
-                    self._enrich_asset_with_intelligence(asset, source_name, insights)
-                    assets[asset_id] = asset
-            
-            logger.info(f"Careful extraction from {schema.path}: {len(assets)} assets")
-            
-        except Exception as e:
-            logger.error(f"Careful extraction failed for {schema.path}: {e}")
-        
-        return assets
-    
-    async def _exploratory_analysis(self, client, schema: TableSchema, source_name: str, 
-                                  insights: Dict[str, Any] = None) -> Dict[str, Asset]:
-        
-        if 'hostname' not in schema.mappings:
-            return {}
-        
-        hostname_mapping = schema.mappings['hostname']
-        assets = {}
-        
-        try:
-            exploratory_query = f"""
-            SELECT `{hostname_mapping.column}`, 
-                   COUNT(*) as frequency,
-                   MIN(LENGTH(`{hostname_mapping.column}`)) as min_len,
-                   MAX(LENGTH(`{hostname_mapping.column}`)) as max_len
-            FROM `{schema.path}`
-            WHERE `{hostname_mapping.column}` IS NOT NULL
-            GROUP BY `{hostname_mapping.column}`
-            HAVING frequency >= 1 
-            AND min_len >= 2 
-            AND max_len <= 253
-            ORDER BY frequency DESC
-            LIMIT 50000
-            """
-            
-            job = client.query(exploratory_query)
-            exploration_results = list(job.result())
-            
-            high_confidence_hostnames = []
-            medium_confidence_hostnames = []
-            
-            for row in exploration_results:
-                hostname = str(row[0]).strip().upper()
-                frequency = row[1]
-                
-                semantic_score = self._calculate_hostname_semantic_score(hostname)
-                
-                if semantic_score > 0.8 or frequency > 5:
-                    high_confidence_hostnames.append(hostname)
-                elif semantic_score > 0.5:
-                    medium_confidence_hostnames.append(hostname)
-            
-            selected_hostnames = high_confidence_hostnames[:20000] + medium_confidence_hostnames[:10000]
-            
-            if selected_hostnames:
-                assets = await self._extract_selected_hostnames(
-                    client, schema, selected_hostnames, source_name, insights
-                )
-            
-            logger.info(f"Exploratory analysis of {schema.path}: {len(assets)} assets")
-            
-        except Exception as e:
-            logger.error(f"Exploratory analysis failed for {schema.path}: {e}")
-        
-        return assets
-    
-    async def _deep_content_scan(self, client, schema: TableSchema, source_name: str, 
-                               insights: Dict[str, Any] = None) -> Dict[str, Asset]:
-        
-        logger.info(f"Performing deep content scan of {schema.path}")
-        return await self._attempt_deep_hostname_extraction(client, schema, source_name)
-    
-    async def _attempt_deep_hostname_extraction(self, client, schema: TableSchema, source_name: str) -> Dict[str, Asset]:
-        try:
-            table_ref = client.get_table(schema.path)
-            columns = [field.name for field in table_ref.schema]
-            
-            potential_hostname_columns = []
-            
-            for col_name in columns:
-                if self._column_might_contain_hostnames(col_name):
-                    potential_hostname_columns.append(col_name)
-            
-            assets = {}
-            
-            for col_name in potential_hostname_columns[:10]:
-                try:
-                    sample_query = f"""
-                    SELECT DISTINCT `{col_name}`
-                    FROM `{schema.path}`
-                    WHERE `{col_name}` IS NOT NULL
-                    AND LENGTH(`{col_name}`) BETWEEN 2 AND 253
-                    LIMIT 500
-                    """
-                    
-                    job = client.query(sample_query)
-                    samples = [str(row[0]).strip() for row in job.result() if row[0]]
-                    
-                    hostname_probability = await self._assess_hostname_probability_deep(col_name, samples)
-                    
-                    if hostname_probability > 0.6:
-                        logger.info(f"Found potential hostname column {col_name} with probability {hostname_probability:.3f}")
-                        
-                        column_assets = await self._extract_from_hostname_column(
-                            client, schema.path, col_name, source_name
+                for other_type, other_value in identifiers.items():
+                    if other_type != id_type and other_value:
+                        other_normalized = self._normalize_identifier(other_type, other_value)
+                        similarity = self._calculate_identity_similarity(
+                            (id_type, normalized), (other_type, other_normalized)
                         )
-                        
-                        assets.update(column_assets)
-                        
-                        if len(column_assets) > 1000:
-                            break
-                            
-                except Exception as e:
-                    logger.debug(f"Deep scan of column {col_name} failed: {e}")
-            
-            logger.info(f"Deep content scan of {schema.path}: {len(assets)} assets found")
-            return assets
-            
-        except Exception as e:
-            logger.error(f"Deep content scan failed for {schema.path}: {e}")
-            return {}
+                        if similarity > 0.5:
+                            self.identity_graph.add_edge(normalized, other_normalized, 
+                                                       weight=similarity, evidence=source)
     
-    def _column_might_contain_hostnames(self, col_name: str) -> bool:
-        name_lower = col_name.lower()
+    def resolve_entities(self) -> Dict[str, Set[str]]:
+        communities = list(nx.community.greedy_modularity_communities(self.identity_graph))
         
-        positive_indicators = [
-            'host', 'computer', 'machine', 'device', 'endpoint', 'server', 'node',
-            'name', 'id', 'asset', 'equipment', 'system', 'workstation', 'desktop'
-        ]
+        entity_groups = {}
+        for i, community in enumerate(communities):
+            canonical_id = f"entity_{i:06d}"
+            entity_groups[canonical_id] = community
         
-        negative_indicators = [
-            'created', 'updated', 'modified', 'date', 'time', 'timestamp',
-            'count', 'total', 'sum', 'avg', 'status', 'type', 'flag', 'bool'
-        ]
-        
-        has_positive = any(indicator in name_lower for indicator in positive_indicators)
-        has_negative = any(indicator in name_lower for indicator in negative_indicators)
-        
-        return has_positive and not has_negative
+        return entity_groups
     
-    async def _assess_hostname_probability_deep(self, col_name: str, samples: List[str]) -> float:
-        if not samples:
-            return 0.0
-        
-        name_score = self._score_column_name_for_hostnames(col_name)
-        
-        pattern_matches = sum(1 for sample in samples if self._looks_like_hostname(sample))
-        pattern_score = pattern_matches / len(samples)
-        
-        semantic_scores = [self._calculate_hostname_semantic_score(sample) for sample in samples]
-        semantic_score = statistics.mean(semantic_scores) if semantic_scores else 0.0
-        
-        return (name_score * 0.3 + pattern_score * 0.4 + semantic_score * 0.3)
+    def _generate_primary_id(self, identifiers: Dict[str, str]) -> str:
+        if 'hostname' in identifiers and identifiers['hostname']:
+            return f"host_{identifiers['hostname'].upper()}"
+        elif 'ip_address' in identifiers and identifiers['ip_address']:
+            return f"ip_{identifiers['ip_address']}"
+        elif 'fqdn' in identifiers and identifiers['fqdn']:
+            return f"fqdn_{identifiers['fqdn'].lower()}"
+        else:
+            return f"unknown_{hash(str(identifiers)) % 1000000:06d}"
     
-    def _score_column_name_for_hostnames(self, col_name: str) -> float:
-        name_lower = col_name.lower()
-        
-        exact_matches = ['hostname', 'host', 'computername', 'computer_name', 'machine_name']
-        for match in exact_matches:
-            if match == name_lower or match.replace('_', '') == name_lower.replace('_', ''):
-                return 1.0
-        
-        partial_indicators = ['host', 'computer', 'machine', 'device', 'endpoint', 'server']
-        for indicator in partial_indicators:
-            if indicator in name_lower:
-                return 0.7
-        
-        return 0.1
-    
-    async def _extract_from_hostname_column(self, client, table_path: str, column_name: str, source_name: str) -> Dict[str, Asset]:
-        assets = {}
-        
-        try:
-            extraction_query = f"""
-            SELECT DISTINCT `{column_name}`
-            FROM `{table_path}`
-            WHERE `{column_name}` IS NOT NULL
-            AND LENGTH(`{column_name}`) BETWEEN 2 AND 253
-            LIMIT 100000
-            """
-            
-            job = client.query(extraction_query)
-            results = list(job.result())
-            
-            for row in results:
-                if not row[0]:
-                    continue
-                
-                hostname = str(row[0]).strip().upper()
-                
-                if self._validate_hostname_semantically(hostname):
-                    asset_id = self._generate_smart_asset_id(hostname, source_name)
-                    asset = Asset(id=asset_id, hostname=hostname)
-                    
-                    self._set_source_flags(asset, source_name)
-                    asset.sources = 1
-                    asset.intelligence = 0.7
-                    asset.quality = self._calculate_hostname_quality(hostname)
-                    asset.confidence = 0.8
-                    
-                    assets[asset_id] = asset
-            
-        except Exception as e:
-            logger.error(f"Hostname extraction failed for {table_path}.{column_name}: {e}")
-        
-        return assets
-    
-    async def _extract_selected_hostnames(self, client, schema: TableSchema, hostnames: List[str], 
-                                        source_name: str, insights: Dict[str, Any] = None) -> Dict[str, Asset]:
-        assets = {}
-        hostname_mapping = schema.mappings['hostname']
-        
-        try:
-            batch_size = 1000
-            for i in range(0, len(hostnames), batch_size):
-                batch = hostnames[i:i + batch_size]
-                hostname_list = "', '".join(batch)
-                
-                select_fields = [f"CAST(`{hostname_mapping.column}` AS STRING) as hostname"]
-                field_mappings = {'hostname': hostname_mapping.column}
-                
-                for field_type, mapping in schema.mappings.items():
-                    if field_type != 'hostname':
-                        select_fields.append(f"CAST(`{mapping.column}` AS STRING) as {field_type}")
-                        field_mappings[field_type] = mapping.column
-                
-                batch_query = f"""
-                SELECT {', '.join(select_fields)}
-                FROM `{schema.path}`
-                WHERE `{hostname_mapping.column}` IN ('{hostname_list}')
-                """
-                
-                job = client.query(batch_query)
-                results = list(job.result())
-                
-                for row in results:
-                    if not row or not row[0]:
-                        continue
-                    
-                    hostname = str(row[0]).strip().upper()
-                    asset_id = self._generate_smart_asset_id(hostname, source_name)
-                    asset = Asset(id=asset_id, hostname=hostname)
-                    
-                    for idx, field_type in enumerate(field_mappings.keys()):
-                        if idx < len(row) and row[idx]:
-                            value = str(row[idx]).strip()
-                            if self._is_valid_field_value(value):
-                                setattr(asset, self._field_to_attr(field_type), value)
-                    
-                    self._enrich_asset_with_intelligence(asset, source_name, insights)
-                    assets[asset_id] = asset
-        
-        except Exception as e:
-            logger.error(f"Selected hostname extraction failed: {e}")
-        
-        return assets
-    
-    def _is_valid_hostname_candidate(self, hostname: str) -> bool:
-        if not hostname or len(hostname) < 2 or len(hostname) > 253:
+    def _is_valid_identifier(self, id_type: str, value: str) -> bool:
+        if not value or value.upper() in ['NULL', 'N/A', 'UNKNOWN', 'NONE', '']:
             return False
         
-        if hostname.upper() in ['NULL', 'N/A', 'UNKNOWN', 'NONE', '', 'NA', '-']:
-            return False
-        
-        import re
-        basic_pattern = r'^[a-zA-Z0-9][a-zA-Z0-9\-\.]*[a-zA-Z0-9]$|^[a-zA-Z0-9]+$'
-        if not re.match(basic_pattern, hostname, re.IGNORECASE):
-            return False
+        if id_type == 'hostname':
+            return any(re.match(pattern, value, re.IGNORECASE) for pattern in self.hostname_patterns)
+        elif id_type == 'ip_address':
+            try:
+                ipaddress.ip_address(value.strip())
+                return True
+            except:
+                return False
+        elif id_type == 'fqdn':
+            return '.' in value and len(value.split('.')) >= 2
+        elif id_type == 'mac_address':
+            return re.match(r'^([0-9A-Fa-f]{2}[:-]){5}[0-9A-Fa-f]{2}$', value)
         
         return True
     
-    def _validate_hostname_semantically(self, hostname: str) -> bool:
-        if not self._is_valid_hostname_candidate(hostname):
-            return False
+    def _normalize_identifier(self, id_type: str, value: str) -> str:
+        value = value.strip()
         
-        semantic_score = self._calculate_hostname_semantic_score(hostname)
-        return semantic_score > 0.3
+        if id_type == 'hostname':
+            return value.upper()
+        elif id_type == 'ip_address':
+            try:
+                return str(ipaddress.ip_address(value))
+            except:
+                return value
+        elif id_type == 'fqdn':
+            return value.lower()
+        elif id_type == 'mac_address':
+            return value.upper().replace('-', ':')
+        
+        return value.upper()
     
-    def _calculate_hostname_semantic_score(self, hostname: str) -> float:
-        if not hostname:
+    def _calculate_identity_similarity(self, id1: Tuple[str, str], id2: Tuple[str, str]) -> float:
+        type1, value1 = id1
+        type2, value2 = id2
+        
+        if type1 == type2:
+            if value1 == value2:
+                return self.confidence_thresholds['exact_match']
+            elif type1 == 'hostname':
+                return self._hostname_similarity(value1, value2)
+            else:
+                return 0.0
+        
+        if (type1 == 'hostname' and type2 == 'fqdn') or (type1 == 'fqdn' and type2 == 'hostname'):
+            short_name = value1 if type1 == 'hostname' else value2
+            fqdn = value2 if type1 == 'hostname' else value1
+            
+            if fqdn.upper().startswith(short_name.upper() + '.'):
+                return self.confidence_thresholds['hostname_variant']
+        
+        if type1 == 'ip_address' and type2 == 'ip_address':
+            return self._ip_similarity(value1, value2)
+        
+        return 0.0
+    
+    def _hostname_similarity(self, hostname1: str, hostname2: str) -> float:
+        if hostname1 == hostname2:
+            return 1.0
+        
+        h1_parts = re.split(r'[-_.]', hostname1.lower())
+        h2_parts = re.split(r'[-_.]', hostname2.lower())
+        
+        common_parts = set(h1_parts) & set(h2_parts)
+        total_parts = set(h1_parts) | set(h2_parts)
+        
+        if len(total_parts) == 0:
             return 0.0
         
-        hostname_lower = hostname.lower()
-        score = 0.0
+        similarity = len(common_parts) / len(total_parts)
         
-        semantic_indicators = [
-            'srv', 'server', 'host', 'node', 'vm', 'pc', 'ws', 'desktop', 'laptop',
-            'web', 'app', 'db', 'sql', 'ad', 'dc', 'dns', 'dhcp', 'proxy', 'fw',
-            'prod', 'dev', 'test', 'stage', 'qa', 'demo', 'lab', 'backup', 'dr'
+        if similarity > 0.7:
+            return self.confidence_thresholds['name_similarity']
+        
+        return similarity * 0.5
+    
+    def _ip_similarity(self, ip1: str, ip2: str) -> float:
+        if ip1 == ip2:
+            return self.confidence_thresholds['exact_match']
+        
+        try:
+            addr1 = ipaddress.ip_address(ip1)
+            addr2 = ipaddress.ip_address(ip2)
+            
+            for prefix_len in [24, 16, 8]:
+                net1 = ipaddress.ip_network(f"{addr1}/{prefix_len}", strict=False)
+                net2 = ipaddress.ip_network(f"{addr2}/{prefix_len}", strict=False)
+                
+                if net1 == net2:
+                    return self.confidence_thresholds['subnet_correlation'] * (prefix_len / 24)
+            
+        except:
+            pass
+        
+        return 0.0
+
+class ComprehensiveAssetBuilder:
+    def __init__(self, intelligence: EnhancedIntelligenceEngine):
+        self.intelligence = intelligence
+        self.entity_resolver = EntityResolver()
+        self.field_extractors = {}
+        self.source_reliability = {
+            'cmdb': 0.95,
+            'crowdstrike': 0.9,
+            'splunk': 0.85,
+            'chronicle': 0.8,
+            'tanium': 0.75,
+            'network': 0.7
+        }
+        self.comprehensive_fields = {
+            'identity': ['hostname', 'ip_address', 'fqdn', 'mac_address'],
+            'infrastructure': ['infrastructure_type', 'system_classification', 'application_type'],
+            'location': ['global_region', 'country', 'datacenter', 'cloud_region'],
+            'organization': ['business_unit', 'cio', 'apm', 'application_class'],
+            'security_coverage': ['edr_coverage', 'dlp_coverage', 'tanium_coverage'],
+            'logging_coverage': ['splunk_coverage', 'chronicle_coverage', 'gso_coverage'],
+            'log_types': ['network_log_types', 'endpoint_log_types', 'cloud_log_types', 
+                         'application_log_types', 'identity_log_types'],
+            'visibility': ['cmdb_visibility', 'url_fqdn_coverage', 'public_ip_coverage', 
+                          'network_zones', 'vpc_coverage']
+        }
+    
+    async def build_comprehensive_inventory(self, client_managers: Dict[str, Any]) -> Dict[str, Asset]:
+        logger.info("Building comprehensive asset inventory with entity resolution")
+        
+        all_evidence = []
+        table_schemas = {}
+        
+        for project_id, client_manager in client_managers.items():
+            with client_manager.get_client() as client:
+                datasets = list(client.list_datasets(project=project_id))
+                
+                for dataset in datasets:
+                    tables = list(client.list_tables(dataset))
+                    
+                    for table_ref in tables:
+                        table_path = f"{project_id}.{dataset.dataset_id}.{table_ref.table_id}"
+                        
+                        try:
+                            evidence = await self._extract_table_evidence(client, table_path)
+                            all_evidence.extend(evidence)
+                            
+                            schema = await self._analyze_table_schema(client, table_path)
+                            if schema:
+                                table_schemas[table_path] = schema
+                                
+                        except Exception as e:
+                            logger.warning(f"Failed to process {table_path}: {e}")
+        
+        logger.info(f"Collected {len(all_evidence)} pieces of evidence from {len(table_schemas)} tables")
+        
+        for evidence in all_evidence:
+            self.entity_resolver.add_asset_evidence(
+                evidence['identifiers'], 
+                evidence['source'], 
+                evidence['confidence']
+            )
+        
+        entity_groups = self.entity_resolver.resolve_entities()
+        logger.info(f"Resolved {len(entity_groups)} unique entities")
+        
+        assets = {}
+        for entity_id, identifiers in entity_groups.items():
+            asset = await self._build_complete_asset(entity_id, identifiers, all_evidence)
+            if asset:
+                assets[entity_id] = asset
+        
+        return assets
+    
+    async def _extract_table_evidence(self, client, table_path: str) -> List[Dict[str, Any]]:
+        evidence = []
+        
+        try:
+            table = client.get_table(table_path)
+            if not table.schema or table.num_rows == 0:
+                return evidence
+            
+            columns = [field.name for field in table.schema]
+            potential_hostname_cols = self._identify_hostname_columns(columns)
+            
+            if not potential_hostname_cols:
+                return evidence
+            
+            for hostname_col in potential_hostname_cols[:3]:
+                sample_query = f"""
+                SELECT *
+                FROM `{table_path}`
+                WHERE `{hostname_col}` IS NOT NULL
+                AND LENGTH(`{hostname_col}`) BETWEEN 2 AND 253
+                LIMIT 50000
+                """
+                
+                job = client.query(sample_query)
+                results = list(job.result())
+                
+                for row in results:
+                    if not row:
+                        continue
+                    
+                    identifiers = {}
+                    properties = {}
+                    
+                    for col_idx, col_name in enumerate(columns):
+                        if col_idx < len(row) and row[col_idx] is not None:
+                            value = str(row[col_idx]).strip()
+                            
+                            field_type = self._classify_field(col_name, value)
+                            
+                            if field_type in ['hostname', 'ip_address', 'fqdn', 'mac_address']:
+                                identifiers[field_type] = value
+                            else:
+                                properties[col_name] = value
+                    
+                    if identifiers:
+                        evidence.append({
+                            'identifiers': identifiers,
+                            'properties': properties,
+                            'source': table_path,
+                            'confidence': self._calculate_evidence_confidence(identifiers, table_path)
+                        })
+        
+        except Exception as e:
+            logger.error(f"Evidence extraction failed for {table_path}: {e}")
+        
+        return evidence
+    
+    def _identify_hostname_columns(self, columns: List[str]) -> List[str]:
+        hostname_candidates = []
+        
+        exact_matches = ['hostname', 'host', 'computer_name', 'computername', 
+                        'device_name', 'endpoint_name', 'machine_name', 'server_name']
+        
+        for col in columns:
+            col_lower = col.lower()
+            
+            for exact in exact_matches:
+                if exact in col_lower:
+                    hostname_candidates.append(col)
+                    break
+        
+        partial_indicators = ['host', 'computer', 'machine', 'device', 'endpoint', 'server', 'node']
+        
+        for col in columns:
+            if col in hostname_candidates:
+                continue
+                
+            col_lower = col.lower()
+            for indicator in partial_indicators:
+                if indicator in col_lower and 'id' not in col_lower and 'count' not in col_lower:
+                    hostname_candidates.append(col)
+                    break
+        
+        return hostname_candidates[:5]
+    
+    def _classify_field(self, column_name: str, value: str) -> str:
+        if not value:
+            return 'unknown'
+        
+        col_lower = column_name.lower()
+        
+        if any(indicator in col_lower for indicator in ['hostname', 'host', 'computer', 'machine', 'device']):
+            if self.entity_resolver._is_valid_identifier('hostname', value):
+                return 'hostname'
+        
+        if 'ip' in col_lower or 'address' in col_lower:
+            if self.entity_resolver._is_valid_identifier('ip_address', value):
+                return 'ip_address'
+        
+        if 'fqdn' in col_lower or 'domain' in col_lower:
+            if self.entity_resolver._is_valid_identifier('fqdn', value):
+                return 'fqdn'
+        
+        if 'mac' in col_lower:
+            if self.entity_resolver._is_valid_identifier('mac_address', value):
+                return 'mac_address'
+        
+        return 'property'
+    
+    def _calculate_evidence_confidence(self, identifiers: Dict[str, str], source: str) -> float:
+        base_confidence = self.source_reliability.get(self._extract_source_system(source), 0.5)
+        
+        identifier_quality = 0.0
+        if 'hostname' in identifiers:
+            identifier_quality += 0.4
+        if 'ip_address' in identifiers:
+            identifier_quality += 0.3
+        if 'fqdn' in identifiers:
+            identifier_quality += 0.2
+        if 'mac_address' in identifiers:
+            identifier_quality += 0.1
+        
+        return min(1.0, base_confidence + identifier_quality)
+    
+    def _extract_source_system(self, table_path: str) -> str:
+        path_lower = table_path.lower()
+        
+        if 'endpoint' in path_lower or 'cmdb' in path_lower:
+            return 'cmdb'
+        elif 'crowdstrike' in path_lower or 'endpointagent' in path_lower:
+            return 'crowdstrike'
+        elif 'splunk' in path_lower or 'spl_' in path_lower:
+            return 'splunk'
+        elif 'chronicle' in path_lower:
+            return 'chronicle'
+        elif 'tanium' in path_lower:
+            return 'tanium'
+        else:
+            return 'unknown'
+    
+    async def _analyze_table_schema(self, client, table_path: str) -> Optional[Dict[str, Any]]:
+        try:
+            table = client.get_table(table_path)
+            if not table.schema:
+                return None
+            
+            columns = [field.name for field in table.schema]
+            
+            schema_analysis = {
+                'path': table_path,
+                'columns': columns,
+                'row_count': table.num_rows,
+                'source_system': self._extract_source_system(table_path),
+                'hostname_columns': self._identify_hostname_columns(columns),
+                'field_types': {}
+            }
+            
+            for col in columns[:50]:
+                sample_query = f"""
+                SELECT `{col}`
+                FROM `{table_path}`
+                WHERE `{col}` IS NOT NULL
+                LIMIT 100
+                """
+                
+                try:
+                    job = client.query(sample_query)
+                    samples = [str(row[0]) for row in job.result() if row[0]]
+                    
+                    if samples:
+                        field_type = self._classify_field(col, samples[0])
+                        schema_analysis['field_types'][col] = field_type
+                        
+                except:
+                    continue
+            
+            return schema_analysis
+            
+        except Exception as e:
+            logger.warning(f"Schema analysis failed for {table_path}: {e}")
+            return None
+    
+    async def _build_complete_asset(self, entity_id: str, identifiers: Set[str], 
+                                  all_evidence: List[Dict[str, Any]]) -> Optional[Asset]:
+        
+        relevant_evidence = [
+            ev for ev in all_evidence 
+            if any(self.entity_resolver._normalize_identifier(k, v) in identifiers 
+                  for k, v in ev['identifiers'].items())
         ]
         
-        indicator_matches = sum(1 for indicator in semantic_indicators if indicator in hostname_lower)
-        score += min(0.4, indicator_matches * 0.1)
+        if not relevant_evidence:
+            return None
         
-        if re.search(r'[0-9]', hostname):
-            score += 0.2
+        asset = Asset(id=entity_id)
+        field_values = defaultdict(list)
+        field_sources = defaultdict(list)
         
-        if re.search(r'[-_.]', hostname):
-            score += 0.1
+        for evidence in relevant_evidence:
+            for field_name, value in evidence['identifiers'].items():
+                if value:
+                    field_values[field_name].append({
+                        'value': value,
+                        'confidence': evidence['confidence'],
+                        'source': evidence['source']
+                    })
+            
+            for field_name, value in evidence['properties'].items():
+                if value:
+                    mapped_field = self._map_field_name(field_name)
+                    field_values[mapped_field].append({
+                        'value': value,
+                        'confidence': evidence['confidence'],
+                        'source': evidence['source']
+                    })
         
-        length_score = 0.3 if 3 <= len(hostname) <= 50 else 0.1
-        score += length_score
+        for field_name, value_list in field_values.items():
+            best_value = self._select_best_value(value_list)
+            if best_value and hasattr(asset, field_name):
+                setattr(asset, field_name, best_value)
         
-        return min(1.0, score)
+        self._set_coverage_flags(asset, relevant_evidence)
+        self._calculate_asset_metrics(asset, relevant_evidence)
+        
+        return asset
     
-    def _calculate_hostname_quality(self, hostname: str) -> float:
-        if not hostname:
-            return 0.0
+    def _map_field_name(self, original_name: str) -> str:
+        name_lower = original_name.lower()
         
-        quality_score = 0.5
-        
-        if self._is_valid_hostname_candidate(hostname):
-            quality_score += 0.3
-        
-        semantic_score = self._calculate_hostname_semantic_score(hostname)
-        quality_score += semantic_score * 0.2
-        
-        return min(1.0, quality_score)
-    
-    def _is_valid_field_value(self, value: str) -> bool:
-        if not value:
-            return False
-        
-        clean_value = value.strip().upper()
-        return clean_value not in ['NULL', 'N/A', 'UNKNOWN', 'NONE', '', 'NA', '-']
-    
-    def _generate_smart_asset_id(self, hostname: str, source: str) -> str:
-        normalized = f"{hostname.upper().strip()}_{source}"
-        return f"asset_{hashlib.md5(normalized.encode()).hexdigest()[:12]}"
-    
-    def _field_to_attr(self, field_type: str) -> str:
-        field_map = {
-            'ip_address': 'ip',
-            'infrastructure_type': 'infra_type',
-            'system_classification': 'system_class',
-            'global_region': 'region',
-            'cloud_region': 'cloud_region',
-            'business_unit': 'business_unit',
-            'application_class': 'app_class'
-        }
-        return field_map.get(field_type, field_type)
-    
-    def _set_source_flags(self, asset: Asset, source: str):
-        source_flags = {
-            'cmdb': {'cmdb': True},
-            'splunk': {'splunk': True},
-            'chronicle': {'chronicle': True},
-            'crowdstrike': {'crowdstrike': True, 'edr': True},
-            'tanium': {'tanium': True}
+        field_mappings = {
+            'infrastructure_type': ['infra_type', 'infrastructure', 'server_type'],
+            'system_classification': ['system_class', 'os_type', 'platform'],
+            'global_region': ['region', 'geo_region'],
+            'business_unit': ['bu', 'org_unit', 'department'],
+            'application_class': ['app_class', 'application_type'],
+            'ip_address': ['ip', 'ip_addr'],
+            'mac_address': ['mac', 'physical_address']
         }
         
-        flags = source_flags.get(source, {})
-        for attr, value in flags.items():
-            setattr(asset, attr, value)
+        for target_field, variants in field_mappings.items():
+            if any(variant in name_lower for variant in variants):
+                return target_field
+        
+        return original_name.lower().replace(' ', '_')
     
-    def _enrich_asset_with_intelligence(self, asset: Asset, source: str, insights: Dict[str, Any] = None):
-        asset.sources = 1
+    def _select_best_value(self, value_list: List[Dict[str, Any]]) -> Optional[str]:
+        if not value_list:
+            return None
         
-        base_intelligence = 0.6
-        if source == 'cmdb':
-            base_intelligence = 0.8
-        elif source == 'crowdstrike':
-            base_intelligence = 0.75
+        value_list.sort(key=lambda x: (
+            x['confidence'],
+            self.source_reliability.get(self._extract_source_system(x['source']), 0.5),
+            len(x['value'])
+        ), reverse=True)
         
-        if insights:
-            confidence_boost = insights.get('confidence_score', 0.5) * 0.2
-            base_intelligence += confidence_boost
+        return value_list[0]['value']
+    
+    def _set_coverage_flags(self, asset: Asset, evidence: List[Dict[str, Any]]):
+        sources = set()
+        for ev in evidence:
+            source_system = self._extract_source_system(ev['source'])
+            sources.add(source_system)
         
-        asset.intelligence = min(1.0, base_intelligence)
-        asset.quality = self._calculate_hostname_quality(asset.hostname)
-        asset.confidence = (asset.intelligence + asset.quality) / 2
+        asset.cmdb = 'cmdb' in sources
+        asset.crowdstrike = 'crowdstrike' in sources
+        asset.edr = 'crowdstrike' in sources
+        asset.splunk = 'splunk' in sources
+        asset.chronicle = 'chronicle' in sources
+        asset.tanium = 'tanium' in sources
+        asset.dlp = any('dlp' in ev['source'].lower() for ev in evidence)
+        
+        asset.sources = len(sources)
+    
+    def _calculate_asset_metrics(self, asset: Asset, evidence: List[Dict[str, Any]]):
+        if evidence:
+            asset.confidence = statistics.mean([ev['confidence'] for ev in evidence])
+            asset.intelligence = min(1.0, len(evidence) / 10.0)
+            asset.quality = self._calculate_data_quality(asset)
+        else:
+            asset.confidence = 0.0
+            asset.intelligence = 0.0
+            asset.quality = 0.0
+    
+    def _calculate_data_quality(self, asset: Asset) -> float:
+        completeness_score = 0.0
+        total_fields = 0
+        
+        important_fields = ['hostname', 'ip', 'infra_type', 'system_class', 'business_unit']
+        
+        for field in important_fields:
+            total_fields += 1
+            if hasattr(asset, field) and getattr(asset, field):
+                completeness_score += 1
+        
+        completeness = completeness_score / total_fields if total_fields > 0 else 0.0
+        
+        coverage_score = asset.sources / 5.0 if asset.sources <= 5 else 1.0
+        
+        return (completeness * 0.7) + (coverage_score * 0.3)
 
 class EnhancedDiscoveryEngine:
     def __init__(self, project_id: str, config: Dict[str, Any], 
@@ -716,128 +550,45 @@ class EnhancedDiscoveryEngine:
         self.config = config
         self.cache = cache_manager
         self.intelligence = intelligence
-        
-        self.schema_analyzer = AdvancedSchemaAnalyzer(intelligence)
-        self.asset_extractor = IntelligentAssetExtractor(intelligence)
-        
-        self.source_tables = {
-            'cmdb': 'prj-fisv.SAS_BI.V_DIM_ENDPOINT',
-            'splunk': 'prj-fisv.SAS_BI.V_SPL_ENDPOINT_LOG',
-            'crowdstrike': 'prj-fisv.SAS_BI.V_DIM_ENDPOINTAGENT'
-        }
+        self.asset_builder = ComprehensiveAssetBuilder(intelligence)
         
         self.stats = {
-            'tables_analyzed': 0,
-            'schemas_discovered': 0,
-            'assets_extracted': 0,
-            'processing_errors': 0,
-            'deep_scans_performed': 0
+            'tables_processed': 0,
+            'evidence_collected': 0,
+            'entities_resolved': 0,
+            'assets_built': 0,
+            'processing_errors': 0
         }
     
-    async def discover_assets_intelligently(self, client_managers: Dict[str, Any]) -> Discovery:
-        logger.info("Starting enhanced intelligent asset discovery")
+    async def discover_assets_comprehensively(self, client_managers: Dict[str, Any]) -> Discovery:
+        logger.info("Starting comprehensive asset discovery with entity resolution")
         start_time = datetime.now()
         
         discovery = Discovery()
-        all_assets = {}
         
-        for source_name, table_path in self.source_tables.items():
-            try:
-                client_manager = client_managers.get(self.project_id)
-                if source_name == 'chronicle' and 'chronicle-fisv' in client_managers:
-                    client_manager = client_managers['chronicle-fisv']
-                    table_path = 'chronicle-fisv.datalake.events'
-                
-                if not client_manager:
-                    continue
-                
-                logger.info(f"Performing intelligent analysis of {source_name}: {table_path}")
-                
-                with client_manager.get_client() as client:
-                    schema = await self.schema_analyzer.analyze_table_deeply(client, table_path)
-                    
-                    if schema:
-                        discovery.schemas[table_path] = schema
-                        self.stats['schemas_discovered'] += 1
-                        
-                        table_insights = self.schema_analyzer.table_insights.get(table_path, {})
-                        
-                        assets = await self.asset_extractor.extract_assets_intelligently(
-                            client, schema, source_name, table_insights
-                        )
-                        
-                        if not assets and schema.rows > 0:
-                            logger.info(f"No assets extracted normally, attempting deep scan of {table_path}")
-                            assets = await self.asset_extractor._attempt_deep_hostname_extraction(
-                                client, schema, source_name
-                            )
-                            self.stats['deep_scans_performed'] += 1
-                        
-                        for asset_id, asset in assets.items():
-                            if asset_id in all_assets:
-                                all_assets[asset_id] = self._merge_assets_intelligently(
-                                    all_assets[asset_id], asset
-                                )
-                            else:
-                                all_assets[asset_id] = asset
-                                self.stats['assets_extracted'] += 1
-                        
-                        logger.info(f"Extracted {len(assets)} assets from {source_name}")
-                
-                self.stats['tables_analyzed'] += 1
-                
-            except Exception as e:
-                logger.error(f"Enhanced processing failed for {source_name}: {e}")
-                self.stats['processing_errors'] += 1
-        
-        logger.info("Performing intelligent asset consolidation")
-        discovery.assets = all_assets
-        
-        processing_time = (datetime.now() - start_time).total_seconds()
-        
-        discovery.stats = {
-            'total_assets': len(discovery.assets),
-            'high_quality_assets': sum(1 for a in discovery.assets.values() if a.quality > 0.8),
-            'multi_source_assets': sum(1 for a in discovery.assets.values() if a.sources > 1),
-            'processing_time_seconds': processing_time,
-            'performance_stats': self.stats,
-            'intelligence_enhanced': True
-        }
-        
-        discovery.insights = await self.intelligence.generate_insights(discovery)
-        
-        logger.info(f"Enhanced discovery complete: {len(discovery.assets)} unique assets discovered")
-        return discovery
-    
-    def _merge_assets_intelligently(self, primary: Asset, secondary: Asset) -> Asset:
-        merged = Asset(id=primary.id)
-        
-        text_fields = ['hostname', 'ip', 'fqdn', 'mac', 'infra_type', 'system_class',
-                      'region', 'country', 'datacenter', 'cloud_region', 'business_unit',
-                      'cio', 'app_class']
-        
-        for field in text_fields:
-            primary_val = getattr(primary, field, "")
-            secondary_val = getattr(secondary, field, "")
+        try:
+            assets = await self.asset_builder.build_comprehensive_inventory(client_managers)
+            discovery.assets = assets
             
-            if secondary_val and not primary_val:
-                setattr(merged, field, secondary_val)
-            elif primary_val:
-                setattr(merged, field, primary_val)
-            elif secondary_val and primary_val and len(secondary_val) > len(primary_val):
-                setattr(merged, field, secondary_val)
-            else:
-                setattr(merged, field, primary_val)
+            processing_time = (datetime.now() - start_time).total_seconds()
+            
+            discovery.stats = {
+                'total_assets': len(assets),
+                'high_quality_assets': sum(1 for a in assets.values() if a.quality > 0.8),
+                'multi_source_assets': sum(1 for a in assets.values() if a.sources > 1),
+                'cmdb_assets': sum(1 for a in assets.values() if a.cmdb),
+                'security_covered_assets': sum(1 for a in assets.values() if a.edr or a.dlp or a.tanium),
+                'processing_time_seconds': processing_time,
+                'comprehensive_discovery': True,
+                'entity_resolution_applied': True
+            }
+            
+            discovery.insights = await self.intelligence.generate_insights(discovery)
+            
+            logger.info(f"Comprehensive discovery complete: {len(assets)} assets discovered")
+            
+        except Exception as e:
+            logger.error(f"Comprehensive discovery failed: {e}")
+            discovery.stats = {'error': str(e)}
         
-        bool_fields = ['edr', 'dlp', 'tanium', 'splunk', 'chronicle', 'gso', 'cmdb', 'crowdstrike']
-        for field in bool_fields:
-            primary_val = getattr(primary, field, False)
-            secondary_val = getattr(secondary, field, False)
-            setattr(merged, field, primary_val or secondary_val)
-        
-        merged.sources = primary.sources + secondary.sources
-        merged.intelligence = max(primary.intelligence, secondary.intelligence)
-        merged.quality = max(primary.quality, secondary.quality)
-        merged.confidence = (primary.confidence + secondary.confidence) / 2
-        
-        return merged
+        return discovery
