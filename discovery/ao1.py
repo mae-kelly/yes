@@ -35,6 +35,18 @@ class AO1VisibilityEngine:
     async def enhanced_classification(self, column_name: str, samples: List[str], 
                                     context: Dict[str, Any] = None) -> Dict[str, Any]:
         
+        if self._is_hostname_column(column_name, samples):
+            return {
+                'field_type': 'hostname',
+                'confidence': 0.95,
+                'metadata': {
+                    'ai_confidence': 0.95,
+                    'content_confidence': 0.95,
+                    'visibility_score': 1.0,
+                    'ao1_enhanced': True
+                }
+            }
+        
         context_text = self._create_context(column_name, samples, context)
         embeddings = self._text_to_embeddings(context_text)
         
@@ -62,6 +74,39 @@ class AO1VisibilityEngine:
             'confidence': final_confidence,
             'metadata': metadata
         }
+    
+    def _is_hostname_column(self, column_name: str, samples: List[str]) -> bool:
+        name_lower = column_name.lower()
+        hostname_indicators = ['hostname', 'host', 'computername', 'endpoint', 'device', 'machine', 'computer']
+        
+        for indicator in hostname_indicators:
+            if indicator in name_lower:
+                return True
+        
+        if not samples:
+            return False
+        
+        hostname_count = 0
+        for sample in samples[:20]:
+            if self._looks_like_hostname(sample):
+                hostname_count += 1
+        
+        return (hostname_count / min(len(samples), 20)) > 0.7
+    
+    def _looks_like_hostname(self, value: str) -> bool:
+        if not isinstance(value, str) or not (2 <= len(value) <= 253):
+            return False
+        
+        if any(char in value for char in ['@', '/', '\\', ' ', '\t', '\n']):
+            return False
+        
+        import re
+        patterns = [
+            r'^[a-zA-Z0-9][a-zA-Z0-9\-]*[a-zA-Z0-9]$',
+            r'^[a-zA-Z0-9]+$'
+        ]
+        
+        return any(re.match(pattern, value, re.IGNORECASE) for pattern in patterns)
     
     def _create_context(self, column_name: str, samples: List[str], context: Dict[str, Any] = None) -> str:
         parts = [f"Column: {column_name}"]
@@ -659,17 +704,16 @@ class AO1SuperEngine:
         assets = {}
         
         try:
-            select_fields = [f"UPPER(TRIM(`{hostname_col}`)) as hostname"]
+            select_fields = [f"CAST(`{hostname_col}` AS STRING) as hostname"]
             
             for field_type, column_name in mappings.items():
                 if field_type != 'hostname':
-                    select_fields.append(f"`{column_name}` as {field_type}")
+                    select_fields.append(f"CAST(`{column_name}` AS STRING) as {field_type}")
             
             query = f"""
             SELECT {', '.join(select_fields)}
             FROM `{table_path}`
             WHERE `{hostname_col}` IS NOT NULL
-            AND TRIM(`{hostname_col}`) != ''
             LIMIT 10000
             """
             

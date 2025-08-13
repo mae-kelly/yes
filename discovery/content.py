@@ -121,15 +121,23 @@ class ContentBasedEngine:
             for column_name, samples in column_samples.items():
                 self.stats['columns_analyzed'] += 1
                 
-                analysis = self.analyzer.analyze_column(column_name, samples)
-                
-                if analysis and analysis[0] == 'hostname' and analysis[1] > 0.5:
+                if self._is_hostname_column(column_name, samples):
                     hostname_columns.append({
                         'column': column_name,
-                        'confidence': analysis[1],
+                        'confidence': 0.95,
                         'samples': samples
                     })
                     self.stats['hostname_columns_found'] += 1
+                else:
+                    analysis = self.analyzer.analyze_column(column_name, samples)
+                    
+                    if analysis and analysis[0] == 'hostname' and analysis[1] > 0.5:
+                        hostname_columns.append({
+                            'column': column_name,
+                            'confidence': analysis[1],
+                            'samples': samples
+                        })
+                        self.stats['hostname_columns_found'] += 1
             
             if hostname_columns:
                 await self._extract_assets_from_table(client, table_path, hostname_columns, column_samples)
@@ -138,6 +146,38 @@ class ContentBasedEngine:
             
         except Exception as e:
             logger.warning(f"Content analysis failed for {table_path}: {e}")
+    
+    def _is_hostname_column(self, column_name: str, samples: List[str]) -> bool:
+        name_lower = column_name.lower()
+        hostname_indicators = ['hostname', 'host', 'computername', 'endpoint', 'device', 'machine', 'computer']
+        
+        for indicator in hostname_indicators:
+            if indicator in name_lower:
+                return True
+        
+        if not samples:
+            return False
+        
+        hostname_count = 0
+        for sample in samples[:20]:
+            if self._looks_like_hostname(sample):
+                hostname_count += 1
+        
+        return (hostname_count / min(len(samples), 20)) > 0.7
+    
+    def _looks_like_hostname(self, value: str) -> bool:
+        if not isinstance(value, str) or not (2 <= len(value) <= 253):
+            return False
+        
+        if any(char in value for char in ['@', '/', '\\', ' ', '\t', '\n']):
+            return False
+        
+        patterns = [
+            r'^[a-zA-Z0-9][a-zA-Z0-9\-]*[a-zA-Z0-9]$',
+            r'^[a-zA-Z0-9]+$'
+        ]
+        
+        return any(re.match(pattern, value, re.IGNORECASE) for pattern in patterns)
     
     async def _sample_table_columns(self, client, table_path: str, columns: List[str]) -> Dict[str, List[str]]:
         sample_query = f"""
@@ -175,7 +215,6 @@ class ContentBasedEngine:
                 SELECT *
                 FROM `{table_path}`
                 WHERE `{hostname_col}` IS NOT NULL
-                AND TRIM(`{hostname_col}`) != ''
                 LIMIT 50000
                 """
                 
@@ -260,7 +299,7 @@ class SmartColumnDetector:
     def _score_column_name(self, name: str) -> float:
         name_lower = name.lower()
         
-        exact_matches = ['hostname', 'host', 'computername', 'endpoint', 'device', 'machine']
+        exact_matches = ['hostname', 'host', 'computername', 'endpoint', 'device', 'server', 'machine']
         for match in exact_matches:
             if match in name_lower:
                 return min(1.0, len(match) / len(name_lower))
@@ -392,7 +431,6 @@ class UniversalTableScanner:
         SELECT *
         FROM `{table_path}`
         WHERE `{hostname_col}` IS NOT NULL
-        AND TRIM(`{hostname_col}`) != ''
         LIMIT 25000
         """
         

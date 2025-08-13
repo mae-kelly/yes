@@ -37,7 +37,6 @@ class SchemaAnalyzer:
             
             samples = await self._sample_table(client, table_path, columns)
             
-            hostname_found = False
             for column_name, column_samples in samples.items():
                 if self._is_hostname_column(column_name, column_samples):
                     mapping = FieldMapping(
@@ -47,22 +46,13 @@ class SchemaAnalyzer:
                         samples=column_samples[:10]
                     )
                     schema.mappings['hostname'] = mapping
-                    hostname_found = True
-                    break
-            
-            if not hostname_found:
-                return None
-            
-            for column_name, column_samples in samples.items():
-                if column_name == schema.mappings['hostname'].column:
-                    continue
-                
-                mapping = await self.intelligence.analyze_field_intelligently(
-                    column_name, column_samples, {'table_path': table_path}
-                )
-                
-                if mapping:
-                    schema.mappings[mapping.field_type] = mapping
+                else:
+                    mapping = await self.intelligence.analyze_field_intelligently(
+                        column_name, column_samples, {'table_path': table_path}
+                    )
+                    
+                    if mapping:
+                        schema.mappings[mapping.field_type] = mapping
             
             schema.quality = self._calculate_schema_quality(schema)
             
@@ -75,20 +65,21 @@ class SchemaAnalyzer:
     
     def _is_hostname_column(self, column_name: str, samples: List[str]) -> bool:
         name_lower = column_name.lower()
-        hostname_indicators = ['hostname', 'host', 'computer', 'endpoint', 'device', 'machine', 'servername', 'computername']
+        hostname_indicators = ['hostname', 'host', 'computername', 'endpoint', 'device', 'machine', 'computer']
         
-        if any(indicator in name_lower for indicator in hostname_indicators):
-            return True
+        for indicator in hostname_indicators:
+            if indicator in name_lower:
+                return True
         
-        if len(samples) < 5:
+        if not samples:
             return False
         
-        hostname_pattern_count = 0
+        hostname_count = 0
         for sample in samples[:20]:
             if self._looks_like_hostname(sample):
-                hostname_pattern_count += 1
+                hostname_count += 1
         
-        return hostname_pattern_count / min(len(samples), 20) > 0.3
+        return (hostname_count / min(len(samples), 20)) > 0.7
     
     def _looks_like_hostname(self, value: str) -> bool:
         if not isinstance(value, str) or not (2 <= len(value) <= 253):
@@ -107,7 +98,7 @@ class SchemaAnalyzer:
     
     async def _sample_table(self, client, table_path: str, columns: List[str]) -> Dict[str, List[str]]:
         sample_query = f"""
-        SELECT {', '.join([f'CAST(`{col}` AS STRING) as {col}' for col in columns[:50]])}
+        SELECT {', '.join([f'`{col}`' for col in columns[:50]])}
         FROM `{table_path}`
         WHERE RAND() < 0.05
         LIMIT 500
@@ -122,9 +113,7 @@ class SchemaAnalyzer:
                 column_samples = []
                 for row in results:
                     if col_idx < len(row) and row[col_idx] is not None:
-                        value = str(row[col_idx]).strip()
-                        if value and value.upper() not in ['NULL', 'NONE', 'UNKNOWN', '']:
-                            column_samples.append(value)
+                        column_samples.append(str(row[col_idx]))
                 samples[column_name] = column_samples[:20]
                 
         except Exception as e:
