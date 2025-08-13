@@ -8,6 +8,7 @@ from collections import defaultdict
 import statistics
 import hashlib
 import re
+from datetime import datetime
 
 class FieldClassifier(nn.Module):
     def __init__(self, input_dim=512, hidden_dim=256, num_classes=25):
@@ -84,7 +85,15 @@ class SemanticEmbedder:
             context_boost = self._analyze_context(context.lower())
             vector = vector * (1 + context_boost * 0.3)
         
-        vector = vector / (np.linalg.norm(vector) + 1e-8)
+        # Safe normalization
+        norm = np.linalg.norm(vector)
+        if norm > 0:
+            vector = vector / norm
+        else:
+            # Return a small random vector if all zeros
+            vector = np.random.random(8) * 0.01
+            vector = vector / np.linalg.norm(vector)
+        
         self.cache[cache_key] = vector
         return vector
     
@@ -107,7 +116,21 @@ class SemanticEmbedder:
         vec1 = self.embed_text(text1, context)
         vec2 = self.embed_text(text2, context)
         
-        similarity = np.dot(vec1, vec2) / (np.linalg.norm(vec1) * np.linalg.norm(vec2))
+        # Calculate norms
+        norm1 = np.linalg.norm(vec1)
+        norm2 = np.linalg.norm(vec2)
+        
+        # Handle zero vectors to avoid division by zero
+        if norm1 == 0.0 or norm2 == 0.0:
+            return 0.0
+        
+        # Calculate similarity safely
+        similarity = np.dot(vec1, vec2) / (norm1 * norm2)
+        
+        # Ensure result is valid and in range [0, 1]
+        if np.isnan(similarity) or np.isinf(similarity):
+            return 0.0
+        
         return max(0.0, min(1.0, similarity))
 
 class PatternRecognizer:
