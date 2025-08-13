@@ -11,7 +11,7 @@ from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.cluster import KMeans
 from sklearn.metrics.pairwise import cosine_similarity
 import networkx as nx
-from datetime import datetime  # Added missing import
+from datetime import datetime
 
 class AdvancedContentAnalyzer:
     def __init__(self):
@@ -53,7 +53,7 @@ class AdvancedContentAnalyzer:
             'mac_address': {
                 'strict': [
                     r'^([0-9A-Fa-f]{2}[:-]){5}[0-9A-Fa-f]{2}$',
-                    r'^([0-9A-Fa-f]{4}\.){2}[0-9A-Fa-f]{4}$'  # Fixed: Added closing $
+                    r'^([0-9A-Fa-f]{4}\.){2}[0-9A-Fa-f]{4}$'
                 ],
                 'semantic': [r'mac', r'ethernet', r'physical']
             }
@@ -605,8 +605,8 @@ class EnhancedValidationEngine:
             return False
         
         patterns = [
-            r'^[a-zA-Z0-9][a-zA-Z0-9\-]*[a-zA-Z0-9],
-            r'^[a-zA-Z0-9]+
+            r'^[a-zA-Z0-9][a-zA-Z0-9\-]*[a-zA-Z0-9]$',
+            r'^[a-zA-Z0-9]+$'
         ]
         
         return any(re.match(pattern, value, re.IGNORECASE) for pattern in patterns)
@@ -703,8 +703,8 @@ class EnhancedValidationEngine:
     def _validate_mac_advanced(self, values: List[str]) -> Dict[str, Any]:
         valid_count = 0
         patterns = [
-            r'^([0-9A-Fa-f]{2}[:-]){5}[0-9A-Fa-f]{2},  # Fixed: Added closing $
-            r'^([0-9A-Fa-f]{4}\.){2}[0-9A-Fa-f]{4}     # Fixed: Added closing $
+            r'^([0-9A-Fa-f]{2}[:-]){5}[0-9A-Fa-f]{2}$',
+            r'^([0-9A-Fa-f]{4}\.){2}[0-9A-Fa-f]{4}$'
         ]
         
         for value in values[:50]:
@@ -730,8 +730,177 @@ class EnhancedValidationEngine:
         if value.count('.') < 1:
             return False
         
-        pattern = r'^[a-zA-Z0-9][a-zA-Z0-9\-\.]*\.[a-zA-Z]{2,}  # Fixed: Added closing $
+        pattern = r'^[a-zA-Z0-9][a-zA-Z0-9\-\.]*\.[a-zA-Z]{2,}$'
         return bool(re.match(pattern, value, re.IGNORECASE))
 
-# Add ContentAnalyzer alias for compatibility
+class IntensiveDatasetBuilder:
+    def __init__(self):
+        self.proxy_manager = self._setup_proxy_tunnel()
+        self.tokenizer = self._load_tokenizer_with_proxy()
+        
+        if hasattr(self.tokenizer, 'pad_token') and self.tokenizer.pad_token is None:
+            self.tokenizer.pad_token = self.tokenizer.eos_token
+        
+        self.training_sources = [
+            'https://raw.githubusercontent.com/danielmiessler/SecLists/master/Discovery/Infrastructure/common-hostnames.txt',
+            'https://raw.githubusercontent.com/fuzzdb-project/fuzzdb/master/discovery/predictable-filepaths/filename-dirname-bruteforce/raft-large-words.txt'
+        ]
+        
+        self.cybersecurity_keywords = [
+            'server', 'workstation', 'desktop', 'laptop', 'endpoint', 'device', 'asset',
+            'infrastructure', 'network', 'security', 'firewall', 'router', 'switch',
+            'windows', 'linux', 'unix', 'macos', 'centos', 'ubuntu', 'redhat', 'debian',
+            'splunk', 'chronicle', 'crowdstrike', 'tanium', 'symantec', 'mcafee', 'carbon',
+            'production', 'staging', 'development', 'test', 'qa', 'sandbox', 'demo',
+            'datacenter', 'cloud', 'aws', 'azure', 'gcp', 'kubernetes', 'docker', 'vmware',
+            'critical', 'high', 'medium', 'low', 'finance', 'hr', 'legal', 'ops', 'it',
+            'edr', 'dlp', 'siem', 'soar', 'xdr', 'ndr', 'ueba', 'casb', 'ztna'
+        ]
+        
+        self.training_data = []
+        self.label_mappings = {}
+    
+    def _setup_proxy_tunnel(self):
+        try:
+            import os
+            import ssl
+            import urllib3
+            
+            ssl._create_default_https_context = ssl._create_unverified_context
+            urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+            
+            fiserv_proxy = "http://proxy-na.fiserv.one:8080"
+            
+            proxy_vars = {
+                'HTTP_PROXY': fiserv_proxy,
+                'HTTPS_PROXY': fiserv_proxy,
+                'http_proxy': fiserv_proxy,
+                'https_proxy': fiserv_proxy,
+                'ALL_PROXY': fiserv_proxy,
+                'all_proxy': fiserv_proxy
+            }
+            
+            for var, value in proxy_vars.items():
+                os.environ[var] = value
+            
+            os.environ['REQUESTS_CA_BUNDLE'] = ''
+            os.environ['CURL_CA_BUNDLE'] = ''
+            os.environ['SSL_CERT_FILE'] = ''
+            
+            logger.info("Fiserv proxy tunnel configured for model downloads")
+            
+            try:
+                import requests
+                session = requests.Session()
+                session.proxies = {'http': fiserv_proxy, 'https': fiserv_proxy}
+                session.verify = False
+                
+                response = session.get('https://httpbin.org/ip', timeout=5)
+                if response.status_code == 200:
+                    logger.info("Fiserv proxy tunnel connectivity verified")
+                    return {'http': fiserv_proxy, 'https': fiserv_proxy}
+                else:
+                    logger.warning(f"Fiserv proxy test returned {response.status_code}")
+                    
+            except Exception as e:
+                logger.debug(f"Fiserv proxy test failed: {e}")
+            
+            return {'http': fiserv_proxy, 'https': fiserv_proxy}
+            
+        except Exception as e:
+            logger.warning(f"Fiserv proxy setup failed: {e}")
+            return None
+    
+    def _load_tokenizer_with_proxy(self):
+        logger.info("Loading DialoGPT tokenizer via Fiserv proxy tunnel")
+        
+        try:
+            from transformers import AutoTokenizer
+            import requests
+            
+            fiserv_proxy = "http://proxy-na.fiserv.one:8080"
+            
+            logger.info("Using Fiserv proxy for model download...")
+            
+            import os
+            os.environ['HF_HUB_DISABLE_TELEMETRY'] = '1'
+            os.environ['HF_HUB_OFFLINE'] = '0'
+            os.environ['HTTP_PROXY'] = fiserv_proxy
+            os.environ['HTTPS_PROXY'] = fiserv_proxy
+            os.environ['http_proxy'] = fiserv_proxy
+            os.environ['https_proxy'] = fiserv_proxy
+            
+            tokenizer = AutoTokenizer.from_pretrained(
+                'microsoft/DialoGPT-medium',
+                use_auth_token=False,
+                trust_remote_code=False,
+                local_files_only=False,
+                use_fast=False,
+                cache_dir='./cache/transformers'
+            )
+            
+            logger.info("Successfully loaded DialoGPT tokenizer via Fiserv proxy")
+            return tokenizer
+                
+        except Exception as e:
+            logger.warning(f"DialoGPT via Fiserv proxy failed: {e}")
+            
+        try:
+            logger.info("Falling back to GPT2 tokenizer via Fiserv proxy")
+            from transformers import GPT2Tokenizer
+            
+            tokenizer = GPT2Tokenizer.from_pretrained(
+                'gpt2',
+                use_fast=False,
+                cache_dir='./cache/transformers'
+            )
+            
+            logger.info("Successfully loaded GPT2 tokenizer via Fiserv proxy")
+            return tokenizer
+            
+        except Exception as e:
+            logger.warning(f"GPT2 via Fiserv proxy failed: {e}")
+        
+        logger.info("Using minimal tokenizer fallback")
+        return self._create_minimal_tokenizer()
+    
+    def _create_minimal_tokenizer(self):
+        class MinimalTokenizer:
+            def __init__(self):
+                self.vocab = {}
+                self.pad_token = '<pad>'
+                self.eos_token = '<eos>'
+                self._build_vocab()
+            
+            def _build_vocab(self):
+                chars = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789.-_'
+                for i, char in enumerate(chars):
+                    self.vocab[char] = i
+                self.vocab[self.pad_token] = len(chars)
+                self.vocab[self.eos_token] = len(chars) + 1
+            
+            def __call__(self, text, truncation=True, padding='max_length', max_length=256, return_tensors='pt'):
+                import torch
+                
+                if isinstance(text, list):
+                    text = text[0] if text else ""
+                
+                tokens = [self.vocab.get(char, 0) for char in text[:max_length]]
+                
+                if padding == 'max_length':
+                    while len(tokens) < max_length:
+                        tokens.append(self.vocab[self.pad_token])
+                
+                attention_mask = [1 if token != self.vocab[self.pad_token] else 0 for token in tokens]
+                
+                if return_tensors == 'pt':
+                    return {
+                        'input_ids': torch.tensor([tokens]),
+                        'attention_mask': torch.tensor([attention_mask])
+                    }
+                
+                return {'input_ids': tokens, 'attention_mask': attention_mask}
+        
+        return MinimalTokenizer()
+
 ContentAnalyzer = AdvancedContentAnalyzer
