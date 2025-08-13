@@ -12,7 +12,7 @@ from datetime import datetime
 import signal
 import multiprocessing as mp
 
-from intelligent_discovery_engine import IntelligentUniversalCMDBBuilder
+from content_based_discovery import ContentBasedCMDBBuilder
 from cache_manager import IntelligentCacheManager
 from content_matcher import IntelligentContentMatcher
 from intelligence_engine import IntelligenceEngine
@@ -37,7 +37,7 @@ class IntelligentAO1System:
         self.content_matcher = IntelligentContentMatcher()
         self.intelligence_engine = IntelligenceEngine(config)
         
-        self.discovery_engine = IntelligentUniversalCMDBBuilder(
+        self.discovery_engine = ContentBasedCMDBBuilder(
             project_id=project_id,
             config=config,
             cache_manager=self.cache_manager,
@@ -71,7 +71,7 @@ class IntelligentAO1System:
         
         logger.info(f"Intelligence analysis complete. Strategy: {intelligence_result['strategy_recommendation']['strategy_name']}")
         
-        discovery_stats = await self.discovery_engine.execute_intelligent_discovery(intelligence_result)
+        discovery_stats = await self.discovery_engine.execute_content_based_discovery(intelligence_result)
         
         learning_result = await self.intelligence_engine.learn_from_discovery_results(
             discovery_stats, intelligence_result.get('predictions', {})
