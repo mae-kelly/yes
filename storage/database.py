@@ -1,31 +1,30 @@
-# storage/database.py - enhanced version
-
 import duckdb
 import json
 import logging
 from typing import Dict, List, Any
 from datetime import datetime
 from collections import defaultdict
-from core.types import Asset, Discovery
+from core.types import HyperAsset, QuantumDiscovery
 
 logger = logging.getLogger(__name__)
 
-class EnhancedDatabaseManager:
+class QuantumEnhancedDatabaseManager:
     def __init__(self, db_path: str):
         self.db_path = db_path
         self.conn = duckdb.connect(db_path)
-        self._setup_comprehensive_schema()
+        self._setup_quantum_comprehensive_schema()
     
-    def _setup_comprehensive_schema(self):
-        self.conn.execute("DROP TABLE IF EXISTS comprehensive_assets")
-        self.conn.execute("DROP TABLE IF EXISTS asset_identities")
-        self.conn.execute("DROP TABLE IF EXISTS asset_evidence")
-        self.conn.execute("DROP TABLE IF EXISTS coverage_metrics")
-        self.conn.execute("DROP TABLE IF EXISTS discovery_meta")
+    def _setup_quantum_comprehensive_schema(self):
+        self.conn.execute("DROP TABLE IF EXISTS quantum_comprehensive_assets")
+        self.conn.execute("DROP TABLE IF EXISTS quantum_asset_identities")
+        self.conn.execute("DROP TABLE IF EXISTS quantum_asset_evidence")
+        self.conn.execute("DROP TABLE IF EXISTS quantum_coverage_metrics")
+        self.conn.execute("DROP TABLE IF EXISTS quantum_discovery_meta")
         
         self.conn.execute("""
-            CREATE TABLE comprehensive_assets (
+            CREATE TABLE quantum_comprehensive_assets (
                 entity_id VARCHAR PRIMARY KEY,
+                primary_identity VARCHAR,
                 hostname VARCHAR,
                 ip_address VARCHAR,
                 fqdn VARCHAR,
@@ -60,10 +59,15 @@ class EnhancedDatabaseManager:
                 vpc_coverage BOOLEAN DEFAULT FALSE,
                 source_count INTEGER DEFAULT 0,
                 evidence_count INTEGER DEFAULT 0,
-                intelligence_score DOUBLE DEFAULT 0.0,
-                quality_score DOUBLE DEFAULT 0.0,
-                confidence_score DOUBLE DEFAULT 0.0,
+                intelligence_quotient DOUBLE DEFAULT 0.0,
+                quality_coefficient DOUBLE DEFAULT 0.0,
+                confidence_index DOUBLE DEFAULT 0.0,
+                visibility_score DOUBLE DEFAULT 0.0,
+                entropy_measure DOUBLE DEFAULT 0.0,
+                quantum_coherence DOUBLE DEFAULT 0.0,
                 entity_resolved BOOLEAN DEFAULT TRUE,
+                quantum_enhanced BOOLEAN DEFAULT TRUE,
+                emergence_detected BOOLEAN DEFAULT FALSE,
                 first_seen TIMESTAMP DEFAULT NOW(),
                 last_seen TIMESTAMP DEFAULT NOW(),
                 created_at TIMESTAMP DEFAULT NOW()
@@ -71,7 +75,7 @@ class EnhancedDatabaseManager:
         """)
         
         self.conn.execute("""
-            CREATE TABLE asset_identities (
+            CREATE TABLE quantum_asset_identities (
                 id VARCHAR PRIMARY KEY,
                 entity_id VARCHAR,
                 identifier_type VARCHAR,
@@ -80,13 +84,14 @@ class EnhancedDatabaseManager:
                 confidence DOUBLE,
                 source_table VARCHAR,
                 source_system VARCHAR,
+                quantum_signature VARCHAR,
                 created_at TIMESTAMP DEFAULT NOW(),
-                FOREIGN KEY (entity_id) REFERENCES comprehensive_assets(entity_id)
+                FOREIGN KEY (entity_id) REFERENCES quantum_comprehensive_assets(entity_id)
             )
         """)
         
         self.conn.execute("""
-            CREATE TABLE asset_evidence (
+            CREATE TABLE quantum_asset_evidence (
                 id VARCHAR PRIMARY KEY,
                 entity_id VARCHAR,
                 source_table VARCHAR,
@@ -96,88 +101,103 @@ class EnhancedDatabaseManager:
                 field_value VARCHAR,
                 confidence DOUBLE,
                 reliability_score DOUBLE,
+                quantum_coherence_score DOUBLE,
+                emergence_probability DOUBLE,
                 timestamp TIMESTAMP,
                 created_at TIMESTAMP DEFAULT NOW(),
-                FOREIGN KEY (entity_id) REFERENCES comprehensive_assets(entity_id)
+                FOREIGN KEY (entity_id) REFERENCES quantum_comprehensive_assets(entity_id)
             )
         """)
         
         self.conn.execute("""
-            CREATE TABLE coverage_metrics (
+            CREATE TABLE quantum_coverage_metrics (
                 id VARCHAR PRIMARY KEY,
                 entity_id VARCHAR,
                 metric_type VARCHAR,
                 metric_name VARCHAR,
                 metric_value DOUBLE,
                 calculation_method VARCHAR,
+                quantum_enhanced BOOLEAN DEFAULT TRUE,
                 created_at TIMESTAMP DEFAULT NOW(),
-                FOREIGN KEY (entity_id) REFERENCES comprehensive_assets(entity_id)
+                FOREIGN KEY (entity_id) REFERENCES quantum_comprehensive_assets(entity_id)
             )
         """)
         
         self.conn.execute("""
-            CREATE TABLE discovery_meta (
+            CREATE TABLE quantum_discovery_meta (
                 id VARCHAR PRIMARY KEY,
                 discovery_type VARCHAR,
                 discovery_mode VARCHAR,
-                entity_resolution_applied BOOLEAN DEFAULT FALSE,
-                total_assets INTEGER,
+                quantum_entity_resolution_applied BOOLEAN DEFAULT FALSE,
+                total_hyper_assets INTEGER,
                 total_evidence_pieces INTEGER,
                 processing_time_seconds DOUBLE,
-                stats JSON,
-                insights JSON,
-                recommendations JSON,
+                quantum_cells_analyzed INTEGER,
+                quantum_emergence_events INTEGER,
+                intelligence_metrics JSON,
+                emergence_insights JSON,
+                strategic_recommendations JSON,
+                quantum_coherence DOUBLE,
                 created_at TIMESTAMP DEFAULT NOW()
             )
         """)
         
         self.conn.commit()
-        logger.info(f"Enhanced database schema initialized: {self.db_path}")
+        logger.info(f"Quantum enhanced database schema initialized: {self.db_path}")
     
-    def store_comprehensive_discovery(self, discovery: Discovery) -> int:
+    def store_comprehensive_discovery(self, quantum_discovery: QuantumDiscovery) -> int:
         stored_count = 0
-        discovery_id = f"comprehensive_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+        discovery_id = f"quantum_comprehensive_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
         
-        for asset in discovery.assets.values():
+        for hyper_asset in quantum_discovery.hyper_assets.values():
             try:
-                self._store_comprehensive_asset(asset)
+                self._store_quantum_comprehensive_asset(hyper_asset)
                 stored_count += 1
             except Exception as e:
-                logger.error(f"Failed to store comprehensive asset {asset.id}: {e}")
+                logger.error(f"Failed to store quantum comprehensive asset {hyper_asset.id}: {e}")
         
         try:
-            self._store_comprehensive_meta(discovery, discovery_id)
+            self._store_quantum_comprehensive_meta(quantum_discovery, discovery_id)
         except Exception as e:
-            logger.error(f"Failed to store comprehensive discovery metadata: {e}")
+            logger.error(f"Failed to store quantum comprehensive discovery metadata: {e}")
         
         self.conn.commit()
-        logger.info(f"Stored {stored_count} comprehensive assets to database")
+        logger.info(f"Stored {stored_count} quantum comprehensive assets to database")
         return stored_count
     
-    def _store_comprehensive_asset(self, asset: Asset):
+    def _store_quantum_comprehensive_asset(self, hyper_asset: HyperAsset):
         values = [
-            asset.id, asset.hostname, asset.ip, asset.fqdn, getattr(asset, 'mac', ''),
-            asset.infra_type, asset.system_class, getattr(asset, 'application_type', ''),
-            asset.region, asset.country, asset.datacenter, asset.cloud_region,
-            asset.business_unit, asset.cio, getattr(asset, 'apm', ''), asset.app_class,
-            asset.edr, asset.dlp, asset.tanium, asset.splunk, asset.chronicle,
-            getattr(asset, 'gso', False), asset.cmdb, asset.crowdstrike,
-            json.dumps(getattr(asset, 'network_log_types', [])),
-            json.dumps(getattr(asset, 'endpoint_log_types', [])),
-            json.dumps(getattr(asset, 'cloud_log_types', [])),
-            json.dumps(getattr(asset, 'application_log_types', [])),
-            json.dumps(getattr(asset, 'identity_log_types', [])),
-            getattr(asset, 'url_fqdn_coverage', False),
-            getattr(asset, 'public_ip_coverage', False),
-            getattr(asset, 'network_zones', ''),
-            getattr(asset, 'vpc_coverage', False),
-            asset.sources, getattr(asset, 'evidence_count', 0),
-            asset.intelligence, asset.quality, asset.confidence, True
+            hyper_asset.id, hyper_asset.primary_identity, hyper_asset.hostname, 
+            hyper_asset.ip, hyper_asset.fqdn, getattr(hyper_asset, 'mac', ''),
+            hyper_asset.infrastructure_type, hyper_asset.system_classification, 
+            getattr(hyper_asset, 'application_type', ''),
+            hyper_asset.region, getattr(hyper_asset, 'country', ''), 
+            hyper_asset.datacenter, hyper_asset.cloud_region,
+            hyper_asset.business_unit, hyper_asset.cio, 
+            getattr(hyper_asset, 'apm', ''), hyper_asset.application_class,
+            hyper_asset.edr_coverage, hyper_asset.dlp_coverage, hyper_asset.tanium_coverage, 
+            hyper_asset.splunk_coverage, hyper_asset.chronicle_coverage,
+            getattr(hyper_asset, 'gso_coverage', False), hyper_asset.cmdb_visibility, 
+            hyper_asset.crowdstrike_coverage,
+            json.dumps(getattr(hyper_asset, 'network_log_types', [])),
+            json.dumps(getattr(hyper_asset, 'endpoint_log_types', [])),
+            json.dumps(getattr(hyper_asset, 'cloud_log_types', [])),
+            json.dumps(getattr(hyper_asset, 'application_log_types', [])),
+            json.dumps(getattr(hyper_asset, 'identity_log_types', [])),
+            getattr(hyper_asset, 'url_fqdn_coverage', False),
+            getattr(hyper_asset, 'public_ip_coverage', False),
+            ','.join(hyper_asset.network_zones) if hyper_asset.network_zones else '',
+            getattr(hyper_asset, 'vpc_coverage', False),
+            len(hyper_asset.source_provenance), len(hyper_asset.evidence_chains),
+            hyper_asset.intelligence_quotient, hyper_asset.quality_coefficient, 
+            hyper_asset.confidence_index, hyper_asset.visibility_score, 
+            hyper_asset.entropy_measure, hyper_asset.quantum_state.get('coherence', 0.0),
+            True, True, len(hyper_asset.emergence_patterns) > 0
         ]
         
         self.conn.execute("""
-            INSERT INTO comprehensive_assets (
-                entity_id, hostname, ip_address, fqdn, mac_address,
+            INSERT INTO quantum_comprehensive_assets (
+                entity_id, primary_identity, hostname, ip_address, fqdn, mac_address,
                 infrastructure_type, system_classification, application_type,
                 global_region, country, datacenter, cloud_region,
                 business_unit, cio, apm, application_class,
@@ -186,29 +206,38 @@ class EnhancedDatabaseManager:
                 network_log_types, endpoint_log_types, cloud_log_types,
                 application_log_types, identity_log_types, url_fqdn_coverage,
                 public_ip_coverage, network_zones, vpc_coverage,
-                source_count, evidence_count, intelligence_score,
-                quality_score, confidence_score, entity_resolved
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                source_count, evidence_count, intelligence_quotient,
+                quality_coefficient, confidence_index, visibility_score, 
+                entropy_measure, quantum_coherence, entity_resolved, 
+                quantum_enhanced, emergence_detected
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, values)
     
-    def _store_comprehensive_meta(self, discovery: Discovery, discovery_id: str):
+    def _store_quantum_comprehensive_meta(self, quantum_discovery: QuantumDiscovery, discovery_id: str):
         self.conn.execute("""
-            INSERT INTO discovery_meta (
-                id, discovery_type, discovery_mode, entity_resolution_applied,
-                total_assets, processing_time_seconds, stats, insights, recommendations
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO quantum_discovery_meta (
+                id, discovery_type, discovery_mode, quantum_entity_resolution_applied,
+                total_hyper_assets, processing_time_seconds, quantum_cells_analyzed,
+                quantum_emergence_events, intelligence_metrics, emergence_insights, strategic_recommendations,
+                quantum_coherence
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, [
-            discovery_id, "comprehensive", "entity_resolution", True,
-            len(discovery.assets), discovery.stats.get('processing_time_seconds', 0),
-            json.dumps(discovery.stats), json.dumps([dict(i) for i in discovery.insights]),
-            json.dumps(discovery.recommendations)
+            discovery_id, "quantum_comprehensive", "quantum_entity_resolution", True,
+            len(quantum_discovery.hyper_assets), 
+            quantum_discovery.intelligence_metrics.get('processing_time_seconds', 0),
+            quantum_discovery.intelligence_metrics.get('total_cells_analyzed', 0),
+            quantum_discovery.intelligence_metrics.get('quantum_emergence_events', 0),
+            json.dumps(quantum_discovery.intelligence_metrics), 
+            json.dumps([dict(i) for i in quantum_discovery.emergence_insights]),
+            json.dumps(quantum_discovery.strategic_recommendations),
+            quantum_discovery.quantum_coherence
         ])
     
-    def get_comprehensive_visibility_queries(self) -> Dict[str, str]:
+    def get_quantum_comprehensive_visibility_queries(self) -> Dict[str, str]:
         return {
-            'comprehensive_summary': """
+            'quantum_comprehensive_summary': """
                 SELECT 
-                    COUNT(*) as total_assets,
+                    COUNT(*) as total_hyper_assets,
                     SUM(CASE WHEN cmdb_visibility THEN 1 ELSE 0 END) as cmdb_coverage,
                     SUM(CASE WHEN splunk_coverage THEN 1 ELSE 0 END) as splunk_coverage,
                     SUM(CASE WHEN chronicle_coverage THEN 1 ELSE 0 END) as chronicle_coverage,
@@ -217,142 +246,69 @@ class EnhancedDatabaseManager:
                     SUM(CASE WHEN dlp_coverage THEN 1 ELSE 0 END) as dlp_coverage,
                     SUM(CASE WHEN tanium_coverage THEN 1 ELSE 0 END) as tanium_coverage,
                     SUM(CASE WHEN source_count > 1 THEN 1 ELSE 0 END) as multi_source,
-                    ROUND(AVG(intelligence_score), 3) as avg_intelligence,
-                    ROUND(AVG(quality_score), 3) as avg_quality,
-                    ROUND(AVG(confidence_score), 3) as avg_confidence
-                FROM comprehensive_assets
+                    SUM(CASE WHEN quantum_enhanced THEN 1 ELSE 0 END) as quantum_enhanced,
+                    SUM(CASE WHEN emergence_detected THEN 1 ELSE 0 END) as emergence_detected,
+                    ROUND(AVG(intelligence_quotient), 3) as avg_intelligence_quotient,
+                    ROUND(AVG(quality_coefficient), 3) as avg_quality_coefficient,
+                    ROUND(AVG(confidence_index), 3) as avg_confidence_index,
+                    ROUND(AVG(visibility_score), 3) as avg_visibility_score,
+                    ROUND(AVG(entropy_measure), 3) as avg_entropy_measure,
+                    ROUND(AVG(quantum_coherence), 3) as avg_quantum_coherence
+                FROM quantum_comprehensive_assets
             """,
             
-            'infrastructure_visibility': """
+            'quantum_infrastructure_visibility': """
                 SELECT 
                     infrastructure_type,
                     COUNT(*) as asset_count,
-                    ROUND(100.0 * COUNT(*) / (SELECT COUNT(*) FROM comprehensive_assets), 2) as percentage,
+                    ROUND(100.0 * COUNT(*) / (SELECT COUNT(*) FROM quantum_comprehensive_assets), 2) as percentage,
                     SUM(CASE WHEN cmdb_visibility THEN 1 ELSE 0 END) as cmdb_covered,
                     SUM(CASE WHEN edr_coverage THEN 1 ELSE 0 END) as edr_covered,
-                    ROUND(AVG(intelligence_score), 3) as avg_intelligence
-                FROM comprehensive_assets
+                    SUM(CASE WHEN quantum_enhanced THEN 1 ELSE 0 END) as quantum_enhanced_count,
+                    ROUND(AVG(intelligence_quotient), 3) as avg_intelligence_quotient,
+                    ROUND(AVG(visibility_score), 3) as avg_visibility_score
+                FROM quantum_comprehensive_assets
                 WHERE infrastructure_type IS NOT NULL AND infrastructure_type != ''
                 GROUP BY infrastructure_type
                 ORDER BY asset_count DESC
             """,
             
-            'regional_visibility': """
+            'quantum_emergence_analysis': """
                 SELECT 
-                    global_region,
-                    COUNT(*) as asset_count,
-                    SUM(CASE WHEN cmdb_visibility THEN 1 ELSE 0 END) as cmdb_covered,
-                    SUM(CASE WHEN splunk_coverage THEN 1 ELSE 0 END) as splunk_covered,
-                    SUM(CASE WHEN chronicle_coverage THEN 1 ELSE 0 END) as chronicle_covered,
-                    ROUND(100.0 * SUM(CASE WHEN cmdb_visibility THEN 1 ELSE 0 END) / COUNT(*), 2) as cmdb_coverage_pct
-                FROM comprehensive_assets
-                WHERE global_region IS NOT NULL AND global_region != ''
-                GROUP BY global_region
-                ORDER BY asset_count DESC
+                    COUNT(*) as total_assets,
+                    SUM(CASE WHEN emergence_detected THEN 1 ELSE 0 END) as emergence_detected_count,
+                    ROUND(100.0 * SUM(CASE WHEN emergence_detected THEN 1 ELSE 0 END) / COUNT(*), 2) as emergence_percentage,
+                    AVG(CASE WHEN emergence_detected THEN intelligence_quotient ELSE NULL END) as avg_emergence_intelligence,
+                    AVG(CASE WHEN emergence_detected THEN visibility_score ELSE NULL END) as avg_emergence_visibility,
+                    AVG(CASE WHEN emergence_detected THEN quantum_coherence ELSE NULL END) as avg_emergence_coherence
+                FROM quantum_comprehensive_assets
             """,
             
-            'business_unit_visibility': """
-                SELECT 
-                    business_unit,
-                    COUNT(*) as asset_count,
-                    SUM(CASE WHEN edr_coverage THEN 1 ELSE 0 END) as edr_covered,
-                    SUM(CASE WHEN dlp_coverage THEN 1 ELSE 0 END) as dlp_covered,
-                    SUM(CASE WHEN tanium_coverage THEN 1 ELSE 0 END) as tanium_covered,
-                    ROUND(100.0 * SUM(CASE WHEN edr_coverage OR dlp_coverage OR tanium_coverage THEN 1 ELSE 0 END) / COUNT(*), 2) as security_coverage_pct
-                FROM comprehensive_assets
-                WHERE business_unit IS NOT NULL AND business_unit != ''
-                GROUP BY business_unit
-                ORDER BY asset_count DESC
-            """,
-            
-            'system_classification_visibility': """
-                SELECT 
-                    system_classification,
-                    COUNT(*) as asset_count,
-                    SUM(CASE WHEN cmdb_visibility THEN 1 ELSE 0 END) as cmdb_covered,
-                    SUM(CASE WHEN edr_coverage THEN 1 ELSE 0 END) as edr_covered,
-                    ROUND(AVG(quality_score), 3) as avg_quality
-                FROM comprehensive_assets
-                WHERE system_classification IS NOT NULL AND system_classification != ''
-                GROUP BY system_classification
-                ORDER BY asset_count DESC
-            """,
-            
-            'logging_platform_coverage': """
-                SELECT 
-                    'Splunk' as platform,
-                    SUM(CASE WHEN splunk_coverage THEN 1 ELSE 0 END) as covered_assets,
-                    ROUND(100.0 * SUM(CASE WHEN splunk_coverage THEN 1 ELSE 0 END) / COUNT(*), 2) as coverage_percentage
-                FROM comprehensive_assets
-                UNION ALL
-                SELECT 
-                    'Chronicle' as platform,
-                    SUM(CASE WHEN chronicle_coverage THEN 1 ELSE 0 END) as covered_assets,
-                    ROUND(100.0 * SUM(CASE WHEN chronicle_coverage THEN 1 ELSE 0 END) / COUNT(*), 2) as coverage_percentage
-                FROM comprehensive_assets
-                UNION ALL
-                SELECT 
-                    'GSO' as platform,
-                    SUM(CASE WHEN gso_coverage THEN 1 ELSE 0 END) as covered_assets,
-                    ROUND(100.0 * SUM(CASE WHEN gso_coverage THEN 1 ELSE 0 END) / COUNT(*), 2) as coverage_percentage
-                FROM comprehensive_assets
-                ORDER BY coverage_percentage DESC
-            """,
-            
-            'security_control_coverage': """
-                SELECT 
-                    'EDR' as control_type,
-                    SUM(CASE WHEN edr_coverage THEN 1 ELSE 0 END) as covered_assets,
-                    ROUND(100.0 * SUM(CASE WHEN edr_coverage THEN 1 ELSE 0 END) / COUNT(*), 2) as coverage_percentage
-                FROM comprehensive_assets
-                UNION ALL
-                SELECT 
-                    'DLP' as control_type,
-                    SUM(CASE WHEN dlp_coverage THEN 1 ELSE 0 END) as covered_assets,
-                    ROUND(100.0 * SUM(CASE WHEN dlp_coverage THEN 1 ELSE 0 END) / COUNT(*), 2) as coverage_percentage
-                FROM comprehensive_assets
-                UNION ALL
-                SELECT 
-                    'Tanium' as control_type,
-                    SUM(CASE WHEN tanium_coverage THEN 1 ELSE 0 END) as covered_assets,
-                    ROUND(100.0 * SUM(CASE WHEN tanium_coverage THEN 1 ELSE 0 END) / COUNT(*), 2) as coverage_percentage
-                FROM comprehensive_assets
-                ORDER BY coverage_percentage DESC
-            """,
-            
-            'visibility_gaps': """
-                SELECT entity_id, hostname, infrastructure_type, global_region, business_unit,
-                       source_count, intelligence_score, quality_score,
-                       cmdb_visibility, edr_coverage, dlp_coverage, tanium_coverage,
-                       splunk_coverage, chronicle_coverage
-                FROM comprehensive_assets 
-                WHERE NOT cmdb_visibility 
-                   OR (NOT edr_coverage AND NOT dlp_coverage AND NOT tanium_coverage)
-                   OR source_count = 1
-                ORDER BY quality_score DESC, intelligence_score DESC
+            'quantum_high_value_assets': """
+                SELECT entity_id, primary_identity, hostname, infrastructure_type, system_classification,
+                       global_region, business_unit, source_count, evidence_count,
+                       intelligence_quotient, quality_coefficient, confidence_index, visibility_score,
+                       quantum_coherence, emergence_detected,
+                       cmdb_visibility, edr_coverage, splunk_coverage, chronicle_coverage
+                FROM quantum_comprehensive_assets 
+                WHERE quality_coefficient > 0.85 AND intelligence_quotient > 0.8 AND quantum_enhanced = TRUE
+                ORDER BY quality_coefficient DESC, intelligence_quotient DESC, visibility_score DESC
                 LIMIT 100
             """,
             
-            'high_value_assets': """
-                SELECT entity_id, hostname, infrastructure_type, system_classification,
-                       global_region, business_unit, source_count, evidence_count,
-                       intelligence_score, quality_score, confidence_score,
-                       cmdb_visibility, edr_coverage, splunk_coverage, chronicle_coverage
-                FROM comprehensive_assets 
-                WHERE quality_score > 0.8 AND intelligence_score > 0.7
-                ORDER BY quality_score DESC, intelligence_score DESC, source_count DESC
-                LIMIT 50
-            """,
-            
-            'entity_resolution_stats': """
-                SELECT 
-                    COUNT(*) as total_entities,
-                    SUM(CASE WHEN entity_resolved THEN 1 ELSE 0 END) as resolved_entities,
-                    AVG(source_count) as avg_sources_per_entity,
-                    AVG(evidence_count) as avg_evidence_per_entity,
-                    MAX(source_count) as max_sources_per_entity,
-                    SUM(CASE WHEN source_count > 1 THEN 1 ELSE 0 END) as multi_source_entities
-                FROM comprehensive_assets
+            'quantum_visibility_gaps': """
+                SELECT entity_id, primary_identity, hostname, infrastructure_type, global_region, business_unit,
+                       source_count, intelligence_quotient, quality_coefficient, visibility_score,
+                       cmdb_visibility, edr_coverage, dlp_coverage, tanium_coverage,
+                       splunk_coverage, chronicle_coverage, quantum_enhanced, emergence_detected
+                FROM quantum_comprehensive_assets 
+                WHERE (NOT cmdb_visibility 
+                   OR (NOT edr_coverage AND NOT dlp_coverage AND NOT tanium_coverage)
+                   OR source_count = 1
+                   OR visibility_score < 0.5)
+                   AND quantum_enhanced = TRUE
+                ORDER BY quality_coefficient DESC, intelligence_quotient DESC
+                LIMIT 200
             """
         }
     
@@ -364,11 +320,11 @@ class EnhancedDatabaseManager:
             
             return [dict(zip(columns, row)) for row in rows]
         except Exception as e:
-            logger.error(f"Query execution failed: {e}")
+            logger.error(f"Quantum query execution failed: {e}")
             return []
     
-    def get_comprehensive_coverage_report(self) -> Dict[str, Any]:
-        queries = self.get_comprehensive_visibility_queries()
+    def get_quantum_comprehensive_coverage_report(self) -> Dict[str, Any]:
+        queries = self.get_quantum_comprehensive_visibility_queries()
         report = {}
         
         for query_name, query_sql in queries.items():
@@ -376,7 +332,7 @@ class EnhancedDatabaseManager:
                 result = self.execute_query(query_sql)
                 report[query_name] = result
             except Exception as e:
-                logger.error(f"Failed to execute {query_name}: {e}")
+                logger.error(f"Failed to execute quantum {query_name}: {e}")
                 report[query_name] = []
         
         return report
@@ -384,7 +340,7 @@ class EnhancedDatabaseManager:
     def close(self):
         if self.conn:
             self.conn.close()
-            logger.info("Enhanced database connection closed")
+            logger.info("Quantum enhanced database connection closed")
 
 class DatabaseManager:
     def __init__(self, db_path: str):
@@ -444,168 +400,6 @@ class DatabaseManager:
         self.conn.commit()
         logger.info(f"Database schema initialized: {self.db_path}")
     
-    def store_discovery(self, discovery: Discovery, discovery_type: str = "intelligent") -> int:
-        stored_count = 0
-        
-        for asset in discovery.assets.values():
-            try:
-                self._store_asset(asset)
-                stored_count += 1
-            except Exception as e:
-                logger.error(f"Failed to store asset {asset.id}: {e}")
-        
-        try:
-            self._store_meta(discovery, discovery_type)
-        except Exception as e:
-            logger.error(f"Failed to store discovery metadata: {e}")
-        
-        self.conn.commit()
-        logger.info(f"Stored {stored_count} assets to database")
-        return stored_count
-    
-    def _store_asset(self, asset: Asset):
-        values = [
-            asset.id, asset.hostname, asset.ip, asset.fqdn, asset.mac,
-            asset.infra_type, asset.system_class, asset.region, asset.country,
-            asset.datacenter, asset.cloud_region, asset.business_unit,
-            asset.cio, asset.app_class, asset.edr, asset.dlp, asset.tanium,
-            asset.splunk, asset.chronicle, asset.gso, asset.cmdb, asset.crowdstrike,
-            asset.sources, asset.intelligence, asset.quality, asset.confidence,
-            json.dumps(asset.raw), json.dumps(asset.meta)
-        ]
-        
-        self.conn.execute("""
-            INSERT INTO assets (
-                id, hostname, ip, fqdn, mac, infra_type, system_class, region,
-                country, datacenter, cloud_region, business_unit, cio, app_class,
-                edr, dlp, tanium, splunk, chronicle, gso, cmdb, crowdstrike,
-                sources, intelligence, quality, confidence, raw_data, metadata
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """, values)
-    
-    def _store_meta(self, discovery: Discovery, discovery_type: str):
-        meta_id = f"discovery_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
-        
-        self.conn.execute("""
-            INSERT INTO discovery_meta (id, discovery_type, stats, insights, recommendations)
-            VALUES (?, ?, ?, ?, ?)
-        """, [
-            meta_id,
-            discovery_type,
-            json.dumps(discovery.stats),
-            json.dumps([dict(insight) for insight in discovery.insights]),
-            json.dumps(discovery.recommendations)
-        ])
-    
-    def get_visibility_queries(self) -> Dict[str, str]:
-        return {
-            'asset_summary': """
-                SELECT 
-                    COUNT(*) as total_assets,
-                    SUM(CASE WHEN cmdb THEN 1 ELSE 0 END) as cmdb_coverage,
-                    SUM(CASE WHEN splunk THEN 1 ELSE 0 END) as splunk_coverage,
-                    SUM(CASE WHEN chronicle THEN 1 ELSE 0 END) as chronicle_coverage,
-                    SUM(CASE WHEN crowdstrike THEN 1 ELSE 0 END) as crowdstrike_coverage,
-                    SUM(CASE WHEN sources > 1 THEN 1 ELSE 0 END) as multi_source,
-                    ROUND(AVG(intelligence), 3) as avg_intelligence,
-                    ROUND(AVG(quality), 3) as avg_quality,
-                    ROUND(AVG(confidence), 3) as avg_confidence
-                FROM assets
-            """,
-            
-            'coverage_percentages': """
-                SELECT 
-                    ROUND(100.0 * SUM(CASE WHEN cmdb THEN 1 ELSE 0 END) / COUNT(*), 2) as cmdb_pct,
-                    ROUND(100.0 * SUM(CASE WHEN splunk THEN 1 ELSE 0 END) / COUNT(*), 2) as splunk_pct,
-                    ROUND(100.0 * SUM(CASE WHEN chronicle THEN 1 ELSE 0 END) / COUNT(*), 2) as chronicle_pct,
-                    ROUND(100.0 * SUM(CASE WHEN crowdstrike THEN 1 ELSE 0 END) / COUNT(*), 2) as crowdstrike_pct
-                FROM assets
-            """,
-            
-            'high_quality_assets': """
-                SELECT hostname, infra_type, system_class, sources, intelligence, quality, confidence
-                FROM assets 
-                WHERE quality > 0.8 
-                ORDER BY quality DESC, intelligence DESC
-                LIMIT 50
-            """,
-            
-            'coverage_gaps': """
-                SELECT hostname, infra_type, sources, intelligence, quality
-                FROM assets 
-                WHERE NOT cmdb AND sources = 1 AND quality > 0.7
-                ORDER BY quality DESC
-                LIMIT 50
-            """,
-            
-            'multi_source_assets': """
-                SELECT hostname, sources, 
-                       CASE WHEN cmdb THEN 'CMDB ' ELSE '' END ||
-                       CASE WHEN splunk THEN 'Splunk ' ELSE '' END ||
-                       CASE WHEN chronicle THEN 'Chronicle ' ELSE '' END ||
-                       CASE WHEN crowdstrike THEN 'CrowdStrike' ELSE '' END as source_list,
-                       intelligence, quality, confidence
-                FROM assets 
-                WHERE sources >= 2
-                ORDER BY sources DESC, intelligence DESC
-                LIMIT 100
-            """,
-            
-            'asset_distribution': """
-                SELECT 
-                    infra_type,
-                    COUNT(*) as count,
-                    ROUND(100.0 * COUNT(*) / (SELECT COUNT(*) FROM assets), 2) as percentage,
-                    ROUND(AVG(intelligence), 3) as avg_intelligence
-                FROM assets
-                WHERE infra_type IS NOT NULL AND infra_type != ''
-                GROUP BY infra_type
-                ORDER BY count DESC
-            """,
-            
-            'region_distribution': """
-                SELECT 
-                    region,
-                    COUNT(*) as count,
-                    ROUND(AVG(intelligence), 3) as avg_intelligence,
-                    SUM(CASE WHEN cmdb THEN 1 ELSE 0 END) as cmdb_count
-                FROM assets
-                WHERE region IS NOT NULL AND region != ''
-                GROUP BY region
-                ORDER BY count DESC
-            """,
-            
-            'security_coverage': """
-                SELECT 
-                    COUNT(*) as total_assets,
-                    SUM(CASE WHEN edr THEN 1 ELSE 0 END) as edr_coverage,
-                    SUM(CASE WHEN dlp THEN 1 ELSE 0 END) as dlp_coverage,
-                    SUM(CASE WHEN tanium THEN 1 ELSE 0 END) as tanium_coverage,
-                    ROUND(100.0 * SUM(CASE WHEN edr OR dlp OR tanium THEN 1 ELSE 0 END) / COUNT(*), 2) as any_security_pct
-                FROM assets
-            """
-        }
-    
-    def execute_query(self, query: str) -> List[Dict[str, Any]]:
-        try:
-            cursor = self.conn.execute(query)
-            columns = [desc[0] for desc in cursor.description]
-            rows = cursor.fetchall()
-            
-            return [dict(zip(columns, row)) for row in rows]
-        except Exception as e:
-            logger.error(f"Query execution failed: {e}")
-            return []
-    
-    def get_asset_counts(self) -> Dict[str, int]:
-        summary_query = self.get_visibility_queries()['asset_summary']
-        result = self.execute_query(summary_query)
-        
-        if result:
-            return result[0]
-        else:
-            return {}
-    
     def close(self):
         if self.conn:
             self.conn.close()
@@ -664,3 +458,5 @@ class ContentDatabase:
     def close(self):
         if self.conn:
             self.conn.close()
+
+EnhancedDatabaseManager = QuantumEnhancedDatabaseManager
