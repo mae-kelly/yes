@@ -89,20 +89,35 @@ class QuantumEnhancedDatabaseManager:
         stored_count = 0
         discovery_id = f"quantum_comprehensive_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
         
-        for hyper_asset in quantum_discovery.hyper_assets.values():
+        logger.info(f"💾 STORING COMPREHENSIVE DISCOVERY TO DATABASE")
+        logger.info(f"📊 ASSETS TO STORE: {len(quantum_discovery.hyper_assets):,}")
+        
+        for asset_id, hyper_asset in quantum_discovery.hyper_assets.items():
             try:
                 self._store_quantum_comprehensive_asset(hyper_asset)
                 stored_count += 1
+                
+                if stored_count % 1000 == 0:
+                    logger.info(f"📈 STORED {stored_count:,} ASSETS SO FAR...")
+                    
             except Exception as e:
-                logger.error(f"Failed to store quantum comprehensive asset {hyper_asset.id}: {e}")
+                logger.error(f"❌ Failed to store asset {hyper_asset.id}: {e}")
+                logger.error(f"   Asset hostname: {hyper_asset.hostname}")
+                logger.error(f"   Asset sources: {hyper_asset.source_provenance}")
         
         try:
             self._store_quantum_comprehensive_meta(quantum_discovery, discovery_id)
+            logger.info(f"✅ STORED DISCOVERY METADATA: {discovery_id}")
         except Exception as e:
-            logger.error(f"Failed to store quantum comprehensive discovery metadata: {e}")
+            logger.error(f"❌ Failed to store discovery metadata: {e}")
         
-        self.conn.commit()
-        logger.info(f"Stored {stored_count} quantum comprehensive assets to database")
+        try:
+            self.conn.commit()
+            logger.info(f"💾 DATABASE COMMIT SUCCESSFUL")
+        except Exception as e:
+            logger.error(f"❌ DATABASE COMMIT FAILED: {e}")
+        
+        logger.info(f"🎉 STORAGE COMPLETE: {stored_count:,} assets stored to database")
         return stored_count
     
     def _store_quantum_comprehensive_asset(self, hyper_asset: HyperAsset):
@@ -269,28 +284,39 @@ class ContentDatabase:
     def store_content_assets(self, assets: Dict[str, Any]) -> int:
         stored_count = 0
         
+        logger.info(f"💾 STORING {len(assets):,} RAW CONTENT ASSETS")
+        
         for asset_id, asset_data in assets.items():
             try:
                 values = [
                     asset_id,
                     asset_data.get('hostname', ''),
-                    json.dumps(asset_data.get('source_tables', [])),
+                    json.dumps(asset_data.get('tables_found_in', []), default=str),
                     json.dumps(asset_data.get('all_data', {}), default=str),
-                    json.dumps(asset_data.get('confidence_scores', {})),
-                    asset_data.get('source_count', 0)
+                    json.dumps(asset_data.get('sources', []), default=str),
+                    len(asset_data.get('sources', []))
                 ]
                 
                 self.conn.execute("""
-                    INSERT INTO content_assets (id, hostname, source_tables, all_data, confidence_scores, sources)
+                    INSERT OR REPLACE INTO content_assets (id, hostname, source_tables, all_data, confidence_scores, sources)
                     VALUES (?, ?, ?, ?, ?, ?)
                 """, values)
                 
                 stored_count += 1
                 
+                if stored_count % 1000 == 0:
+                    logger.info(f"📈 STORED {stored_count:,} CONTENT ASSETS...")
+                
             except Exception as e:
-                logger.error(f"Failed to store content asset {asset_id}: {e}")
+                logger.error(f"❌ Failed to store content asset {asset_id}: {e}")
         
-        self.conn.commit()
+        try:
+            self.conn.commit()
+            logger.info(f"💾 CONTENT DATABASE COMMIT SUCCESSFUL")
+        except Exception as e:
+            logger.error(f"❌ CONTENT DATABASE COMMIT FAILED: {e}")
+        
+        logger.info(f"🎉 CONTENT STORAGE COMPLETE: {stored_count:,} assets")
         return stored_count
     
     def close(self):

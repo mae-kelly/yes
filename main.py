@@ -78,19 +78,35 @@ class QuantumHyperIntelligentDiscoverySystem:
             quantum_discovery = await self._run_quantum_ao1_discovery()
             
             if quantum_discovery and 'assets' in quantum_discovery:
+                logger.info(f"🔄 CONVERTING {len(quantum_discovery['assets']):,} ASSETS TO HYPER ASSETS")
+                
                 quantum_assets = {}
                 for asset_id, asset_data in quantum_discovery['assets'].items():
                     hyper_asset = self._convert_dict_to_hyper_asset(asset_id, asset_data)
                     if hyper_asset:
                         quantum_assets[asset_id] = hyper_asset
                 
+                logger.info(f"✅ CONVERTED {len(quantum_assets):,} HYPER ASSETS")
+                
                 quantum_discovery_obj = QuantumDiscovery()
                 quantum_discovery_obj.hyper_assets = quantum_assets
                 quantum_discovery_obj.intelligence_metrics = quantum_discovery.get('discovery_stats', {})
                 
+                logger.info(f"💾 STORING {len(quantum_assets):,} ASSETS TO DUCKDB...")
                 quantum_stored_count = self.quantum_db.store_comprehensive_discovery(quantum_discovery_obj)
+                logger.info(f"✅ SUCCESSFULLY STORED {quantum_stored_count:,} ASSETS TO DATABASE")
+                
                 quantum_discovery_obj.intelligence_metrics['stored_hyper_assets'] = quantum_stored_count
                 self.quantum_stats['total_hyper_assets'] = len(quantum_assets)
+                
+                # Also store raw assets for debugging
+                logger.info(f"💾 STORING RAW CONTENT ASSETS...")
+                content_stored = self.quantum_content_db.store_content_assets(quantum_discovery['assets'])
+                logger.info(f"✅ STORED {content_stored:,} RAW CONTENT ASSETS")
+            else:
+                logger.error("❌ NO ASSETS RETURNED FROM DISCOVERY")
+                quantum_assets = {}
+                quantum_discovery_obj = QuantumDiscovery()
             
             self.quantum_stats['engines_used'].append('quantum_ao1')
             
@@ -128,34 +144,38 @@ class QuantumHyperIntelligentDiscoverySystem:
         try:
             hyper_asset = HyperAsset(id=asset_id)
             
+            # Set primary identity from hostname
             hyper_asset.hostname = asset_data.get('hostname', '')
             hyper_asset.primary_identity = hyper_asset.hostname
             
+            # Extract all data fields
             all_data = asset_data.get('all_data', {})
             
+            # Set individual fields from all_data (take first value if multiple)
             if 'ip_address' in all_data and all_data['ip_address']:
-                hyper_asset.ip = all_data['ip_address'][0]
+                hyper_asset.ip = all_data['ip_address'][0] if isinstance(all_data['ip_address'], list) else str(all_data['ip_address'])
             if 'fqdn' in all_data and all_data['fqdn']:
-                hyper_asset.fqdn = all_data['fqdn'][0]
+                hyper_asset.fqdn = all_data['fqdn'][0] if isinstance(all_data['fqdn'], list) else str(all_data['fqdn'])
             if 'mac_address' in all_data and all_data['mac_address']:
-                hyper_asset.mac = all_data['mac_address'][0]
+                hyper_asset.mac = all_data['mac_address'][0] if isinstance(all_data['mac_address'], list) else str(all_data['mac_address'])
             if 'infrastructure_type' in all_data and all_data['infrastructure_type']:
-                hyper_asset.infrastructure_type = all_data['infrastructure_type'][0]
+                hyper_asset.infrastructure_type = all_data['infrastructure_type'][0] if isinstance(all_data['infrastructure_type'], list) else str(all_data['infrastructure_type'])
             if 'system_classification' in all_data and all_data['system_classification']:
-                hyper_asset.system_classification = all_data['system_classification'][0]
+                hyper_asset.system_classification = all_data['system_classification'][0] if isinstance(all_data['system_classification'], list) else str(all_data['system_classification'])
             if 'business_unit' in all_data and all_data['business_unit']:
-                hyper_asset.business_unit = all_data['business_unit'][0]
+                hyper_asset.business_unit = all_data['business_unit'][0] if isinstance(all_data['business_unit'], list) else str(all_data['business_unit'])
             if 'region' in all_data and all_data['region']:
-                hyper_asset.region = all_data['region'][0]
+                hyper_asset.region = all_data['region'][0] if isinstance(all_data['region'], list) else str(all_data['region'])
             if 'country' in all_data and all_data['country']:
-                hyper_asset.country = all_data['country'][0]
+                hyper_asset.country = all_data['country'][0] if isinstance(all_data['country'], list) else str(all_data['country'])
             if 'datacenter' in all_data and all_data['datacenter']:
-                hyper_asset.datacenter = all_data['datacenter'][0]
+                hyper_asset.datacenter = all_data['datacenter'][0] if isinstance(all_data['datacenter'], list) else str(all_data['datacenter'])
             if 'cio' in all_data and all_data['cio']:
-                hyper_asset.cio = all_data['cio'][0]
+                hyper_asset.cio = all_data['cio'][0] if isinstance(all_data['cio'], list) else str(all_data['cio'])
             if 'application_class' in all_data and all_data['application_class']:
-                hyper_asset.application_class = all_data['application_class'][0]
+                hyper_asset.application_class = all_data['application_class'][0] if isinstance(all_data['application_class'], list) else str(all_data['application_class'])
             
+            # Set coverage flags
             hyper_asset.edr_coverage = asset_data.get('edr_coverage', False)
             hyper_asset.dlp_coverage = asset_data.get('dlp_coverage', False)
             hyper_asset.tanium_coverage = asset_data.get('tanium_coverage', False)
@@ -164,20 +184,27 @@ class QuantumHyperIntelligentDiscoverySystem:
             hyper_asset.crowdstrike_coverage = asset_data.get('crowdstrike_coverage', False)
             hyper_asset.cmdb_visibility = asset_data.get('cmdb_visibility', False)
             
+            # Set source tracking
             hyper_asset.source_provenance = asset_data.get('sources', [])
             hyper_asset.tables_found_in = asset_data.get('tables_found_in', [])
             
+            # Calculate scores
             hyper_asset.visibility_score = self._calculate_visibility_score(hyper_asset)
-            hyper_asset.intelligence_quotient = len(asset_data.get('sources', [])) / 4.0
+            hyper_asset.intelligence_quotient = min(1.0, len(asset_data.get('sources', [])) / 4.0)
             hyper_asset.quality_coefficient = len([f for f in [hyper_asset.ip, hyper_asset.fqdn, hyper_asset.infrastructure_type] if f]) / 3.0
             hyper_asset.confidence_index = min(1.0, len(hyper_asset.tables_found_in) / 3.0)
+            hyper_asset.entropy_measure = 0.5  # Default entropy
             
+            # Store complete data in quantum state
             hyper_asset.quantum_state = {'all_data': all_data}
+            
+            logger.debug(f"🔄 Converted asset: {asset_id} -> visibility: {hyper_asset.visibility_score:.2f}")
             
             return hyper_asset
             
         except Exception as e:
-            logger.error(f"Failed to convert dict to hyper asset {asset_id}: {e}")
+            logger.error(f"❌ Failed to convert asset {asset_id}: {e}")
+            logger.error(f"   Asset data keys: {list(asset_data.keys()) if asset_data else 'None'}")
             return None
     
     def _calculate_visibility_score(self, hyper_asset: HyperAsset) -> float:
