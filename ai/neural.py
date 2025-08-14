@@ -185,8 +185,32 @@ class QuantumSemanticEmbedder:
         self.semantic_clusters = {}
         self.pattern_memory = defaultdict(list)
         
-        # FIX: Initialize domain_ontology to prevent AttributeError
-        self.domain_ontology = self._initialize_domain_ontology()
+        self.domain_ontology = {
+            'cybersecurity_indicators': {
+                'endpoint_identifiers': ['host', 'computer', 'machine', 'device', 'endpoint', 'asset'],
+                'network_identifiers': ['ip', 'address', 'network', 'subnet', 'domain', 'fqdn'],
+                'security_tools': ['edr', 'dlp', 'siem', 'soar', 'ids', 'ips', 'waf'],
+                'infrastructure_types': ['server', 'workstation', 'laptop', 'desktop', 'mobile'],
+                'deployment_models': ['cloud', 'on_premise', 'hybrid', 'saas', 'paas', 'iaas'],
+                'business_contexts': ['production', 'development', 'test', 'staging', 'backup']
+            },
+            'pattern_signatures': {
+                'hostname_patterns': [
+                    r'^[a-zA-Z][a-zA-Z0-9\-]{0,61}[a-zA-Z0-9]$',
+                    r'^[a-zA-Z0-9]+$',
+                    r'^[a-zA-Z]{2,4}[0-9]{1,6}$',
+                    r'^[a-zA-Z]+\-[a-zA-Z0-9]+\-[a-zA-Z0-9]+$'
+                ],
+                'ip_patterns': [
+                    r'^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$',
+                    r'^([0-9a-fA-F]{1,4}:){7}[0-9a-fA-F]{1,4}$'
+                ],
+                'mac_patterns': [
+                    r'^([0-9A-Fa-f]{2}[:-]){5}[0-9A-Fa-f]{2}$',
+                    r'^([0-9A-Fa-f]{4}\.){2}[0-9A-Fa-f]{4}$'
+                ]
+            }
+        }
         
         self.quantum_vectorizer = TfidfVectorizer(max_features=50000, ngram_range=(1, 4))
         
@@ -240,35 +264,6 @@ class QuantumSemanticEmbedder:
                                 G.add_edge(term, other_term, weight=similarity, relation='similar')
         
         return G
-    
-    def _initialize_domain_ontology(self):
-        """Initialize the domain ontology that was missing"""
-        return {
-            'cybersecurity_indicators': {
-                'endpoint_identifiers': ['host', 'computer', 'machine', 'device', 'endpoint', 'asset'],
-                'network_identifiers': ['ip', 'address', 'network', 'subnet', 'domain', 'fqdn'],
-                'security_tools': ['edr', 'dlp', 'siem', 'soar', 'ids', 'ips', 'waf'],
-                'infrastructure_types': ['server', 'workstation', 'laptop', 'desktop', 'mobile'],
-                'deployment_models': ['cloud', 'on_premise', 'hybrid', 'saas', 'paas', 'iaas'],
-                'business_contexts': ['production', 'development', 'test', 'staging', 'backup']
-            },
-            'pattern_signatures': {
-                'hostname_patterns': [
-                    r'^[a-zA-Z][a-zA-Z0-9\-]{0,61}[a-zA-Z0-9]$',
-                    r'^[a-zA-Z0-9]+$',
-                    r'^[a-zA-Z]{2,4}[0-9]{1,6}$',
-                    r'^[a-zA-Z]+\-[a-zA-Z0-9]+\-[a-zA-Z0-9]+$'
-                ],
-                'ip_patterns': [
-                    r'^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$',
-                    r'^([0-9a-fA-F]{1,4}:){7}[0-9a-fA-F]{1,4}$'
-                ],
-                'mac_patterns': [
-                    r'^([0-9A-Fa-f]{2}[:-]){5}[0-9A-Fa-f]{2}$',
-                    r'^([0-9A-Fa-f]{4}\.){2}[0-9A-Fa-f]{4}$'
-                ]
-            }
-        }
     
     def analyze_table_quantum_semantically(self, table_name: str, column_names: List[str], 
                                          sample_data: Dict[str, List[str]]) -> Dict[str, Any]:
@@ -424,7 +419,6 @@ class QuantumSemanticEmbedder:
         similarity = cosine_similarity([embed1], [embed2])[0][0]
         return max(0.0, similarity)
     
-    # Additional helper methods that were referenced but missing
     def _extract_table_semantic_signature(self, table_name: str, column_names: List[str]) -> Dict[str, Any]:
         table_embedding = self._create_quantum_embedding(table_name)
         column_embeddings = [self._create_quantum_embedding(col) for col in column_names]
@@ -762,9 +756,7 @@ class QuantumPatternRecognizer:
         common_chars = sum(1 for c1, c2 in zip(sig1, sig2) if c1 == c2)
         return common_chars / max(len(sig1), len(sig2))
 
-# Legacy compatibility classes for imports
 class FieldClassifier:
-    """Legacy FieldClassifier for compatibility with discovery/ao1.py"""
     def __init__(self):
         self.field_types = [
             'hostname', 'ip_address', 'fqdn', 'mac_address', 'infrastructure_type',
@@ -773,20 +765,16 @@ class FieldClassifier:
         ]
     
     def __call__(self, embeddings):
-        """Mock classifier that returns dummy predictions"""
         import torch
         batch_size = embeddings.shape[0] if hasattr(embeddings, 'shape') else 1
         num_classes = len(self.field_types)
-        # Return random predictions for compatibility
         return torch.randn(batch_size, num_classes)
 
 class PatternRecognizer:
-    """Legacy PatternRecognizer for compatibility"""
     def __init__(self):
         pass
     
     def predict_classification(self, column_name: str, samples: List[str]) -> Dict[str, Any]:
-        """Mock pattern recognition"""
         return {
             'field_type': 'unknown',
             'confidence': 0.0,
