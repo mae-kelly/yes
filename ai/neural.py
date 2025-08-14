@@ -1,10 +1,8 @@
-# ai/neural.py
-
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import numpy as np
-from typing import Dict, List, Tuple, Any
+from typing import Dict, List, Tuple, Any, Optional
 from collections import defaultdict
 import statistics
 import hashlib
@@ -13,579 +11,708 @@ from datetime import datetime
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 from sklearn.cluster import DBSCAN
+from sklearn.manifold import TSNE
+from sklearn.decomposition import PCA
 import networkx as nx
 
-class DeepFieldClassifier(nn.Module):
-    def __init__(self, vocab_size=50000, embed_dim=768, hidden_dim=512, num_classes=50):
+class QuantumTransformerCore(nn.Module):
+    def __init__(self, vocab_size=150000, embed_dim=2048, num_classes=247):
         super().__init__()
+        
         self.embedding = nn.Embedding(vocab_size, embed_dim)
-        self.transformer = nn.TransformerEncoder(
+        self.positional_encoding = nn.Parameter(torch.randn(8192, embed_dim))
+        
+        self.quantum_attention_layers = nn.ModuleList([
+            nn.MultiheadAttention(embed_dim, 32, batch_first=True, dropout=0.05)
+            for _ in range(16)
+        ])
+        
+        self.transformer_blocks = nn.ModuleList([
             nn.TransformerEncoderLayer(
-                d_model=embed_dim, 
-                nhead=12, 
-                dim_feedforward=2048,
+                d_model=embed_dim,
+                nhead=32,
+                dim_feedforward=8192,
                 dropout=0.1,
-                batch_first=True
-            ),
-            num_layers=8
-        )
-        self.content_attention = nn.MultiheadAttention(embed_dim, 16, batch_first=True)
-        self.semantic_mixer = nn.Sequential(
-            nn.Linear(embed_dim * 3, hidden_dim),
-            nn.GELU(),
-            nn.Dropout(0.2),
-            nn.Linear(hidden_dim, hidden_dim // 2),
+                activation='gelu',
+                batch_first=True,
+                norm_first=True
+            ) for _ in range(24)
+        ])
+        
+        self.context_fusion_layers = nn.ModuleList([
+            nn.Linear(embed_dim, embed_dim) for _ in range(8)
+        ])
+        
+        self.semantic_projection_heads = nn.ModuleList([
+            nn.Linear(embed_dim, embed_dim // 2) for _ in range(16)
+        ])
+        
+        self.emergence_detector = nn.Sequential(
+            nn.Linear(embed_dim, embed_dim * 2),
             nn.GELU(),
             nn.Dropout(0.1),
-            nn.Linear(hidden_dim // 2, num_classes)
+            nn.Linear(embed_dim * 2, embed_dim),
+            nn.GELU(),
+            nn.Linear(embed_dim, 512),
+            nn.GELU(),
+            nn.Linear(512, num_classes)
         )
         
-        self.field_types = [
-            'hostname', 'ip_address', 'fqdn', 'mac_address', 'infrastructure_type',
-            'system_classification', 'global_region', 'country', 'datacenter',
-            'cloud_region', 'business_unit', 'cio', 'app_class', 'edr_coverage',
-            'dlp_coverage', 'tanium_coverage', 'network_log_types', 'endpoint_log_types',
-            'cloud_log_types', 'app_log_types', 'identity_log_types', 'network_zones',
-            'geolocation', 'vpc', 'controls', 'server_name', 'computer_name', 'device_name',
-            'endpoint_name', 'machine_name', 'asset_name', 'node_name', 'instance_name',
-            'resource_name', 'equipment_name', 'system_name', 'platform_name', 'host_name',
-            'workstation_name', 'client_name', 'terminal_name', 'appliance_name', 'component_name',
-            'service_name', 'application_name', 'database_name', 'cluster_name', 'domain_name',
-            'network_name', 'subnet_name', 'zone_name', 'location_name', 'site_name'
+        self.cybersecurity_ontology = [
+            'hostname', 'server_name', 'computer_name', 'device_name', 'endpoint_name',
+            'machine_name', 'asset_name', 'workstation_name', 'node_name', 'host_identifier',
+            'system_identifier', 'equipment_identifier', 'resource_identifier',
+            'ip_address', 'ipv4_address', 'ipv6_address', 'internal_ip', 'external_ip',
+            'private_ip', 'public_ip', 'network_address', 'subnet_address', 'gateway_ip',
+            'virtual_ip', 'floating_ip', 'cluster_ip', 'service_ip', 'load_balancer_ip',
+            'fqdn', 'domain_name', 'dns_name', 'qualified_name', 'canonical_name',
+            'service_name', 'alias_name', 'subdomain', 'zone_name',
+            'mac_address', 'physical_address', 'ethernet_address', 'hardware_address',
+            'wireless_address', 'bluetooth_address', 'network_interface_id',
+            'infrastructure_type', 'on_premise', 'cloud', 'hybrid', 'multi_cloud',
+            'saas', 'paas', 'iaas', 'faas', 'serverless', 'containerized',
+            'aws_instance', 'azure_vm', 'gcp_instance', 'kubernetes_pod', 'docker_container',
+            'lambda_function', 'azure_function', 'cloud_function', 'batch_job',
+            'system_classification', 'windows_server', 'linux_server', 'unix_server',
+            'web_server', 'application_server', 'database_server', 'file_server',
+            'mail_server', 'dns_server', 'dhcp_server', 'proxy_server', 'cache_server',
+            'firewall', 'router', 'switch', 'load_balancer', 'api_gateway',
+            'storage_array', 'backup_device', 'security_appliance', 'network_appliance',
+            'virtualization_host', 'hypervisor', 'mainframe', 'embedded_system',
+            'iot_device', 'mobile_device', 'tablet', 'laptop', 'desktop', 'workstation',
+            'global_region', 'us_east', 'us_west', 'us_central', 'eu_west', 'eu_central',
+            'asia_pacific', 'north_america', 'south_america', 'emea', 'apac', 'latam',
+            'country_code', 'datacenter_location', 'availability_zone', 'region_code',
+            'edge_location', 'point_of_presence', 'colocation', 'disaster_recovery_site',
+            'business_unit', 'finance', 'human_resources', 'information_technology',
+            'operations', 'sales', 'marketing', 'legal', 'compliance', 'security',
+            'engineering', 'research', 'development', 'manufacturing', 'supply_chain',
+            'customer_service', 'procurement', 'risk_management', 'audit',
+            'cio_organization', 'application_class', 'critical', 'high', 'medium', 'low',
+            'production', 'staging', 'development', 'test', 'qa', 'sandbox', 'training',
+            'demo', 'backup', 'archive', 'legacy', 'deprecated', 'experimental',
+            'edr_coverage', 'crowdstrike', 'sentinelone', 'carbonblack', 'cylance',
+            'defender_atp', 'cortex_xdr', 'trend_micro', 'kaspersky', 'bitdefender',
+            'tanium_coverage', 'tanium_client', 'tanium_agent', 'tanium_endpoint',
+            'dlp_coverage', 'symantec_dlp', 'forcepoint_dlp', 'microsoft_purview',
+            'digital_guardian', 'vera_dlp', 'netskope_dlp', 'proofpoint_dlp',
+            'splunk_coverage', 'splunk_forwarder', 'splunk_indexer', 'splunk_hec',
+            'splunk_enterprise', 'splunk_cloud', 'splunk_phantom', 'splunk_soar',
+            'chronicle_coverage', 'google_chronicle', 'chronicle_forwarder',
+            'chronicle_siem', 'backstory', 'virustotal_enterprise',
+            'gso_coverage', 'security_orchestration', 'soar_platform', 'playbook_automation',
+            'incident_response', 'threat_hunting', 'security_analytics',
+            'network_log_types', 'firewall_logs', 'ids_logs', 'ips_logs', 'proxy_logs',
+            'dns_logs', 'dhcp_logs', 'waf_logs', 'load_balancer_logs', 'router_logs',
+            'switch_logs', 'vpn_logs', 'wireless_logs', 'network_access_control',
+            'endpoint_log_types', 'windows_events', 'linux_syslogs', 'macos_logs',
+            'edr_logs', 'antivirus_logs', 'dlp_logs', 'fim_logs', 'process_logs',
+            'registry_logs', 'file_access_logs', 'usb_logs', 'device_control_logs',
+            'cloud_log_types', 'aws_cloudtrail', 'azure_activity', 'gcp_audit',
+            'kubernetes_logs', 'container_logs', 'serverless_logs', 'storage_logs',
+            'database_logs', 'api_gateway_logs', 'cdn_logs', 'load_balancer_logs',
+            'application_log_types', 'web_logs', 'database_logs', 'app_server_logs',
+            'api_logs', 'microservice_logs', 'messaging_logs', 'cache_logs',
+            'transaction_logs', 'performance_logs', 'error_logs', 'audit_logs',
+            'identity_log_types', 'active_directory', 'ldap_logs', 'saml_logs',
+            'oauth_logs', 'authentication_logs', 'authorization_logs', 'privilege_logs',
+            'access_logs', 'identity_provider_logs', 'federation_logs', 'sso_logs',
+            'url_fqdn_coverage', 'public_ip_coverage', 'network_zones', 'dmz',
+            'internal_network', 'external_network', 'management_network', 'backup_network',
+            'production_network', 'development_network', 'guest_network', 'quarantine_network',
+            'vpc_coverage', 'aws_vpc', 'azure_vnet', 'gcp_vpc', 'subnet_coverage',
+            'security_group', 'network_acl', 'route_table', 'internet_gateway',
+            'threat_intelligence', 'vulnerability_management', 'patch_management',
+            'configuration_management', 'change_management', 'asset_management',
+            'risk_assessment', 'compliance_monitoring', 'security_baseline',
+            'zero_trust_architecture', 'microsegmentation', 'lateral_movement_detection',
+            'behavioral_analytics', 'user_entity_behavior', 'network_traffic_analysis',
+            'anomaly_detection', 'machine_learning_security', 'artificial_intelligence_security'
         ]
-    
-    def forward(self, input_ids, attention_mask, content_features):
-        embedded = self.embedding(input_ids)
-        transformer_out = self.transformer(embedded)
-        pooled = transformer_out.mean(dim=1)
         
-        attended, _ = self.content_attention(embedded, embedded, embedded)
-        attended_pooled = attended.mean(dim=1)
+        self.register_buffer('class_weights', torch.ones(num_classes))
         
-        combined = torch.cat([pooled, attended_pooled, content_features], dim=-1)
-        return F.softmax(self.semantic_mixer(combined), dim=-1)
+    def forward(self, input_ids, attention_mask=None, context_vectors=None):
+        batch_size, seq_len = input_ids.shape
+        
+        x = self.embedding(input_ids)
+        
+        if seq_len <= 8192:
+            x = x + self.positional_encoding[:seq_len].unsqueeze(0)
+        
+        quantum_states = []
+        for i, attention_layer in enumerate(self.quantum_attention_layers):
+            attended, attention_weights = attention_layer(x, x, x, 
+                                                        key_padding_mask=~attention_mask if attention_mask is not None else None)
+            x = x + attended
+            quantum_states.append(attention_weights)
+        
+        for transformer in self.transformer_blocks:
+            x = transformer(x, src_key_padding_mask=~attention_mask if attention_mask is not None else None)
+        
+        if context_vectors is not None:
+            for fusion_layer in self.context_fusion_layers:
+                context_contrib = fusion_layer(context_vectors)
+                x = x + context_contrib.unsqueeze(1)
+        
+        semantic_projections = []
+        for proj_head in self.semantic_projection_heads:
+            projection = proj_head(x.mean(dim=1))
+            semantic_projections.append(projection)
+        
+        pooled_representation = x.mean(dim=1)
+        
+        if semantic_projections:
+            enhanced_repr = torch.cat([pooled_representation] + semantic_projections, dim=-1)
+            final_input = F.adaptive_avg_pool1d(enhanced_repr.unsqueeze(1), pooled_representation.size(-1)).squeeze(1)
+        else:
+            final_input = pooled_representation
+        
+        logits = self.emergence_detector(final_input)
+        
+        return {
+            'logits': logits,
+            'probabilities': F.softmax(logits, dim=-1),
+            'embeddings': pooled_representation,
+            'quantum_states': quantum_states,
+            'semantic_projections': semantic_projections
+        }
 
-class AdvancedSemanticEmbedder:
+class QuantumSemanticEmbedder:
     def __init__(self):
-        self.cache = {}
-        self.tfidf = TfidfVectorizer(max_features=10000, ngram_range=(1, 3))
-        self.concept_graph = self._build_concept_graph()
+        self.embedding_cache = {}
+        self.concept_manifold = self._construct_concept_manifold()
         self.semantic_clusters = {}
-        self.learned_patterns = defaultdict(list)
-        self.domain_knowledge = self._init_domain_knowledge()
+        self.pattern_memory = defaultdict(list)
+        self.domain_ontology = self._initialize_domain_ontology()
+        self.quantum_vectorizer = TfidfVectorizer(max_features=50000, ngram_range=(1, 4))
         
-    def _build_concept_graph(self):
+    def _construct_concept_manifold(self):
         G = nx.Graph()
-        concepts = {
-            'hostname': ['server', 'computer', 'machine', 'host', 'endpoint', 'device', 'node', 'workstation'],
-            'network': ['ip', 'address', 'subnet', 'vlan', 'dns', 'domain', 'gateway', 'router'],
-            'security': ['firewall', 'auth', 'certificate', 'ssl', 'vpn', 'encryption', 'access'],
-            'infrastructure': ['datacenter', 'cloud', 'platform', 'service', 'cluster', 'farm'],
-            'business': ['organization', 'department', 'unit', 'division', 'team', 'group'],
-            'location': ['region', 'country', 'site', 'facility', 'building', 'floor'],
-            'application': ['software', 'program', 'system', 'database', 'service', 'tool'],
-            'identity': ['user', 'account', 'credential', 'principal', 'subject', 'entity']
+        
+        concept_hierarchy = {
+            'identity': {
+                'primary': ['hostname', 'computer_name', 'device_name', 'endpoint_name', 'asset_name'],
+                'secondary': ['server_name', 'workstation_name', 'node_name', 'machine_name'],
+                'aliases': ['host_id', 'system_id', 'equipment_id', 'resource_id']
+            },
+            'network': {
+                'addressing': ['ip_address', 'ipv4', 'ipv6', 'private_ip', 'public_ip'],
+                'infrastructure': ['subnet', 'vlan', 'network_segment', 'routing_domain'],
+                'services': ['dns', 'dhcp', 'gateway', 'load_balancer', 'proxy']
+            },
+            'security': {
+                'endpoint': ['edr', 'antivirus', 'dlp', 'device_control', 'encryption'],
+                'network': ['firewall', 'ids', 'ips', 'waf', 'network_monitoring'],
+                'identity': ['authentication', 'authorization', 'access_control', 'privilege_management']
+            },
+            'infrastructure': {
+                'deployment': ['on_premise', 'cloud', 'hybrid', 'multi_cloud', 'edge'],
+                'virtualization': ['vm', 'container', 'kubernetes', 'serverless', 'microservices'],
+                'platform': ['aws', 'azure', 'gcp', 'vmware', 'openstack']
+            },
+            'business': {
+                'organization': ['business_unit', 'department', 'division', 'team'],
+                'geography': ['region', 'country', 'datacenter', 'zone', 'site'],
+                'criticality': ['critical', 'high', 'medium', 'low', 'non_critical']
+            }
         }
         
-        for category, terms in concepts.items():
-            G.add_node(category, type='category')
-            for term in terms:
-                G.add_node(term, type='term', category=category)
-                G.add_edge(category, term, weight=1.0)
+        for category, subcategories in concept_hierarchy.items():
+            G.add_node(category, node_type='category', level=0)
+            
+            for subcat, terms in subcategories.items():
+                subcat_node = f"{category}_{subcat}"
+                G.add_node(subcat_node, node_type='subcategory', level=1, parent=category)
+                G.add_edge(category, subcat_node, weight=1.0, relation='contains')
                 
-                for other_term in terms:
-                    if term != other_term:
-                        similarity = self._calculate_term_similarity(term, other_term)
-                        if similarity > 0.6:
-                            G.add_edge(term, other_term, weight=similarity)
+                for term in terms:
+                    G.add_node(term, node_type='concept', level=2, parent=subcat_node, category=category)
+                    G.add_edge(subcat_node, term, weight=0.9, relation='specializes')
+                    
+                    for other_term in terms:
+                        if term != other_term:
+                            similarity = self._calculate_semantic_similarity(term, other_term)
+                            if similarity > 0.6:
+                                G.add_edge(term, other_term, weight=similarity, relation='similar')
         
         return G
     
-    def _init_domain_knowledge(self):
+    def _initialize_domain_ontology(self):
         return {
-            'hostname_patterns': [
-                r'^[a-zA-Z][a-zA-Z0-9\-]*[a-zA-Z0-9]$',
-                r'^[a-zA-Z0-9]+$',
-                r'^[a-zA-Z]{2,4}[0-9]{1,6}$',
-                r'^[a-zA-Z]+\-[a-zA-Z0-9]+$'
-            ],
-            'hostname_indicators': [
-                'srv', 'web', 'app', 'db', 'sql', 'dc', 'ad', 'ex', 'fs', 'dns',
-                'dhcp', 'proxy', 'fw', 'lb', 'nas', 'san', 'vm', 'host', 'node',
-                'server', 'desktop', 'laptop', 'workstation', 'pc', 'ws'
-            ],
-            'infrastructure_terms': [
-                'prod', 'dev', 'test', 'stage', 'qa', 'uat', 'demo', 'lab',
-                'primary', 'secondary', 'backup', 'dr', 'cluster', 'farm'
-            ],
-            'location_terms': [
-                'us', 'eu', 'ap', 'amer', 'emea', 'apac', 'north', 'south',
-                'east', 'west', 'central', 'global', 'local', 'remote'
-            ]
+            'cybersecurity_indicators': {
+                'endpoint_identifiers': ['host', 'computer', 'machine', 'device', 'endpoint', 'asset'],
+                'network_identifiers': ['ip', 'address', 'network', 'subnet', 'domain', 'fqdn'],
+                'security_tools': ['edr', 'dlp', 'siem', 'soar', 'ids', 'ips', 'waf'],
+                'infrastructure_types': ['server', 'workstation', 'laptop', 'desktop', 'mobile'],
+                'deployment_models': ['cloud', 'on_premise', 'hybrid', 'saas', 'paas', 'iaas'],
+                'business_contexts': ['production', 'development', 'test', 'staging', 'backup']
+            },
+            'pattern_signatures': {
+                'hostname_patterns': [
+                    r'^[a-zA-Z][a-zA-Z0-9\-]{0,61}[a-zA-Z0-9]$',
+                    r'^[a-zA-Z0-9]+$',
+                    r'^[a-zA-Z]{2,4}[0-9]{1,6}$',
+                    r'^[a-zA-Z]+\-[a-zA-Z0-9]+\-[a-zA-Z0-9]+$'
+                ],
+                'ip_patterns': [
+                    r'^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$',
+                    r'^([0-9a-fA-F]{1,4}:){7}[0-9a-fA-F]{1,4}$'
+                ],
+                'mac_patterns': [
+                    r'^([0-9A-Fa-f]{2}[:-]){5}[0-9A-Fa-f]{2}$',
+                    r'^([0-9A-Fa-f]{4}\.){2}[0-9A-Fa-f]{4}$'
+                ]
+            }
         }
     
-    def analyze_table_semantically(self, table_name: str, column_names: List[str], 
-                                 sample_data: Dict[str, List[str]]) -> Dict[str, Any]:
+    def analyze_table_quantum_semantically(self, table_name: str, column_names: List[str], 
+                                         sample_data: Dict[str, List[str]]) -> Dict[str, Any]:
         
-        table_context = self._extract_table_context(table_name)
-        semantic_features = self._build_semantic_features(column_names, sample_data, table_context)
+        table_semantic_signature = self._extract_table_semantic_signature(table_name, column_names)
+        column_quantum_mappings = {}
         
-        column_classifications = {}
         for col_name, samples in sample_data.items():
-            classification = self._classify_column_deep(col_name, samples, semantic_features, table_context)
-            if classification['confidence'] > 0.4:
-                column_classifications[col_name] = classification
+            if samples:
+                quantum_mapping = self._quantum_classify_column(col_name, samples, table_semantic_signature)
+                if quantum_mapping['confidence'] > 0.5:
+                    column_quantum_mappings[col_name] = quantum_mapping
         
-        table_embedding = self._create_table_embedding(table_name, column_names, sample_data)
-        similar_tables = self._find_similar_tables(table_embedding)
+        table_embedding = self._create_quantum_table_embedding(table_name, column_names, sample_data)
+        semantic_density = self._calculate_semantic_density(table_embedding, column_quantum_mappings)
         
         return {
-            'table_context': table_context,
-            'semantic_features': semantic_features,
-            'column_classifications': column_classifications,
+            'table_semantic_signature': table_semantic_signature,
+            'column_quantum_mappings': column_quantum_mappings,
             'table_embedding': table_embedding,
-            'similar_tables': similar_tables,
-            'confidence_score': self._calculate_table_confidence(column_classifications)
+            'semantic_density': semantic_density,
+            'quantum_coherence': self._calculate_quantum_coherence(column_quantum_mappings)
         }
     
-    def _extract_table_context(self, table_name: str) -> Dict[str, Any]:
-        name_parts = table_name.lower().split('.')
-        table_only = name_parts[-1] if name_parts else table_name.lower()
-        
-        context_signals = {
-            'is_dimension': any(dim in table_only for dim in ['dim', 'dimension', 'master', 'ref']),
-            'is_fact': any(fact in table_only for fact in ['fact', 'event', 'log', 'trans']),
-            'is_endpoint': 'endpoint' in table_only,
-            'is_asset': any(asset in table_only for asset in ['asset', 'device', 'machine', 'computer']),
-            'is_network': any(net in table_only for net in ['network', 'ip', 'dns', 'subnet']),
-            'is_security': any(sec in table_only for sec in ['security', 'auth', 'access', 'audit']),
-            'is_inventory': any(inv in table_only for inv in ['inventory', 'cmdb', 'catalog']),
-            'data_source': self._identify_data_source(table_name)
-        }
-        
-        return context_signals
-    
-    def _identify_data_source(self, table_name: str) -> str:
-        name_lower = table_name.lower()
-        if 'splunk' in name_lower or 'spl_' in name_lower:
-            return 'splunk'
-        elif 'crowdstrike' in name_lower or 'cs_' in name_lower:
-            return 'crowdstrike'
-        elif 'chronicle' in name_lower:
-            return 'chronicle'
-        elif 'cmdb' in name_lower or 'dim_endpoint' in name_lower:
-            return 'cmdb'
-        elif 'tanium' in name_lower:
-            return 'tanium'
-        else:
-            return 'unknown'
-    
-    def _build_semantic_features(self, column_names: List[str], sample_data: Dict[str, List[str]], 
+    def _quantum_classify_column(self, column_name: str, samples: List[str], 
                                table_context: Dict[str, Any]) -> Dict[str, Any]:
         
-        all_text = ' '.join(column_names) + ' ' + ' '.join([
-            ' '.join(samples[:10]) for samples in sample_data.values()
-        ])
+        name_embedding = self._create_quantum_embedding(column_name)
+        content_embedding = self._create_quantum_content_embedding(samples)
         
-        tfidf_features = self._extract_tfidf_features(all_text)
-        graph_features = self._extract_graph_features(column_names, sample_data)
-        pattern_features = self._extract_pattern_features(sample_data)
+        concept_relevance = self._calculate_concept_manifold_relevance(column_name, samples)
+        pattern_coherence = self._analyze_pattern_coherence(samples)
+        semantic_alignment = self._calculate_semantic_alignment(name_embedding, content_embedding)
+        
+        hostname_probability = self._quantum_hostname_probability(column_name, samples, table_context)
+        
+        field_probabilities = {}
+        for field_type in ['hostname', 'ip_address', 'fqdn', 'mac_address', 'infrastructure_type']:
+            probability = self._calculate_field_quantum_probability(
+                column_name, samples, field_type, table_context
+            )
+            field_probabilities[field_type] = probability
+        
+        best_field = max(field_probabilities.items(), key=lambda x: x[1])
         
         return {
-            'tfidf_vector': tfidf_features,
-            'graph_centrality': graph_features,
-            'pattern_signatures': pattern_features,
-            'semantic_density': self._calculate_semantic_density(column_names, sample_data)
+            'field_type': best_field[0],
+            'confidence': best_field[1],
+            'name_embedding': name_embedding,
+            'content_embedding': content_embedding,
+            'concept_relevance': concept_relevance,
+            'pattern_coherence': pattern_coherence,
+            'semantic_alignment': semantic_alignment,
+            'field_probabilities': field_probabilities,
+            'quantum_signature': self._generate_quantum_signature(column_name, samples)
         }
     
-    def _classify_column_deep(self, column_name: str, samples: List[str], 
-                            semantic_features: Dict[str, Any], table_context: Dict[str, Any]) -> Dict[str, Any]:
+    def _create_quantum_embedding(self, text: str, dimensions: int = 1024) -> np.ndarray:
+        if not text:
+            return np.zeros(dimensions)
         
-        name_embedding = self._embed_text_advanced(column_name)
-        content_embedding = self._embed_content_advanced(samples)
+        cache_key = hashlib.md5(text.encode()).hexdigest()
+        if cache_key in self.embedding_cache:
+            return self.embedding_cache[cache_key]
         
-        graph_score = self._calculate_graph_relevance(column_name, samples)
-        pattern_score = self._analyze_content_patterns(samples)
-        context_score = self._calculate_context_relevance(column_name, samples, table_context)
+        text_normalized = text.lower().strip()
+        words = re.findall(r'\w+', text_normalized)
         
-        hostname_probability = self._calculate_hostname_probability(column_name, samples, table_context)
+        embedding = np.zeros(dimensions)
         
-        if hostname_probability > 0.7:
-            return {
-                'field_type': 'hostname',
-                'confidence': hostname_probability,
-                'reasoning': self._generate_classification_reasoning(column_name, samples, 'hostname'),
-                'features': {
-                    'name_embedding': name_embedding,
-                    'content_embedding': content_embedding,
-                    'graph_score': graph_score,
-                    'pattern_score': pattern_score,
-                    'context_score': context_score
-                }
-            }
+        for word in words:
+            word_vector = self._generate_word_quantum_vector(word, dimensions)
+            embedding += word_vector
         
-        field_scores = {}
-        for field_type in ['ip_address', 'fqdn', 'mac_address', 'infrastructure_type', 'system_classification']:
-            score = self._calculate_field_probability(column_name, samples, field_type, table_context)
-            if score > 0.3:
-                field_scores[field_type] = score
+        if len(words) > 0:
+            embedding = embedding / len(words)
         
-        if field_scores:
-            best_field = max(field_scores.items(), key=lambda x: x[1])
-            return {
-                'field_type': best_field[0],
-                'confidence': best_field[1],
-                'reasoning': self._generate_classification_reasoning(column_name, samples, best_field[0]),
-                'alternatives': field_scores
-            }
+        concept_boost = self._apply_concept_manifold_boost(text_normalized, embedding)
+        embedding = embedding + concept_boost
         
-        return {'field_type': 'unknown', 'confidence': 0.0}
+        norm = np.linalg.norm(embedding)
+        if norm > 0:
+            embedding = embedding / norm
+        
+        self.embedding_cache[cache_key] = embedding
+        return embedding
     
-    def _calculate_hostname_probability(self, column_name: str, samples: List[str], 
-                                      table_context: Dict[str, Any]) -> float:
+    def _generate_word_quantum_vector(self, word: str, dimensions: int) -> np.ndarray:
+        word_hash = hash(word) % (2**32)
+        np.random.seed(word_hash)
         
-        name_indicators = [
-            'hostname', 'host', 'computer', 'machine', 'device', 'endpoint', 
-            'server', 'node', 'workstation', 'asset', 'equipment', 'system'
-        ]
+        base_vector = np.random.normal(0, 0.1, dimensions)
         
-        name_lower = column_name.lower()
-        name_score = max([
-            self._fuzzy_match(indicator, name_lower) for indicator in name_indicators
-        ]) if name_indicators else 0.0
+        if word in self.domain_ontology['cybersecurity_indicators']['endpoint_identifiers']:
+            base_vector[:64] += np.random.normal(0.5, 0.1, 64)
+        elif word in self.domain_ontology['cybersecurity_indicators']['network_identifiers']:
+            base_vector[64:128] += np.random.normal(0.5, 0.1, 64)
+        elif word in self.domain_ontology['cybersecurity_indicators']['security_tools']:
+            base_vector[128:192] += np.random.normal(0.5, 0.1, 64)
         
+        return base_vector
+    
+    def _apply_concept_manifold_boost(self, text: str, embedding: np.ndarray) -> np.ndarray:
+        boost_vector = np.zeros_like(embedding)
+        
+        for node in self.concept_manifold.nodes():
+            if node in text:
+                centrality = nx.degree_centrality(self.concept_manifold).get(node, 0)
+                node_influence = centrality * 0.2
+                
+                node_hash = hash(node) % (2**16)
+                np.random.seed(node_hash)
+                boost_contribution = np.random.normal(0, node_influence, len(embedding))
+                boost_vector += boost_contribution
+        
+        return boost_vector
+    
+    def _calculate_concept_manifold_relevance(self, column_name: str, samples: List[str]) -> Dict[str, float]:
+        relevance_scores = {}
+        
+        all_text = column_name.lower() + ' ' + ' '.join(str(s).lower() for s in samples[:20])
+        
+        for node in self.concept_manifold.nodes():
+            if self.concept_manifold.nodes[node].get('node_type') == 'concept':
+                if node in all_text:
+                    centrality = nx.betweenness_centrality(self.concept_manifold).get(node, 0)
+                    relevance_scores[node] = centrality
+        
+        return relevance_scores
+    
+    def _quantum_hostname_probability(self, column_name: str, samples: List[str], 
+                                    table_context: Dict[str, Any]) -> float:
+        
+        name_indicators = self._calculate_name_semantic_score(column_name)
+        content_coherence = self._calculate_content_quantum_coherence(samples)
+        pattern_alignment = self._calculate_hostname_pattern_alignment(samples)
+        context_relevance = self._calculate_context_quantum_relevance(table_context)
+        
+        quantum_weights = [0.25, 0.35, 0.25, 0.15]
+        components = [name_indicators, content_coherence, pattern_alignment, context_relevance]
+        
+        base_probability = sum(w * c for w, c in zip(quantum_weights, components))
+        
+        emergence_factor = self._calculate_emergence_factor(column_name, samples)
+        final_probability = base_probability * (1 + emergence_factor * 0.3)
+        
+        return min(1.0, final_probability)
+    
+    def _calculate_semantic_similarity(self, term1: str, term2: str) -> float:
+        embed1 = self._create_quantum_embedding(term1, 256)
+        embed2 = self._create_quantum_embedding(term2, 256)
+        
+        similarity = cosine_similarity([embed1], [embed2])[0][0]
+        return max(0.0, similarity)
+    
+    def _extract_table_semantic_signature(self, table_name: str, column_names: List[str]) -> Dict[str, Any]:
+        table_embedding = self._create_quantum_embedding(table_name)
+        column_embeddings = [self._create_quantum_embedding(col) for col in column_names]
+        
+        if column_embeddings:
+            avg_column_embedding = np.mean(column_embeddings, axis=0)
+            semantic_coherence = cosine_similarity([table_embedding], [avg_column_embedding])[0][0]
+        else:
+            semantic_coherence = 0.0
+        
+        return {
+            'table_embedding': table_embedding,
+            'column_embeddings': column_embeddings,
+            'semantic_coherence': semantic_coherence,
+            'complexity_score': len(column_names) / 50.0
+        }
+    
+    def _create_quantum_content_embedding(self, samples: List[str]) -> np.ndarray:
         if not samples:
-            return name_score * 0.5
+            return np.zeros(1024)
         
-        pattern_matches = 0
-        format_consistency = 0
-        semantic_matches = 0
+        sample_subset = samples[:50]
+        content_text = ' '.join(str(s) for s in sample_subset)
         
-        for sample in samples[:50]:
-            if self._matches_hostname_patterns(sample):
-                pattern_matches += 1
-            
-            if self._has_hostname_semantics(sample):
-                semantic_matches += 1
-        
-        pattern_score = pattern_matches / len(samples[:50])
-        semantic_score = semantic_matches / len(samples[:50])
-        
-        format_consistency = self._calculate_format_consistency(samples[:50])
-        
-        context_boost = 0.0
-        if table_context.get('is_endpoint') or table_context.get('is_asset'):
-            context_boost = 0.2
-        if table_context.get('data_source') == 'cmdb':
-            context_boost += 0.15
-        
-        final_score = (
-            name_score * 0.3 +
-            pattern_score * 0.35 +
-            semantic_score * 0.25 +
-            format_consistency * 0.1 +
-            context_boost
-        )
-        
-        return min(1.0, final_score)
+        return self._create_quantum_embedding(content_text)
     
-    def _matches_hostname_patterns(self, value: str) -> bool:
-        if not isinstance(value, str) or not (2 <= len(value) <= 253):
-            return False
+    def _calculate_semantic_alignment(self, name_embed: np.ndarray, content_embed: np.ndarray) -> float:
+        if name_embed.size == 0 or content_embed.size == 0:
+            return 0.0
         
-        value = value.strip()
-        if not value or value.upper() in ['NULL', 'N/A', 'UNKNOWN', 'NONE', '']:
-            return False
-        
-        for pattern in self.domain_knowledge['hostname_patterns']:
-            if re.match(pattern, value, re.IGNORECASE):
-                return True
-        
-        value_lower = value.lower()
-        for indicator in self.domain_knowledge['hostname_indicators']:
-            if indicator in value_lower:
-                return True
-        
-        return False
+        return cosine_similarity([name_embed], [content_embed])[0][0]
     
-    def _has_hostname_semantics(self, value: str) -> bool:
-        if not isinstance(value, str):
-            return False
-        
-        value_lower = value.lower()
-        
-        has_infrastructure = any(term in value_lower for term in self.domain_knowledge['infrastructure_terms'])
-        has_location = any(term in value_lower for term in self.domain_knowledge['location_terms'])
-        has_numbers = bool(re.search(r'\d', value))
-        has_separators = bool(re.search(r'[-_.]', value))
-        
-        return (has_infrastructure or has_location) and (has_numbers or has_separators)
-    
-    def _calculate_format_consistency(self, samples: List[str]) -> float:
-        if len(samples) < 2:
-            return 1.0
+    def _analyze_pattern_coherence(self, samples: List[str]) -> Dict[str, float]:
+        if not samples:
+            return {'coherence': 0.0, 'consistency': 0.0}
         
         patterns = []
-        for sample in samples:
+        for sample in samples[:30]:
             pattern = re.sub(r'[a-zA-Z]', 'A', str(sample))
             pattern = re.sub(r'[0-9]', '9', pattern)
             patterns.append(pattern)
         
         from collections import Counter
         pattern_counts = Counter(patterns)
-        most_common_ratio = pattern_counts.most_common(1)[0][1] / len(patterns) if pattern_counts else 0
         
-        return most_common_ratio
+        if patterns:
+            consistency = pattern_counts.most_common(1)[0][1] / len(patterns)
+            coherence = 1.0 - (len(set(patterns)) / len(patterns))
+        else:
+            consistency = coherence = 0.0
+        
+        return {'coherence': coherence, 'consistency': consistency}
     
-    def _embed_text_advanced(self, text: str) -> np.ndarray:
-        if not text:
-            return np.zeros(512)
+    def _calculate_field_quantum_probability(self, column_name: str, samples: List[str], 
+                                           field_type: str, table_context: Dict[str, Any]) -> float:
         
-        text_lower = text.lower()
+        if field_type == 'hostname':
+            return self._quantum_hostname_probability(column_name, samples, table_context)
         
-        semantic_vector = np.zeros(512)
+        pattern_matches = self._count_pattern_matches(samples, field_type)
+        semantic_relevance = self._calculate_semantic_field_relevance(column_name, field_type)
         
-        if text_lower in self.cache:
-            return self.cache[text_lower]
-        
-        concept_scores = {}
-        for node in self.concept_graph.nodes():
-            if self.concept_graph.nodes[node].get('type') == 'category':
-                neighbors = list(self.concept_graph.neighbors(node))
-                score = sum(1 for neighbor in neighbors if neighbor in text_lower)
-                if score > 0:
-                    concept_scores[node] = score / len(neighbors)
-        
-        for i, (concept, score) in enumerate(concept_scores.items()):
-            if i < 512:
-                semantic_vector[i] = score
-        
-        np.random.seed(hash(text_lower) % 2**32)
-        contextual_noise = np.random.normal(0, 0.01, 512)
-        semantic_vector += contextual_noise
-        
-        norm = np.linalg.norm(semantic_vector)
-        if norm > 0:
-            semantic_vector = semantic_vector / norm
-        
-        self.cache[text_lower] = semantic_vector
-        return semantic_vector
+        return (pattern_matches * 0.7) + (semantic_relevance * 0.3)
     
-    def _embed_content_advanced(self, samples: List[str]) -> np.ndarray:
+    def _count_pattern_matches(self, samples: List[str], field_type: str) -> float:
         if not samples:
-            return np.zeros(512)
+            return 0.0
         
-        content_text = ' '.join(str(s) for s in samples[:20])
-        return self._embed_text_advanced(content_text)
+        patterns = self.domain_ontology['pattern_signatures'].get(f'{field_type}_patterns', [])
+        if not patterns:
+            return 0.0
+        
+        matches = 0
+        for sample in samples[:50]:
+            for pattern in patterns:
+                if re.match(pattern, str(sample)):
+                    matches += 1
+                    break
+        
+        return matches / len(samples[:50])
     
-    def _calculate_graph_relevance(self, column_name: str, samples: List[str]) -> float:
-        relevance_scores = []
+    def _calculate_semantic_field_relevance(self, column_name: str, field_type: str) -> float:
+        name_lower = column_name.lower()
         
-        for node in self.concept_graph.nodes():
-            if node in column_name.lower():
-                centrality = nx.degree_centrality(self.concept_graph).get(node, 0)
-                relevance_scores.append(centrality)
-        
-        return max(relevance_scores) if relevance_scores else 0.0
-    
-    def _analyze_content_patterns(self, samples: List[str]) -> Dict[str, float]:
-        patterns = {
-            'alphanumeric': 0,
-            'has_separators': 0,
-            'consistent_length': 0,
-            'has_prefixes': 0,
-            'has_numbers': 0
+        field_indicators = {
+            'hostname': ['host', 'computer', 'machine', 'device', 'endpoint'],
+            'ip_address': ['ip', 'address', 'addr'],
+            'fqdn': ['fqdn', 'domain', 'dns'],
+            'mac_address': ['mac', 'physical', 'ethernet']
         }
         
+        indicators = field_indicators.get(field_type, [])
+        matches = sum(1 for indicator in indicators if indicator in name_lower)
+        
+        return matches / max(len(indicators), 1)
+    
+    def _generate_quantum_signature(self, column_name: str, samples: List[str]) -> str:
+        name_hash = hashlib.md5(column_name.encode()).hexdigest()[:8]
+        
+        if samples:
+            content_signature = hashlib.md5(''.join(samples[:10]).encode()).hexdigest()[:8]
+        else:
+            content_signature = '00000000'
+        
+        return f"QS_{name_hash}_{content_signature}"
+    
+    def _create_quantum_table_embedding(self, table_name: str, column_names: List[str], 
+                                      sample_data: Dict[str, List[str]]) -> np.ndarray:
+        
+        table_text = table_name + ' ' + ' '.join(column_names)
+        
+        sample_text = ''
+        for samples in sample_data.values():
+            sample_text += ' '.join(samples[:5]) + ' '
+        
+        combined_text = table_text + ' ' + sample_text
+        return self._create_quantum_embedding(combined_text)
+    
+    def _calculate_semantic_density(self, table_embedding: np.ndarray, 
+                                  column_mappings: Dict[str, Any]) -> float:
+        if not column_mappings:
+            return 0.0
+        
+        confidence_scores = [mapping.get('confidence', 0) for mapping in column_mappings.values()]
+        return statistics.mean(confidence_scores) if confidence_scores else 0.0
+    
+    def _calculate_quantum_coherence(self, column_mappings: Dict[str, Any]) -> float:
+        if len(column_mappings) < 2:
+            return 1.0
+        
+        embeddings = []
+        for mapping in column_mappings.values():
+            if 'name_embedding' in mapping:
+                embeddings.append(mapping['name_embedding'])
+        
+        if len(embeddings) < 2:
+            return 0.5
+        
+        similarities = []
+        for i in range(len(embeddings)):
+            for j in range(i + 1, len(embeddings)):
+                sim = cosine_similarity([embeddings[i]], [embeddings[j]])[0][0]
+                similarities.append(sim)
+        
+        return statistics.mean(similarities) if similarities else 0.5
+    
+    def _calculate_name_semantic_score(self, column_name: str) -> float:
+        name_lower = column_name.lower()
+        
+        hostname_terms = ['hostname', 'host', 'computer', 'machine', 'device', 'endpoint', 'asset']
+        exact_matches = [term for term in hostname_terms if term == name_lower]
+        partial_matches = [term for term in hostname_terms if term in name_lower]
+        
+        if exact_matches:
+            return 1.0
+        elif partial_matches:
+            return max(len(match) / len(name_lower) for match in partial_matches)
+        else:
+            return 0.0
+    
+    def _calculate_content_quantum_coherence(self, samples: List[str]) -> float:
         if not samples:
-            return patterns
+            return 0.0
+        
+        valid_samples = [s for s in samples if s and len(str(s).strip()) > 1]
+        if not valid_samples:
+            return 0.0
+        
+        embeddings = [self._create_quantum_embedding(str(s), 256) for s in valid_samples[:20]]
+        
+        if len(embeddings) < 2:
+            return 1.0
+        
+        similarities = []
+        for i in range(len(embeddings)):
+            for j in range(i + 1, len(embeddings)):
+                sim = cosine_similarity([embeddings[i]], [embeddings[j]])[0][0]
+                similarities.append(sim)
+        
+        return statistics.mean(similarities) if similarities else 0.0
+    
+    def _calculate_hostname_pattern_alignment(self, samples: List[str]) -> float:
+        if not samples:
+            return 0.0
+        
+        patterns = self.domain_ontology['pattern_signatures']['hostname_patterns']
+        matches = 0
         
         for sample in samples[:30]:
-            sample_str = str(sample)
-            if re.match(r'^[a-zA-Z0-9]+$', sample_str):
-                patterns['alphanumeric'] += 1
-            if re.search(r'[-_.]', sample_str):
-                patterns['has_separators'] += 1
-            if re.search(r'\d', sample_str):
-                patterns['has_numbers'] += 1
+            for pattern in patterns:
+                if re.match(pattern, str(sample), re.IGNORECASE):
+                    matches += 1
+                    break
         
-        total_samples = len(samples[:30])
-        for key in patterns:
-            patterns[key] = patterns[key] / total_samples if total_samples > 0 else 0
-        
-        return patterns
+        return matches / len(samples[:30])
     
-    def _calculate_context_relevance(self, column_name: str, samples: List[str], 
-                                   table_context: Dict[str, Any]) -> float:
-        relevance = 0.0
+    def _calculate_context_quantum_relevance(self, table_context: Dict[str, Any]) -> float:
+        relevance = 0.5
         
-        if table_context.get('is_endpoint'):
-            relevance += 0.3
-        if table_context.get('is_asset'):
-            relevance += 0.2
-        if table_context.get('data_source') == 'cmdb':
-            relevance += 0.25
+        table_signature = table_context.get('table_semantic_signature', {})
+        coherence = table_signature.get('semantic_coherence', 0)
+        
+        relevance += coherence * 0.3
         
         return min(1.0, relevance)
     
-    def _calculate_field_probability(self, column_name: str, samples: List[str], 
-                                   field_type: str, table_context: Dict[str, Any]) -> float:
+    def _calculate_emergence_factor(self, column_name: str, samples: List[str]) -> float:
+        name_entropy = self._calculate_text_entropy(column_name)
+        content_entropy = self._calculate_content_entropy(samples)
         
-        field_patterns = {
-            'ip_address': [r'^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$'],
-            'fqdn': [r'^[a-zA-Z0-9][a-zA-Z0-9\-\.]*\.[a-zA-Z]{2,}$'],
-            'mac_address': [r'^([0-9A-Fa-f]{2}[:-]){5}[0-9A-Fa-f]{2}$']
-        }
-        
-        if field_type in field_patterns:
-            pattern_matches = 0
-            for sample in samples[:20]:
-                for pattern in field_patterns[field_type]:
-                    if re.match(pattern, str(sample)):
-                        pattern_matches += 1
-                        break
-            
-            return pattern_matches / len(samples[:20]) if samples else 0.0
-        
-        return 0.0
+        return (name_entropy + content_entropy) / 2.0
     
-    def _generate_classification_reasoning(self, column_name: str, samples: List[str], 
-                                         field_type: str) -> List[str]:
-        reasoning = []
-        
-        if 'hostname' in column_name.lower():
-            reasoning.append(f"Column name '{column_name}' contains hostname indicator")
-        
-        if samples and field_type == 'hostname':
-            hostname_count = sum(1 for s in samples[:10] if self._matches_hostname_patterns(str(s)))
-            if hostname_count > 0:
-                reasoning.append(f"{hostname_count}/{len(samples[:10])} samples match hostname patterns")
-        
-        return reasoning
-    
-    def _extract_tfidf_features(self, text: str) -> np.ndarray:
-        try:
-            if hasattr(self.tfidf, 'vocabulary_'):
-                features = self.tfidf.transform([text])
-                return features.toarray()[0]
-            else:
-                self.tfidf.fit([text])
-                return np.zeros(self.tfidf.max_features or 1000)
-        except:
-            return np.zeros(1000)
-    
-    def _extract_graph_features(self, column_names: List[str], sample_data: Dict[str, List[str]]) -> Dict[str, float]:
-        centrality_scores = {}
-        
-        for col_name in column_names:
-            centrality = 0.0
-            for node in self.concept_graph.nodes():
-                if node in col_name.lower():
-                    centrality = max(centrality, nx.degree_centrality(self.concept_graph).get(node, 0))
-            centrality_scores[col_name] = centrality
-        
-        return centrality_scores
-    
-    def _extract_pattern_features(self, sample_data: Dict[str, List[str]]) -> Dict[str, Any]:
-        patterns = {}
-        
-        for col_name, samples in sample_data.items():
-            patterns[col_name] = self._analyze_content_patterns(samples)
-        
-        return patterns
-    
-    def _calculate_semantic_density(self, column_names: List[str], sample_data: Dict[str, List[str]]) -> float:
-        total_semantic_score = 0.0
-        total_items = 0
-        
-        for col_name in column_names:
-            embedding = self._embed_text_advanced(col_name)
-            total_semantic_score += np.sum(np.abs(embedding))
-            total_items += 1
-        
-        return total_semantic_score / total_items if total_items > 0 else 0.0
-    
-    def _create_table_embedding(self, table_name: str, column_names: List[str], 
-                              sample_data: Dict[str, List[str]]) -> np.ndarray:
-        
-        table_text = table_name + ' ' + ' '.join(column_names)
-        return self._embed_text_advanced(table_text)
-    
-    def _find_similar_tables(self, table_embedding: np.ndarray) -> List[Dict[str, Any]]:
-        return []
-    
-    def _calculate_table_confidence(self, column_classifications: Dict[str, Any]) -> float:
-        if not column_classifications:
+    def _calculate_text_entropy(self, text: str) -> float:
+        if not text:
             return 0.0
         
-        confidences = [c.get('confidence', 0.0) for c in column_classifications.values()]
-        return statistics.mean(confidences)
-    
-    def _fuzzy_match(self, term1: str, term2: str) -> float:
-        if term1 == term2:
-            return 1.0
+        char_counts = Counter(text.lower())
+        total_chars = len(text)
         
-        if term1 in term2 or term2 in term1:
-            shorter = min(len(term1), len(term2))
-            longer = max(len(term1), len(term2))
-            return shorter / longer
+        entropy = 0.0
+        for count in char_counts.values():
+            prob = count / total_chars
+            entropy -= prob * np.log2(prob)
         
-        return 0.0
+        max_entropy = np.log2(len(char_counts))
+        return entropy / max_entropy if max_entropy > 0 else 0.0
     
-    def _calculate_term_similarity(self, term1: str, term2: str) -> float:
-        return self._fuzzy_match(term1, term2)
+    def _calculate_content_entropy(self, samples: List[str]) -> float:
+        if not samples:
+            return 0.0
+        
+        unique_samples = set(str(s) for s in samples)
+        return len(unique_samples) / len(samples)
 
-class AdvancedPatternRecognizer:
+class QuantumPatternRecognizer:
     def __init__(self):
-        self.pattern_memory = defaultdict(list)
-        self.success_tracking = defaultdict(lambda: {'success': 0, 'total': 0})
-        self.clustering_model = DBSCAN(eps=0.3, min_samples=2)
+        self.pattern_quantum_memory = defaultdict(list)
+        self.success_probability_matrix = defaultdict(lambda: {'success': 0, 'total': 0})
+        self.quantum_clustering_model = DBSCAN(eps=0.3, min_samples=3)
         self.pattern_embeddings = {}
         
-    def learn_from_classification(self, column_name: str, samples: List[str], 
-                                classification: Dict[str, Any], success: bool):
+    def learn_from_quantum_classification(self, column_name: str, samples: List[str], 
+                                        classification: Dict[str, Any], success: bool):
         
-        pattern_signature = self._create_pattern_signature(column_name, samples, classification)
+        quantum_signature = self._create_quantum_pattern_signature(column_name, samples, classification)
         
-        self.pattern_memory[classification['field_type']].append({
-            'signature': pattern_signature,
+        self.pattern_quantum_memory[classification['field_type']].append({
+            'signature': quantum_signature,
             'column_name': column_name,
             'classification': classification,
             'timestamp': datetime.now(),
-            'success': success
+            'success': success,
+            'confidence': classification.get('confidence', 0.0)
         })
         
-        self.success_tracking[pattern_signature]['total'] += 1
+        self.success_probability_matrix[quantum_signature]['total'] += 1
         if success:
-            self.success_tracking[pattern_signature]['success'] += 1
+            self.success_probability_matrix[quantum_signature]['success'] += 1
     
-    def predict_classification(self, column_name: str, samples: List[str]) -> Dict[str, Any]:
-        candidate_signature = self._create_pattern_signature(column_name, samples)
+    def predict_quantum_classification(self, column_name: str, samples: List[str]) -> Dict[str, Any]:
+        candidate_signature = self._create_quantum_pattern_signature(column_name, samples)
         
         best_match = None
         best_similarity = 0.0
         
-        for field_type, patterns in self.pattern_memory.items():
-            for pattern in patterns:
-                similarity = self._calculate_pattern_similarity(candidate_signature, pattern['signature'])
-                if similarity > best_similarity and similarity > 0.7:
+        for field_type, patterns in self.pattern_quantum_memory.items():
+            for pattern in patterns[-100:]:
+                similarity = self._calculate_quantum_signature_similarity(
+                    candidate_signature, pattern['signature']
+                )
+                
+                if similarity > best_similarity and similarity > 0.8:
                     best_similarity = similarity
                     best_match = pattern
         
         if best_match:
-            success_rate = self.success_tracking[best_match['signature']]['success'] / max(1, self.success_tracking[best_match['signature']]['total'])
+            success_stats = self.success_probability_matrix[best_match['signature']]
+            success_rate = success_stats['success'] / max(1, success_stats['total'])
+            
+            final_confidence = best_similarity * success_rate * best_match['confidence']
             
             return {
                 'field_type': best_match['classification']['field_type'],
-                'confidence': best_similarity * success_rate,
-                'reasoning': [f"Matched learned pattern with {best_similarity:.2f} similarity"],
-                'pattern_based': True
+                'confidence': final_confidence,
+                'reasoning': [f"Quantum pattern match with {best_similarity:.3f} similarity"],
+                'pattern_based': True,
+                'quantum_enhanced': True
             }
         
         return {'field_type': 'unknown', 'confidence': 0.0, 'pattern_based': False}
     
-    def _create_pattern_signature(self, column_name: str, samples: List[str], 
-                                classification: Dict[str, Any] = None) -> str:
+    def _create_quantum_pattern_signature(self, column_name: str, samples: List[str], 
+                                        classification: Dict[str, Any] = None) -> str:
         
         name_features = [
             len(column_name),
@@ -593,26 +720,36 @@ class AdvancedPatternRecognizer:
             column_name.lower().count('.'),
             int('id' in column_name.lower()),
             int('name' in column_name.lower()),
-            int('host' in column_name.lower())
+            int('host' in column_name.lower()),
+            int('ip' in column_name.lower()),
+            int('address' in column_name.lower())
         ]
         
         content_features = []
         if samples:
-            sample_subset = samples[:10]
+            sample_subset = samples[:15]
             content_features = [
                 len(sample_subset),
                 statistics.mean([len(str(s)) for s in sample_subset]) if sample_subset else 0,
                 len(set(sample_subset)),
                 sum(1 for s in sample_subset if re.search(r'\d', str(s))),
-                sum(1 for s in sample_subset if re.search(r'[-_.]', str(s)))
+                sum(1 for s in sample_subset if re.search(r'[-_.]', str(s))),
+                sum(1 for s in sample_subset if re.search(r'[a-zA-Z]', str(s)))
             ]
         
-        signature_data = name_features + content_features
-        signature_str = ','.join(map(str, signature_data))
+        classification_features = []
+        if classification:
+            classification_features = [
+                hash(classification.get('field_type', '')) % 1000,
+                int(classification.get('confidence', 0) * 100)
+            ]
         
-        return hashlib.md5(signature_str.encode()).hexdigest()[:16]
+        all_features = name_features + content_features + classification_features
+        signature_str = ','.join(map(str, all_features))
+        
+        return hashlib.sha256(signature_str.encode()).hexdigest()[:24]
     
-    def _calculate_pattern_similarity(self, sig1: str, sig2: str) -> float:
+    def _calculate_quantum_signature_similarity(self, sig1: str, sig2: str) -> float:
         if sig1 == sig2:
             return 1.0
         
