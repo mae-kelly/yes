@@ -285,111 +285,191 @@ class AO1SuperEngine:
             table = client.get_table(table_path)
             if not table.schema:
                 logger.error(f"❌ CRITICAL ERROR: NO SCHEMA FOR TABLE {table_path}")
-                logger.error(f"❌ THIS INDICATES BIGQUERY ACCESS ISSUES - STOPPING DISCOVERY")
                 raise Exception(f"No schema available for table {table_path}")
             
             columns = [field.name for field in table.schema]
-            total_rows = table.num_rows
+            
+            # STEP 1: Get actual row count
+            count_query = f"SELECT COUNT(*) as actual_count FROM `{table_path}`"
+            count_job = client.query(count_query)
+            count_result = list(count_job.result())
+            actual_row_count = count_result[0]['actual_count'] if count_result else 0
             
             logger.info(f"💾 TABLE: {table_path}")
             logger.info(f"   📋 COLUMNS: {len(columns)}")
-            logger.info(f"   📊 METADATA ROWS: {total_rows:,}")
+            logger.info(f"   📊 ACTUAL ROWS: {actual_row_count:,}")
             
-            # CRITICAL: Test if we can actually query the table
-            test_query = f"SELECT COUNT(*) as actual_count FROM `{table_path}`"
-            try:
-                test_job = client.query(test_query)
-                test_result = list(test_job.result())
-                actual_row_count = test_result[0]['actual_count'] if test_result else 0
-                
-                logger.info(f"   🔍 ACTUAL ROWS (QUERY): {actual_row_count:,}")
-                
-                if actual_row_count == 0:
-                    logger.error(f"❌ CRITICAL: TABLE {table_path} HAS 0 ACTUAL ROWS")
-                    logger.error(f"❌ METADATA SAYS {total_rows:,} BUT QUERY RETURNS 0")
-                    logger.error(f"❌ THIS INDICATES DATA ACCESS ISSUES - STOPPING")
-                    return assets, 0
-                
-            except Exception as test_e:
-                logger.error(f"❌ CRITICAL: CANNOT QUERY TABLE {table_path}: {test_e}")
-                logger.error(f"❌ THIS INDICATES PERMISSION OR ACCESS ISSUES - STOPPING")
-                raise Exception(f"Cannot access table data: {test_e}")
+            if actual_row_count == 0:
+                logger.warning(f"⚠️  TABLE {table_path} HAS 0 ROWS - SKIPPING")
+                return assets, 0
             
-            # Test a simple SELECT * to make sure we can retrieve rows
-            sample_query = f"SELECT * FROM `{table_path}` LIMIT 5"
-            try:
-                sample_job = client.query(sample_query)
-                sample_results = list(sample_job.result())
-                
-                if len(sample_results) == 0:
-                    logger.error(f"❌ CRITICAL: SAMPLE QUERY RETURNED 0 ROWS FROM {table_path}")
-                    logger.error(f"❌ TABLE HAS {actual_row_count:,} ROWS BUT SELECT * RETURNS NOTHING")
-                    logger.error(f"❌ THIS IS A SERIOUS DATA ACCESS PROBLEM - STOPPING")
-                    return assets, 0
-                
-                logger.info(f"✅ SAMPLE QUERY SUCCESS: Retrieved {len(sample_results)} rows")
-                logger.info(f"   SAMPLE ROW TYPE: {type(sample_results[0])}")
-                if hasattr(sample_results[0], '_fields'):
-                    logger.info(f"   SAMPLE FIELDS: {sample_results[0]._fields}")
-                
-            except Exception as sample_e:
-                logger.error(f"❌ CRITICAL: SAMPLE SELECT FAILED: {sample_e}")
-                raise Exception(f"Cannot retrieve sample data: {sample_e}")
+            # STEP 2: Sample 100 rows to find hostname columns
+            sample_query = f"SELECT * FROM `{table_path}` LIMIT 100"
+            sample_job = client.query(sample_query)
+            sample_results = list(sample_job.result())
             
-            hostname_columns = await self._find_hostname_columns_by_content_intensive(
-                client, table_path, columns, sample_results=sample_results
-            )
+            if not sample_results:
+                logger.error(f"❌ CANNOT RETRIEVE SAMPLE DATA FROM {table_path}")
+                return assets, 0
+            
+            logger.info(f"✅ SAMPLED {len(sample_results)} ROWS FOR HOSTNAME DETECTION")
+            
+            # STEP 3: Find hostname columns from sample
+            hostname_columns = self._find_hostname_columns_from_sample(sample_results, columns)
+            
             if not hostname_columns:
                 logger.warning(f"⚠️  NO HOSTNAME COLUMNS FOUND IN {table_path}")
                 return assets, 0
             
-            logger.info(f"🎯 HOSTNAME COLUMNS: {hostname_columns}")
+            logger.info(f"🎯 HOSTNAME COLUMNS FOUND: {hostname_columns}")
             
-            batch_size = 100000
-            batches = (actual_row_count + batch_size - 1) // batch_size
-            
-            logger.info(f"⚡ PROCESSING {batches} BATCHES OF {batch_size:,} ROWS EACH")
-            
-            for batch_num in range(batches):
-                offset = batch_num * batch_size
+            # STEP 4: Extract ALL values from hostname columns (every single row)
+            for hostname_col in hostname_columns:
+                logger.info(f"🔥 EXTRACTING ALL {actual_row_count:,} VALUES FROM COLUMN: {hostname_col}")
                 
-                batch_assets, batch_rows = await self._process_table_batch_maximum_intensity(
-                    client, table_path, columns, hostname_columns, batch_size, offset, batch_num + 1, batches
+                col_assets, col_rows = await self._extract_all_values_from_column(
+                    client, table_path, hostname_col, actual_row_count
                 )
                 
-                for hostname, asset in batch_assets.items():
+                # Merge with main assets
+                for hostname, asset in col_assets.items():
                     if hostname in assets:
                         assets[hostname] = self._merge_assets(assets[hostname], asset)
                     else:
                         assets[hostname] = asset
                 
-                total_rows_processed += batch_rows
+                total_rows_processed += col_rows
                 
-                if batch_rows == 0:
-                    logger.error(f"❌ CRITICAL: BATCH {batch_num + 1} RETURNED 0 ROWS")
-                    logger.error(f"❌ EXPECTED {min(batch_size, actual_row_count - offset):,} ROWS")
-                    logger.error(f"❌ THIS INDICATES QUERY EXECUTION PROBLEMS - STOPPING")
-                    break
-                
-                if batch_rows < batch_size:
-                    logger.info(f"🏁 REACHED END OF TABLE AT BATCH {batch_num + 1}")
-                    break
-            
-            if total_rows_processed == 0:
-                logger.error(f"❌ CRITICAL: PROCESSED 0 ROWS FROM TABLE {table_path}")
-                logger.error(f"❌ THIS IS UNACCEPTABLE - DISCOVERY CANNOT CONTINUE WITH 0 ROWS")
-                raise Exception(f"Zero rows processed from table with {actual_row_count:,} rows")
+                logger.info(f"✅ COLUMN {hostname_col}: {len(col_assets):,} hosts from {col_rows:,} rows")
             
             logger.info(f"🎉 TABLE COMPLETE: {table_path}")
-            logger.info(f"   🏆 HOSTS DISCOVERED: {len(assets):,}")
-            logger.info(f"   📊 ROWS PROCESSED: {total_rows_processed:,}")
+            logger.info(f"   🏆 TOTAL HOSTS DISCOVERED: {len(assets):,}")
+            logger.info(f"   📊 TOTAL ROWS PROCESSED: {total_rows_processed:,}")
             
         except Exception as e:
             logger.error(f"❌ TABLE PROCESSING FAILED: {table_path}: {e}")
-            logger.error(f"❌ STOPPING DISCOVERY DUE TO CRITICAL ERROR")
             raise
         
         return assets, total_rows_processed
+    
+    def _find_hostname_columns_from_sample(self, sample_results: List, columns: List[str]) -> List[str]:
+        hostname_columns = []
+        
+        logger.info(f"🔍 ANALYZING {len(columns)} COLUMNS IN {len(sample_results)} SAMPLE ROWS")
+        
+        for column_name in columns:
+            samples = []
+            
+            for row in sample_results:
+                if hasattr(row, '_fields'):
+                    row_dict = row._asdict()
+                elif isinstance(row, dict):
+                    row_dict = row
+                elif isinstance(row, (list, tuple)):
+                    row_dict = dict(zip(columns, row))
+                else:
+                    continue
+                
+                if column_name in row_dict and row_dict[column_name] is not None:
+                    samples.append(str(row_dict[column_name]))
+            
+            if len(samples) >= 1:
+                hostname_ratio = self._calculate_hostname_ratio(samples)
+                logger.info(f"   COLUMN {column_name}: {len(samples)} samples, {hostname_ratio:.2f} hostname ratio")
+                
+                if self.visibility_engine.is_hostname_column_by_content(samples):
+                    hostname_columns.append(column_name)
+                    logger.info(f"🎯 HOSTNAME COLUMN DETECTED: {column_name}")
+        
+        return hostname_columns
+    
+    async def _extract_all_values_from_column(self, client, table_path: str, column_name: str, 
+                                            total_rows: int) -> Tuple[Dict[str, Any], int]:
+        assets = {}
+        rows_processed = 0
+        
+        # Extract ALL values from this column in batches
+        batch_size = 500000  # Larger batches since we're only getting one column
+        batches = (total_rows + batch_size - 1) // batch_size
+        
+        logger.info(f"🔥 EXTRACTING ALL VALUES FROM {column_name} IN {batches} BATCHES")
+        
+        for batch_num in range(batches):
+            offset = batch_num * batch_size
+            
+            # Query to get ALL values from this specific column
+            query = f"""
+            SELECT `{column_name}`
+            FROM `{table_path}`
+            WHERE `{column_name}` IS NOT NULL
+            LIMIT {batch_size} OFFSET {offset}
+            """
+            
+            try:
+                logger.info(f"🚀 BATCH {batch_num + 1}/{batches}: EXTRACTING {batch_size:,} VALUES FROM {column_name}")
+                
+                job = client.query(query)
+                results = list(job.result())
+                
+                logger.info(f"📊 BATCH {batch_num + 1} RETURNED {len(results):,} VALUES")
+                
+                if not results:
+                    logger.info(f"🏁 NO MORE VALUES IN COLUMN {column_name}")
+                    break
+                
+                # Process each value
+                batch_hosts = 0
+                for row in results:
+                    if hasattr(row, '_fields'):
+                        value = getattr(row, column_name, None)
+                    elif isinstance(row, dict):
+                        value = row.get(column_name, None)
+                    elif isinstance(row, (list, tuple)) and len(row) > 0:
+                        value = row[0]
+                    else:
+                        continue
+                    
+                    if value is not None:
+                        hostname_value = str(value).strip().upper()
+                        
+                        if self._is_valid_hostname(hostname_value):
+                            if hostname_value not in assets:
+                                assets[hostname_value] = {
+                                    'hostname': hostname_value,
+                                    'sources': [],
+                                    'tables_found_in': [],
+                                    'all_data': {},
+                                    'row_count': 0
+                                }
+                            
+                            asset = assets[hostname_value]
+                            asset['row_count'] += 1
+                            
+                            source_name = self._determine_source_from_table(table_path)
+                            if source_name not in asset['sources']:
+                                asset['sources'].append(source_name)
+                            
+                            if table_path not in asset['tables_found_in']:
+                                asset['tables_found_in'].append(table_path)
+                            
+                            self._set_coverage_flags(asset, source_name)
+                            batch_hosts += 1
+                
+                rows_processed += len(results)
+                
+                logger.info(f"✅ BATCH {batch_num + 1}: {batch_hosts:,} valid hostnames extracted")
+                
+                if len(results) < batch_size:
+                    logger.info(f"🏁 REACHED END OF COLUMN {column_name}")
+                    break
+                    
+            except Exception as e:
+                logger.error(f"❌ BATCH {batch_num + 1} FAILED FOR COLUMN {column_name}: {e}")
+                break
+        
+        logger.info(f"🎉 COLUMN {column_name} COMPLETE: {len(assets):,} unique hosts from {rows_processed:,} values")
+        
+        return assets, rows_processed
     
     async def _try_backup_row_retrieval_methods(self, client, table_path: str, columns: List[str]) -> Tuple[Dict[str, Any], int]:
         assets = {}
