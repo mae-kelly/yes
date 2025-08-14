@@ -1,19 +1,8 @@
-# ai/content.py
-
 import re
-import ipaddress
 import statistics
 from typing import List, Dict, Tuple, Optional, Any
 from collections import Counter, defaultdict
 import hashlib
-import numpy as np
-from sklearn.feature_extraction.text import TfidfVectorizer
-from sklearn.cluster import KMeans, DBSCAN
-from sklearn.metrics.pairwise import cosine_similarity
-from sklearn.manifold import TSNE
-from sklearn.decomposition import PCA
-import networkx as nx
-from datetime import datetime
 
 class QuantumContentAnalyzer:
     def __init__(self):
@@ -21,97 +10,39 @@ class QuantumContentAnalyzer:
             'cybersecurity_indicators': {
                 'endpoint_identifiers': [
                     'hostname', 'host', 'computer', 'machine', 'device', 'endpoint', 'asset',
-                    'workstation', 'server', 'node', 'system', 'equipment', 'appliance',
-                    'instance', 'vm', 'virtual_machine', 'container', 'pod', 'service',
-                    'component', 'element', 'resource', 'entity', 'object', 'unit'
+                    'workstation', 'server', 'node', 'system', 'equipment', 'appliance'
                 ],
                 'network_identifiers': [
                     'ip', 'address', 'network', 'subnet', 'domain', 'fqdn', 'dns',
-                    'ipv4', 'ipv6', 'cidr', 'gateway', 'router', 'switch', 'firewall',
-                    'load_balancer', 'proxy', 'nat', 'vip', 'virtual_ip', 'floating_ip',
-                    'cluster_ip', 'service_ip', 'external_ip', 'internal_ip', 'private_ip', 'public_ip'
+                    'ipv4', 'ipv6', 'cidr', 'gateway', 'router', 'switch', 'firewall'
                 ],
                 'security_tools': [
-                    'edr', 'dlp', 'siem', 'soar', 'ids', 'ips', 'waf', 'xdr', 'ndr',
-                    'ueba', 'casb', 'ztna', 'sase', 'sd_wan', 'vpn', 'proxy',
-                    'antivirus', 'anti_malware', 'fim', 'threat_intel', 'sandbox',
-                    'deception', 'honeypot', 'vulnerability_scanner', 'pen_test'
-                ],
-                'infrastructure_types': [
-                    'server', 'workstation', 'laptop', 'desktop', 'mobile', 'tablet',
-                    'iot', 'embedded', 'mainframe', 'hypervisor', 'container_host',
-                    'kubernetes', 'docker', 'vm_host', 'bare_metal', 'appliance'
-                ],
-                'deployment_models': [
-                    'cloud', 'on_premise', 'hybrid', 'multi_cloud', 'edge', 'fog',
-                    'saas', 'paas', 'iaas', 'faas', 'caas', 'daas', 'serverless',
-                    'containerized', 'virtualized', 'physical', 'distributed'
-                ],
-                'business_contexts': [
-                    'production', 'development', 'test', 'staging', 'qa', 'uat',
-                    'sandbox', 'training', 'demo', 'backup', 'archive', 'legacy',
-                    'deprecated', 'experimental', 'pilot', 'canary', 'blue_green'
+                    'edr', 'dlp', 'siem', 'soar', 'ids', 'ips', 'waf', 'xdr', 'ndr'
                 ]
             },
             'pattern_signatures': {
                 'hostname_patterns': [
                     r'^[a-zA-Z][a-zA-Z0-9\-]{0,61}[a-zA-Z0-9]$',
-                    r'^[a-zA-Z0-9]+$',
-                    r'^[a-zA-Z]{2,4}[0-9]{1,8}$',
-                    r'^[a-zA-Z]+\-[a-zA-Z0-9]+\-[a-zA-Z0-9]+$'
+                    r'^[a-zA-Z0-9]+$'
                 ],
                 'ip_patterns': [
-                    r'^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$',
-                    r'^([0-9a-fA-F]{1,4}:){7}[0-9a-fA-F]{1,4}$'
-                ],
-                'mac_patterns': [
-                    r'^([0-9A-Fa-f]{2}[:-]){5}[0-9A-Fa-f]{2}$',
-                    r'^([0-9A-Fa-f]{4}\.){2}[0-9A-Fa-f]{4}$'
+                    r'^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$'
                 ]
             }
         }
         
-        try:
-            self.quantum_vectorizer = TfidfVectorizer(max_features=25000, ngram_range=(1, 3))
-        except ImportError:
-            self.quantum_vectorizer = None
-            
         self.pattern_quantum_library = self._build_quantum_pattern_library()
         self.semantic_quantum_cache = {}
-        self.learning_quantum_memory = defaultdict(list)
-        self.concept_quantum_network = self._build_quantum_concept_network()
-        self.emergence_detector = self._initialize_emergence_detector()
         
     def _build_quantum_pattern_library(self):
         return {
             'hostname': {
                 'quantum_strict': self.domain_ontology['pattern_signatures']['hostname_patterns'],
-                'quantum_semantic': [
-                    r'(server|srv|host|node|vm|pc|ws|desktop|laptop|workstation)',
-                    r'(prod|dev|test|stage|qa|demo|lab|sandbox)',
-                    r'(web|app|db|sql|ad|dc|dns|dhcp|proxy|fw|lb)',
-                    r'(us|eu|ap|na|sa|asia|amer|emea|apac|east|west|central)',
-                    r'[0-9]{1,3}$',
-                    r'^(win|lnx|nix|mac|ios|and)',
-                    r'(critical|high|medium|low)',
-                    r'(finance|hr|it|ops|sales|legal|security)'
-                ],
                 'quantum_indicators': self.domain_ontology['cybersecurity_indicators']['endpoint_identifiers']
             },
             'ip_address': {
                 'quantum_strict': self.domain_ontology['pattern_signatures']['ip_patterns'],
-                'quantum_semantic': [r'ip', r'addr', r'address', r'network', r'subnet'],
                 'quantum_indicators': ['ip', 'addr', 'address', 'network', 'subnet']
-            },
-            'fqdn': {
-                'quantum_strict': [r'^[a-zA-Z0-9][a-zA-Z0-9\-\.]*\.[a-zA-Z]{2,}$'],
-                'quantum_semantic': [r'fqdn', r'domain', r'dns', r'qualified', r'canonical'],
-                'quantum_indicators': ['fqdn', 'domain', 'dns_name', 'qualified_name']
-            },
-            'mac_address': {
-                'quantum_strict': self.domain_ontology['pattern_signatures']['mac_patterns'],
-                'quantum_semantic': [r'mac', r'ethernet', r'physical', r'hardware'],
-                'quantum_indicators': ['mac', 'physical_address', 'ethernet_address']
             }
         }
 
@@ -253,20 +184,6 @@ class QuantumContentAnalyzer:
     def _generate_quantum_cache_key(self, name: str, values: List[str]) -> str:
         content = f"{name}:{':'.join(str(v) for v in values)}"
         return hashlib.sha256(content.encode()).hexdigest()[:24]
-    
-    def _build_quantum_concept_network(self):
-        try:
-            import networkx as nx
-            return nx.Graph()
-        except ImportError:
-            return None
-    
-    def _initialize_emergence_detector(self):
-        return {
-            'pattern_emergence_threshold': 0.75,
-            'semantic_emergence_threshold': 0.8,
-            'quantum_coherence_threshold': 0.85
-        }
     
     def analyze_column(self, name: str, values: List[str], context: Dict = None):
         return self.analyze_column_quantum_intelligently(name, values, context)

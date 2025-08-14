@@ -1,5 +1,3 @@
-# cache/system.py
-
 import pickle
 import gzip
 import threading
@@ -81,32 +79,6 @@ class MemoryManager:
         target_count = eviction_targets.get(pressure, 0)
         return [key for key, _ in candidates[:target_count]]
 
-class CompressionManager:
-    def __init__(self):
-        self.compression_stats = {}
-        self.size_threshold = 1024
-    
-    def should_compress(self, data: Any, size_bytes: int) -> bool:
-        if size_bytes < self.size_threshold:
-            return False
-        
-        data_type = type(data).__name__
-        stats = self.compression_stats.get(data_type, {'attempts': 0, 'successes': 0})
-        
-        if stats['attempts'] == 0:
-            return size_bytes > self.size_threshold * 2
-        
-        success_rate = stats['successes'] / stats['attempts']
-        return success_rate > 0.3
-    
-    def record_compression(self, data_type: str, original_size: int, compressed_size: int):
-        if data_type not in self.compression_stats:
-            self.compression_stats[data_type] = {'attempts': 0, 'successes': 0}
-        
-        self.compression_stats[data_type]['attempts'] += 1
-        if compressed_size < original_size:
-            self.compression_stats[data_type]['successes'] += 1
-
 class IntelligentCache:
     def __init__(self, cache_dir: str = ".cache", max_memory_mb: int = 512, max_disk_gb: int = 5):
         self.cache_dir = Path(cache_dir)
@@ -121,7 +93,6 @@ class IntelligentCache:
         
         self.lock = threading.RLock()
         self.memory_manager = MemoryManager(self.max_memory)
-        self.compression_manager = CompressionManager()
         
         self.stats = {
             'hits': 0, 'misses': 0, 'evictions': 0,
@@ -164,18 +135,6 @@ class IntelligentCache:
             try:
                 data = pickle.dumps(value)
                 size_bytes = len(data)
-                
-                if self.compression_manager.should_compress(value, size_bytes):
-                    try:
-                        compressed = gzip.compress(data)
-                        if len(compressed) < size_bytes:
-                            data = compressed
-                            size_bytes = len(compressed)
-                            self.compression_manager.record_compression(
-                                type(value).__name__, len(pickle.dumps(value)), size_bytes
-                            )
-                    except:
-                        pass
                 
                 entry = CacheEntry(
                     data=value,
@@ -292,26 +251,6 @@ class IntelligentCache:
                 json.dump(self.disk_index, f)
         except:
             pass
-    
-    def optimize(self) -> Dict[str, int]:
-        with self.lock:
-            expired_memory = [k for k, v in self.memory_cache.items() if v.is_expired()]
-            for key in expired_memory:
-                self._evict_memory(key)
-            
-            expired_disk = []
-            for key in list(self.disk_index.keys()):
-                entry = self._load_disk(key)
-                if not entry or entry.is_expired():
-                    expired_disk.append(key)
-            
-            for key in expired_disk:
-                self._remove_disk(key)
-            
-            return {
-                'memory_evictions': len(expired_memory),
-                'disk_evictions': len(expired_disk)
-            }
     
     def get_stats(self) -> Dict[str, Any]:
         with self.lock:
