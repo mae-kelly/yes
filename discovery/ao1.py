@@ -284,22 +284,61 @@ class AO1SuperEngine:
         try:
             table = client.get_table(table_path)
             if not table.schema:
-                logger.warning(f"⚠️  NO SCHEMA FOR TABLE {table_path}")
-                return assets, 0
+                logger.error(f"❌ CRITICAL ERROR: NO SCHEMA FOR TABLE {table_path}")
+                logger.error(f"❌ THIS INDICATES BIGQUERY ACCESS ISSUES - STOPPING DISCOVERY")
+                raise Exception(f"No schema available for table {table_path}")
             
             columns = [field.name for field in table.schema]
             total_rows = table.num_rows
             
-            logger.info(f"💾 MAXIMUM INTENSITY TABLE: {table_path}")
+            logger.info(f"💾 TABLE: {table_path}")
             logger.info(f"   📋 COLUMNS: {len(columns)}")
-            logger.info(f"   📊 TOTAL ROWS: {total_rows:,}")
-            logger.info(f"   🔥 PROCESSING EVERY SINGLE ROW - FANS SPINNING!")
+            logger.info(f"   📊 METADATA ROWS: {total_rows:,}")
             
-            if total_rows == 0:
-                logger.warning(f"⚠️  TABLE HAS 0 ROWS, TRYING BACKUP METHODS")
-                return await self._try_backup_row_retrieval_methods(client, table_path, columns)
+            # CRITICAL: Test if we can actually query the table
+            test_query = f"SELECT COUNT(*) as actual_count FROM `{table_path}`"
+            try:
+                test_job = client.query(test_query)
+                test_result = list(test_job.result())
+                actual_row_count = test_result[0]['actual_count'] if test_result else 0
+                
+                logger.info(f"   🔍 ACTUAL ROWS (QUERY): {actual_row_count:,}")
+                
+                if actual_row_count == 0:
+                    logger.error(f"❌ CRITICAL: TABLE {table_path} HAS 0 ACTUAL ROWS")
+                    logger.error(f"❌ METADATA SAYS {total_rows:,} BUT QUERY RETURNS 0")
+                    logger.error(f"❌ THIS INDICATES DATA ACCESS ISSUES - STOPPING")
+                    return assets, 0
+                
+            except Exception as test_e:
+                logger.error(f"❌ CRITICAL: CANNOT QUERY TABLE {table_path}: {test_e}")
+                logger.error(f"❌ THIS INDICATES PERMISSION OR ACCESS ISSUES - STOPPING")
+                raise Exception(f"Cannot access table data: {test_e}")
             
-            hostname_columns = await self._find_hostname_columns_by_content_intensive(client, table_path, columns)
+            # Test a simple SELECT * to make sure we can retrieve rows
+            sample_query = f"SELECT * FROM `{table_path}` LIMIT 5"
+            try:
+                sample_job = client.query(sample_query)
+                sample_results = list(sample_job.result())
+                
+                if len(sample_results) == 0:
+                    logger.error(f"❌ CRITICAL: SAMPLE QUERY RETURNED 0 ROWS FROM {table_path}")
+                    logger.error(f"❌ TABLE HAS {actual_row_count:,} ROWS BUT SELECT * RETURNS NOTHING")
+                    logger.error(f"❌ THIS IS A SERIOUS DATA ACCESS PROBLEM - STOPPING")
+                    return assets, 0
+                
+                logger.info(f"✅ SAMPLE QUERY SUCCESS: Retrieved {len(sample_results)} rows")
+                logger.info(f"   SAMPLE ROW TYPE: {type(sample_results[0])}")
+                if hasattr(sample_results[0], '_fields'):
+                    logger.info(f"   SAMPLE FIELDS: {sample_results[0]._fields}")
+                
+            except Exception as sample_e:
+                logger.error(f"❌ CRITICAL: SAMPLE SELECT FAILED: {sample_e}")
+                raise Exception(f"Cannot retrieve sample data: {sample_e}")
+            
+            hostname_columns = await self._find_hostname_columns_by_content_intensive(
+                client, table_path, columns, sample_results=sample_results
+            )
             if not hostname_columns:
                 logger.warning(f"⚠️  NO HOSTNAME COLUMNS FOUND IN {table_path}")
                 return assets, 0
@@ -307,7 +346,7 @@ class AO1SuperEngine:
             logger.info(f"🎯 HOSTNAME COLUMNS: {hostname_columns}")
             
             batch_size = 100000
-            batches = (total_rows + batch_size - 1) // batch_size
+            batches = (actual_row_count + batch_size - 1) // batch_size
             
             logger.info(f"⚡ PROCESSING {batches} BATCHES OF {batch_size:,} ROWS EACH")
             
@@ -326,18 +365,20 @@ class AO1SuperEngine:
                 
                 total_rows_processed += batch_rows
                 
-                if batch_rows == 0 and batch_num == 0:
-                    logger.error(f"❌ FIRST BATCH RETURNED 0 ROWS, TRYING BACKUP METHODS")
-                    backup_assets, backup_rows = await self._try_backup_row_retrieval_methods(
-                        client, table_path, columns
-                    )
-                    assets.update(backup_assets)
-                    total_rows_processed += backup_rows
+                if batch_rows == 0:
+                    logger.error(f"❌ CRITICAL: BATCH {batch_num + 1} RETURNED 0 ROWS")
+                    logger.error(f"❌ EXPECTED {min(batch_size, actual_row_count - offset):,} ROWS")
+                    logger.error(f"❌ THIS INDICATES QUERY EXECUTION PROBLEMS - STOPPING")
                     break
                 
                 if batch_rows < batch_size:
                     logger.info(f"🏁 REACHED END OF TABLE AT BATCH {batch_num + 1}")
                     break
+            
+            if total_rows_processed == 0:
+                logger.error(f"❌ CRITICAL: PROCESSED 0 ROWS FROM TABLE {table_path}")
+                logger.error(f"❌ THIS IS UNACCEPTABLE - DISCOVERY CANNOT CONTINUE WITH 0 ROWS")
+                raise Exception(f"Zero rows processed from table with {actual_row_count:,} rows")
             
             logger.info(f"🎉 TABLE COMPLETE: {table_path}")
             logger.info(f"   🏆 HOSTS DISCOVERED: {len(assets):,}")
@@ -345,14 +386,8 @@ class AO1SuperEngine:
             
         except Exception as e:
             logger.error(f"❌ TABLE PROCESSING FAILED: {table_path}: {e}")
-            try:
-                backup_assets, backup_rows = await self._try_backup_row_retrieval_methods(
-                    client, table_path, []
-                )
-                assets.update(backup_assets)
-                total_rows_processed += backup_rows
-            except Exception as backup_e:
-                logger.error(f"❌ BACKUP METHODS ALSO FAILED: {backup_e}")
+            logger.error(f"❌ STOPPING DISCOVERY DUE TO CRITICAL ERROR")
+            raise
         
         return assets, total_rows_processed
     
@@ -423,22 +458,55 @@ class AO1SuperEngine:
         
         try:
             logger.info(f"🚀 BATCH {batch_num}/{total_batches}: OFFSET {offset:,}, LIMIT {batch_size:,}")
+            logger.info(f"   QUERY: {query}")
             
             job = client.query(query)
             results = list(job.result())
             
             logger.info(f"📊 BATCH {batch_num} RETURNED {len(results):,} ROWS")
             
+            if len(results) == 0:
+                logger.error(f"❌ CRITICAL ERROR: BATCH {batch_num} RETURNED 0 ROWS")
+                logger.error(f"❌ QUERY: {query}")
+                logger.error(f"❌ THIS SHOULD NOT HAPPEN IF TABLE HAS DATA")
+                
+                # Try a diagnostic query to understand why
+                try:
+                    diagnostic_query = f"SELECT COUNT(*) as count FROM `{table_path}` WHERE TRUE"
+                    diag_job = client.query(diagnostic_query)
+                    diag_result = list(diag_job.result())
+                    total_count = diag_result[0]['count'] if diag_result else 0
+                    logger.error(f"❌ DIAGNOSTIC: Table actually has {total_count:,} rows")
+                    
+                    if offset >= total_count:
+                        logger.error(f"❌ OFFSET {offset:,} >= TOTAL ROWS {total_count:,}")
+                    
+                except Exception as diag_e:
+                    logger.error(f"❌ DIAGNOSTIC QUERY FAILED: {diag_e}")
+                
+                return assets, 0
+            
+            # Verify we can read the row structure
             if results:
+                first_row = results[0]
+                logger.info(f"✅ BATCH {batch_num} ROW STRUCTURE:")
+                logger.info(f"   ROW TYPE: {type(first_row)}")
+                if hasattr(first_row, '_fields'):
+                    logger.info(f"   FIELDS: {first_row._fields[:10]}")
+                elif isinstance(first_row, dict):
+                    logger.info(f"   KEYS: {list(first_row.keys())[:10]}")
+                
                 assets = self._extract_hosts_from_results_intensive(
                     results, columns, hostname_columns, table_path
                 )
                 rows_processed = len(results)
                 
-                logger.info(f"✅ BATCH {batch_num} COMPLETE: {len(assets):,} hosts extracted")
+                logger.info(f"✅ BATCH {batch_num} COMPLETE: {len(assets):,} hosts from {rows_processed:,} rows")
             
         except Exception as e:
-            logger.error(f"❌ BATCH {batch_num} FAILED: {e}")
+            logger.error(f"❌ CRITICAL: BATCH {batch_num} QUERY FAILED: {e}")
+            logger.error(f"❌ QUERY WAS: {query}")
+            raise Exception(f"Batch query failed: {e}")
         
         return assets, rows_processed
     
