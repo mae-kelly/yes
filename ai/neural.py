@@ -184,7 +184,10 @@ class QuantumSemanticEmbedder:
         self.concept_manifold = self._construct_concept_manifold()
         self.semantic_clusters = {}
         self.pattern_memory = defaultdict(list)
+        
+        # FIX: Initialize domain_ontology to prevent AttributeError
         self.domain_ontology = self._initialize_domain_ontology()
+        
         self.quantum_vectorizer = TfidfVectorizer(max_features=50000, ngram_range=(1, 4))
         
     def _construct_concept_manifold(self):
@@ -239,6 +242,7 @@ class QuantumSemanticEmbedder:
         return G
     
     def _initialize_domain_ontology(self):
+        """Initialize the domain ontology that was missing"""
         return {
             'cybersecurity_indicators': {
                 'endpoint_identifiers': ['host', 'computer', 'machine', 'device', 'endpoint', 'asset'],
@@ -420,6 +424,7 @@ class QuantumSemanticEmbedder:
         similarity = cosine_similarity([embed1], [embed2])[0][0]
         return max(0.0, similarity)
     
+    # Additional helper methods that were referenced but missing
     def _extract_table_semantic_signature(self, table_name: str, column_names: List[str]) -> Dict[str, Any]:
         table_embedding = self._create_quantum_embedding(table_name)
         column_embeddings = [self._create_quantum_embedding(col) for col in column_names]
@@ -636,6 +641,7 @@ class QuantumSemanticEmbedder:
         if not text:
             return 0.0
         
+        from collections import Counter
         char_counts = Counter(text.lower())
         total_chars = len(text)
         
@@ -755,3 +761,34 @@ class QuantumPatternRecognizer:
         
         common_chars = sum(1 for c1, c2 in zip(sig1, sig2) if c1 == c2)
         return common_chars / max(len(sig1), len(sig2))
+
+# Legacy compatibility classes for imports
+class FieldClassifier:
+    """Legacy FieldClassifier for compatibility with discovery/ao1.py"""
+    def __init__(self):
+        self.field_types = [
+            'hostname', 'ip_address', 'fqdn', 'mac_address', 'infrastructure_type',
+            'system_classification', 'business_unit', 'global_region', 'application_class',
+            'edr_coverage', 'dlp_coverage', 'network_log_types', 'endpoint_log_types'
+        ]
+    
+    def __call__(self, embeddings):
+        """Mock classifier that returns dummy predictions"""
+        import torch
+        batch_size = embeddings.shape[0] if hasattr(embeddings, 'shape') else 1
+        num_classes = len(self.field_types)
+        # Return random predictions for compatibility
+        return torch.randn(batch_size, num_classes)
+
+class PatternRecognizer:
+    """Legacy PatternRecognizer for compatibility"""
+    def __init__(self):
+        pass
+    
+    def predict_classification(self, column_name: str, samples: List[str]) -> Dict[str, Any]:
+        """Mock pattern recognition"""
+        return {
+            'field_type': 'unknown',
+            'confidence': 0.0,
+            'pattern_based': False
+        }

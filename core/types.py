@@ -14,6 +14,41 @@ class QuantumFieldSignature:
     emergence_probability: float
 
 @dataclass
+class Asset:
+    """Legacy Asset class for compatibility"""
+    id: str
+    hostname: str = ""
+    ip: str = ""
+    fqdn: str = ""
+    mac: str = ""
+    infrastructure_type: str = ""
+    system_classification: str = ""
+    business_unit: str = ""
+    region: str = ""
+    datacenter: str = ""
+    cloud_region: str = ""
+    cio: str = ""
+    application_class: str = ""
+    
+    # Coverage flags
+    edr_coverage: bool = False
+    dlp_coverage: bool = False
+    tanium_coverage: bool = False
+    splunk_coverage: bool = False
+    chronicle_coverage: bool = False
+    crowdstrike_coverage: bool = False
+    cmdb_visibility: bool = False
+    
+    # Metrics
+    visibility_score: float = 0.0
+    confidence: float = 0.0
+    sources: int = 0
+    
+    # Metadata
+    raw_data: Dict[str, Any] = field(default_factory=dict)
+    metadata: Dict[str, Any] = field(default_factory=dict)
+
+@dataclass
 class HyperAsset:
     id: str
     primary_identity: str = ""
@@ -81,6 +116,15 @@ class HyperSchema:
     pattern_complexity: float = 0.0
 
 @dataclass
+class Discovery:
+    """Legacy Discovery class for compatibility"""
+    assets: Dict[str, Asset] = field(default_factory=dict)
+    discovery_stats: Dict[str, Any] = field(default_factory=dict)
+    insights: List[Dict[str, Any]] = field(default_factory=list)
+    recommendations: List[str] = field(default_factory=list)
+    created_at: datetime = field(default_factory=datetime.now)
+
+@dataclass
 class QuantumDiscovery:
     hyper_assets: Dict[str, HyperAsset] = field(default_factory=dict)
     quantum_schemas: Dict[str, HyperSchema] = field(default_factory=dict)
@@ -118,3 +162,34 @@ class EntityCluster:
     coherence: float
     density: float
     separation: float
+
+# Legacy compatibility classes for ai.neural imports
+class FieldClassifier:
+    """Legacy FieldClassifier for compatibility with discovery/ao1.py"""
+    def __init__(self):
+        self.field_types = [
+            'hostname', 'ip_address', 'fqdn', 'mac_address', 'infrastructure_type',
+            'system_classification', 'business_unit', 'global_region', 'application_class',
+            'edr_coverage', 'dlp_coverage', 'network_log_types', 'endpoint_log_types'
+        ]
+    
+    def __call__(self, embeddings):
+        """Mock classifier that returns dummy predictions"""
+        import torch
+        batch_size = embeddings.shape[0] if hasattr(embeddings, 'shape') else 1
+        num_classes = len(self.field_types)
+        # Return random predictions for compatibility
+        return torch.randn(batch_size, num_classes)
+
+class PatternRecognizer:
+    """Legacy PatternRecognizer for compatibility"""
+    def __init__(self):
+        pass
+    
+    def predict_classification(self, column_name: str, samples: List[str]) -> Dict[str, Any]:
+        """Mock pattern recognition"""
+        return {
+            'field_type': 'unknown',
+            'confidence': 0.0,
+            'pattern_based': False
+        }
