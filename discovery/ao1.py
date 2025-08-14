@@ -71,7 +71,7 @@ class AO1VisibilityEngine:
             return False
         
         hostname_ratio = hostname_count / valid_samples
-        return hostname_ratio > 0.6
+        return hostname_ratio > 0.3
     
     def _looks_like_hostname(self, value: str) -> bool:
         if not isinstance(value, str):
@@ -438,7 +438,7 @@ class AO1SuperEngine:
     async def _find_hostname_columns_by_content(self, client, table_path: str, columns: List[str]) -> List[str]:
         hostname_columns = []
         
-        logger.info(f"🔍 ANALYZING {len(columns)} COLUMNS FOR HOSTNAME CONTENT")
+        logger.info(f"🔍 ANALYZING ALL {len(columns)} COLUMNS FOR HOSTNAME CONTENT (IGNORING COLUMN NAMES)")
         
         sample_query = f"""
         SELECT *
@@ -459,7 +459,6 @@ class AO1SuperEngine:
             
             first_row = results[0]
             logger.info(f"🔍 SAMPLE ROW TYPE: {type(first_row)}")
-            logger.info(f"🔍 SAMPLE ROW: {str(first_row)[:300]}...")
             
             for col_idx, column_name in enumerate(columns):
                 samples = []
@@ -477,15 +476,18 @@ class AO1SuperEngine:
                         samples.append(str(row_dict[column_name]))
                 
                 logger.info(f"🔍 COLUMN {column_name}: {len(samples)} samples")
-                if samples:
+                if samples and len(samples) >= 3:
                     logger.info(f"   SAMPLE VALUES: {samples[:5]}")
-                
-                if self.visibility_engine._is_hostname_column_by_content(samples):
-                    hostname_columns.append(column_name)
-                    hostname_ratio = self._get_hostname_ratio(samples)
-                    logger.info(f"🎯 HOSTNAME COLUMN FOUND: {column_name} (ratio: {hostname_ratio:.2f})")
+                    
+                    if self.visibility_engine._is_hostname_column_by_content(samples):
+                        hostname_columns.append(column_name)
+                        hostname_ratio = self._get_hostname_ratio(samples)
+                        logger.info(f"🎯 HOSTNAME COLUMN FOUND: {column_name} (ratio: {hostname_ratio:.2f})")
+                    else:
+                        hostname_ratio = self._get_hostname_ratio(samples)
+                        logger.info(f"❌ NOT HOSTNAME COLUMN: {column_name} (ratio: {hostname_ratio:.2f})")
             
-            logger.info(f"🎯 TOTAL HOSTNAME COLUMNS FOUND: {len(hostname_columns)}")
+            logger.info(f"🎯 TOTAL HOSTNAME COLUMNS FOUND: {len(hostname_columns)} out of {len(columns)}")
             
         except Exception as e:
             logger.error(f"❌ FAILED TO SAMPLE TABLE FOR HOSTNAME DETECTION: {e}")
