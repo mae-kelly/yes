@@ -2,7 +2,7 @@ import asyncio
 import logging
 import re
 import statistics
-from typing import Dict, List, Any, Optional
+from typing import Dict, List, Any, Optional, Tuple
 from datetime import datetime
 from collections import defaultdict
 
@@ -199,7 +199,9 @@ class AO1SuperEngine:
     async def enhanced_discovery(self, client_managers: Dict[str, Any], 
                                intelligence_result: Dict[str, Any] = None) -> Dict[str, Any]:
         
-        logger.info("Starting COMPREHENSIVE CMDB discovery - processing ALL hosts from ALL tables")
+        logger.info("🔥 STARTING MAXIMUM INTENSITY COMPREHENSIVE CMDB DISCOVERY 🔥")
+        logger.info("⚡ PROCESSING EVERY SINGLE HOST FROM EVERY SINGLE TABLE ⚡")
+        logger.info("🌪️  FANS WILL BE SPINNING - THIS IS GOING TO BE INTENSIVE 🌪️")
         start_time = datetime.now()
         
         discovered_assets = {}
@@ -212,6 +214,7 @@ class AO1SuperEngine:
         ]
         
         total_hosts_processed = 0
+        total_rows_scanned = 0
         
         for source_name, table_path, project_id in priority_sources:
             client_manager = client_managers.get(project_id)
@@ -219,10 +222,12 @@ class AO1SuperEngine:
                 logger.warning(f"Client manager not available for {project_id}")
                 continue
                 
-            logger.info(f"PROCESSING ALL HOSTS FROM {source_name.upper()}: {table_path}")
+            logger.info(f"🚀 MAXIMUM INTENSITY PROCESSING: {source_name.upper()}")
+            logger.info(f"📊 TABLE: {table_path}")
+            logger.info(f"💾 PROCESSING EVERY SINGLE ROW - NO LIMITS")
             
             try:
-                assets = await self._process_entire_table_comprehensive(client_manager, table_path, source_name)
+                assets, rows_processed = await self._process_entire_table_maximum_intensity(client_manager, table_path, source_name)
                 
                 for hostname, asset in assets.items():
                     if hostname in discovered_assets:
@@ -232,40 +237,55 @@ class AO1SuperEngine:
                     else:
                         discovered_assets[hostname] = asset
                 
-                logger.info(f"Processed {len(assets):,} hosts from {source_name}")
+                logger.info(f"✅ {source_name.upper()}: {len(assets):,} HOSTS FROM {rows_processed:,} ROWS")
                 total_hosts_processed += len(assets)
+                total_rows_scanned += rows_processed
+                
+                logger.info(f"🔥 CUMULATIVE: {len(discovered_assets):,} UNIQUE HOSTS, {total_rows_scanned:,} ROWS SCANNED")
                 
             except Exception as e:
-                logger.error(f"Failed to process {source_name}: {e}")
+                logger.error(f"❌ FAILED TO PROCESS {source_name}: {e}")
         
-        logger.info(f"NOW PROCESSING ALL OTHER TABLES IN ALL DATASETS")
+        logger.info(f"🌟 NOW SCANNING EVERY OTHER TABLE IN EVERY DATASET 🌟")
+        logger.info(f"🔍 COMPREHENSIVE DATASET DISCOVERY MODE ACTIVATED")
         
         for project_id, client_manager in client_managers.items():
-            additional_assets = await self._discover_all_tables_comprehensive(client_manager, project_id, discovered_assets)
+            logger.info(f"🗂️  SCANNING ALL DATASETS IN PROJECT: {project_id}")
+            additional_assets, additional_rows = await self._discover_all_tables_maximum_intensity(client_manager, project_id, discovered_assets)
             
             for hostname, asset in additional_assets.items():
                 if hostname in discovered_assets:
                     discovered_assets[hostname] = self._merge_comprehensive_assets(
-                        discovered_assets[hostname], asset, 'additional_tables'
+                        discovered_assets[hostname], asset, 'additional_discovery'
                     )
                 else:
                     discovered_assets[hostname] = asset
             
-            logger.info(f"Found {len(additional_assets):,} additional hosts from {project_id}")
+            logger.info(f"📈 PROJECT {project_id}: +{len(additional_assets):,} HOSTS FROM {additional_rows:,} ADDITIONAL ROWS")
             total_hosts_processed += len(additional_assets)
+            total_rows_scanned += additional_rows
         
         processing_time = (datetime.now() - start_time).total_seconds()
         
-        logger.info(f"COMPREHENSIVE DISCOVERY COMPLETE: {len(discovered_assets):,} UNIQUE HOSTS")
-        logger.info(f"Total hosts processed: {total_hosts_processed:,}")
-        logger.info(f"Processing time: {processing_time/60:.1f} minutes")
+        logger.info(f"🎉 MAXIMUM INTENSITY DISCOVERY COMPLETE! 🎉")
+        logger.info(f"🏆 FINAL RESULTS:")
+        logger.info(f"   📊 UNIQUE HOSTS DISCOVERED: {len(discovered_assets):,}")
+        logger.info(f"   🔍 TOTAL ROWS SCANNED: {total_rows_scanned:,}")
+        logger.info(f"   ⏱️  PROCESSING TIME: {processing_time/60:.1f} MINUTES")
+        logger.info(f"   🚀 ROWS PER SECOND: {total_rows_scanned/processing_time:,.0f}")
+        logger.info(f"   💻 HOSTS PER SECOND: {len(discovered_assets)/processing_time:,.0f}")
         
         return {
             'discovery_stats': {
                 'total_unique_hosts': len(discovered_assets),
                 'total_hosts_processed': total_hosts_processed,
+                'total_rows_scanned': total_rows_scanned,
                 'processing_time_minutes': processing_time / 60,
-                'comprehensive_mode': True
+                'rows_per_second': total_rows_scanned / processing_time,
+                'hosts_per_second': len(discovered_assets) / processing_time,
+                'maximum_intensity_mode': True,
+                'comprehensive_scan_complete': True,
+                'fan_spinning_guaranteed': True
             },
             'assets': discovered_assets,
             'performance_metrics': self._get_performance_summary()
@@ -313,7 +333,6 @@ class AO1SuperEngine:
                     for col in columns:
                         select_fields.append(f"CAST(`{col}` AS STRING) as `{col}`")
                     
-                    # FIXED: Remove WHERE clause to get ALL rows, then filter in Python
                     query = f"""
                     SELECT {', '.join(select_fields)}
                     FROM `{table_path}`
@@ -348,7 +367,6 @@ class AO1SuperEngine:
                     logger.info(f"   🔢 CUMULATIVE ROWS: {total_rows_processed:,}")
                     logger.info(f"   📊 PROGRESS: {((batch_num + 1) / batches * 100):.1f}%")
                     
-                    # If we got fewer rows than expected, we've hit the end
                     if len(results) < batch_size:
                         logger.info(f"🏁 REACHED END OF TABLE AT BATCH {batch_num + 1}")
                         break
@@ -365,138 +383,6 @@ class AO1SuperEngine:
         
         return assets, total_rows_processed
     
-    def _extract_hosts_from_batch_intensive(self, results: List, columns: List[str], hostname_columns: List[str], 
-                                field_mappings: Dict[str, List[str]], source_name: str, table_path: str) -> Dict[str, Any]:
-        assets = {}
-        rows_with_hostnames = 0
-        total_rows_processed = len(results)
-        
-        logger.info(f"🔍 EXTRACTING HOSTS FROM {total_rows_processed:,} ROWS")
-        logger.info(f"🎯 LOOKING FOR HOSTNAMES IN COLUMNS: {hostname_columns}")
-        
-        for row_idx, row in enumerate(results):
-            if not row:
-                continue
-            
-            row_dict = dict(zip(columns, row))
-            
-            # Find ALL potential hostnames in this row
-            hostnames = []
-            for hostname_col in hostname_columns:
-                if hostname_col in row_dict and row_dict[hostname_col]:
-                    hostname_value = str(row_dict[hostname_col]).strip().upper()
-                    if self._is_valid_hostname(hostname_value):
-                        hostnames.append(hostname_value)
-            
-            # If we found hostnames in this row, process it
-            if hostnames:
-                rows_with_hostnames += 1
-                
-                for hostname in hostnames:
-                    if hostname not in assets:
-                        assets[hostname] = {
-                            'hostname': hostname,
-                            'sources': [],
-                            'tables_found_in': [],
-                            'all_data': {},
-                            'row_count': 0
-                        }
-                    
-                    asset = assets[hostname]
-                    asset['row_count'] += 1
-                    
-                    if source_name not in asset['sources']:
-                        asset['sources'].append(source_name)
-                    
-                    if table_path not in asset['tables_found_in']:
-                        asset['tables_found_in'].append(table_path)
-                    
-                    # Extract ALL field data from this row
-                    for field_type, field_columns in field_mappings.items():
-                        for field_col in field_columns:
-                            if field_col in row_dict and row_dict[field_col]:
-                                value = str(row_dict[field_col]).strip()
-                                if self._is_valid_field_value(value):
-                                    if field_type not in asset['all_data']:
-                                        asset['all_data'][field_type] = set()
-                                    asset['all_data'][field_type].add(value)
-                    
-                    self._set_coverage_flags_intensive(asset, source_name)
-        
-        # Convert sets back to lists for JSON serialization
-        for hostname, asset in assets.items():
-            for field_type, value_set in asset['all_data'].items():
-                asset['all_data'][field_type] = list(value_set)
-        
-        logger.info(f"📊 EXTRACTION RESULTS:")
-        logger.info(f"   🔢 TOTAL ROWS PROCESSED: {total_rows_processed:,}")
-        logger.info(f"   🏠 ROWS WITH HOSTNAMES: {rows_with_hostnames:,}")
-        logger.info(f"   🎯 UNIQUE HOSTS FOUND: {len(assets):,}")
-        logger.info(f"   📈 HOST EXTRACTION RATE: {(rows_with_hostnames/total_rows_processed*100):.1f}%")
-        
-        return assets
-    
-    def _is_valid_hostname(self, value: str) -> bool:
-        """Check if a value looks like a valid hostname"""
-        if not value or len(value) < 2 or len(value) > 253:
-            return False
-        
-        # Skip obviously invalid values
-        invalid_values = ['NULL', 'NONE', 'UNKNOWN', 'N/A', 'NA', '', '-', '0', 'null', 'none']
-        if value.upper() in invalid_values:
-            return False
-        
-        # Skip pure numbers
-        if value.isdigit():
-            return False
-        
-        # Skip IP addresses (they're not hostnames)
-        if self._looks_like_ip(value):
-            return False
-        
-        # Basic hostname pattern check
-        import re
-        hostname_pattern = r'^[a-zA-Z0-9][a-zA-Z0-9\-_.]*[a-zA-Z0-9]
-    
-    def _set_coverage_flags_intensive(self, asset: Dict[str, Any], source: str):
-        coverage_flags = {
-            'cmdb': {'cmdb_visibility': True, 'cmdb_coverage': True},
-            'splunk': {'splunk_coverage': True, 'siem_coverage': True},
-            'chronicle': {'chronicle_coverage': True, 'siem_coverage': True, 'google_coverage': True},
-            'crowdstrike': {'crowdstrike_coverage': True, 'edr_coverage': True, 'endpoint_protection': True}
-        }
-        
-        flags = coverage_flags.get(source, {})
-        for flag, value in flags.items():
-            asset[flag] = value
-    
-    def _merge_batch_assets(self, primary: Dict[str, Any], secondary: Dict[str, Any]) -> Dict[str, Any]:
-        merged = primary.copy()
-        
-        merged['row_count'] = merged.get('row_count', 0) + secondary.get('row_count', 0)
-        
-        for source in secondary.get('sources', []):
-            if source not in merged['sources']:
-                merged['sources'].append(source)
-        
-        for table in secondary.get('tables_found_in', []):
-            if table not in merged['tables_found_in']:
-                merged['tables_found_in'].append(table)
-        
-        for field_type, values in secondary.get('all_data', {}).items():
-            if field_type not in merged['all_data']:
-                merged['all_data'][field_type] = []
-            
-            for value in values:
-                if value not in merged['all_data'][field_type]:
-                    merged['all_data'][field_type].append(value)
-        
-        for flag in ['cmdb_visibility', 'splunk_coverage', 'chronicle_coverage', 'crowdstrike_coverage', 'edr_coverage', 'siem_coverage']:
-            if secondary.get(flag, False):
-                merged[flag] = True
-        
-        return merged
-    
     def _find_hostname_columns(self, columns: List[str]) -> List[str]:
         hostname_indicators = [
             'hostname', 'host', 'computername', 'computer_name', 'endpoint', 'device', 
@@ -507,22 +393,19 @@ class AO1SuperEngine:
         
         hostname_cols = []
         
-        # Check for exact matches first
         for col in columns:
             col_lower = col.lower()
             if col_lower in ['hostname', 'host', 'computername', 'device_name', 'machine_name']:
                 hostname_cols.append(col)
         
-        # If no exact matches, look for partial matches
         if not hostname_cols:
             for col in columns:
                 col_lower = col.lower()
                 for indicator in hostname_indicators:
-                    if indicator in col_lower and len(col_lower) <= 50:  # Avoid very long column names
+                    if indicator in col_lower and len(col_lower) <= 50:
                         hostname_cols.append(col)
                         break
         
-        # If still no matches, look for any column with 'name' in it (but not *_name_*)
         if not hostname_cols:
             for col in columns:
                 col_lower = col.lower()
@@ -580,11 +463,16 @@ class AO1SuperEngine:
         
         return mappings
     
-    def _extract_hosts_from_batch(self, results: List, columns: List[str], hostname_columns: List[str], 
+    def _extract_hosts_from_batch_intensive(self, results: List, columns: List[str], hostname_columns: List[str], 
                                 field_mappings: Dict[str, List[str]], source_name: str, table_path: str) -> Dict[str, Any]:
         assets = {}
+        rows_with_hostnames = 0
+        total_rows_processed = len(results)
         
-        for row in results:
+        logger.info(f"🔍 EXTRACTING HOSTS FROM {total_rows_processed:,} ROWS")
+        logger.info(f"🎯 LOOKING FOR HOSTNAMES IN COLUMNS: {hostname_columns}")
+        
+        for row_idx, row in enumerate(results):
             if not row:
                 continue
             
@@ -593,293 +481,76 @@ class AO1SuperEngine:
             hostnames = []
             for hostname_col in hostname_columns:
                 if hostname_col in row_dict and row_dict[hostname_col]:
-                    hostname = str(row_dict[hostname_col]).strip().upper()
-                    if hostname and len(hostname) > 1 and hostname not in ['NULL', 'NONE', 'UNKNOWN', 'N/A']:
-                        hostnames.append(hostname)
+                    hostname_value = str(row_dict[hostname_col]).strip().upper()
+                    if self._is_valid_hostname(hostname_value):
+                        hostnames.append(hostname_value)
             
-            for hostname in hostnames:
-                if hostname not in assets:
-                    assets[hostname] = {
-                        'hostname': hostname,
-                        'sources': [],
-                        'tables_found_in': [],
-                        'all_data': {}
-                    }
+            if hostnames:
+                rows_with_hostnames += 1
                 
-                asset = assets[hostname]
-                
-                if source_name not in asset['sources']:
-                    asset['sources'].append(source_name)
-                
-                if table_path not in asset['tables_found_in']:
-                    asset['tables_found_in'].append(table_path)
-                
-                for field_type, field_columns in field_mappings.items():
-                    for field_col in field_columns:
-                        if field_col in row_dict and row_dict[field_col]:
-                            value = str(row_dict[field_col]).strip()
-                            if value and value.upper() not in ['NULL', 'NONE', 'UNKNOWN', 'N/A', '']:
-                                if field_type not in asset['all_data']:
-                                    asset['all_data'][field_type] = []
-                                if value not in asset['all_data'][field_type]:
-                                    asset['all_data'][field_type].append(value)
-                
-                self._set_coverage_flags(asset, source_name)
-        
-        return assets
-    
-    async def _discover_all_tables_maximum_intensity(self, client_manager, project_id: str, existing_assets: Dict[str, Any]) -> Tuple[Dict[str, Any], int]:
-        additional_assets = {}
-        total_additional_rows = 0
-        
-        logger.info(f"🌟 MAXIMUM INTENSITY DATASET SCAN: {project_id}")
-        
-        with client_manager.get_client() as client:
-            datasets = list(client.list_datasets(project=project_id))
-            
-            logger.info(f"📂 DATASETS FOUND: {len(datasets)}")
-            
-            for dataset_idx, dataset in enumerate(datasets):
-                logger.info(f"🗂️  DATASET {dataset_idx + 1}/{len(datasets)}: {dataset.dataset_id}")
-                
-                tables = list(client.list_tables(dataset))
-                logger.info(f"📋 TABLES IN DATASET: {len(tables)}")
-                
-                for table_idx, table_ref in enumerate(tables):
-                    table_path = f"{project_id}.{dataset.dataset_id}.{table_ref.table_id}"
+                for hostname in hostnames:
+                    if hostname not in assets:
+                        assets[hostname] = {
+                            'hostname': hostname,
+                            'sources': [],
+                            'tables_found_in': [],
+                            'all_data': {},
+                            'row_count': 0
+                        }
                     
-                    if self._is_priority_table(table_path):
-                        logger.info(f"⏭️  SKIPPING PRIORITY TABLE: {table_path}")
-                        continue
+                    asset = assets[hostname]
+                    asset['row_count'] += 1
                     
-                    try:
-                        logger.info(f"🔍 TABLE {table_idx + 1}/{len(tables)}: {table_ref.table_id}")
-                        table_assets, table_rows = await self._scan_table_for_hosts_intensive(client, table_path)
-                        
-                        for hostname, asset in table_assets.items():
-                            if hostname not in existing_assets and hostname not in additional_assets:
-                                additional_assets[hostname] = asset
-                            elif hostname in additional_assets:
-                                additional_assets[hostname] = self._merge_batch_assets(additional_assets[hostname], asset)
-                        
-                        total_additional_rows += table_rows
-                        
-                        if len(table_assets) > 0:
-                            logger.info(f"✅ FOUND {len(table_assets):,} NEW HOSTS FROM {table_rows:,} ROWS")
-                        
-                    except Exception as e:
-                        logger.debug(f"⚠️  FAILED TO SCAN {table_path}: {e}")
-                
-                logger.info(f"📊 DATASET {dataset.dataset_id} COMPLETE: {len(additional_assets):,} TOTAL NEW HOSTS")
+                    if source_name not in asset['sources']:
+                        asset['sources'].append(source_name)
+                    
+                    if table_path not in asset['tables_found_in']:
+                        asset['tables_found_in'].append(table_path)
+                    
+                    for field_type, field_columns in field_mappings.items():
+                        for field_col in field_columns:
+                            if field_col in row_dict and row_dict[field_col]:
+                                value = str(row_dict[field_col]).strip()
+                                if self._is_valid_field_value(value):
+                                    if field_type not in asset['all_data']:
+                                        asset['all_data'][field_type] = set()
+                                    asset['all_data'][field_type].add(value)
+                    
+                    self._set_coverage_flags_intensive(asset, source_name)
         
-        logger.info(f"🎯 PROJECT {project_id} SCAN COMPLETE:")
-        logger.info(f"   🏠 NEW HOSTS DISCOVERED: {len(additional_assets):,}")
-        logger.info(f"   📊 ADDITIONAL ROWS SCANNED: {total_additional_rows:,}")
+        for hostname, asset in assets.items():
+            for field_type, value_set in asset['all_data'].items():
+                asset['all_data'][field_type] = list(value_set)
         
-        return additional_assets, total_additional_rows
-    
-    async def _scan_table_for_hosts_intensive(self, client, table_path: str) -> Tuple[Dict[str, Any], int]:
-        assets = {}
-        rows_processed = 0
-        
-        try:
-            table = client.get_table(table_path)
-            if not table.schema or table.num_rows == 0:
-                return assets, 0
-            
-            columns = [field.name for field in table.schema]
-            hostname_columns = self._find_hostname_columns(columns)
-            
-            if not hostname_columns:
-                return assets, 0
-            
-            field_mappings = self._create_comprehensive_field_mappings(columns)
-            
-            max_rows_to_scan = min(table.num_rows, 500000)  # Increased from 1M to process more
-            
-            select_fields = []
-            for col in columns:
-                select_fields.append(f"CAST(`{col}` AS STRING) as `{col}`")
-            
-            # FIXED: Remove WHERE clause to get ALL rows
-            query = f"""
-            SELECT {', '.join(select_fields)}
-            FROM `{table_path}`
-            LIMIT {max_rows_to_scan}
-            """
-            
-            job = client.query(query)
-            results = list(job.result())
-            
-            if len(results) > 0:
-                assets = self._extract_hosts_from_batch_intensive(results, columns, hostname_columns, field_mappings, 'additional_discovery', table_path)
-                rows_processed = len(results)
-                
-                if len(assets) > 0:
-                    logger.info(f"🎯 {table_path}: {len(assets):,} hosts from {rows_processed:,} rows")
-            
-        except Exception as e:
-            logger.debug(f"Failed to scan table {table_path}: {e}")
-        
-        return assets, rows_processed
-    
-    def _is_priority_table(self, table_path: str) -> bool:
-        priority_tables = [
-            'prj-fisv.SAS_BI.V_DIM_ENDPOINT',
-            'prj-fisv.SAS_BI.V_SPL_ENDPOINT_LOG',
-            'prj-fisv.SAS_BI.V_DIM_ENDPOINTAGENT',
-            'chronicle-fisv.datalake.events'
-        ]
-        return table_path in priority_tables
-    
-    async def _scan_table_for_hosts(self, client, table_path: str) -> Dict[str, Any]:
-        assets = {}
-        
-        try:
-            table = client.get_table(table_path)
-            if not table.schema or table.num_rows == 0:
-                return assets
-            
-            columns = [field.name for field in table.schema]
-            hostname_columns = self._find_hostname_columns(columns)
-            
-            if not hostname_columns:
-                return assets
-            
-            field_mappings = self._create_comprehensive_field_mappings(columns)
-            
-            select_fields = []
-            for col in columns:
-                select_fields.append(f"CAST(`{col}` AS STRING) as `{col}`")
-            
-            query = f"""
-            SELECT {', '.join(select_fields)}
-            FROM `{table_path}`
-            WHERE {' OR '.join([f'`{col}` IS NOT NULL' for col in hostname_columns])}
-            """
-            
-            job = client.query(query)
-            results = list(job.result())
-            
-            assets = self._extract_hosts_from_batch(results, columns, hostname_columns, field_mappings, 'additional', table_path)
-            
-        except Exception as e:
-            logger.debug(f"Failed to scan table {table_path}: {e}")
+        logger.info(f"📊 EXTRACTION RESULTS:")
+        logger.info(f"   🔢 TOTAL ROWS PROCESSED: {total_rows_processed:,}")
+        logger.info(f"   🏠 ROWS WITH HOSTNAMES: {rows_with_hostnames:,}")
+        logger.info(f"   🎯 UNIQUE HOSTS FOUND: {len(assets):,}")
+        logger.info(f"   📈 HOST EXTRACTION RATE: {(rows_with_hostnames/total_rows_processed*100):.1f}%")
         
         return assets
     
-    def _set_coverage_flags(self, asset: Dict[str, Any], source: str):
-        coverage_flags = {
-            'cmdb': {'cmdb_visibility': True},
-            'splunk': {'splunk_coverage': True},
-            'chronicle': {'chronicle_coverage': True},
-            'crowdstrike': {'crowdstrike_coverage': True, 'edr_coverage': True}
-        }
+    def _is_valid_hostname(self, value: str) -> bool:
+        if not value or len(value) < 2 or len(value) > 253:
+            return False
         
-        flags = coverage_flags.get(source, {})
-        for flag, value in flags.items():
-            asset[flag] = value
-    
-    def _merge_comprehensive_assets(self, primary: Dict[str, Any], secondary: Dict[str, Any], source: str) -> Dict[str, Any]:
-        merged = primary.copy()
+        invalid_values = ['NULL', 'NONE', 'UNKNOWN', 'N/A', 'NA', '', '-', '0', 'null', 'none']
+        if value.upper() in invalid_values:
+            return False
         
-        if source not in merged['sources']:
-            merged['sources'].append(source)
+        if value.isdigit():
+            return False
         
-        for table in secondary.get('tables_found_in', []):
-            if table not in merged['tables_found_in']:
-                merged['tables_found_in'].append(table)
+        if self._looks_like_ip(value):
+            return False
         
-        for field_type, values in secondary.get('all_data', {}).items():
-            if field_type not in merged['all_data']:
-                merged['all_data'][field_type] = []
-            
-            for value in values:
-                if value not in merged['all_data'][field_type]:
-                    merged['all_data'][field_type].append(value)
-        
-        for flag in ['cmdb_visibility', 'splunk_coverage', 'chronicle_coverage', 'crowdstrike_coverage', 'edr_coverage']:
-            if secondary.get(flag, False):
-                merged[flag] = True
-        
-        return merged
-    
-    async def _extract_ao1_assets(self, client, table_path: str, mappings: Dict[str, str], 
-                                metadata: Dict[str, Any], source_name: str) -> Dict[str, Any]:
-        
-        hostname_col = mappings['hostname']
-        assets = {}
-        
-        try:
-            select_fields = [f"CAST(`{hostname_col}` AS STRING) as hostname"]
-            
-            for field_type, column_name in mappings.items():
-                if field_type != 'hostname':
-                    select_fields.append(f"CAST(`{column_name}` AS STRING) as {field_type}")
-            
-            query = f"""
-            SELECT {', '.join(select_fields)}
-            FROM `{table_path}`
-            WHERE `{hostname_col}` IS NOT NULL
-            LIMIT 10000
-            """
-            
-            job = client.query(query)
-            results = list(job.result())
-            
-            for row in results:
-                if not row or not row[0]:
-                    continue
-                
-                hostname = str(row[0]).strip().upper()
-                if not hostname or len(hostname) < 1:
-                    continue
-                
-                asset_id = f"ao1_{hostname}_{source_name}"
-                
-                asset = {
-                    'id': asset_id,
-                    'hostname': hostname,
-                    'ao1_enhanced': True,
-                    'ao1_metadata': metadata,
-                    'source': source_name
-                }
-                
-                for idx, field_type in enumerate(mappings.keys()):
-                    if idx < len(row) and row[idx]:
-                        value = str(row[idx]).strip()
-                        if value:
-                            asset[field_type] = value
-                
-                self._set_ao1_source_flags(asset, source_name)
-                asset['visibility_score'] = self._calculate_ao1_visibility_score(asset, metadata)
-                
-                assets[asset_id] = asset
-                
-        except Exception as e:
-            logger.error(f"AO1 asset extraction failed: {e}")
-        
-        return assets
-    
-    def _get_performance_summary(self) -> Dict[str, Any]:
-        metrics = self.performance_metrics
-        
-        if not metrics['confidence_scores']:
-            return {'status': 'no_data'}
-        
-        return {
-            'total_classifications': metrics['classifications'],
-            'avg_processing_time': statistics.mean(metrics['processing_times']) if metrics['processing_times'] else 0,
-            'avg_confidence': statistics.mean(metrics['confidence_scores']) if metrics['confidence_scores'] else 0,
-            'avg_visibility': statistics.mean(metrics['visibility_scores']) if metrics['visibility_scores'] else 0
-        }
+        hostname_pattern = r'^[a-zA-Z0-9][a-zA-Z0-9\-_.]*[a-zA-Z0-9]$'
         if not re.match(hostname_pattern, value, re.IGNORECASE):
             return False
         
         return True
     
     def _looks_like_ip(self, value: str) -> bool:
-        """Check if value looks like an IP address"""
         parts = value.split('.')
         if len(parts) == 4:
             try:
@@ -893,7 +564,6 @@ class AO1SuperEngine:
         return False
     
     def _is_valid_field_value(self, value: str) -> bool:
-        """Check if a field value is valid (not null/empty)"""
         if not value:
             return False
         
@@ -939,111 +609,6 @@ class AO1SuperEngine:
         
         return merged
     
-    def _find_hostname_columns(self, columns: List[str]) -> List[str]:
-        hostname_indicators = [
-            'hostname', 'host', 'computername', 'computer_name', 'endpoint', 'device', 
-            'machine', 'server', 'asset', 'equipment', 'node', 'system', 'workstation'
-        ]
-        
-        hostname_cols = []
-        for col in columns:
-            col_lower = col.lower()
-            for indicator in hostname_indicators:
-                if indicator in col_lower:
-                    hostname_cols.append(col)
-                    break
-        
-        return hostname_cols
-    
-    def _create_comprehensive_field_mappings(self, columns: List[str]) -> Dict[str, List[str]]:
-        mappings = {
-            'hostname': [],
-            'ip_address': [],
-            'fqdn': [],
-            'country': [],
-            'region': [],
-            'business_unit': [],
-            'cio': [],
-            'datacenter': [],
-            'application_class': [],
-            'infrastructure_type': [],
-            'system_classification': [],
-            'mac_address': []
-        }
-        
-        field_patterns = {
-            'hostname': ['hostname', 'host', 'computer', 'endpoint', 'device', 'machine', 'server'],
-            'ip_address': ['ip', 'ipaddress', 'address'],
-            'fqdn': ['fqdn', 'domain', 'dns'],
-            'country': ['country', 'ctry'],
-            'region': ['region', 'geo', 'location'],
-            'business_unit': ['business', 'unit', 'bu', 'org'],
-            'cio': ['cio', 'chief'],
-            'datacenter': ['datacenter', 'dc', 'site'],
-            'application_class': ['application', 'app', 'class'],
-            'infrastructure_type': ['infrastructure', 'infra', 'type'],
-            'system_classification': ['system', 'classification', 'class'],
-            'mac_address': ['mac', 'physical']
-        }
-        
-        for col in columns:
-            col_lower = col.lower()
-            for field_type, patterns in field_patterns.items():
-                for pattern in patterns:
-                    if pattern in col_lower:
-                        mappings[field_type].append(col)
-                        break
-        
-        return mappings
-    
-    def _extract_hosts_from_batch(self, results: List, columns: List[str], hostname_columns: List[str], 
-                                field_mappings: Dict[str, List[str]], source_name: str, table_path: str) -> Dict[str, Any]:
-        assets = {}
-        
-        for row in results:
-            if not row:
-                continue
-            
-            row_dict = dict(zip(columns, row))
-            
-            hostnames = []
-            for hostname_col in hostname_columns:
-                if hostname_col in row_dict and row_dict[hostname_col]:
-                    hostname = str(row_dict[hostname_col]).strip().upper()
-                    if hostname and len(hostname) > 1 and hostname not in ['NULL', 'NONE', 'UNKNOWN', 'N/A']:
-                        hostnames.append(hostname)
-            
-            for hostname in hostnames:
-                if hostname not in assets:
-                    assets[hostname] = {
-                        'hostname': hostname,
-                        'sources': [],
-                        'tables_found_in': [],
-                        'all_data': {}
-                    }
-                
-                asset = assets[hostname]
-                
-                if source_name not in asset['sources']:
-                    asset['sources'].append(source_name)
-                
-                if table_path not in asset['tables_found_in']:
-                    asset['tables_found_in'].append(table_path)
-                
-                for field_type, field_columns in field_mappings.items():
-                    for field_col in field_columns:
-                        if field_col in row_dict and row_dict[field_col]:
-                            value = str(row_dict[field_col]).strip()
-                            if value and value.upper() not in ['NULL', 'NONE', 'UNKNOWN', 'N/A', '']:
-                                if field_type not in asset['all_data']:
-                                    asset['all_data'][field_type] = []
-                                if value not in asset['all_data'][field_type]:
-                                    asset['all_data'][field_type].append(value)
-                
-                self._set_coverage_flags(asset, source_name)
-        
-        return assets
-    
     async def _discover_all_tables_maximum_intensity(self, client_manager, project_id: str, existing_assets: Dict[str, Any]) -> Tuple[Dict[str, Any], int]:
         additional_assets = {}
         total_additional_rows = 0
@@ -1094,6 +659,15 @@ class AO1SuperEngine:
         
         return additional_assets, total_additional_rows
     
+    def _is_priority_table(self, table_path: str) -> bool:
+        priority_tables = [
+            'prj-fisv.SAS_BI.V_DIM_ENDPOINT',
+            'prj-fisv.SAS_BI.V_SPL_ENDPOINT_LOG',
+            'prj-fisv.SAS_BI.V_DIM_ENDPOINTAGENT',
+            'chronicle-fisv.datalake.events'
+        ]
+        return table_path in priority_tables
+    
     async def _scan_table_for_hosts_intensive(self, client, table_path: str) -> Tuple[Dict[str, Any], int]:
         assets = {}
         rows_processed = 0
@@ -1111,7 +685,7 @@ class AO1SuperEngine:
             
             field_mappings = self._create_comprehensive_field_mappings(columns)
             
-            max_rows_to_scan = min(table.num_rows, 1000000)
+            max_rows_to_scan = min(table.num_rows, 500000)
             
             select_fields = []
             for col in columns:
@@ -1120,77 +694,23 @@ class AO1SuperEngine:
             query = f"""
             SELECT {', '.join(select_fields)}
             FROM `{table_path}`
-            WHERE {' OR '.join([f'`{col}` IS NOT NULL' for col in hostname_columns])}
             LIMIT {max_rows_to_scan}
             """
             
             job = client.query(query)
             results = list(job.result())
             
-            assets = self._extract_hosts_from_batch_intensive(results, columns, hostname_columns, field_mappings, 'additional_discovery', table_path)
-            rows_processed = len(results)
+            if len(results) > 0:
+                assets = self._extract_hosts_from_batch_intensive(results, columns, hostname_columns, field_mappings, 'additional_discovery', table_path)
+                rows_processed = len(results)
+                
+                if len(assets) > 0:
+                    logger.info(f"🎯 {table_path}: {len(assets):,} hosts from {rows_processed:,} rows")
             
         except Exception as e:
             logger.debug(f"Failed to scan table {table_path}: {e}")
         
         return assets, rows_processed
-    
-    def _is_priority_table(self, table_path: str) -> bool:
-        priority_tables = [
-            'prj-fisv.SAS_BI.V_DIM_ENDPOINT',
-            'prj-fisv.SAS_BI.V_SPL_ENDPOINT_LOG',
-            'prj-fisv.SAS_BI.V_DIM_ENDPOINTAGENT',
-            'chronicle-fisv.datalake.events'
-        ]
-        return table_path in priority_tables
-    
-    async def _scan_table_for_hosts(self, client, table_path: str) -> Dict[str, Any]:
-        assets = {}
-        
-        try:
-            table = client.get_table(table_path)
-            if not table.schema or table.num_rows == 0:
-                return assets
-            
-            columns = [field.name for field in table.schema]
-            hostname_columns = self._find_hostname_columns(columns)
-            
-            if not hostname_columns:
-                return assets
-            
-            field_mappings = self._create_comprehensive_field_mappings(columns)
-            
-            select_fields = []
-            for col in columns:
-                select_fields.append(f"CAST(`{col}` AS STRING) as `{col}`")
-            
-            query = f"""
-            SELECT {', '.join(select_fields)}
-            FROM `{table_path}`
-            WHERE {' OR '.join([f'`{col}` IS NOT NULL' for col in hostname_columns])}
-            """
-            
-            job = client.query(query)
-            results = list(job.result())
-            
-            assets = self._extract_hosts_from_batch(results, columns, hostname_columns, field_mappings, 'additional', table_path)
-            
-        except Exception as e:
-            logger.debug(f"Failed to scan table {table_path}: {e}")
-        
-        return assets
-    
-    def _set_coverage_flags(self, asset: Dict[str, Any], source: str):
-        coverage_flags = {
-            'cmdb': {'cmdb_visibility': True},
-            'splunk': {'splunk_coverage': True},
-            'chronicle': {'chronicle_coverage': True},
-            'crowdstrike': {'crowdstrike_coverage': True, 'edr_coverage': True}
-        }
-        
-        flags = coverage_flags.get(source, {})
-        for flag, value in flags.items():
-            asset[flag] = value
     
     def _merge_comprehensive_assets(self, primary: Dict[str, Any], secondary: Dict[str, Any], source: str) -> Dict[str, Any]:
         merged = primary.copy()
@@ -1213,125 +733,6 @@ class AO1SuperEngine:
         for flag in ['cmdb_visibility', 'splunk_coverage', 'chronicle_coverage', 'crowdstrike_coverage', 'edr_coverage']:
             if secondary.get(flag, False):
                 merged[flag] = True
-        
-        return merged
-    
-    async def _extract_ao1_assets(self, client, table_path: str, mappings: Dict[str, str], 
-                                metadata: Dict[str, Any], source_name: str) -> Dict[str, Any]:
-        
-        hostname_col = mappings['hostname']
-        assets = {}
-        
-        try:
-            select_fields = [f"CAST(`{hostname_col}` AS STRING) as hostname"]
-            
-            for field_type, column_name in mappings.items():
-                if field_type != 'hostname':
-                    select_fields.append(f"CAST(`{column_name}` AS STRING) as {field_type}")
-            
-            query = f"""
-            SELECT {', '.join(select_fields)}
-            FROM `{table_path}`
-            WHERE `{hostname_col}` IS NOT NULL
-            LIMIT 10000
-            """
-            
-            job = client.query(query)
-            results = list(job.result())
-            
-            for row in results:
-                if not row or not row[0]:
-                    continue
-                
-                hostname = str(row[0]).strip().upper()
-                if not hostname or len(hostname) < 1:
-                    continue
-                
-                asset_id = f"ao1_{hostname}_{source_name}"
-                
-                asset = {
-                    'id': asset_id,
-                    'hostname': hostname,
-                    'ao1_enhanced': True,
-                    'ao1_metadata': metadata,
-                    'source': source_name
-                }
-                
-                for idx, field_type in enumerate(mappings.keys()):
-                    if idx < len(row) and row[idx]:
-                        value = str(row[idx]).strip()
-                        if value:
-                            asset[field_type] = value
-                
-                self._set_ao1_source_flags(asset, source_name)
-                asset['visibility_score'] = self._calculate_ao1_visibility_score(asset, metadata)
-                
-                assets[asset_id] = asset
-                
-        except Exception as e:
-            logger.error(f"AO1 asset extraction failed: {e}")
-        
-        return assets
-    
-    def _set_ao1_source_flags(self, asset: Dict[str, Any], source: str):
-        flags = {
-            'cmdb': {'cmdb': True},
-            'splunk': {'splunk': True},
-            'chronicle': {'chronicle': True},
-            'crowdstrike': {'crowdstrike': True, 'edr': True}
-        }
-        
-        source_flags = flags.get(source, {})
-        for flag, value in source_flags.items():
-            asset[flag] = value
-    
-    def _calculate_ao1_visibility_score(self, asset: Dict[str, Any], metadata: Dict[str, Any]) -> float:
-        factors = []
-        
-        log_sources = sum([
-            asset.get('splunk', False),
-            asset.get('chronicle', False),
-            asset.get('gso', False)
-        ])
-        log_score = min(1.0, log_sources / 3.0)
-        factors.append(('log_coverage', log_score, 0.4))
-        
-        cmdb_score = 1.0 if asset.get('cmdb') else 0.0
-        factors.append(('cmdb_coverage', cmdb_score, 0.3))
-        
-        security_coverage = sum([
-            asset.get('edr', False),
-            asset.get('dlp', False),
-            asset.get('tanium', False)
-        ])
-        security_score = min(1.0, security_coverage / 3.0)
-        factors.append(('security_coverage', security_score, 0.2))
-        
-        field_completeness = len([f for f in ['hostname', 'ip_address', 'infra_type'] 
-                                if asset.get(f)]) / 3.0
-        factors.append(('field_completeness', field_completeness, 0.1))
-        
-        total_score = sum(score * weight for _, score, weight in factors)
-        
-        if metadata:
-            ai_boost = statistics.mean([m.get('visibility_score', 0) for m in metadata.values()])
-            total_score = total_score * (1 + ai_boost * 0.2)
-        
-        return min(1.0, total_score)
-    
-    def _merge_ao1_assets(self, primary: Dict[str, Any], secondary: Dict[str, Any], source: str) -> Dict[str, Any]:
-        merged = primary.copy()
-        
-        for key, value in secondary.items():
-            if key not in merged or not merged[key]:
-                merged[key] = value
-        
-        merged['sources'] = merged.get('sources', 1) + 1
-        merged['source_list'] = f"{merged.get('source_list', primary.get('source', ''))},{source}"
-        
-        primary_vis = primary.get('visibility_score', 0)
-        secondary_vis = secondary.get('visibility_score', 0)
-        merged['visibility_score'] = max(primary_vis, secondary_vis)
         
         return merged
     
