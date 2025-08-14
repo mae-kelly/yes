@@ -18,8 +18,8 @@ class AO1VisibilityEngine:
             'field_completeness': 0.1
         }
     
-    async def enhanced_classification(self, column_name: str, samples: List[str], 
-                                    context: Dict[str, Any] = None) -> Dict[str, Any]:
+    def enhanced_classification(self, column_name: str, samples: List[str], 
+                               context: Dict[str, Any] = None) -> Dict[str, Any]:
         
         if self._is_hostname_column(column_name, samples):
             return {
@@ -33,7 +33,7 @@ class AO1VisibilityEngine:
                 }
             }
         
-        content_analysis = await self._analyze_visibility_content(samples, 'unknown')
+        content_analysis = self._analyze_visibility_content(samples, 'unknown')
         final_confidence = content_analysis['confidence']
         
         metadata = {
@@ -84,7 +84,7 @@ class AO1VisibilityEngine:
         
         return any(re.match(pattern, value, re.IGNORECASE) for pattern in patterns)
     
-    async def _analyze_visibility_content(self, samples: List[str], field_type: str) -> Dict[str, Any]:
+    def _analyze_visibility_content(self, samples: List[str], field_type: str) -> Dict[str, Any]:
         if not samples:
             return {'confidence': 0.0, 'patterns': [], 'pattern_matches': {}}
         
@@ -253,7 +253,7 @@ class AO1SuperEngine:
                         except Exception as e:
                             logger.warning(f"Failed to process table {table_path}: {e}")
         
-        await self._enrich_all_hosts(client_managers)
+        self._enrich_all_hosts(client_managers)
         
         processing_time = (datetime.now() - start_time).total_seconds()
         
@@ -344,6 +344,20 @@ class AO1SuperEngine:
         
         return (valid_count / min(len(values), 20)) > threshold
     
+    def _looks_like_hostname(self, value: str) -> bool:
+        if not isinstance(value, str) or not (2 <= len(value) <= 253):
+            return False
+        
+        if any(char in value for char in ['@', '/', '\\', ' ', '\t', '\n']):
+            return False
+        
+        patterns = [
+            r'^[a-zA-Z0-9][a-zA-Z0-9\-]*[a-zA-Z0-9]$',
+            r'^[a-zA-Z0-9]+$'
+        ]
+        
+        return any(re.match(pattern, value, re.IGNORECASE) for pattern in patterns)
+    
     async def _extract_all_hosts_from_table(self, client, table_path: str, hostname_column: str, all_columns: List[str]) -> int:
         try:
             query = f"""
@@ -407,7 +421,7 @@ class AO1SuperEngine:
             logger.error(f"Host extraction failed for {table_path}: {e}")
             return 0
     
-    async def _enrich_all_hosts(self, client_managers: Dict[str, Any]):
+    def _enrich_all_hosts(self, client_managers: Dict[str, Any]):
         logger.info(f"Enriching {len(self.comprehensive_hosts)} hosts with comprehensive data")
         
         enriched_count = 0
@@ -494,176 +508,6 @@ class AO1SuperEngine:
         score += field_completeness * 0.1
         
         return min(1.0, score)
-        assets = {}
-        
-        with client_manager.get_client() as client:
-            try:
-                table = client.get_table(table_path)
-                if not table.schema:
-                    return assets
-                
-                columns = [field.name for field in table.schema]
-                
-                sample_query = f"""
-                SELECT {', '.join([f'`{col}`' for col in columns[:20]])}
-                FROM `{table_path}`
-                WHERE RAND() < 0.01
-                LIMIT 100
-                """
-                
-                job = client.query(sample_query)
-                results = list(job.result())
-                
-                if not results:
-                    return assets
-                
-                field_mappings = {}
-                ao1_metadata = {}
-                
-                for col_idx, column_name in enumerate(columns[:20]):
-                    sample_values = []
-                    for row in results:
-                        if col_idx < len(row) and row[col_idx] is not None:
-                            sample_values.append(str(row[col_idx]))
-                    
-                    if sample_values:
-                        analysis = await self.visibility_engine.enhanced_classification(
-                            column_name, sample_values, 
-                            {'table_name': table_path.split('.')[-1], 'source': source_name}
-                        )
-                        
-                        if analysis['confidence'] > 0.6:
-                            field_type = analysis['field_type']
-                            field_mappings[field_type] = column_name
-                            ao1_metadata[field_type] = analysis['metadata']
-                            self.performance_metrics['classifications'] += 1
-                
-                if 'hostname' in field_mappings:
-                    assets = await self._extract_ao1_assets(client, table_path, field_mappings, ao1_metadata, source_name)
-                
-            except Exception as e:
-                logger.error(f"AO1 table processing failed for {table_path}: {e}")
-        
-        return assets
-    
-    async def _extract_ao1_assets(self, client, table_path: str, mappings: Dict[str, str], 
-                                metadata: Dict[str, Any], source_name: str) -> Dict[str, Any]:
-        
-        hostname_col = mappings['hostname']
-        assets = {}
-        
-        try:
-            select_fields = [f"CAST(`{hostname_col}` AS STRING) as hostname"]
-            
-            for field_type, column_name in mappings.items():
-                if field_type != 'hostname':
-                    select_fields.append(f"CAST(`{column_name}` AS STRING) as {field_type}")
-            
-            query = f"""
-            SELECT {', '.join(select_fields)}
-            FROM `{table_path}`
-            WHERE `{hostname_col}` IS NOT NULL
-            LIMIT 10000
-            """
-            
-            job = client.query(query)
-            results = list(job.result())
-            
-            for row in results:
-                if not row or not row[0]:
-                    continue
-                
-                hostname = str(row[0]).strip().upper()
-                if not hostname or len(hostname) < 1:
-                    continue
-                
-                asset_id = f"ao1_{hostname}_{source_name}"
-                
-                asset = {
-                    'id': asset_id,
-                    'hostname': hostname,
-                    'ao1_enhanced': True,
-                    'ao1_metadata': metadata,
-                    'source': source_name
-                }
-                
-                for idx, field_type in enumerate(mappings.keys()):
-                    if idx < len(row) and row[idx]:
-                        value = str(row[idx]).strip()
-                        if value:
-                            asset[field_type] = value
-                
-                self._set_ao1_source_flags(asset, source_name)
-                asset['visibility_score'] = self._calculate_ao1_visibility_score(asset, metadata)
-                
-                assets[asset_id] = asset
-                
-        except Exception as e:
-            logger.error(f"AO1 asset extraction failed: {e}")
-        
-        return assets
-    
-    def _set_ao1_source_flags(self, asset: Dict[str, Any], source: str):
-        flags = {
-            'cmdb': {'cmdb': True},
-            'splunk': {'splunk': True},
-            'chronicle': {'chronicle': True},
-            'crowdstrike': {'crowdstrike': True, 'edr': True}
-        }
-        
-        source_flags = flags.get(source, {})
-        for flag, value in source_flags.items():
-            asset[flag] = value
-    
-    def _calculate_ao1_visibility_score(self, asset: Dict[str, Any], metadata: Dict[str, Any]) -> float:
-        factors = []
-        
-        log_sources = sum([
-            asset.get('splunk', False),
-            asset.get('chronicle', False),
-            asset.get('gso', False)
-        ])
-        log_score = min(1.0, log_sources / 3.0)
-        factors.append(('log_coverage', log_score, 0.4))
-        
-        cmdb_score = 1.0 if asset.get('cmdb') else 0.0
-        factors.append(('cmdb_coverage', cmdb_score, 0.3))
-        
-        security_coverage = sum([
-            asset.get('edr', False),
-            asset.get('dlp', False),
-            asset.get('tanium', False)
-        ])
-        security_score = min(1.0, security_coverage / 3.0)
-        factors.append(('security_coverage', security_score, 0.2))
-        
-        field_completeness = len([f for f in ['hostname', 'ip_address', 'infra_type'] 
-                                if asset.get(f)]) / 3.0
-        factors.append(('field_completeness', field_completeness, 0.1))
-        
-        total_score = sum(score * weight for _, score, weight in factors)
-        
-        if metadata:
-            ai_boost = statistics.mean([m.get('visibility_score', 0) for m in metadata.values()])
-            total_score = total_score * (1 + ai_boost * 0.2)
-        
-        return min(1.0, total_score)
-    
-    def _merge_ao1_assets(self, primary: Dict[str, Any], secondary: Dict[str, Any], source: str) -> Dict[str, Any]:
-        merged = primary.copy()
-        
-        for key, value in secondary.items():
-            if key not in merged or not merged[key]:
-                merged[key] = value
-        
-        merged['sources'] = merged.get('sources', 1) + 1
-        merged['source_list'] = f"{merged.get('source_list', primary.get('source', ''))},{source}"
-        
-        primary_vis = primary.get('visibility_score', 0)
-        secondary_vis = secondary.get('visibility_score', 0)
-        merged['visibility_score'] = max(primary_vis, secondary_vis)
-        
-        return merged
     
     def _get_performance_summary(self) -> Dict[str, Any]:
         metrics = self.performance_metrics
