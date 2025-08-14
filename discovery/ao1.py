@@ -1,3 +1,5 @@
+# discovery/ao1.py
+
 import asyncio
 import logging
 import re
@@ -21,7 +23,7 @@ class AO1VisibilityEngine:
     async def enhanced_classification(self, column_name: str, samples: List[str], 
                                     context: Dict[str, Any] = None) -> Dict[str, Any]:
         
-        if self._is_hostname_column(column_name, samples):
+        if self._is_hostname_column_by_content(samples):
             return {
                 'field_type': 'hostname',
                 'confidence': 0.95,
@@ -52,37 +54,70 @@ class AO1VisibilityEngine:
             'metadata': metadata
         }
     
-    def _is_hostname_column(self, column_name: str, samples: List[str]) -> bool:
-        name_lower = column_name.lower()
-        hostname_indicators = ['hostname', 'host', 'computername', 'endpoint', 'device', 'machine', 'computer']
-        
-        for indicator in hostname_indicators:
-            if indicator in name_lower:
-                return True
-        
+    def _is_hostname_column_by_content(self, samples: List[str]) -> bool:
         if not samples:
             return False
         
         hostname_count = 0
-        for sample in samples[:20]:
-            if self._looks_like_hostname(sample):
-                hostname_count += 1
+        valid_samples = 0
         
-        return (hostname_count / min(len(samples), 20)) > 0.7
+        for sample in samples[:50]:
+            if sample and str(sample).strip():
+                valid_samples += 1
+                if self._looks_like_hostname(sample):
+                    hostname_count += 1
+        
+        if valid_samples == 0:
+            return False
+        
+        hostname_ratio = hostname_count / valid_samples
+        return hostname_ratio > 0.6
     
     def _looks_like_hostname(self, value: str) -> bool:
-        if not isinstance(value, str) or not (2 <= len(value) <= 253):
+        if not isinstance(value, str):
+            value = str(value)
+        
+        value = value.strip().upper()
+        
+        if not value or len(value) < 2 or len(value) > 253:
             return False
         
-        if any(char in value for char in ['@', '/', '\\', ' ', '\t', '\n']):
+        if value in ['NULL', 'NONE', 'UNKNOWN', 'N/A', 'NA', '', '-', '0']:
             return False
         
-        patterns = [
-            r'^[a-zA-Z0-9][a-zA-Z0-9\-]*[a-zA-Z0-9]$',
-            r'^[a-zA-Z0-9]+$'
-        ]
+        if value.isdigit():
+            return False
         
-        return any(re.match(pattern, value, re.IGNORECASE) for pattern in patterns)
+        if self._looks_like_ip(value):
+            return False
+        
+        if any(char in value for char in ['@', 'HTTP', 'WWW', '.COM', '.NET', '.ORG', '/', '\\', ' ', '\t', '\n']):
+            return False
+        
+        if not any(c.isalpha() for c in value):
+            return False
+        
+        pattern = r'^[A-Z0-9][A-Z0-9\-_.]*[A-Z0-9]$'
+        if re.match(pattern, value):
+            return True
+        
+        if re.match(r'^[A-Z0-9]+$', value):
+            return True
+        
+        return False
+    
+    def _looks_like_ip(self, value: str) -> bool:
+        parts = value.split('.')
+        if len(parts) == 4:
+            try:
+                for part in parts:
+                    num = int(part)
+                    if not (0 <= num <= 255):
+                        return False
+                return True
+            except:
+                return False
+        return False
     
     async def _analyze_visibility_content(self, samples: List[str], field_type: str) -> Dict[str, Any]:
         if not samples:
@@ -309,10 +344,9 @@ class AO1SuperEngine:
                 logger.info(f"📊 TOTAL ROWS: {total_rows:,}")
                 logger.info(f"💾 PROCESSING EVERY SINGLE ROW - FANS WILL SPIN!")
                 
-                hostname_columns = self._find_hostname_columns(columns)
+                hostname_columns = await self._find_hostname_columns_by_content(client, table_path, columns)
                 if not hostname_columns:
                     logger.warning(f"⚠️  NO HOSTNAME COLUMNS FOUND IN {table_path}")
-                    logger.info(f"📋 AVAILABLE COLUMNS: {columns[:20]}")
                     return assets, 0
                 
                 logger.info(f"🎯 HOSTNAME COLUMNS DETECTED: {hostname_columns}")
@@ -329,12 +363,8 @@ class AO1SuperEngine:
                 for batch_num in range(batches):
                     offset = batch_num * batch_size
                     
-                    select_fields = []
-                    for col in columns:
-                        select_fields.append(f"CAST(`{col}` AS STRING) as `{col}`")
-                    
                     query = f"""
-                    SELECT {', '.join(select_fields)}
+                    SELECT *
                     FROM `{table_path}`
                     LIMIT {batch_size} OFFSET {offset}
                     """
@@ -383,44 +413,52 @@ class AO1SuperEngine:
         
         return assets, total_rows_processed
     
-    def _find_hostname_columns(self, columns: List[str]) -> List[str]:
-        hostname_indicators = [
-            'hostname', 'host', 'computername', 'computer_name', 'endpoint', 'device', 
-            'machine', 'server', 'asset', 'equipment', 'node', 'system', 'workstation',
-            'name', 'device_name', 'system_name', 'machine_name', 'server_name',
-            'endpoint_name', 'asset_name', 'equipment_name', 'appliance', 'instance'
-        ]
+    async def _find_hostname_columns_by_content(self, client, table_path: str, columns: List[str]) -> List[str]:
+        hostname_columns = []
         
-        hostname_cols = []
+        sample_query = f"""
+        SELECT *
+        FROM `{table_path}`
+        LIMIT 100
+        """
         
-        for col in columns:
-            col_lower = col.lower()
-            if col_lower in ['hostname', 'host', 'computername', 'device_name', 'machine_name']:
-                hostname_cols.append(col)
+        try:
+            job = client.query(sample_query)
+            results = list(job.result())
+            
+            if not results:
+                return []
+            
+            for col_idx, column_name in enumerate(columns):
+                samples = []
+                for row in results:
+                    if hasattr(row, '_fields'):
+                        row_dict = row._asdict()
+                    elif isinstance(row, dict):
+                        row_dict = row
+                    elif isinstance(row, (list, tuple)):
+                        row_dict = dict(zip(columns, row))
+                    else:
+                        continue
+                    
+                    if column_name in row_dict and row_dict[column_name]:
+                        samples.append(str(row_dict[column_name]))
+                
+                if self.visibility_engine._is_hostname_column_by_content(samples):
+                    hostname_columns.append(column_name)
+                    logger.info(f"🎯 HOSTNAME COLUMN FOUND: {column_name} (ratio: {self._get_hostname_ratio(samples):.2f})")
+            
+        except Exception as e:
+            logger.error(f"Failed to sample table for hostname detection: {e}")
         
-        if not hostname_cols:
-            for col in columns:
-                col_lower = col.lower()
-                for indicator in hostname_indicators:
-                    if indicator in col_lower and len(col_lower) <= 50:
-                        hostname_cols.append(col)
-                        break
+        return hostname_columns
+    
+    def _get_hostname_ratio(self, samples: List[str]) -> float:
+        if not samples:
+            return 0.0
         
-        if not hostname_cols:
-            for col in columns:
-                col_lower = col.lower()
-                if 'name' in col_lower and not any(x in col_lower for x in ['file', 'path', 'url', 'description', 'type']):
-                    hostname_cols.append(col)
-        
-        logger.info(f"🔍 HOSTNAME COLUMN DETECTION:")
-        logger.info(f"   📋 TOTAL COLUMNS: {len(columns)}")
-        logger.info(f"   🎯 HOSTNAME COLUMNS FOUND: {len(hostname_cols)}")
-        logger.info(f"   📝 HOSTNAME COLUMNS: {hostname_cols}")
-        
-        if not hostname_cols:
-            logger.info(f"   📄 SAMPLE COLUMNS: {columns[:10]}")
-        
-        return hostname_cols
+        hostname_count = sum(1 for sample in samples if self.visibility_engine._looks_like_hostname(sample))
+        return hostname_count / len(samples)
     
     def _create_comprehensive_field_mappings(self, columns: List[str]) -> Dict[str, List[str]]:
         mappings = {
@@ -439,7 +477,6 @@ class AO1SuperEngine:
         }
         
         field_patterns = {
-            'hostname': ['hostname', 'host', 'computer', 'endpoint', 'device', 'machine', 'server'],
             'ip_address': ['ip', 'ipaddress', 'address'],
             'fqdn': ['fqdn', 'domain', 'dns'],
             'country': ['country', 'ctry'],
@@ -476,7 +513,17 @@ class AO1SuperEngine:
             if not row:
                 continue
             
-            row_dict = dict(zip(columns, row))
+            if hasattr(row, '_fields'):
+                row_dict = row._asdict()
+            elif isinstance(row, dict):
+                row_dict = row
+            elif isinstance(row, (list, tuple)):
+                row_dict = dict(zip(columns, row))
+            else:
+                try:
+                    row_dict = dict(row)
+                except:
+                    continue
             
             hostnames = []
             for hostname_col in hostname_columns:
@@ -544,11 +591,20 @@ class AO1SuperEngine:
         if self._looks_like_ip(value):
             return False
         
-        hostname_pattern = r'^[a-zA-Z0-9][a-zA-Z0-9\-_.]*[a-zA-Z0-9]$'
-        if not re.match(hostname_pattern, value, re.IGNORECASE):
+        if any(char in value for char in ['@', 'HTTP', 'WWW', '.COM', '.NET', '.ORG', '/', '\\', ' ', '\t', '\n']):
             return False
         
-        return True
+        if not any(c.isalpha() for c in value):
+            return False
+        
+        hostname_pattern = r'^[a-zA-Z0-9][a-zA-Z0-9\-_.]*[a-zA-Z0-9]$'
+        if re.match(hostname_pattern, value, re.IGNORECASE):
+            return True
+        
+        if re.match(r'^[a-zA-Z0-9]+$', value, re.IGNORECASE):
+            return True
+        
+        return False
     
     def _looks_like_ip(self, value: str) -> bool:
         parts = value.split('.')
@@ -678,7 +734,7 @@ class AO1SuperEngine:
                 return assets, 0
             
             columns = [field.name for field in table.schema]
-            hostname_columns = self._find_hostname_columns(columns)
+            hostname_columns = await self._find_hostname_columns_by_content(client, table_path, columns)
             
             if not hostname_columns:
                 return assets, 0
@@ -687,12 +743,8 @@ class AO1SuperEngine:
             
             max_rows_to_scan = min(table.num_rows, 500000)
             
-            select_fields = []
-            for col in columns:
-                select_fields.append(f"CAST(`{col}` AS STRING) as `{col}`")
-            
             query = f"""
-            SELECT {', '.join(select_fields)}
+            SELECT *
             FROM `{table_path}`
             LIMIT {max_rows_to_scan}
             """
