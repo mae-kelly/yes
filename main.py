@@ -63,46 +63,49 @@ class QuantumHyperIntelligentDiscoverySystem:
                 logger.warning(f"Quantum additional project {project} not available: {e}")
     
     async def run_quantum_hyperintelligent_discovery(self) -> Dict[str, Any]:
-        logger.info("STARTING COMPREHENSIVE CMDB DISCOVERY ACROSS ALL TABLES")
+        logger.info("STARTING QUANTUM HYPER-INTELLIGENT DISCOVERY")
         
         quantum_results = {
             'quantum_metadata': {
                 'start_time': self.quantum_stats['start_time'].isoformat(),
                 'project_id': self.project_id,
-                'comprehensive_cmdb_mode': True,
+                'quantum_hyperintelligent_mode': True,
                 'quantum_config': {k: v for k, v in self.config.items() if not k.startswith('_')}
             }
         }
         
         try:
-            quantum_discovery = await self.quantum_ao1_engine.enhanced_discovery(self.client_managers)
+            quantum_discovery = await self._run_quantum_ao1_discovery()
             
             if quantum_discovery and 'assets' in quantum_discovery:
-                discovery_stats = quantum_discovery.get('discovery_stats', {})
+                quantum_assets = {}
+                for asset_id, asset_data in quantum_discovery['assets'].items():
+                    hyper_asset = self._convert_dict_to_hyper_asset(asset_id, asset_data)
+                    if hyper_asset:
+                        quantum_assets[asset_id] = hyper_asset
                 
-                quantum_stored_count = self.quantum_db.store_comprehensive_hosts(
-                    quantum_discovery['assets'], discovery_stats
-                )
+                quantum_discovery_obj = QuantumDiscovery()
+                quantum_discovery_obj.hyper_assets = quantum_assets
+                quantum_discovery_obj.intelligence_metrics = quantum_discovery.get('discovery_stats', {})
                 
-                discovery_stats['stored_hosts'] = quantum_stored_count
-                self.quantum_stats['total_hyper_assets'] = discovery_stats.get('unique_hosts_discovered', 0)
-                
-                logger.info(f"Stored {quantum_stored_count} hosts to comprehensive CMDB")
+                quantum_stored_count = self.quantum_db.store_comprehensive_discovery(quantum_discovery_obj)
+                quantum_discovery_obj.intelligence_metrics['stored_hyper_assets'] = quantum_stored_count
+                self.quantum_stats['total_hyper_assets'] = len(quantum_assets)
             
-            self.quantum_stats['engines_used'].append('comprehensive_cmdb')
+            self.quantum_stats['engines_used'].append('quantum_ao1')
             
             quantum_hyperintelligent_results = {
-                'comprehensive_cmdb_discovery': {
-                    'discovery_stats': quantum_discovery.get('discovery_stats', {}),
-                    'total_unique_hosts': len(quantum_discovery.get('assets', {})),
-                    'comprehensive_mode': True
+                'quantum_hyperintelligent_discovery': {
+                    'hyper_assets': {k: self._hyper_asset_to_dict(v) for k, v in quantum_assets.items()} if 'quantum_assets' in locals() else {},
+                    'intelligence_metrics': quantum_discovery.get('discovery_stats', {}),
+                    'quantum_discovery_mode': 'quantum_ao1_enhanced'
                 }
             }
             
             quantum_results.update(quantum_hyperintelligent_results)
             
         except Exception as e:
-            logger.error(f"Comprehensive CMDB discovery failed: {e}")
+            logger.error(f"Quantum hyper-intelligent discovery failed: {e}")
             quantum_results['error'] = str(e)
             self.quantum_stats['processing_errors'] += 1
         
@@ -126,32 +129,72 @@ class QuantumHyperIntelligentDiscoverySystem:
             hyper_asset = HyperAsset(id=asset_id)
             
             hyper_asset.hostname = asset_data.get('hostname', '')
-            hyper_asset.ip = asset_data.get('ip', '')
-            hyper_asset.fqdn = asset_data.get('fqdn', '')
-            hyper_asset.infrastructure_type = asset_data.get('infrastructure_type', '')
-            hyper_asset.system_classification = asset_data.get('system_classification', '')
-            hyper_asset.business_unit = asset_data.get('business_unit', '')
-            hyper_asset.region = asset_data.get('region', '')
-            hyper_asset.application_class = asset_data.get('application_class', '')
+            hyper_asset.primary_identity = hyper_asset.hostname
             
-            hyper_asset.edr_coverage = asset_data.get('edr', False)
-            hyper_asset.dlp_coverage = asset_data.get('dlp', False)
-            hyper_asset.tanium_coverage = asset_data.get('tanium', False)
-            hyper_asset.splunk_coverage = asset_data.get('splunk', False)
-            hyper_asset.chronicle_coverage = asset_data.get('chronicle', False)
-            hyper_asset.crowdstrike_coverage = asset_data.get('crowdstrike', False)
-            hyper_asset.cmdb_visibility = asset_data.get('cmdb', False)
+            all_data = asset_data.get('all_data', {})
             
-            hyper_asset.visibility_score = asset_data.get('visibility_score', 0.0)
-            hyper_asset.intelligence_quotient = asset_data.get('intelligence_quotient', 0.5)
-            hyper_asset.quality_coefficient = asset_data.get('quality_coefficient', 0.5)
-            hyper_asset.confidence_index = asset_data.get('confidence_index', 0.5)
+            if 'ip_address' in all_data and all_data['ip_address']:
+                hyper_asset.ip = all_data['ip_address'][0]
+            if 'fqdn' in all_data and all_data['fqdn']:
+                hyper_asset.fqdn = all_data['fqdn'][0]
+            if 'mac_address' in all_data and all_data['mac_address']:
+                hyper_asset.mac = all_data['mac_address'][0]
+            if 'infrastructure_type' in all_data and all_data['infrastructure_type']:
+                hyper_asset.infrastructure_type = all_data['infrastructure_type'][0]
+            if 'system_classification' in all_data and all_data['system_classification']:
+                hyper_asset.system_classification = all_data['system_classification'][0]
+            if 'business_unit' in all_data and all_data['business_unit']:
+                hyper_asset.business_unit = all_data['business_unit'][0]
+            if 'region' in all_data and all_data['region']:
+                hyper_asset.region = all_data['region'][0]
+            if 'country' in all_data and all_data['country']:
+                hyper_asset.country = all_data['country'][0]
+            if 'datacenter' in all_data and all_data['datacenter']:
+                hyper_asset.datacenter = all_data['datacenter'][0]
+            if 'cio' in all_data and all_data['cio']:
+                hyper_asset.cio = all_data['cio'][0]
+            if 'application_class' in all_data and all_data['application_class']:
+                hyper_asset.application_class = all_data['application_class'][0]
+            
+            hyper_asset.edr_coverage = asset_data.get('edr_coverage', False)
+            hyper_asset.dlp_coverage = asset_data.get('dlp_coverage', False)
+            hyper_asset.tanium_coverage = asset_data.get('tanium_coverage', False)
+            hyper_asset.splunk_coverage = asset_data.get('splunk_coverage', False)
+            hyper_asset.chronicle_coverage = asset_data.get('chronicle_coverage', False)
+            hyper_asset.crowdstrike_coverage = asset_data.get('crowdstrike_coverage', False)
+            hyper_asset.cmdb_visibility = asset_data.get('cmdb_visibility', False)
+            
+            hyper_asset.source_provenance = asset_data.get('sources', [])
+            hyper_asset.tables_found_in = asset_data.get('tables_found_in', [])
+            
+            hyper_asset.visibility_score = self._calculate_visibility_score(hyper_asset)
+            hyper_asset.intelligence_quotient = len(asset_data.get('sources', [])) / 4.0
+            hyper_asset.quality_coefficient = len([f for f in [hyper_asset.ip, hyper_asset.fqdn, hyper_asset.infrastructure_type] if f]) / 3.0
+            hyper_asset.confidence_index = min(1.0, len(hyper_asset.tables_found_in) / 3.0)
+            
+            hyper_asset.quantum_state = {'all_data': all_data}
             
             return hyper_asset
             
         except Exception as e:
             logger.error(f"Failed to convert dict to hyper asset {asset_id}: {e}")
             return None
+    
+    def _calculate_visibility_score(self, hyper_asset: HyperAsset) -> float:
+        score = 0.0
+        
+        if hyper_asset.cmdb_visibility:
+            score += 0.3
+        if hyper_asset.splunk_coverage:
+            score += 0.25
+        if hyper_asset.chronicle_coverage:
+            score += 0.25
+        if hyper_asset.edr_coverage:
+            score += 0.1
+        if hyper_asset.dlp_coverage:
+            score += 0.1
+        
+        return min(1.0, score)
     
     def _hyper_asset_to_dict(self, hyper_asset: HyperAsset) -> Dict[str, Any]:
         return {
@@ -160,10 +203,15 @@ class QuantumHyperIntelligentDiscoverySystem:
             'hostname': hyper_asset.hostname,
             'ip': hyper_asset.ip,
             'fqdn': hyper_asset.fqdn,
+            'mac': getattr(hyper_asset, 'mac', ''),
             'infrastructure_type': hyper_asset.infrastructure_type,
             'system_classification': hyper_asset.system_classification,
             'region': hyper_asset.region,
+            'country': getattr(hyper_asset, 'country', ''),
             'business_unit': hyper_asset.business_unit,
+            'datacenter': hyper_asset.datacenter,
+            'cio': hyper_asset.cio,
+            'application_class': hyper_asset.application_class,
             'visibility_score': hyper_asset.visibility_score,
             'intelligence_quotient': hyper_asset.intelligence_quotient,
             'quality_coefficient': hyper_asset.quality_coefficient,
@@ -175,7 +223,11 @@ class QuantumHyperIntelligentDiscoverySystem:
             'edr_coverage': hyper_asset.edr_coverage,
             'dlp_coverage': hyper_asset.dlp_coverage,
             'tanium_coverage': hyper_asset.tanium_coverage,
-            'quantum_hyperintelligent_classified': True
+            'sources': hyper_asset.source_provenance,
+            'tables_found_in': getattr(hyper_asset, 'tables_found_in', []),
+            'tables_count': len(getattr(hyper_asset, 'tables_found_in', [])),
+            'quantum_hyperintelligent_classified': True,
+            'comprehensive_discovery': True
         }
     
     def _calculate_quantum_hyperintelligent_stats(self) -> Dict[str, Any]:
@@ -191,36 +243,16 @@ class QuantumHyperIntelligentDiscoverySystem:
         }
     
     def generate_quantum_hyperintelligent_report(self, quantum_results: Dict[str, Any]) -> Dict[str, Any]:
-        discovery_stats = quantum_results.get('comprehensive_cmdb_discovery', {}).get('discovery_stats', {})
-        
         return {
-            'comprehensive_cmdb_summary': {
+            'quantum_executive_summary': {
                 'discovery_timestamp': datetime.now().isoformat(),
                 'project_id': self.project_id,
-                'total_tables_processed': discovery_stats.get('total_tables_processed', 0),
-                'unique_hosts_discovered': discovery_stats.get('unique_hosts_discovered', 0),
-                'total_host_instances': discovery_stats.get('total_host_instances', 0),
-                'discovery_method': 'comprehensive table scanning',
-                'processing_time_minutes': discovery_stats.get('processing_time', 0) / 60,
-                'comprehensive_mode': True
+                'total_hyper_assets': self.quantum_stats['total_hyper_assets'],
+                'discovery_method': 'quantum ao1 visibility analysis',
+                'processing_time_minutes': quantum_results.get('quantum_final_stats', {}).get('total_processing_time_seconds', 0) / 60
             },
-            'coverage_analysis': self._generate_coverage_analysis(),
-            'database_queries': self.quantum_db.get_comprehensive_queries(),
             'quantum_database_files': [self.quantum_db.db_path, self.quantum_content_db.db_path]
         }
-    
-    def _generate_coverage_analysis(self) -> Dict[str, Any]:
-        try:
-            summary_query = self.quantum_db.get_comprehensive_queries()['summary']
-            summary_results = self.quantum_db.execute_query(summary_query)
-            
-            if summary_results:
-                return summary_results[0]
-            else:
-                return {'status': 'no_data_available'}
-        except Exception as e:
-            logger.error(f"Coverage analysis failed: {e}")
-            return {'error': str(e)}
     
     def close(self):
         try:
@@ -293,10 +325,9 @@ async def quantum_main():
         quantum_system = QuantumHyperIntelligentDiscoverySystem(args.project, quantum_config)
         
         if args.dry_run:
-            logger.info("DRY RUN MODE - Estimating comprehensive discovery scope")
+            logger.info("QUANTUM DRY RUN MODE - Estimating discovery scope")
             
             total_tables = 0
-            estimated_hosts = 0
             
             for project_id, client_manager in quantum_system.client_managers.items():
                 with client_manager.get_client() as client:
@@ -304,52 +335,47 @@ async def quantum_main():
                     for dataset in datasets:
                         tables = list(client.list_tables(dataset))
                         total_tables += len(tables)
-                        estimated_hosts += len(tables) * 1000
             
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            quantum_dry_run_file = output_dir / f"comprehensive_dry_run_{timestamp}.json"
+            quantum_dry_run_file = output_dir / f"quantum_dry_run_{timestamp}.json"
             
             quantum_dry_run_results = {
                 'estimated_tables': total_tables,
-                'estimated_unique_hosts': estimated_hosts // 10,
-                'estimated_total_host_instances': estimated_hosts,
-                'comprehensive_mode': True,
                 'timestamp': datetime.now().isoformat()
             }
             
             with open(quantum_dry_run_file, 'w') as f:
                 json.dump(quantum_dry_run_results, f, indent=2)
             
-            logger.info(f"Estimated {total_tables} tables")
-            logger.info(f"Estimated {estimated_hosts//10:,} unique hosts")
-            logger.info(f"Estimated {estimated_hosts:,} total host instances")
-            logger.info(f"Dry run saved: {quantum_dry_run_file}")
+            logger.info(f"Quantum estimated {total_tables} tables")
+            logger.info(f"Quantum dry run saved: {quantum_dry_run_file}")
             return 0
         
-        logger.info("INITIATING COMPREHENSIVE CMDB DISCOVERY")
+        logger.info("🚀🚀🚀 INITIATING MAXIMUM INTENSITY DISCOVERY 🚀🚀🚀")
+        logger.info("⚡ PROCESSING HUNDREDS OF THOUSANDS OF HOSTS ⚡")
+        logger.info("🔥 FANS SPINNING - INTENSIVE PROCESSING STARTING NOW 🔥")
         
         quantum_results = await quantum_system.run_quantum_hyperintelligent_discovery()
         quantum_report = quantum_system.generate_quantum_hyperintelligent_report(quantum_results)
         
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         
-        quantum_results_file = output_dir / f"comprehensive_cmdb_results_{timestamp}.json"
+        quantum_results_file = output_dir / f"discovery_results_{timestamp}.json"
         with open(quantum_results_file, 'w') as f:
             json.dump(quantum_results, f, indent=2, default=str)
         
-        quantum_report_file = output_dir / f"comprehensive_cmdb_report_{timestamp}.json"
+        quantum_report_file = output_dir / f"discovery_report_{timestamp}.json"
         with open(quantum_report_file, 'w') as f:
             json.dump(quantum_report, f, indent=2, default=str)
         
-        discovery_stats = quantum_results.get('comprehensive_cmdb_discovery', {}).get('discovery_stats', {})
-        
-        logger.info("COMPREHENSIVE CMDB DISCOVERY COMPLETED SUCCESSFULLY")
-        logger.info(f"Results: {quantum_results_file}")
-        logger.info(f"Report: {quantum_report_file}")
-        logger.info(f"Tables processed: {discovery_stats.get('total_tables_processed', 0):,}")
-        logger.info(f"Unique hosts discovered: {discovery_stats.get('unique_hosts_discovered', 0):,}")
-        logger.info(f"Total host instances: {discovery_stats.get('total_host_instances', 0):,}")
-        logger.info(f"Database: {quantum_system.quantum_db.db_path}")
+        logger.info("🎉🎉🎉 MAXIMUM INTENSITY DISCOVERY COMPLETED! 🎉🎉🎉")
+        logger.info("🏆🏆🏆 COMPREHENSIVE CMDB CREATION SUCCESSFUL 🏆🏆🏆")
+        logger.info(f"📊 Results: {quantum_results_file}")
+        logger.info(f"📋 Report: {quantum_report_file}")
+        logger.info(f"🏠 Unique Hosts Discovered: {quantum_system.quantum_stats['total_hyper_assets']:,}")
+        logger.info(f"🔍 Total Rows Scanned: {quantum_results.get('quantum_hyperintelligent_discovery', {}).get('intelligence_metrics', {}).get('total_rows_scanned', 0):,}")
+        logger.info(f"⚡ Processing Speed: {quantum_results.get('quantum_hyperintelligent_discovery', {}).get('intelligence_metrics', {}).get('rows_per_second', 0):,.0f} rows/sec")
+        logger.info("🌪️  FANS CAN NOW SLOW DOWN - MISSION ACCOMPLISHED! 🌪️")
         
         return 0
         

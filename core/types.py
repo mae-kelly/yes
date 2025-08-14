@@ -14,6 +14,7 @@ class Asset:
     system_classification: str = ""
     business_unit: str = ""
     region: str = ""
+    country: str = ""
     datacenter: str = ""
     cloud_region: str = ""
     cio: str = ""
@@ -29,7 +30,8 @@ class Asset:
     
     visibility_score: float = 0.0
     confidence: float = 0.0
-    sources: int = 0
+    sources: List[str] = field(default_factory=list)
+    tables_found_in: List[str] = field(default_factory=list)
     
     raw_data: Dict[str, Any] = field(default_factory=dict)
     metadata: Dict[str, Any] = field(default_factory=dict)
@@ -47,6 +49,7 @@ class HyperAsset:
     system_classification: str = ""
     business_unit: str = ""
     region: str = ""
+    country: str = ""
     datacenter: str = ""
     cloud_region: str = ""
     cio: str = ""
@@ -69,6 +72,7 @@ class HyperAsset:
     
     evidence_chains: List[Dict[str, Any]] = field(default_factory=list)
     source_provenance: List[str] = field(default_factory=list)
+    tables_found_in: List[str] = field(default_factory=list)
     correlation_graph: Dict[str, float] = field(default_factory=dict)
     
     quantum_state: Dict[str, Any] = field(default_factory=dict)
