@@ -861,68 +861,6 @@ class AO1SuperEngine:
         
         return assets
     
-    def _set_ao1_source_flags(self, asset: Dict[str, Any], source: str):
-        flags = {
-            'cmdb': {'cmdb': True},
-            'splunk': {'splunk': True},
-            'chronicle': {'chronicle': True},
-            'crowdstrike': {'crowdstrike': True, 'edr': True}
-        }
-        
-        source_flags = flags.get(source, {})
-        for flag, value in source_flags.items():
-            asset[flag] = value
-    
-    def _calculate_ao1_visibility_score(self, asset: Dict[str, Any], metadata: Dict[str, Any]) -> float:
-        factors = []
-        
-        log_sources = sum([
-            asset.get('splunk', False),
-            asset.get('chronicle', False),
-            asset.get('gso', False)
-        ])
-        log_score = min(1.0, log_sources / 3.0)
-        factors.append(('log_coverage', log_score, 0.4))
-        
-        cmdb_score = 1.0 if asset.get('cmdb') else 0.0
-        factors.append(('cmdb_coverage', cmdb_score, 0.3))
-        
-        security_coverage = sum([
-            asset.get('edr', False),
-            asset.get('dlp', False),
-            asset.get('tanium', False)
-        ])
-        security_score = min(1.0, security_coverage / 3.0)
-        factors.append(('security_coverage', security_score, 0.2))
-        
-        field_completeness = len([f for f in ['hostname', 'ip_address', 'infra_type'] 
-                                if asset.get(f)]) / 3.0
-        factors.append(('field_completeness', field_completeness, 0.1))
-        
-        total_score = sum(score * weight for _, score, weight in factors)
-        
-        if metadata:
-            ai_boost = statistics.mean([m.get('visibility_score', 0) for m in metadata.values()])
-            total_score = total_score * (1 + ai_boost * 0.2)
-        
-        return min(1.0, total_score)
-    
-    def _merge_ao1_assets(self, primary: Dict[str, Any], secondary: Dict[str, Any], source: str) -> Dict[str, Any]:
-        merged = primary.copy()
-        
-        for key, value in secondary.items():
-            if key not in merged or not merged[key]:
-                merged[key] = value
-        
-        merged['sources'] = merged.get('sources', 1) + 1
-        merged['source_list'] = f"{merged.get('source_list', primary.get('source', ''))},{source}"
-        
-        primary_vis = primary.get('visibility_score', 0)
-        secondary_vis = secondary.get('visibility_score', 0)
-        merged['visibility_score'] = max(primary_vis, secondary_vis)
-        
-        return merged
-    
     def _get_performance_summary(self) -> Dict[str, Any]:
         metrics = self.performance_metrics
         
