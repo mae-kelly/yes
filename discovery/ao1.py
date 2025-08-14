@@ -195,61 +195,305 @@ class AO1SuperEngine:
             'confidence_scores': [],
             'visibility_scores': []
         }
+        
+        self.comprehensive_hosts = {}
+        self.processed_tables = set()
+        self.host_enrichment_map = {
+            'country': ['country', 'country_code', 'location_country', 'geo_country'],
+            'region': ['region', 'global_region', 'geographic_region', 'area', 'zone'],
+            'business_unit': ['business_unit', 'bu', 'department', 'org', 'organization'],
+            'cio': ['cio', 'cio_org', 'cio_organization', 'chief_info_officer'],
+            'datacenter': ['datacenter', 'data_center', 'dc', 'facility', 'site'],
+            'application_class': ['application_class', 'app_class', 'criticality', 'tier'],
+            'infrastructure_type': ['infrastructure_type', 'infra_type', 'asset_type', 'device_type'],
+            'system_classification': ['system_classification', 'sys_class', 'os_type', 'platform'],
+            'ip_address': ['ip_address', 'ip', 'ipv4', 'internal_ip', 'private_ip'],
+            'fqdn': ['fqdn', 'fully_qualified_domain_name', 'domain_name', 'dns_name']
+        }
     
     async def enhanced_discovery(self, client_managers: Dict[str, Any], 
                                intelligence_result: Dict[str, Any] = None) -> Dict[str, Any]:
         
-        logger.info("Starting AO1 enhanced discovery with visibility focus")
+        logger.info("Starting comprehensive CMDB discovery across ALL tables")
         start_time = datetime.now()
         
-        discovered_assets = {}
+        total_tables_processed = 0
+        total_hosts_discovered = 0
         
-        source_tables = {
-            'cmdb': 'prj-fisv.SAS_BI.V_DIM_ENDPOINT',
-            'splunk': 'prj-fisv.SAS_BI.V_SPL_ENDPOINT_LOG',
-            'crowdstrike': 'prj-fisv.SAS_BI.V_DIM_ENDPOINTAGENT'
-        }
+        for project_id, client_manager in client_managers.items():
+            logger.info(f"Scanning ALL datasets in project: {project_id}")
+            
+            with client_manager.get_client() as client:
+                datasets = list(client.list_datasets(project=project_id))
+                
+                for dataset in datasets:
+                    dataset_ref = client.dataset(dataset.dataset_id, project=project_id)
+                    tables = list(client.list_tables(dataset_ref))
+                    
+                    logger.info(f"Processing {len(tables)} tables in dataset {dataset.dataset_id}")
+                    
+                    for table_ref in tables:
+                        table_path = f"{project_id}.{dataset.dataset_id}.{table_ref.table_id}"
+                        
+                        if table_path in self.processed_tables:
+                            continue
+                        
+                        try:
+                            hosts_found = await self._scan_table_for_hosts(client, table_path)
+                            if hosts_found > 0:
+                                total_hosts_discovered += hosts_found
+                                logger.info(f"Found {hosts_found} hosts in {table_path}")
+                            
+                            total_tables_processed += 1
+                            self.processed_tables.add(table_path)
+                            
+                            if total_tables_processed % 50 == 0:
+                                logger.info(f"Progress: {total_tables_processed} tables, {len(self.comprehensive_hosts)} unique hosts")
+                            
+                        except Exception as e:
+                            logger.warning(f"Failed to process table {table_path}: {e}")
         
-        if 'chronicle-fisv' in client_managers:
-            source_tables['chronicle'] = 'chronicle-fisv.datalake.events'
-        
-        for source_name, table_path in source_tables.items():
-            try:
-                client_manager = client_managers.get('prj-fisv')
-                if source_name == 'chronicle':
-                    client_manager = client_managers.get('chronicle-fisv')
-                
-                if not client_manager:
-                    continue
-                
-                logger.info(f"Processing {source_name} with AO1 enhancement")
-                
-                assets = await self._process_table_ao1(client_manager, table_path, source_name)
-                
-                for asset_id, asset in assets.items():
-                    if asset_id in discovered_assets:
-                        discovered_assets[asset_id] = self._merge_ao1_assets(
-                            discovered_assets[asset_id], asset, source_name
-                        )
-                    else:
-                        discovered_assets[asset_id] = asset
-                
-            except Exception as e:
-                logger.error(f"AO1 processing failed for {source_name}: {e}")
+        await self._enrich_all_hosts(client_managers)
         
         processing_time = (datetime.now() - start_time).total_seconds()
         
         return {
             'discovery_stats': {
-                'total_assets': len(discovered_assets),
+                'total_tables_processed': total_tables_processed,
+                'unique_hosts_discovered': len(self.comprehensive_hosts),
+                'total_host_instances': total_hosts_discovered,
                 'processing_time': processing_time,
-                'ao1_classifications': self.performance_metrics['classifications']
+                'comprehensive_cmdb_mode': True
             },
-            'assets': discovered_assets,
+            'assets': self.comprehensive_hosts,
             'performance_metrics': self._get_performance_summary()
         }
     
-    async def _process_table_ao1(self, client_manager, table_path: str, source_name: str) -> Dict[str, Any]:
+    async def _scan_table_for_hosts(self, client, table_path: str) -> int:
+        try:
+            table = client.get_table(table_path)
+            if not table.schema or table.num_rows == 0:
+                return 0
+            
+            columns = [field.name for field in table.schema]
+            
+            sample_query = f"""
+            SELECT {', '.join([f'`{col}`' for col in columns[:30]])}
+            FROM `{table_path}`
+            WHERE RAND() < 0.02
+            LIMIT 200
+            """
+            
+            job = client.query(sample_query)
+            results = list(job.result())
+            
+            if not results:
+                return 0
+            
+            hostname_column = await self._identify_hostname_column(columns, results)
+            
+            if not hostname_column:
+                return 0
+            
+            return await self._extract_all_hosts_from_table(client, table_path, hostname_column, columns)
+            
+        except Exception as e:
+            logger.debug(f"Table scan failed for {table_path}: {e}")
+            return 0
+    
+    async def _identify_hostname_column(self, columns: List[str], sample_data: List) -> Optional[str]:
+        for col_idx, column_name in enumerate(columns):
+            if self._is_likely_hostname_column_name(column_name):
+                sample_values = []
+                for row in sample_data:
+                    if col_idx < len(row) and row[col_idx] is not None:
+                        sample_values.append(str(row[col_idx]))
+                
+                if sample_values and self._validate_hostname_content(sample_values):
+                    return column_name
+        
+        for col_idx, column_name in enumerate(columns):
+            sample_values = []
+            for row in sample_data:
+                if col_idx < len(row) and row[col_idx] is not None:
+                    sample_values.append(str(row[col_idx]))
+            
+            if sample_values and self._validate_hostname_content(sample_values, strict=False):
+                return column_name
+        
+        return None
+    
+    def _is_likely_hostname_column_name(self, column_name: str) -> bool:
+        name_lower = column_name.lower()
+        hostname_indicators = [
+            'hostname', 'host', 'computername', 'computer_name', 'endpoint', 
+            'device', 'machine', 'asset', 'system', 'server', 'workstation'
+        ]
+        return any(indicator in name_lower for indicator in hostname_indicators)
+    
+    def _validate_hostname_content(self, values: List[str], strict: bool = True) -> bool:
+        if not values:
+            return False
+        
+        valid_count = 0
+        threshold = 0.6 if strict else 0.3
+        
+        for value in values[:20]:
+            if self._looks_like_hostname(value):
+                valid_count += 1
+        
+        return (valid_count / min(len(values), 20)) > threshold
+    
+    async def _extract_all_hosts_from_table(self, client, table_path: str, hostname_column: str, all_columns: List[str]) -> int:
+        try:
+            query = f"""
+            SELECT *
+            FROM `{table_path}`
+            WHERE `{hostname_column}` IS NOT NULL
+            AND `{hostname_column}` != ''
+            AND `{hostname_column}` NOT IN ('NULL', 'N/A', 'UNKNOWN', 'NONE')
+            LIMIT 500000
+            """
+            
+            job = client.query(query)
+            results = list(job.result())
+            
+            hosts_added = 0
+            hostname_idx = all_columns.index(hostname_column)
+            
+            for row in results:
+                if hostname_idx < len(row) and row[hostname_idx]:
+                    hostname = str(row[hostname_idx]).strip().upper()
+                    
+                    if not hostname or len(hostname) < 2:
+                        continue
+                    
+                    if hostname not in self.comprehensive_hosts:
+                        self.comprehensive_hosts[hostname] = {
+                            'hostname': hostname,
+                            'source_tables': [],
+                            'raw_data': {},
+                            'country': '',
+                            'region': '',
+                            'business_unit': '',
+                            'cio': '',
+                            'datacenter': '',
+                            'application_class': '',
+                            'infrastructure_type': '',
+                            'system_classification': '',
+                            'ip_address': '',
+                            'fqdn': '',
+                            'first_seen': datetime.now(),
+                            'sources_count': 0
+                        }
+                    
+                    if table_path not in self.comprehensive_hosts[hostname]['source_tables']:
+                        self.comprehensive_hosts[hostname]['source_tables'].append(table_path)
+                        self.comprehensive_hosts[hostname]['sources_count'] += 1
+                    
+                    for col_idx, column_name in enumerate(all_columns):
+                        if col_idx < len(row) and row[col_idx] is not None:
+                            value = str(row[col_idx]).strip()
+                            if value and value != hostname:
+                                if table_path not in self.comprehensive_hosts[hostname]['raw_data']:
+                                    self.comprehensive_hosts[hostname]['raw_data'][table_path] = {}
+                                self.comprehensive_hosts[hostname]['raw_data'][table_path][column_name] = value
+                    
+                    hosts_added += 1
+            
+            return hosts_added
+            
+        except Exception as e:
+            logger.error(f"Host extraction failed for {table_path}: {e}")
+            return 0
+    
+    async def _enrich_all_hosts(self, client_managers: Dict[str, Any]):
+        logger.info(f"Enriching {len(self.comprehensive_hosts)} hosts with comprehensive data")
+        
+        enriched_count = 0
+        
+        for hostname, host_data in self.comprehensive_hosts.items():
+            try:
+                self._enrich_single_host(hostname, host_data)
+                enriched_count += 1
+                
+                if enriched_count % 10000 == 0:
+                    logger.info(f"Enriched {enriched_count} hosts")
+                    
+            except Exception as e:
+                logger.debug(f"Enrichment failed for host {hostname}: {e}")
+        
+        logger.info(f"Completed enrichment for {enriched_count} hosts")
+    
+    def _enrich_single_host(self, hostname: str, host_data: Dict[str, Any]):
+        all_raw_data = host_data.get('raw_data', {})
+        
+        for field_name, possible_columns in self.host_enrichment_map.items():
+            if host_data.get(field_name):
+                continue
+            
+            best_value = None
+            best_confidence = 0
+            
+            for table_path, table_data in all_raw_data.items():
+                for column_name, value in table_data.items():
+                    column_lower = column_name.lower()
+                    
+                    for possible_col in possible_columns:
+                        if possible_col in column_lower:
+                            confidence = len(possible_col) / len(column_lower)
+                            if confidence > best_confidence and value and len(str(value).strip()) > 0:
+                                clean_value = str(value).strip()
+                                if clean_value.upper() not in ['NULL', 'N/A', 'UNKNOWN', 'NONE', '', '-']:
+                                    best_value = clean_value
+                                    best_confidence = confidence
+            
+            if best_value:
+                host_data[field_name] = best_value
+        
+        self._set_coverage_flags(host_data)
+        host_data['visibility_score'] = self._calculate_comprehensive_visibility_score(host_data)
+    
+    def _set_coverage_flags(self, host_data: Dict[str, Any]):
+        source_tables = host_data.get('source_tables', [])
+        
+        host_data['cmdb_coverage'] = any('cmdb' in table.lower() or 'endpoint' in table.lower() for table in source_tables)
+        host_data['splunk_coverage'] = any('splunk' in table.lower() or 'spl_' in table.lower() for table in source_tables)
+        host_data['chronicle_coverage'] = any('chronicle' in table.lower() for table in source_tables)
+        host_data['crowdstrike_coverage'] = any('crowdstrike' in table.lower() or 'endpointagent' in table.lower() for table in source_tables)
+        host_data['edr_coverage'] = host_data['crowdstrike_coverage']
+        
+        for table_path, table_data in host_data.get('raw_data', {}).items():
+            for column_name, value in table_data.items():
+                column_lower = column_name.lower()
+                value_lower = str(value).lower()
+                
+                if 'dlp' in column_lower or 'data_loss_prevention' in column_lower:
+                    host_data['dlp_coverage'] = True
+                if 'tanium' in column_lower or 'tanium' in value_lower:
+                    host_data['tanium_coverage'] = True
+    
+    def _calculate_comprehensive_visibility_score(self, host_data: Dict[str, Any]) -> float:
+        score = 0.0
+        
+        if host_data.get('cmdb_coverage'):
+            score += 0.25
+        if host_data.get('splunk_coverage'):
+            score += 0.2
+        if host_data.get('chronicle_coverage'):
+            score += 0.15
+        if host_data.get('edr_coverage'):
+            score += 0.2
+        if host_data.get('dlp_coverage'):
+            score += 0.1
+        
+        field_completeness = sum([
+            1 for field in ['country', 'region', 'business_unit', 'datacenter', 'ip_address']
+            if host_data.get(field)
+        ]) / 5.0
+        score += field_completeness * 0.1
+        
+        return min(1.0, score)
         assets = {}
         
         with client_manager.get_client() as client:
