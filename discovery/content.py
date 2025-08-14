@@ -1,3 +1,5 @@
+# discovery/content.py
+
 import asyncio
 import logging
 import hashlib
@@ -181,8 +183,8 @@ class QuantumContentBasedEngine:
             return False
         
         quantum_patterns = [
-            r'^[a-zA-Z0-9][a-zA-Z0-9\-]*[a-zA-Z0-9],
-            r'^[a-zA-Z0-9]+
+            r'^[a-zA-Z0-9][a-zA-Z0-9\-]*[a-zA-Z0-9]$',
+            r'^[a-zA-Z0-9]+$'
         ]
         
         return any(re.match(pattern, value, re.IGNORECASE) for pattern in quantum_patterns)
