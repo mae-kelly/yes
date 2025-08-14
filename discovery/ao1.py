@@ -290,7 +290,7 @@ class AO1SuperEngine:
             if not results:
                 return 0
             
-            hostname_column = await self._identify_hostname_column(columns, results)
+            hostname_column = self._identify_hostname_column(columns, results)
             
             if not hostname_column:
                 return 0
@@ -301,7 +301,7 @@ class AO1SuperEngine:
             logger.debug(f"Table scan failed for {table_path}: {e}")
             return 0
     
-    async def _identify_hostname_column(self, columns: List[str], sample_data: List) -> Optional[str]:
+    def _identify_hostname_column(self, columns: List[str], sample_data: List) -> Optional[str]:
         for col_idx, column_name in enumerate(columns):
             if self._is_likely_hostname_column_name(column_name):
                 sample_values = []
