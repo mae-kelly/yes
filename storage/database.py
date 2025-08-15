@@ -116,9 +116,22 @@ class MaximumIntensityDatabaseManager:
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """
             
+            # Ensure all values are properly typed
+            source_count = host_data.get('source_count', 0)
+            total_rows = host_data.get('total_rows', 0)
+            source_tables = host_data.get('source_tables', [])
+            
+            # Convert to proper types
+            if isinstance(source_count, str):
+                source_count = int(source_count) if source_count.isdigit() else 0
+            if isinstance(total_rows, str):
+                total_rows = int(total_rows) if total_rows.isdigit() else 0
+            if isinstance(source_tables, set):
+                source_tables = list(source_tables)
+            
             values = (
-                hostname,
-                host_data.get('hostname', hostname),
+                str(hostname),
+                str(host_data.get('hostname', hostname)),
                 get_first_value('ip_address'),
                 get_first_value('fqdn'),
                 get_first_value('mac_address'),
@@ -134,29 +147,28 @@ class MaximumIntensityDatabaseManager:
                 get_first_value('application'),
                 get_first_value('owner'),
                 get_first_value('criticality'),
-                coverage.get('in_chronicle', False),
-                coverage.get('in_crowdstrike', False),
-                coverage.get('in_original_cmdb', False),
-                coverage.get('in_splunk', False),
-                coverage.get('in_tanium', False),
-                coverage.get('in_dlp', False),
-                host_data.get('source_count', 0),
-                host_data.get('total_rows', 0),
-                json.dumps(list(host_data.get('source_tables', [])), default=list),
-                json.dumps(all_attrs, default=list),
-                host_data.get('first_seen'),
-                datetime.now().isoformat()
+                bool(coverage.get('in_chronicle', False)),
+                bool(coverage.get('in_crowdstrike', False)),
+                bool(coverage.get('in_original_cmdb', False)),
+                bool(coverage.get('in_splunk', False)),
+                bool(coverage.get('in_tanium', False)),
+                bool(coverage.get('in_dlp', False)),
+                int(source_count),
+                int(total_rows),
+                json.dumps(source_tables, default=str),
+                json.dumps(all_attrs, default=str),
+                str(host_data.get('first_seen', datetime.now().isoformat())),
+                str(datetime.now().isoformat())
             )
             
-            logger.debug(f"Executing insert with {len(values)} values for {len(insert_sql.count('?'))} placeholders")
+            logger.debug(f"Storing {hostname}: {len(values)} values prepared")
             self.conn.execute(insert_sql, values)
             self.conn.commit()
-            logger.info(f"Successfully stored {hostname} to database")
+            logger.info(f"STORED TO DB: {hostname}")
             return True
             
         except Exception as e:
-            logger.error(f"Host storage failed for {hostname}: {e}")
-            logger.error(f"Values count: {len(values) if 'values' in locals() else 'undefined'}")
+            logger.error(f"DB STORAGE FAILED for {hostname}: {e}")
             return False
     
     def store_maximum_intensity_discovery(self, assets: Dict[str, Any], stats: Dict[str, Any]) -> int:
