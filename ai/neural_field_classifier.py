@@ -44,25 +44,18 @@ class AdvancedFieldClassificationDataset(Dataset):
         combined_text = f"COLUMN:{column_name} SAMPLES:{' '.join(map(str, data_samples))} CONTEXT:{' '.join(context_columns)}"
         
         try:
-            if hasattr(self.tokenizer, '__call__'):
-                encoding = self.tokenizer(
-                    combined_text,
-                    truncation=True,
-                    padding='max_length',
-                    max_length=self.max_length,
-                    return_tensors='pt'
-                )
-                input_ids = encoding['input_ids'].squeeze()
-                attention_mask = encoding['attention_mask'].squeeze()
-            else:
-                tokens = self.tokenizer.encode(combined_text)[:self.max_length]
-                input_ids = torch.tensor(tokens + [0] * (self.max_length - len(tokens)), dtype=torch.long)
-                attention_mask = torch.tensor([1] * len(tokens) + [0] * (self.max_length - len(tokens)), dtype=torch.long)
+            encoding = tokenizer(
+                combined_text,
+                truncation=True,
+                padding='max_length',
+                max_length=self.max_length,
+                return_tensors='pt'
+            )
+            input_ids = encoding['input_ids'].squeeze()
+            attention_mask = encoding['attention_mask'].squeeze()
         except Exception as e:
-            logger.warning(f"Tokenization failed, using fallback: {e}")
-            char_tokens = [ord(c) % 1000 for c in combined_text[:self.max_length]]
-            input_ids = torch.tensor(char_tokens + [0] * (self.max_length - len(char_tokens)), dtype=torch.long)
-            attention_mask = torch.tensor([1] * len(char_tokens) + [0] * (self.max_length - len(char_tokens)), dtype=torch.long)
+            logger.error(f"Tokenization failed: {e}")
+            raise RuntimeError("Dataset cannot function without working tokenizer")
         
         field_type_id = self.field_type_to_id.get(field_type, self.field_type_to_id['unknown'])
         
@@ -213,19 +206,27 @@ class ContinualFieldLearner:
         self.field_type_accuracies = defaultdict(list)
         
     def _load_corporate_tokenizer(self):
-        logger.info("Loading tokenizer with corporate proxy support")
+        logger.info("Loading tokenizer with aggressive corporate methods")
         try:
             tokenizer = load_corporate_tokenizer()
-            if tokenizer:
+            if tokenizer and self._validate_tokenizer_functionality(tokenizer):
                 method_used = getattr(tokenizer, 'method_used', 'unknown')
                 logger.info(f"Tokenizer loaded successfully: {method_used}")
                 return tokenizer
             else:
-                logger.warning("All tokenizer loading methods failed")
-                return self._create_emergency_tokenizer()
+                raise Exception("Tokenizer validation failed")
         except Exception as e:
-            logger.error(f"Tokenizer loading failed: {e}")
-            return self._create_emergency_tokenizer()
+            logger.error(f"All tokenizer loading methods failed: {e}")
+            raise RuntimeError("Cannot proceed without functional tokenizer")
+    
+    def _validate_tokenizer_functionality(self, tokenizer):
+        try:
+            test_result = tokenizer("test", return_tensors="pt", padding="max_length", max_length=10)
+            return ('input_ids' in test_result and 'attention_mask' in test_result and 
+                    test_result['input_ids'].shape[1] == 10)
+        except Exception as e:
+            logger.error(f"Tokenizer validation failed: {e}")
+            return False
     
     def _create_emergency_tokenizer(self):
         logger.warning("Creating emergency character-based tokenizer")
@@ -276,8 +277,7 @@ class ContinualFieldLearner:
     
     def train_on_dataset(self, training_data: List[Dict[str, Any]], epochs: int = 5, batch_size: int = 32):
         if not self.tokenizer:
-            logger.error("No tokenizer available for training")
-            return
+            raise RuntimeError("Cannot train without functional tokenizer")
         
         logger.info(f"Training on {len(training_data)} samples for {epochs} epochs")
         logger.info(f"Using tokenizer: {getattr(self.tokenizer, 'method_used', 'unknown')}")
@@ -293,41 +293,36 @@ class ContinualFieldLearner:
             total_predictions = 0
             
             for batch_idx, batch in enumerate(dataloader):
-                try:
-                    input_ids = batch['input_ids'].to(self.model.device)
-                    attention_mask = batch['attention_mask'].to(self.model.device)
-                    field_type_ids = batch['field_type_id'].to(self.model.device)
-                    confidence_targets = batch['confidence'].to(self.model.device)
-                    
-                    self.optimizer.zero_grad()
-                    
-                    outputs = self.model(input_ids, attention_mask)
-                    
-                    classification_loss = self.loss_fn(outputs['field_logits'], field_type_ids)
-                    confidence_loss = self.confidence_loss_fn(outputs['confidence_scores'].squeeze(), confidence_targets)
-                    
-                    total_loss = classification_loss + 0.1 * confidence_loss
-                    
-                    total_loss.backward()
-                    torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=1.0)
-                    self.optimizer.step()
-                    self.scheduler.step()
-                    
-                    epoch_loss += total_loss.item()
-                    
-                    predicted = torch.argmax(outputs['field_logits'], dim=1)
-                    correct_predictions += (predicted == field_type_ids).sum().item()
-                    total_predictions += field_type_ids.size(0)
-                    
-                    if batch_idx % 10 == 0:
-                        self.model.update_pattern_memory(outputs['embeddings'])
-                        self.training_stats['pattern_updates'] += 1
-                    
-                    self.training_stats['total_samples_seen'] += input_ids.size(0)
-                    
-                except Exception as e:
-                    logger.warning(f"Training batch {batch_idx} failed: {e}")
-                    continue
+                input_ids = batch['input_ids'].to(self.model.device)
+                attention_mask = batch['attention_mask'].to(self.model.device)
+                field_type_ids = batch['field_type_id'].to(self.model.device)
+                confidence_targets = batch['confidence'].to(self.model.device)
+                
+                self.optimizer.zero_grad()
+                
+                outputs = self.model(input_ids, attention_mask)
+                
+                classification_loss = self.loss_fn(outputs['field_logits'], field_type_ids)
+                confidence_loss = self.confidence_loss_fn(outputs['confidence_scores'].squeeze(), confidence_targets)
+                
+                total_loss = classification_loss + 0.1 * confidence_loss
+                
+                total_loss.backward()
+                torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=1.0)
+                self.optimizer.step()
+                self.scheduler.step()
+                
+                epoch_loss += total_loss.item()
+                
+                predicted = torch.argmax(outputs['field_logits'], dim=1)
+                correct_predictions += (predicted == field_type_ids).sum().item()
+                total_predictions += field_type_ids.size(0)
+                
+                if batch_idx % 10 == 0:
+                    self.model.update_pattern_memory(outputs['embeddings'])
+                    self.training_stats['pattern_updates'] += 1
+                
+                self.training_stats['total_samples_seen'] += input_ids.size(0)
             
             epoch_accuracy = correct_predictions / total_predictions if total_predictions > 0 else 0
             avg_epoch_loss = epoch_loss / len(dataloader) if len(dataloader) > 0 else 0
@@ -349,23 +344,18 @@ class ContinualFieldLearner:
         combined_text = f"COLUMN:{column_name} SAMPLES:{' '.join(map(str, data_samples[:10]))} CONTEXT:{' '.join(context_columns[:10])}"
         
         try:
-            if hasattr(self.tokenizer, '__call__'):
-                encoding = self.tokenizer(
-                    combined_text,
-                    truncation=True,
-                    padding='max_length',
-                    max_length=256,
-                    return_tensors='pt'
-                )
-                input_ids = encoding['input_ids'].to(self.model.device)
-                attention_mask = encoding['attention_mask'].to(self.model.device)
-            else:
-                tokens = self.tokenizer.encode(combined_text)[:256]
-                input_ids = torch.tensor([tokens + [0] * (256 - len(tokens))], dtype=torch.long).to(self.model.device)
-                attention_mask = torch.tensor([[1] * len(tokens) + [0] * (256 - len(tokens))], dtype=torch.long).to(self.model.device)
+            encoding = self.tokenizer(
+                combined_text,
+                truncation=True,
+                padding='max_length',
+                max_length=256,
+                return_tensors='pt'
+            )
+            input_ids = encoding['input_ids'].to(self.model.device)
+            attention_mask = encoding['attention_mask'].to(self.model.device)
         except Exception as e:
-            logger.warning(f"Prediction tokenization failed: {e}")
-            return 'unknown', 0.0
+            logger.error(f"Prediction tokenization failed: {e}")
+            raise RuntimeError("Cannot make predictions without working tokenizer")
         
         self.model.eval()
         with torch.no_grad():
@@ -388,8 +378,8 @@ class ContinualFieldLearner:
                 return predicted_field_type, final_confidence
                 
             except Exception as e:
-                logger.warning(f"Model prediction failed: {e}")
-                return 'unknown', 0.0
+                logger.error(f"Model prediction failed: {e}")
+                raise RuntimeError("Model inference failed")
     
     def evaluate_on_test_data(self, test_data: List[Dict[str, Any]]) -> Dict[str, float]:
         correct_predictions = 0
@@ -399,23 +389,19 @@ class ContinualFieldLearner:
         field_type_total = defaultdict(int)
         
         for item in test_data:
-            try:
-                predicted_type, confidence = self.predict_field_type(
-                    item['column_name'],
-                    item.get('data_samples', []),
-                    item.get('context_columns', [])
-                )
-                
-                true_type = item['field_type']
-                
-                field_type_total[true_type] += 1
-                
-                if predicted_type == true_type:
-                    correct_predictions += 1
-                    field_type_correct[true_type] += 1
-            except Exception as e:
-                logger.warning(f"Evaluation failed for item: {e}")
-                continue
+            predicted_type, confidence = self.predict_field_type(
+                item['column_name'],
+                item.get('data_samples', []),
+                item.get('context_columns', [])
+            )
+            
+            true_type = item['field_type']
+            
+            field_type_total[true_type] += 1
+            
+            if predicted_type == true_type:
+                correct_predictions += 1
+                field_type_correct[true_type] += 1
         
         overall_accuracy = correct_predictions / total_predictions if total_predictions > 0 else 0
         
@@ -458,14 +444,11 @@ class ContinualFieldLearner:
     def continual_learning_update(self, new_data: List[Dict[str, Any]]):
         logger.info(f"Performing continual learning update with {len(new_data)} new samples")
         
-        try:
-            self.train_on_dataset(new_data, epochs=1, batch_size=16)
-            
-            if len(self.training_stats['accuracy_history']) > 0:
-                recent_accuracy = self.training_stats['accuracy_history'][-1]
-                logger.info(f"Post-update accuracy: {recent_accuracy:.4f}")
-        except Exception as e:
-            logger.error(f"Continual learning update failed: {e}")
+        self.train_on_dataset(new_data, epochs=1, batch_size=16)
+        
+        if len(self.training_stats['accuracy_history']) > 0:
+            recent_accuracy = self.training_stats['accuracy_history'][-1]
+            logger.info(f"Post-update accuracy: {recent_accuracy:.4f}")
 
 class SmartFieldTypeInference:
     def __init__(self, model_path: Optional[str] = None):
@@ -494,8 +477,8 @@ class SmartFieldTypeInference:
             
             return result
         except Exception as e:
-            logger.warning(f"Field analysis failed: {e}")
-            return ('unknown', 0.0)
+            logger.error(f"Field analysis failed: {e}")
+            raise RuntimeError("Field analysis system failure")
     
     def learn_from_feedback(self, column_name: str, data_samples: List[str], 
                            correct_field_type: str, context_columns: List[str] = None):
@@ -512,3 +495,4 @@ class SmartFieldTypeInference:
             self.learner.continual_learning_update(feedback_data)
         except Exception as e:
             logger.error(f"Learning feedback failed: {e}")
+            raise RuntimeError("Learning system failure")
