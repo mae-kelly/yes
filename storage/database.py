@@ -90,7 +90,7 @@ class MaximumIntensityDatabaseManager:
             # Storage audit log for tracking all operations
             self.conn.execute("""
                 CREATE TABLE storage_audit_log (
-                    id INTEGER PRIMARY KEY,
+                    id BIGINT PRIMARY KEY,
                     asset_id VARCHAR,
                     operation VARCHAR,
                     success BOOLEAN,
@@ -117,13 +117,21 @@ class MaximumIntensityDatabaseManager:
                               method_used: str, changes_made: str = None, error_message: str = None):
         """Log all storage operations for audit trail"""
         try:
+            # Generate a unique ID using timestamp + random
+            import time
+            import random
+            unique_id = int(time.time() * 1000000) + random.randint(1, 999)
+            
             self.conn.execute("""
                 INSERT INTO storage_audit_log (
-                    asset_id, operation, success, method_used, changes_made, error_message
-                ) VALUES (?, ?, ?, ?, ?, ?)
-            """, [asset_id, operation, success, method_used, changes_made, error_message])
+                    id, asset_id, operation, success, method_used, changes_made, error_message
+                ) VALUES (?, ?, ?, ?, ?, ?, ?)
+            """, [unique_id, asset_id, operation, success, method_used, changes_made, error_message])
+            self.conn.commit()  # Immediate commit for audit log
         except Exception as e:
-            logger.error(f"Failed to log storage operation: {e}")
+            # Don't let audit logging break the main operation
+            logger.debug(f"Failed to log storage operation for {asset_id}: {e}")
+            pass
     
     def _merge_column_value(self, existing_value: str, new_value: str, column_name: str) -> tuple:
         """
