@@ -10,9 +10,9 @@ from typing import Dict, List, Any, Tuple, Optional
 from datetime import datetime
 from pathlib import Path
 import sqlite3
-from transformers import GPT2Tokenizer
 from collections import defaultdict
 import re
+from .corporate_tokenizer_loader import load_corporate_tokenizer
 
 logger = logging.getLogger(__name__)
 
@@ -43,19 +43,32 @@ class AdvancedFieldClassificationDataset(Dataset):
         
         combined_text = f"COLUMN:{column_name} SAMPLES:{' '.join(map(str, data_samples))} CONTEXT:{' '.join(context_columns)}"
         
-        encoding = self.tokenizer(
-            combined_text,
-            truncation=True,
-            padding='max_length',
-            max_length=self.max_length,
-            return_tensors='pt'
-        )
+        try:
+            if hasattr(self.tokenizer, '__call__'):
+                encoding = self.tokenizer(
+                    combined_text,
+                    truncation=True,
+                    padding='max_length',
+                    max_length=self.max_length,
+                    return_tensors='pt'
+                )
+                input_ids = encoding['input_ids'].squeeze()
+                attention_mask = encoding['attention_mask'].squeeze()
+            else:
+                tokens = self.tokenizer.encode(combined_text)[:self.max_length]
+                input_ids = torch.tensor(tokens + [0] * (self.max_length - len(tokens)), dtype=torch.long)
+                attention_mask = torch.tensor([1] * len(tokens) + [0] * (self.max_length - len(tokens)), dtype=torch.long)
+        except Exception as e:
+            logger.warning(f"Tokenization failed, using fallback: {e}")
+            char_tokens = [ord(c) % 1000 for c in combined_text[:self.max_length]]
+            input_ids = torch.tensor(char_tokens + [0] * (self.max_length - len(char_tokens)), dtype=torch.long)
+            attention_mask = torch.tensor([1] * len(char_tokens) + [0] * (self.max_length - len(char_tokens)), dtype=torch.long)
         
         field_type_id = self.field_type_to_id.get(field_type, self.field_type_to_id['unknown'])
         
         return {
-            'input_ids': encoding['input_ids'].squeeze(),
-            'attention_mask': encoding['attention_mask'].squeeze(),
+            'input_ids': input_ids,
+            'attention_mask': attention_mask,
             'field_type_id': torch.tensor(field_type_id, dtype=torch.long),
             'confidence': torch.tensor(item.get('confidence', 0.5), dtype=torch.float),
             'column_name': column_name,
@@ -113,10 +126,17 @@ class M1OptimizedFieldClassifier(nn.Module):
         
     def _setup_m1_gpu(self):
         if hasattr(torch.backends, 'mps') and torch.backends.mps.is_available():
-            torch.mps.set_per_process_memory_fraction(0.95)
-            return torch.device('mps')
+            try:
+                torch.mps.set_per_process_memory_fraction(0.95)
+                logger.info("M1 GPU optimization activated - 95% memory allocation")
+                return torch.device('mps')
+            except Exception as e:
+                logger.warning(f"M1 GPU setup failed: {e}")
         elif torch.cuda.is_available():
+            logger.info("CUDA GPU detected")
             return torch.device('cuda')
+        
+        logger.info("Using CPU for neural processing")
         return torch.device('cpu')
     
     def forward(self, input_ids, attention_mask=None):
@@ -174,7 +194,7 @@ class ContinualFieldLearner:
         self.cache_dir = Path(cache_dir)
         self.cache_dir.mkdir(exist_ok=True)
         
-        self.tokenizer = self._load_tokenizer()
+        self.tokenizer = self._load_corporate_tokenizer()
         
         self.optimizer = optim.AdamW(self.model.parameters(), lr=2e-5, weight_decay=0.01)
         self.scheduler = optim.lr_scheduler.CosineAnnealingWarmRestarts(self.optimizer, T_0=100, T_mult=2)
@@ -186,20 +206,73 @@ class ContinualFieldLearner:
             'total_samples_seen': 0,
             'accuracy_history': [],
             'loss_history': [],
-            'pattern_updates': 0
+            'pattern_updates': 0,
+            'tokenizer_method': getattr(self.tokenizer, 'method_used', 'fallback')
         }
         
         self.field_type_accuracies = defaultdict(list)
         
-    def _load_tokenizer(self):
+    def _load_corporate_tokenizer(self):
+        logger.info("Loading tokenizer with corporate proxy support")
         try:
-            tokenizer = GPT2Tokenizer.from_pretrained('gpt2')
-            if tokenizer.pad_token is None:
-                tokenizer.pad_token = tokenizer.eos_token
-            return tokenizer
+            tokenizer = load_corporate_tokenizer()
+            if tokenizer:
+                method_used = getattr(tokenizer, 'method_used', 'unknown')
+                logger.info(f"Tokenizer loaded successfully: {method_used}")
+                return tokenizer
+            else:
+                logger.warning("All tokenizer loading methods failed")
+                return self._create_emergency_tokenizer()
         except Exception as e:
-            logger.warning(f"Failed to load tokenizer: {e}")
-            return None
+            logger.error(f"Tokenizer loading failed: {e}")
+            return self._create_emergency_tokenizer()
+    
+    def _create_emergency_tokenizer(self):
+        logger.warning("Creating emergency character-based tokenizer")
+        
+        class EmergencyTokenizer:
+            def __init__(self):
+                self.vocab = {}
+                chars = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_.:@'
+                for i, char in enumerate(chars):
+                    self.vocab[char] = i
+                self.vocab[' '] = len(chars)
+                self.vocab['<UNK>'] = len(chars) + 1
+                self.pad_token = '<PAD>'
+                self.eos_token = '<EOS>'
+                self.vocab_size = len(self.vocab)
+                self.method_used = "Emergency Character Tokenizer"
+            
+            def encode(self, text, **kwargs):
+                return [self.vocab.get(char, self.vocab['<UNK>']) for char in str(text)[:200]]
+            
+            def decode(self, tokens, **kwargs):
+                reverse_vocab = {v: k for k, v in self.vocab.items()}
+                return ''.join([reverse_vocab.get(token, '?') for token in tokens])
+            
+            def __call__(self, text, truncation=True, padding='max_length', max_length=256, return_tensors=None, **kwargs):
+                tokens = self.encode(text)[:max_length]
+                
+                if padding == 'max_length':
+                    pad_length = max_length - len(tokens)
+                    tokens.extend([0] * pad_length)
+                    attention_mask = [1] * (max_length - pad_length) + [0] * pad_length
+                else:
+                    attention_mask = [1] * len(tokens)
+                
+                result = {
+                    'input_ids': tokens,
+                    'attention_mask': attention_mask
+                }
+                
+                if return_tensors == 'pt':
+                    import torch
+                    result['input_ids'] = torch.tensor(result['input_ids']).unsqueeze(0)
+                    result['attention_mask'] = torch.tensor(result['attention_mask']).unsqueeze(0)
+                
+                return result
+        
+        return EmergencyTokenizer()
     
     def train_on_dataset(self, training_data: List[Dict[str, Any]], epochs: int = 5, batch_size: int = 32):
         if not self.tokenizer:
@@ -207,6 +280,7 @@ class ContinualFieldLearner:
             return
         
         logger.info(f"Training on {len(training_data)} samples for {epochs} epochs")
+        logger.info(f"Using tokenizer: {getattr(self.tokenizer, 'method_used', 'unknown')}")
         
         dataset = AdvancedFieldClassificationDataset(training_data, self.tokenizer)
         dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True, num_workers=0)
@@ -219,39 +293,44 @@ class ContinualFieldLearner:
             total_predictions = 0
             
             for batch_idx, batch in enumerate(dataloader):
-                input_ids = batch['input_ids'].to(self.model.device)
-                attention_mask = batch['attention_mask'].to(self.model.device)
-                field_type_ids = batch['field_type_id'].to(self.model.device)
-                confidence_targets = batch['confidence'].to(self.model.device)
-                
-                self.optimizer.zero_grad()
-                
-                outputs = self.model(input_ids, attention_mask)
-                
-                classification_loss = self.loss_fn(outputs['field_logits'], field_type_ids)
-                confidence_loss = self.confidence_loss_fn(outputs['confidence_scores'].squeeze(), confidence_targets)
-                
-                total_loss = classification_loss + 0.1 * confidence_loss
-                
-                total_loss.backward()
-                torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=1.0)
-                self.optimizer.step()
-                self.scheduler.step()
-                
-                epoch_loss += total_loss.item()
-                
-                predicted = torch.argmax(outputs['field_logits'], dim=1)
-                correct_predictions += (predicted == field_type_ids).sum().item()
-                total_predictions += field_type_ids.size(0)
-                
-                if batch_idx % 10 == 0:
-                    self.model.update_pattern_memory(outputs['embeddings'])
-                    self.training_stats['pattern_updates'] += 1
-                
-                self.training_stats['total_samples_seen'] += input_ids.size(0)
+                try:
+                    input_ids = batch['input_ids'].to(self.model.device)
+                    attention_mask = batch['attention_mask'].to(self.model.device)
+                    field_type_ids = batch['field_type_id'].to(self.model.device)
+                    confidence_targets = batch['confidence'].to(self.model.device)
+                    
+                    self.optimizer.zero_grad()
+                    
+                    outputs = self.model(input_ids, attention_mask)
+                    
+                    classification_loss = self.loss_fn(outputs['field_logits'], field_type_ids)
+                    confidence_loss = self.confidence_loss_fn(outputs['confidence_scores'].squeeze(), confidence_targets)
+                    
+                    total_loss = classification_loss + 0.1 * confidence_loss
+                    
+                    total_loss.backward()
+                    torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=1.0)
+                    self.optimizer.step()
+                    self.scheduler.step()
+                    
+                    epoch_loss += total_loss.item()
+                    
+                    predicted = torch.argmax(outputs['field_logits'], dim=1)
+                    correct_predictions += (predicted == field_type_ids).sum().item()
+                    total_predictions += field_type_ids.size(0)
+                    
+                    if batch_idx % 10 == 0:
+                        self.model.update_pattern_memory(outputs['embeddings'])
+                        self.training_stats['pattern_updates'] += 1
+                    
+                    self.training_stats['total_samples_seen'] += input_ids.size(0)
+                    
+                except Exception as e:
+                    logger.warning(f"Training batch {batch_idx} failed: {e}")
+                    continue
             
             epoch_accuracy = correct_predictions / total_predictions if total_predictions > 0 else 0
-            avg_epoch_loss = epoch_loss / len(dataloader)
+            avg_epoch_loss = epoch_loss / len(dataloader) if len(dataloader) > 0 else 0
             
             self.training_stats['accuracy_history'].append(epoch_accuracy)
             self.training_stats['loss_history'].append(avg_epoch_loss)
@@ -269,35 +348,48 @@ class ContinualFieldLearner:
         
         combined_text = f"COLUMN:{column_name} SAMPLES:{' '.join(map(str, data_samples[:10]))} CONTEXT:{' '.join(context_columns[:10])}"
         
-        encoding = self.tokenizer(
-            combined_text,
-            truncation=True,
-            padding='max_length',
-            max_length=256,
-            return_tensors='pt'
-        )
+        try:
+            if hasattr(self.tokenizer, '__call__'):
+                encoding = self.tokenizer(
+                    combined_text,
+                    truncation=True,
+                    padding='max_length',
+                    max_length=256,
+                    return_tensors='pt'
+                )
+                input_ids = encoding['input_ids'].to(self.model.device)
+                attention_mask = encoding['attention_mask'].to(self.model.device)
+            else:
+                tokens = self.tokenizer.encode(combined_text)[:256]
+                input_ids = torch.tensor([tokens + [0] * (256 - len(tokens))], dtype=torch.long).to(self.model.device)
+                attention_mask = torch.tensor([[1] * len(tokens) + [0] * (256 - len(tokens))], dtype=torch.long).to(self.model.device)
+        except Exception as e:
+            logger.warning(f"Prediction tokenization failed: {e}")
+            return 'unknown', 0.0
         
         self.model.eval()
         with torch.no_grad():
-            input_ids = encoding['input_ids'].to(self.model.device)
-            attention_mask = encoding['attention_mask'].to(self.model.device)
-            
-            outputs = self.model(input_ids, attention_mask)
-            
-            field_probabilities = F.softmax(outputs['field_logits'], dim=-1)
-            predicted_field_id = torch.argmax(field_probabilities, dim=-1).item()
-            confidence = outputs['confidence_scores'].item()
-            
-            field_types = ['hostname', 'ip_address', 'fqdn', 'mac_address', 'email_address',
-                          'identifier', 'classification', 'text_content', 'numeric', 'temporal',
-                          'location', 'unknown']
-            
-            predicted_field_type = field_types[predicted_field_id] if predicted_field_id < len(field_types) else 'unknown'
-            
-            max_probability = field_probabilities[0, predicted_field_id].item()
-            final_confidence = (confidence + max_probability) / 2.0
-            
-            return predicted_field_type, final_confidence
+            try:
+                outputs = self.model(input_ids, attention_mask)
+                
+                field_probabilities = F.softmax(outputs['field_logits'], dim=-1)
+                predicted_field_id = torch.argmax(field_probabilities, dim=-1).item()
+                confidence = outputs['confidence_scores'].item()
+                
+                field_types = ['hostname', 'ip_address', 'fqdn', 'mac_address', 'email_address',
+                              'identifier', 'classification', 'text_content', 'numeric', 'temporal',
+                              'location', 'unknown']
+                
+                predicted_field_type = field_types[predicted_field_id] if predicted_field_id < len(field_types) else 'unknown'
+                
+                max_probability = field_probabilities[0, predicted_field_id].item()
+                final_confidence = (confidence + max_probability) / 2.0
+                
+                return predicted_field_type, final_confidence
+                
+            except Exception as e:
+                logger.warning(f"Model prediction failed: {e}")
+                return 'unknown', 0.0
     
     def evaluate_on_test_data(self, test_data: List[Dict[str, Any]]) -> Dict[str, float]:
         correct_predictions = 0
@@ -307,19 +399,23 @@ class ContinualFieldLearner:
         field_type_total = defaultdict(int)
         
         for item in test_data:
-            predicted_type, confidence = self.predict_field_type(
-                item['column_name'],
-                item.get('data_samples', []),
-                item.get('context_columns', [])
-            )
-            
-            true_type = item['field_type']
-            
-            field_type_total[true_type] += 1
-            
-            if predicted_type == true_type:
-                correct_predictions += 1
-                field_type_correct[true_type] += 1
+            try:
+                predicted_type, confidence = self.predict_field_type(
+                    item['column_name'],
+                    item.get('data_samples', []),
+                    item.get('context_columns', [])
+                )
+                
+                true_type = item['field_type']
+                
+                field_type_total[true_type] += 1
+                
+                if predicted_type == true_type:
+                    correct_predictions += 1
+                    field_type_correct[true_type] += 1
+            except Exception as e:
+                logger.warning(f"Evaluation failed for item: {e}")
+                continue
         
         overall_accuracy = correct_predictions / total_predictions if total_predictions > 0 else 0
         
@@ -334,33 +430,42 @@ class ContinualFieldLearner:
         }
     
     def save_model(self, filepath: str):
-        torch.save({
-            'model_state_dict': self.model.state_dict(),
-            'optimizer_state_dict': self.optimizer.state_dict(),
-            'scheduler_state_dict': self.scheduler.state_dict(),
-            'training_stats': self.training_stats
-        }, filepath)
-        
-        logger.info(f"Model saved to {filepath}")
+        try:
+            torch.save({
+                'model_state_dict': self.model.state_dict(),
+                'optimizer_state_dict': self.optimizer.state_dict(),
+                'scheduler_state_dict': self.scheduler.state_dict(),
+                'training_stats': self.training_stats
+            }, filepath)
+            
+            logger.info(f"Model saved to {filepath}")
+        except Exception as e:
+            logger.error(f"Model save failed: {e}")
     
     def load_model(self, filepath: str):
-        checkpoint = torch.load(filepath, map_location=self.model.device)
-        
-        self.model.load_state_dict(checkpoint['model_state_dict'])
-        self.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
-        self.scheduler.load_state_dict(checkpoint['scheduler_state_dict'])
-        self.training_stats = checkpoint.get('training_stats', self.training_stats)
-        
-        logger.info(f"Model loaded from {filepath}")
+        try:
+            checkpoint = torch.load(filepath, map_location=self.model.device)
+            
+            self.model.load_state_dict(checkpoint['model_state_dict'])
+            self.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+            self.scheduler.load_state_dict(checkpoint['scheduler_state_dict'])
+            self.training_stats = checkpoint.get('training_stats', self.training_stats)
+            
+            logger.info(f"Model loaded from {filepath}")
+        except Exception as e:
+            logger.error(f"Model load failed: {e}")
     
     def continual_learning_update(self, new_data: List[Dict[str, Any]]):
         logger.info(f"Performing continual learning update with {len(new_data)} new samples")
         
-        self.train_on_dataset(new_data, epochs=1, batch_size=16)
-        
-        if len(self.training_stats['accuracy_history']) > 0:
-            recent_accuracy = self.training_stats['accuracy_history'][-1]
-            logger.info(f"Post-update accuracy: {recent_accuracy:.4f}")
+        try:
+            self.train_on_dataset(new_data, epochs=1, batch_size=16)
+            
+            if len(self.training_stats['accuracy_history']) > 0:
+                recent_accuracy = self.training_stats['accuracy_history'][-1]
+                logger.info(f"Post-update accuracy: {recent_accuracy:.4f}")
+        except Exception as e:
+            logger.error(f"Continual learning update failed: {e}")
 
 class SmartFieldTypeInference:
     def __init__(self, model_path: Optional[str] = None):
@@ -379,14 +484,18 @@ class SmartFieldTypeInference:
         if cache_key in self.pattern_cache:
             return self.pattern_cache[cache_key]
         
-        predicted_type, confidence = self.learner.predict_field_type(
-            column_name, data_samples, context_columns or []
-        )
-        
-        result = (predicted_type, confidence)
-        self.pattern_cache[cache_key] = result
-        
-        return result
+        try:
+            predicted_type, confidence = self.learner.predict_field_type(
+                column_name, data_samples, context_columns or []
+            )
+            
+            result = (predicted_type, confidence)
+            self.pattern_cache[cache_key] = result
+            
+            return result
+        except Exception as e:
+            logger.warning(f"Field analysis failed: {e}")
+            return ('unknown', 0.0)
     
     def learn_from_feedback(self, column_name: str, data_samples: List[str], 
                            correct_field_type: str, context_columns: List[str] = None):
@@ -399,4 +508,7 @@ class SmartFieldTypeInference:
             'confidence': 1.0
         }]
         
-        self.learner.continual_learning_update(feedback_data)
+        try:
+            self.learner.continual_learning_update(feedback_data)
+        except Exception as e:
+            logger.error(f"Learning feedback failed: {e}")
