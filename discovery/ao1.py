@@ -38,8 +38,8 @@ class MaximumIntensityRealtimeCMDBBuilder:
         
         return hostname
     
-    def add_host_to_cmdb_maximum_intensity(self, hostname: str, all_row_data: Dict[str, Any], source_table: str):
-        """🔥 MAXIMUM INTENSITY: Process complete row data instead of individual attributes"""
+    def add_host_to_cmdb_maximum_intensity(self, hostname: str, all_row_data: Dict[str, Any], source_table: str, db_manager=None):
+        """🔥 MAXIMUM INTENSITY: Process complete row data and IMMEDIATELY log + store to DB"""
         normalized_hostname = self.normalize_hostname(hostname)
         
         if not normalized_hostname or len(normalized_hostname) < 2:
@@ -67,12 +67,15 @@ class MaximumIntensityRealtimeCMDBBuilder:
             }
             self.processing_stats['hosts_discovered'] += 1
             
-            if self.processing_stats['hosts_discovered'] % 1000 == 0:
-                logger.info(f"🔥 DISCOVERED {self.processing_stats['hosts_discovered']:,} UNIQUE HOSTS SO FAR!")
+            # 🔥 IMMEDIATE CONSOLE LOGGING FOR NEW HOST DISCOVERY
+            logger.info(f"🎉 NEW HOST DISCOVERED: {normalized_hostname}")
+            logger.info(f"   📊 Total Unique Hosts: {self.processing_stats['hosts_discovered']:,}")
+            logger.info(f"   📋 Source Table: {source_table}")
         
         host = self.cmdb[normalized_hostname]
         
         # 🔥 MAXIMUM INTENSITY: Process ALL columns from the row
+        new_attributes = 0
         for column_name, value in all_row_data.items():
             if value is not None and str(value).strip():
                 clean_value = str(value).strip()
@@ -89,6 +92,9 @@ class MaximumIntensityRealtimeCMDBBuilder:
                 
                 if new_size > old_size:
                     self.processing_stats['attributes_added'] += 1
+                    new_attributes += 1
+                    # 🔥 LOG NEW ATTRIBUTE DISCOVERIES
+                    logger.info(f"   ➕ NEW {attribute_key.upper()}: {clean_value}")
         
         # Track source information
         host['source_tables'].add(source_table)
@@ -96,10 +102,27 @@ class MaximumIntensityRealtimeCMDBBuilder:
         host['total_rows'] += 1
         
         # Set coverage flags based on source table
+        coverage_before = dict(host['coverage_flags'])
         self._set_coverage_flags(host, source_table)
+        
+        # 🔥 LOG COVERAGE CHANGES
+        for flag, current_value in host['coverage_flags'].items():
+            if current_value and not coverage_before[flag]:
+                logger.info(f"   🛡️  NEW COVERAGE: {flag.upper()} = TRUE")
         
         host['last_updated'] = datetime.now().isoformat()
         self.processing_stats['total_cells_analyzed'] += len(all_row_data)
+        
+        # 🔥 IMMEDIATE DATABASE STORAGE if db_manager provided
+        if db_manager and is_new_host:
+            try:
+                db_manager.store_single_host_immediately(normalized_hostname, host)
+                logger.info(f"   💾 STORED TO DATABASE: {normalized_hostname}")
+            except Exception as e:
+                logger.error(f"   💥 DB STORAGE FAILED: {e}")
+        
+        # 🔥 SUMMARY LOG FOR EACH HOST UPDATE
+        logger.info(f"   📈 Host Summary: {new_attributes} new attrs, {host['source_count']} sources, {host['total_rows']} rows")
     
     def _map_column_to_attribute(self, column_name: str) -> str:
         """🔥 INTELLIGENT COLUMN MAPPING FOR MAXIMUM DATA EXTRACTION"""
@@ -185,8 +208,9 @@ class MaximumIntensityRealtimeCMDBBuilder:
         self.processing_stats['memory_usage_mb'] = psutil.Process().memory_info().rss / 1024 / 1024
 
 class MaximumIntensityTableProcessor:
-    def __init__(self, cmdb_builder: MaximumIntensityRealtimeCMDBBuilder):
+    def __init__(self, cmdb_builder: MaximumIntensityRealtimeCMDBBuilder, db_manager=None):
         self.cmdb_builder = cmdb_builder
+        self.db_manager = db_manager
         self.host_identifier_patterns = [
             'hostname', 'host_name', 'computername', 'computer_name', 'device_name',
             'endpoint', 'asset_name', 'machine_name', 'system_name'
@@ -249,22 +273,28 @@ class MaximumIntensityTableProcessor:
                         break
                     
                     batch_hosts = 0
+                    hosts_in_batch = []
                     for row in results:
                         # Convert row to dictionary for processing
                         row_data = dict(zip(columns, row))
                         
                         host_value = row_data.get(primary_host_column)
                         if host_value and str(host_value).strip():
+                            hostname = str(host_value).strip()
+                            
+                            # 🔥 IMMEDIATE PROCESSING AND LOGGING
                             self.cmdb_builder.add_host_to_cmdb_maximum_intensity(
-                                str(host_value).strip(), row_data, table_path
+                                hostname, row_data, table_path, self.db_manager
                             )
+                            
                             batch_hosts += 1
+                            hosts_in_batch.append(hostname)
                     
                     total_processed += len(results)
                     hosts_found_in_table += batch_hosts
                     self.cmdb_builder.processing_stats['total_rows_processed'] += len(results)
                     
-                    # 🔥 REAL-TIME PROGRESS LOGGING
+                    # 🔥 REAL-TIME PROGRESS LOGGING WITH HOST DETAILS AND DB STATS
                     self.cmdb_builder.update_processing_stats()
                     progress_pct = (total_processed / total_rows) * 100 if total_rows > 0 else 100
                     
@@ -273,6 +303,26 @@ class MaximumIntensityTableProcessor:
                     logger.info(f"🔥 PROCESSING SPEED: {self.cmdb_builder.processing_stats['rows_per_second']:,.0f} rows/sec")
                     logger.info(f"💾 MEMORY USAGE: {self.cmdb_builder.processing_stats['memory_usage_mb']:.1f} MB")
                     logger.info(f"🌪️  CUMULATIVE HOSTS: {len(self.cmdb_builder.cmdb):,}")
+                    
+                    # 🔥 SHOW REAL-TIME DATABASE STATS
+                    if self.db_manager:
+                        db_stats = self.db_manager.get_live_stats()
+                        logger.info(f"💾 DATABASE: {db_stats['total_hosts_in_db']:,} hosts stored ({db_stats['database_size_mb']:.1f} MB)")
+                        
+                        # Show sample hosts from database every few batches
+                        if offset % 150000 == 0:  # Every ~3 batches
+                            sample_hosts = self.db_manager.show_sample_hosts(3)
+                            if sample_hosts:
+                                logger.info("   📋 Recent DB entries:")
+                                for host in sample_hosts:
+                                    logger.info(f"      🏠 {host}")
+                    
+                    # 🔥 LOG SAMPLE HOSTS FROM THIS BATCH
+                    if hosts_in_batch:
+                        sample_hosts = hosts_in_batch[:5]  # Show first 5 hosts
+                        logger.info(f"   📋 Sample hosts: {', '.join(sample_hosts)}")
+                        if len(hosts_in_batch) > 5:
+                            logger.info(f"   📋 ... and {len(hosts_in_batch) - 5} more hosts")
                     
                     offset += batch_size
                     
@@ -291,6 +341,19 @@ class MaximumIntensityTableProcessor:
             logger.info(f"✅ TABLE COMPLETE: {table_path}")
             logger.info(f"📊 PROCESSED {total_processed:,} rows, found {hosts_found_in_table:,} hosts")
             
+            # 🔥 FINAL DATABASE VERIFICATION FOR THIS TABLE
+            if self.db_manager:
+                db_stats = self.db_manager.get_live_stats()
+                logger.info(f"💾 DATABASE NOW CONTAINS: {db_stats['total_hosts_in_db']:,} total hosts")
+                logger.info(f"💾 DATABASE SIZE: {db_stats['database_size_mb']:.1f} MB")
+                
+                # Show sample of recent entries
+                recent_hosts = self.db_manager.show_sample_hosts(5)
+                if recent_hosts:
+                    logger.info("   📋 Recent database entries:")
+                    for host in recent_hosts:
+                        logger.info(f"      🏠 {host}")
+            
             self.cmdb_builder.processing_stats['tables_processed'] += 1
             return total_processed
             
@@ -302,7 +365,12 @@ class MaximumIntensityOrchestrator:
     def __init__(self, config: Dict[str, Any]):
         self.config = config
         self.cmdb_builder = MaximumIntensityRealtimeCMDBBuilder()
-        self.processor = MaximumIntensityTableProcessor(self.cmdb_builder)
+        
+        # 🔥 INITIALIZE DATABASE MANAGER FOR REAL-TIME STORAGE
+        from storage.database import MaximumIntensityDatabaseManager
+        self.db_manager = MaximumIntensityDatabaseManager(config.get('database_path', 'maximum_intensity_cmdb.db'))
+        
+        self.processor = MaximumIntensityTableProcessor(self.cmdb_builder, self.db_manager)
         
         # 🔥 MAXIMUM INTENSITY STATS TRACKING
         self.orchestration_stats = {

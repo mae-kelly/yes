@@ -4,6 +4,7 @@ import duckdb
 import json
 import logging
 import time
+import os
 from typing import Dict, List, Any
 from datetime import datetime
 from core.types import HyperAsset, QuantumDiscovery
@@ -125,6 +126,146 @@ class MaximumIntensityDatabaseManager:
             logger.error(f"💥 SCHEMA CREATION FAILED: {e}")
             raise
     
+    def store_single_host_immediately(self, hostname: str, host_data: Dict[str, Any]):
+        """🔥 IMMEDIATELY STORE A SINGLE HOST TO DATABASE AS SOON AS IT'S DISCOVERED"""
+        try:
+            # Extract all attributes with intelligent defaults
+            all_attrs = host_data.get('all_attributes', {})
+            coverage = host_data.get('coverage_flags', {})
+            
+            # 🔥 EXTRACT FIRST VALUE FROM EACH ATTRIBUTE SET
+            def get_first_value(attr_key: str, default: str = '') -> str:
+                values = all_attrs.get(attr_key, set())
+                if isinstance(values, (list, set)) and values:
+                    return str(list(values)[0])
+                elif values:
+                    return str(values)
+                return default
+            
+            # Prepare comprehensive asset data
+            insert_sql = """
+                INSERT OR REPLACE INTO maximum_intensity_assets (
+                    asset_id, hostname, ip_address, fqdn, mac_address,
+                    infrastructure_type, operating_system, system_classification, environment,
+                    region, country, datacenter, cloud_region,
+                    business_unit, application, owner, criticality,
+                    in_chronicle, in_crowdstrike, in_original_cmdb, in_splunk, in_tanium, in_dlp,
+                    source_count, total_rows, total_unique_attributes,
+                    source_tables, all_attributes, first_seen, last_updated
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """
+            
+            values = (
+                hostname,
+                host_data.get('hostname', hostname),
+                get_first_value('ip_address'),
+                get_first_value('fqdn'),
+                get_first_value('mac_address'),
+                get_first_value('infrastructure_type'),
+                get_first_value('operating_system'),
+                get_first_value('system_classification'),
+                get_first_value('environment'),
+                get_first_value('region'),
+                get_first_value('country'),
+                get_first_value('datacenter'),
+                get_first_value('cloud_region'),
+                get_first_value('business_unit'),
+                get_first_value('application'),
+                get_first_value('owner'),
+                get_first_value('criticality'),
+                coverage.get('in_chronicle', False),
+                coverage.get('in_crowdstrike', False),
+                coverage.get('in_original_cmdb', False),
+                coverage.get('in_splunk', False),
+                coverage.get('in_tanium', False),
+                coverage.get('in_dlp', False),
+                host_data.get('source_count', 0),
+                host_data.get('total_rows', 0),
+                sum(len(v) if isinstance(v, (set, list)) else 1 for v in all_attrs.values()),
+                json.dumps(list(host_data.get('source_tables', [])), default=list),
+                json.dumps(all_attrs, default=list),
+                host_data.get('first_seen'),
+                host_data.get('last_updated')
+            )
+            
+            # Execute immediate insert
+            self.conn.execute(insert_sql, values)
+            self.conn.commit()  # Immediate commit for real-time storage
+            
+            return True
+            
+        except Exception as e:
+            logger.error(f"💥 IMMEDIATE HOST STORAGE FAILED for {hostname}: {e}")
+            return False
+    
+    def store_single_host_immediately(self, hostname: str, host_data: Dict[str, Any]):
+        """🔥 IMMEDIATELY STORE A SINGLE HOST TO DATABASE AS SOON AS IT'S DISCOVERED"""
+        try:
+            # Extract all attributes with intelligent defaults
+            all_attrs = host_data.get('all_attributes', {})
+            coverage = host_data.get('coverage_flags', {})
+            
+            # 🔥 EXTRACT FIRST VALUE FROM EACH ATTRIBUTE SET
+            def get_first_value(attr_key: str, default: str = '') -> str:
+                values = all_attrs.get(attr_key, set())
+                if isinstance(values, (list, set)) and values:
+                    return str(list(values)[0])
+                elif values:
+                    return str(values)
+                return default
+            
+            # Prepare comprehensive asset data
+            insert_sql = """
+                INSERT OR REPLACE INTO maximum_intensity_assets (
+                    asset_id, hostname, ip_address, fqdn, mac_address,
+                    infrastructure_type, operating_system, system_classification, environment,
+                    region, country, datacenter, cloud_region,
+                    business_unit, application, owner, criticality,
+                    in_chronicle, in_crowdstrike, in_original_cmdb, in_splunk, in_tanium, in_dlp,
+                    source_count, total_rows, total_unique_attributes,
+                    source_tables, all_attributes, first_seen, last_updated
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """
+            
+            values = (
+                hostname,
+                host_data.get('hostname', hostname),
+                get_first_value('ip_address'),
+                get_first_value('fqdn'),
+                get_first_value('mac_address'),
+                get_first_value('infrastructure_type'),
+                get_first_value('operating_system'),
+                get_first_value('system_classification'),
+                get_first_value('environment'),
+                get_first_value('region'),
+                get_first_value('country'),
+                get_first_value('datacenter'),
+                get_first_value('cloud_region'),
+                get_first_value('business_unit'),
+                get_first_value('application'),
+                get_first_value('owner'),
+                get_first_value('criticality'),
+                coverage.get('in_chronicle', False),
+                coverage.get('in_crowdstrike', False),
+                coverage.get('in_original_cmdb', False),
+                coverage.get('in_splunk', False),
+                coverage.get('in_tanium', False),
+                coverage.get('in_dlp', False),
+                host_data.get('source_count', 0),
+                host_data.get('total_rows', 0),
+                sum(len(v) if isinstance(v, (set, list)) else 1 for v in all_attrs.values()),
+                json.dumps(list(host_data.get('source_tables', [])), default=list),
+                json.dumps(all_attrs, default=list),
+                host_data.get('first_seen'),
+                host_data.get('last_updated')
+            )
+            
+            # Execute immediate insert
+            self.conn.execute(insert_sql, values)
+            self.conn.commit()  # Immediate commit for real-time storage
+            
+            return True
+            
     def store_maximum_intensity_discovery(self, assets: Dict[str, Any], stats: Dict[str, Any]) -> int:
         """🔥 STORE DISCOVERY RESULTS WITH MAXIMUM INTENSITY AND GUARANTEED INSERTION"""
         
@@ -389,6 +530,61 @@ class MaximumIntensityDatabaseManager:
         except Exception as e:
             logger.error(f"💥 STATS QUERY FAILED: {e}")
             return {'error': str(e)}
+    
+    def get_live_stats(self) -> Dict[str, Any]:
+        """🔥 GET REAL-TIME DATABASE STATISTICS FOR CONSOLE LOGGING"""
+        try:
+            total_count = self.conn.execute("SELECT COUNT(*) FROM maximum_intensity_assets").fetchone()[0]
+            
+            # Get recent additions (last 10 seconds)
+            recent_count = self.conn.execute("""
+                SELECT COUNT(*) FROM maximum_intensity_assets 
+                WHERE created_at >= datetime('now', '-10 seconds')
+            """).fetchone()[0]
+            
+            return {
+                'total_hosts_in_db': total_count,
+                'hosts_added_recently': recent_count,
+                'database_size_mb': os.path.getsize(self.db_path) / (1024 * 1024) if os.path.exists(self.db_path) else 0
+            }
+            
+        except Exception as e:
+            return {'error': str(e), 'total_hosts_in_db': 0}
+    
+    def show_sample_hosts(self, limit: int = 5) -> List[str]:
+        """🔥 SHOW SAMPLE HOSTS FROM DATABASE FOR VERIFICATION"""
+        try:
+            results = self.conn.execute(f"""
+                SELECT hostname, ip_address, infrastructure_type, in_chronicle, in_crowdstrike
+                FROM maximum_intensity_assets 
+                ORDER BY created_at DESC 
+                LIMIT {limit}
+            """).fetchall()
+            
+            sample_hosts = []
+            for row in results:
+                hostname, ip, infra, chronicle, cs = row
+                coverage_info = []
+                if chronicle:
+                    coverage_info.append("Chronicle")
+                if cs:
+                    coverage_info.append("CrowdStrike")
+                
+                coverage_str = f" [{', '.join(coverage_info)}]" if coverage_info else ""
+                host_info = f"{hostname}"
+                if ip:
+                    host_info += f" ({ip})"
+                if infra:
+                    host_info += f" [{infra}]"
+                host_info += coverage_str
+                
+                sample_hosts.append(host_info)
+            
+            return sample_hosts
+            
+        except Exception as e:
+            logger.error(f"💥 SAMPLE HOSTS QUERY FAILED: {e}")
+            return []
     
     def close(self):
         """🔥 CLOSE DATABASE CONNECTION"""
