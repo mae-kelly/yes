@@ -153,6 +153,8 @@ class MaximumIntensityDatabaseManager:
             tables = self.conn.execute("SHOW TABLES").fetchall()
             logger.info(f"Verified tables: {[table[0] for table in tables]}")
             
+            self.test_insert()
+            
         except Exception as e:
             logger.error(f"Schema creation failed: {e}")
             raise
@@ -169,6 +171,8 @@ class MaximumIntensityDatabaseManager:
                 elif values:
                     return str(values)
                 return default
+            
+            logger.debug(f"Storing host {hostname} with {len(all_attrs)} attributes")
             
             insert_sql = """
                 INSERT OR REPLACE INTO maximum_intensity_assets (
@@ -252,12 +256,16 @@ class MaximumIntensityDatabaseManager:
                 datetime.now().isoformat()
             )
             
+            logger.debug(f"Executing insert with {len(values)} values")
             self.conn.execute(insert_sql, values)
             self.conn.commit()
+            logger.debug(f"Successfully stored {hostname}")
             return True
             
         except Exception as e:
             logger.error(f"Immediate host storage failed for {hostname}: {e}")
+            logger.error(f"Host data keys: {list(host_data.keys())}")
+            logger.error(f"All attributes keys: {list(all_attrs.keys()) if all_attrs else 'None'}")
             return False
     
     def store_maximum_intensity_discovery(self, assets: Dict[str, Any], stats: Dict[str, Any]) -> int:
@@ -599,6 +607,45 @@ class MaximumIntensityDatabaseManager:
         except Exception as e:
             logger.error(f"Sample hosts query failed: {e}")
             return []
+    
+    def test_insert(self):
+        try:
+            logger.info("Testing database insert functionality")
+            test_host_data = {
+                'hostname': 'TEST-SERVER-01',
+                'all_attributes': {
+                    'ip_address': {'192.168.1.100'},
+                    'infrastructure_type': {'Windows Server'},
+                    'business_unit': {'IT Operations'}
+                },
+                'coverage_flags': {
+                    'in_crowdstrike': True,
+                    'in_splunk': False,
+                    'in_chronicle': False,
+                    'in_original_cmdb': False,
+                    'in_tanium': False,
+                    'in_dlp': False
+                },
+                'source_count': 1,
+                'total_rows': 1,
+                'source_tables': ['test_table'],
+                'first_seen': datetime.now().isoformat()
+            }
+            
+            result = self.store_single_host_immediately('TEST-SERVER-01', test_host_data)
+            if result:
+                count = self.conn.execute("SELECT COUNT(*) FROM maximum_intensity_assets").fetchone()[0]
+                logger.info(f"Test insert successful. Total rows in database: {count}")
+                
+                test_row = self.conn.execute("SELECT * FROM maximum_intensity_assets WHERE hostname = 'TEST-SERVER-01'").fetchone()
+                if test_row:
+                    logger.info(f"Test row retrieved successfully: {test_row[0:5]}")
+                else:
+                    logger.error("Test row not found after insert")
+            else:
+                logger.error("Test insert failed")
+        except Exception as e:
+            logger.error(f"Test insert error: {e}")
     
     def close(self):
         if self.conn:
