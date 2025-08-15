@@ -1,3 +1,5 @@
+# ai/bigquery_scanner.py
+
 import asyncio
 import aiohttp
 import json
@@ -9,6 +11,13 @@ from pathlib import Path
 import sqlite3
 from collections import defaultdict, Counter
 import numpy as np
+import requests
+import urllib3
+import ssl
+import socket
+import time
+
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 logger = logging.getLogger(__name__)
 
@@ -19,6 +28,9 @@ class BigQueryPublicDatasetScanner:
         
         self.db_path = self.cache_dir / "training_patterns.db"
         self._init_training_db()
+        
+        self.proxy = "http://proxy-na.fiserv.one:8080"
+        self._setup_ssl_and_proxy()
         
         self.public_datasets = [
             "bigquery-public-data.austin_311.311_service_requests",
@@ -56,6 +68,15 @@ class BigQueryPublicDatasetScanner:
         
         self.schema_cache = {}
         self.pattern_stats = defaultdict(Counter)
+        
+    def _setup_ssl_and_proxy(self):
+        ssl._create_default_https_context = ssl._create_unverified_context
+        
+        import os
+        os.environ['HTTP_PROXY'] = self.proxy
+        os.environ['HTTPS_PROXY'] = self.proxy
+        os.environ['http_proxy'] = self.proxy
+        os.environ['https_proxy'] = self.proxy
         
     def _init_training_db(self):
         conn = sqlite3.connect(self.db_path)
@@ -105,121 +126,165 @@ class BigQueryPublicDatasetScanner:
         
         total_patterns = 0
         
-        for dataset_path in self.public_datasets:
-            try:
-                patterns = await self._scan_single_dataset(dataset_path)
-                total_patterns += len(patterns)
-                
-                if patterns:
-                    await self._store_patterns(patterns)
-                    logger.info(f"Scanned {dataset_path}: {len(patterns)} patterns")
-                
-            except Exception as e:
-                logger.warning(f"Failed to scan {dataset_path}: {e}")
+        session = aiohttp.ClientSession(
+            connector=aiohttp.TCPConnector(ssl=False),
+            timeout=aiohttp.ClientTimeout(total=300)
+        )
+        
+        try:
+            for dataset_path in self.public_datasets:
+                try:
+                    patterns = await self._scan_single_dataset_aggressive(session, dataset_path)
+                    total_patterns += len(patterns)
+                    
+                    if patterns:
+                        await self._store_patterns(patterns)
+                        logger.info(f"Scanned {dataset_path}: {len(patterns)} patterns")
+                    
+                except Exception as e:
+                    logger.warning(f"Failed to scan {dataset_path}: {e}")
+        finally:
+            await session.close()
         
         logger.info(f"Total patterns collected: {total_patterns}")
         await self._analyze_pattern_distributions()
         
         return total_patterns
     
-    async def _scan_single_dataset(self, dataset_path: str) -> List[Dict[str, Any]]:
+    async def _scan_single_dataset_aggressive(self, session: aiohttp.ClientSession, dataset_path: str) -> List[Dict[str, Any]]:
         parts = dataset_path.split('.')
         if len(parts) != 3:
             return []
         
         project_id, dataset_id, table_id = parts
         
-        try:
-            schema_info = await self._get_table_schema_info(project_id, dataset_id, table_id)
-            if not schema_info:
-                return []
-            
-            data_samples = await self._get_table_sample_data(project_id, dataset_id, table_id)
-            
-            patterns = []
-            column_names = [col['name'] for col in schema_info.get('fields', [])]
-            
-            for column_info in schema_info.get('fields', []):
-                column_name = column_info['name']
-                column_type = column_info['type']
-                
-                samples = data_samples.get(column_name, [])
-                
-                inferred_type, confidence = self._infer_field_type(
-                    column_name, samples, column_names, dataset_path
-                )
-                
-                pattern = {
-                    'project_id': project_id,
-                    'dataset_id': dataset_id,
-                    'table_id': table_id,
-                    'column_name': column_name,
-                    'column_type': column_type,
-                    'data_samples': json.dumps(samples[:50]),
-                    'inferred_field_type': inferred_type,
-                    'confidence_score': confidence,
-                    'context_columns': json.dumps(column_names),
-                    'table_path': dataset_path
-                }
-                
-                patterns.append(pattern)
-            
-            return patterns
-            
-        except Exception as e:
-            logger.debug(f"Error scanning {dataset_path}: {e}")
+        schema_info = await self._get_table_schema_info_aggressive(session, project_id, dataset_id, table_id)
+        if not schema_info:
             return []
-    
-    async def _get_table_schema_info(self, project_id: str, dataset_id: str, table_id: str) -> Optional[Dict]:
-        url = f"https://bigquery.googleapis.com/bigquery/v2/projects/{project_id}/datasets/{dataset_id}/tables/{table_id}"
         
-        try:
-            async with aiohttp.ClientSession() as session:
-                async with session.get(url) as response:
-                    if response.status == 200:
-                        data = await response.json()
-                        return data.get('schema')
-        except Exception as e:
-            logger.debug(f"Schema fetch failed for {project_id}.{dataset_id}.{table_id}: {e}")
+        data_samples = await self._get_table_sample_data_aggressive(session, project_id, dataset_id, table_id)
+        
+        patterns = []
+        column_names = [col['name'] for col in schema_info.get('fields', [])]
+        
+        for column_info in schema_info.get('fields', []):
+            column_name = column_info['name']
+            column_type = column_info['type']
+            
+            samples = data_samples.get(column_name, [])
+            
+            inferred_type, confidence = self._infer_field_type(
+                column_name, samples, column_names, dataset_path
+            )
+            
+            pattern = {
+                'project_id': project_id,
+                'dataset_id': dataset_id,
+                'table_id': table_id,
+                'column_name': column_name,
+                'column_type': column_type,
+                'data_samples': json.dumps(samples[:50]),
+                'inferred_field_type': inferred_type,
+                'confidence_score': confidence,
+                'context_columns': json.dumps(column_names),
+                'table_path': dataset_path
+            }
+            
+            patterns.append(pattern)
+        
+        return patterns
+    
+    async def _get_table_schema_info_aggressive(self, session: aiohttp.ClientSession, project_id: str, dataset_id: str, table_id: str) -> Optional[Dict]:
+        urls = [
+            f"https://bigquery.googleapis.com/bigquery/v2/projects/{project_id}/datasets/{dataset_id}/tables/{table_id}",
+            f"https://content-bigquery.googleapis.com/bigquery/v2/projects/{project_id}/datasets/{dataset_id}/tables/{table_id}",
+            f"https://www.googleapis.com/bigquery/v2/projects/{project_id}/datasets/{dataset_id}/tables/{table_id}"
+        ]
+        
+        for url in urls:
+            try:
+                proxy_configs = [
+                    {'http': self.proxy, 'https': self.proxy},
+                    None
+                ]
+                
+                for proxy_config in proxy_configs:
+                    connector = aiohttp.TCPConnector(ssl=False)
+                    if proxy_config:
+                        connector = aiohttp.TCPConnector(ssl=False)
+                    
+                    async with aiohttp.ClientSession(connector=connector) as temp_session:
+                        if proxy_config:
+                            temp_session._connector._proxy_url = self.proxy
+                        
+                        async with temp_session.get(url, timeout=aiohttp.ClientTimeout(total=60)) as response:
+                            if response.status == 200:
+                                data = await response.json()
+                                return data.get('schema')
+            except Exception as e:
+                logger.debug(f"Schema fetch failed for {project_id}.{dataset_id}.{table_id}: {e}")
+                continue
         
         return None
     
-    async def _get_table_sample_data(self, project_id: str, dataset_id: str, table_id: str) -> Dict[str, List]:
+    async def _get_table_sample_data_aggressive(self, session: aiohttp.ClientSession, project_id: str, dataset_id: str, table_id: str) -> Dict[str, List]:
         samples = {}
         
-        try:
-            query_url = f"https://bigquery.googleapis.com/bigquery/v2/projects/{project_id}/queries"
-            
-            query = f"""
-            SELECT *
-            FROM `{project_id}.{dataset_id}.{table_id}`
-            WHERE RAND() < 0.01
-            LIMIT 100
-            """
-            
-            async with aiohttp.ClientSession() as session:
-                async with session.post(query_url, json={'query': query, 'useLegacySql': False}) as response:
-                    if response.status == 200:
-                        data = await response.json()
-                        
-                        if 'rows' in data:
-                            schema_fields = data.get('schema', {}).get('fields', [])
-                            field_names = [f['name'] for f in schema_fields]
-                            
-                            for row in data['rows']:
-                                row_values = row.get('f', [])
-                                for i, value_obj in enumerate(row_values):
-                                    if i < len(field_names):
-                                        field_name = field_names[i]
-                                        value = value_obj.get('v')
-                                        
-                                        if value is not None:
-                                            if field_name not in samples:
-                                                samples[field_name] = []
-                                            samples[field_name].append(str(value))
+        query_urls = [
+            f"https://bigquery.googleapis.com/bigquery/v2/projects/{project_id}/queries",
+            f"https://content-bigquery.googleapis.com/bigquery/v2/projects/{project_id}/queries",
+            f"https://www.googleapis.com/bigquery/v2/projects/{project_id}/queries"
+        ]
         
-        except Exception as e:
-            logger.debug(f"Sample data fetch failed: {e}")
+        query = f"""
+        SELECT *
+        FROM `{project_id}.{dataset_id}.{table_id}`
+        WHERE RAND() < 0.01
+        LIMIT 100
+        """
+        
+        query_data = {'query': query, 'useLegacySql': False}
+        
+        for query_url in query_urls:
+            try:
+                proxy_configs = [
+                    {'http': self.proxy, 'https': self.proxy},
+                    None
+                ]
+                
+                for proxy_config in proxy_configs:
+                    connector = aiohttp.TCPConnector(ssl=False)
+                    if proxy_config:
+                        connector = aiohttp.TCPConnector(ssl=False)
+                    
+                    async with aiohttp.ClientSession(connector=connector) as temp_session:
+                        if proxy_config:
+                            temp_session._connector._proxy_url = self.proxy
+                        
+                        async with temp_session.post(query_url, json=query_data, timeout=aiohttp.ClientTimeout(total=120)) as response:
+                            if response.status == 200:
+                                data = await response.json()
+                                
+                                if 'rows' in data:
+                                    schema_fields = data.get('schema', {}).get('fields', [])
+                                    field_names = [f['name'] for f in schema_fields]
+                                    
+                                    for row in data['rows']:
+                                        row_values = row.get('f', [])
+                                        for i, value_obj in enumerate(row_values):
+                                            if i < len(field_names):
+                                                field_name = field_names[i]
+                                                value = value_obj.get('v')
+                                                
+                                                if value is not None:
+                                                    if field_name not in samples:
+                                                        samples[field_name] = []
+                                                    samples[field_name].append(str(value))
+                                
+                                return samples
+            except Exception as e:
+                logger.debug(f"Sample data fetch failed: {e}")
+                continue
         
         return samples
     

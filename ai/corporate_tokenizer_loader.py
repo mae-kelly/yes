@@ -31,23 +31,7 @@ class AggressiveCorporateTokenizerLoader:
     def __init__(self):
         self.tokenizer = None
         self.method_used = None
-        self.corporate_proxies = [
-            "http://proxy-na.fiserv.one:8080",
-            "http://proxy.corp.fiserv.com:8080", 
-            "http://proxy.fiserv.com:8080",
-            "http://webproxy.fiserv.com:3128",
-            "http://gateway.fiserv.com:8080",
-            "http://proxy.internal.fiserv.com:8080",
-            "http://corpproxy.fiserv.one:8080",
-            "http://internet.proxy.fiserv.com:3128",
-            "http://proxy-us.fiserv.com:8080",
-            "http://proxy-eu.fiserv.com:8080",
-            "http://proxy-apac.fiserv.com:8080",
-            "http://webgateway.fiserv.com:8080",
-            "http://secure-proxy.fiserv.com:8080",
-            "http://proxy.fiserv.net:8080",
-            "http://corpnet.fiserv.com:8080"
-        ]
+        self.proxy = "http://proxy-na.fiserv.one:8080"
         self.cache_dir = Path("./cache/transformers")
         self.cache_dir.mkdir(parents=True, exist_ok=True)
         self._setup_aggressive_environment()
@@ -61,37 +45,30 @@ class AggressiveCorporateTokenizerLoader:
         os.environ['SSL_CERT_FILE'] = ''
         os.environ['SSL_CERT_DIR'] = ''
         
-        working_proxy = self._find_working_proxy()
-        if working_proxy:
-            os.environ['HTTP_PROXY'] = working_proxy
-            os.environ['HTTPS_PROXY'] = working_proxy
-            os.environ['http_proxy'] = working_proxy
-            os.environ['https_proxy'] = working_proxy
-            os.environ['ALL_PROXY'] = working_proxy
-            os.environ['all_proxy'] = working_proxy
-            logger.info(f"Using proxy: {working_proxy}")
+        proxy_vars = [
+            'HTTP_PROXY', 'HTTPS_PROXY', 'http_proxy', 'https_proxy',
+            'ALL_PROXY', 'all_proxy', 'ftp_proxy', 'FTP_PROXY',
+            'SOCKS_PROXY', 'socks_proxy'
+        ]
+        for var in proxy_vars:
+            os.environ[var] = self.proxy
+        
+        os.environ['NO_PROXY'] = 'localhost,127.0.0.1,::1,.local,.fiserv.com'
+        os.environ['no_proxy'] = 'localhost,127.0.0.1,::1,.local,.fiserv.com'
         
         os.environ['TRANSFORMERS_OFFLINE'] = '0'
         os.environ['HF_DATASETS_OFFLINE'] = '0'
-        
-    def _find_working_proxy(self):
-        for proxy in self.corporate_proxies:
-            try:
-                response = requests.get('https://httpbin.org/ip', 
-                                      proxies={'http': proxy, 'https': proxy},
-                                      timeout=5, verify=False)
-                if response.status_code == 200:
-                    return proxy
-            except:
-                continue
-        return None
         
     def load_tokenizer_with_aggressive_methods(self) -> Optional[Any]:
         methods = [
             self._method_direct_with_env,
             self._method_pip_install_force,
+            self._method_pip_install_proxy,
+            self._method_pip_install_trusted,
             self._method_conda_install,
+            self._method_conda_forge,
             self._method_manual_wheel_download,
+            self._method_git_clone,
             self._method_git_submodule,
             self._method_parallel_download,
             self._method_docker_extract,
@@ -103,11 +80,12 @@ class AggressiveCorporateTokenizerLoader:
             self._method_cache_mining,
             self._method_network_share_search,
             self._method_backup_mirrors,
-            self._method_authenticated_proxy,
-            self._method_ntlm_proxy,
-            self._method_socks_proxy,
-            self._method_pac_file,
-            self._method_corporate_certificate
+            self._method_offline_wheels,
+            self._method_source_install,
+            self._method_conda_force,
+            self._method_pip_user_install,
+            self._method_venv_install,
+            self._method_system_python
         ]
         
         for i, method in enumerate(methods, 1):
@@ -123,8 +101,7 @@ class AggressiveCorporateTokenizerLoader:
                 logger.debug(f"Method {i} failed: {e}")
                 continue
         
-        logger.error("All aggressive methods failed")
-        return None
+        raise RuntimeError("All tokenizer loading methods failed")
     
     def _validate_tokenizer(self, tokenizer):
         try:
@@ -149,11 +126,51 @@ class AggressiveCorporateTokenizerLoader:
         return tokenizer
     
     def _method_pip_install_force(self):
-        subprocess.run([
+        result = subprocess.run([
             sys.executable, '-m', 'pip', 'install', '--force-reinstall', '--no-cache-dir',
             '--trusted-host', 'pypi.org', '--trusted-host', 'pypi.python.org', 
             '--trusted-host', 'files.pythonhosted.org', 'transformers', 'tokenizers'
-        ], capture_output=True)
+        ], capture_output=True, env=os.environ.copy())
+        
+        if result.returncode != 0:
+            raise RuntimeError(f"pip install failed: {result.stderr}")
+        
+        from transformers import GPT2Tokenizer
+        tokenizer = GPT2Tokenizer.from_pretrained('gpt2', cache_dir=str(self.cache_dir))
+        
+        if not hasattr(tokenizer, 'pad_token') or tokenizer.pad_token is None:
+            tokenizer.pad_token = tokenizer.eos_token
+            
+        return tokenizer
+    
+    def _method_pip_install_proxy(self):
+        result = subprocess.run([
+            sys.executable, '-m', 'pip', 'install', '--proxy', self.proxy,
+            '--trusted-host', 'pypi.org', '--trusted-host', 'pypi.python.org', 
+            '--trusted-host', 'files.pythonhosted.org', 'transformers', 'tokenizers'
+        ], capture_output=True, env=os.environ.copy())
+        
+        if result.returncode != 0:
+            raise RuntimeError(f"pip install with proxy failed: {result.stderr}")
+        
+        from transformers import GPT2Tokenizer
+        tokenizer = GPT2Tokenizer.from_pretrained('gpt2', cache_dir=str(self.cache_dir))
+        
+        if not hasattr(tokenizer, 'pad_token') or tokenizer.pad_token is None:
+            tokenizer.pad_token = tokenizer.eos_token
+            
+        return tokenizer
+    
+    def _method_pip_install_trusted(self):
+        result = subprocess.run([
+            sys.executable, '-m', 'pip', 'install', '--trusted-host', 'pypi.org',
+            '--trusted-host', 'pypi.python.org', '--trusted-host', 'files.pythonhosted.org',
+            '--trusted-host', 'download.pytorch.org', '--no-check-certificate',
+            'transformers', 'tokenizers', 'torch'
+        ], capture_output=True, env=os.environ.copy())
+        
+        if result.returncode != 0:
+            raise RuntimeError(f"pip install trusted failed: {result.stderr}")
         
         from transformers import GPT2Tokenizer
         tokenizer = GPT2Tokenizer.from_pretrained('gpt2', cache_dir=str(self.cache_dir))
@@ -164,46 +181,72 @@ class AggressiveCorporateTokenizerLoader:
         return tokenizer
     
     def _method_conda_install(self):
-        try:
-            subprocess.run(['conda', 'install', '-y', '-c', 'huggingface', 'transformers'], 
-                         capture_output=True, check=True)
+        result = subprocess.run(['conda', 'install', '-y', '-c', 'huggingface', 'transformers'], 
+                     capture_output=True, check=True, env=os.environ.copy())
+        
+        if result.returncode != 0:
+            raise RuntimeError(f"conda install failed: {result.stderr}")
+        
+        from transformers import GPT2Tokenizer
+        tokenizer = GPT2Tokenizer.from_pretrained('gpt2', cache_dir=str(self.cache_dir))
+        
+        if not hasattr(tokenizer, 'pad_token') or tokenizer.pad_token is None:
+            tokenizer.pad_token = tokenizer.eos_token
             
-            from transformers import GPT2Tokenizer
-            tokenizer = GPT2Tokenizer.from_pretrained('gpt2', cache_dir=str(self.cache_dir))
+        return tokenizer
+    
+    def _method_conda_forge(self):
+        result = subprocess.run(['conda', 'install', '-y', '-c', 'conda-forge', 'transformers', 'tokenizers'], 
+                     capture_output=True, check=True, env=os.environ.copy())
+        
+        if result.returncode != 0:
+            raise RuntimeError(f"conda-forge install failed: {result.stderr}")
+        
+        from transformers import GPT2Tokenizer
+        tokenizer = GPT2Tokenizer.from_pretrained('gpt2', cache_dir=str(self.cache_dir))
+        
+        if not hasattr(tokenizer, 'pad_token') or tokenizer.pad_token is None:
+            tokenizer.pad_token = tokenizer.eos_token
             
-            if not hasattr(tokenizer, 'pad_token') or tokenizer.pad_token is None:
-                tokenizer.pad_token = tokenizer.eos_token
-                
-            return tokenizer
-        except:
-            return None
+        return tokenizer
     
     def _method_manual_wheel_download(self):
-        wheel_urls = [
-            'https://files.pythonhosted.org/packages/py3/t/transformers/',
-            'https://files.pythonhosted.org/packages/py3/t/tokenizers/'
-        ]
-        
         session = requests.Session()
         session.verify = False
-        if 'HTTP_PROXY' in os.environ:
-            session.proxies = {'http': os.environ['HTTP_PROXY'], 'https': os.environ['HTTP_PROXY']}
+        session.proxies = {'http': self.proxy, 'https': self.proxy}
+        
+        wheel_urls = [
+            'https://files.pythonhosted.org/packages/py3/t/transformers/',
+            'https://files.pythonhosted.org/packages/py3/t/tokenizers/',
+            'https://download.pytorch.org/whl/cpu/',
+            'https://pypi.org/simple/transformers/',
+            'https://pypi.org/simple/tokenizers/'
+        ]
         
         temp_dir = Path(tempfile.mkdtemp())
         
         try:
             for base_url in wheel_urls:
-                response = session.get(base_url)
-                if response.status_code == 200:
-                    wheel_links = [link for link in response.text.split('href="') if link.endswith('.whl')]
-                    if wheel_links:
-                        wheel_url = base_url + wheel_links[0].split('"')[0]
-                        wheel_response = session.get(wheel_url)
-                        if wheel_response.status_code == 200:
-                            wheel_path = temp_dir / wheel_links[0].split('"')[0]
-                            wheel_path.write_bytes(wheel_response.content)
-                            subprocess.run([sys.executable, '-m', 'pip', 'install', str(wheel_path)], 
-                                         capture_output=True)
+                response = session.get(base_url, timeout=30)
+                if response.status_code != 200:
+                    continue
+                    
+                wheel_links = [link for link in response.text.split('href="') if link.endswith('.whl')]
+                if not wheel_links:
+                    continue
+                    
+                wheel_url = base_url + wheel_links[0].split('"')[0]
+                wheel_response = session.get(wheel_url, timeout=60)
+                if wheel_response.status_code != 200:
+                    continue
+                    
+                wheel_path = temp_dir / wheel_links[0].split('"')[0]
+                wheel_path.write_bytes(wheel_response.content)
+                
+                result = subprocess.run([sys.executable, '-m', 'pip', 'install', str(wheel_path)], 
+                             capture_output=True, env=os.environ.copy())
+                if result.returncode != 0:
+                    continue
             
             from transformers import GPT2Tokenizer
             tokenizer = GPT2Tokenizer.from_pretrained('gpt2', cache_dir=str(self.cache_dir))
@@ -215,6 +258,43 @@ class AggressiveCorporateTokenizerLoader:
         finally:
             shutil.rmtree(temp_dir, ignore_errors=True)
     
+    def _method_git_clone(self):
+        repo_dir = self.cache_dir / 'transformers_repo'
+        if repo_dir.exists():
+            shutil.rmtree(repo_dir)
+        
+        env = os.environ.copy()
+        env['GIT_SSL_NO_VERIFY'] = 'true'
+        
+        git_commands = [
+            ['git', 'clone', '--depth', '1', 'https://github.com/huggingface/transformers.git', str(repo_dir)],
+            ['git', 'clone', '--depth', '1', '--single-branch', 'https://github.com/huggingface/transformers.git', str(repo_dir)],
+            ['git', 'clone', 'https://github.com/huggingface/transformers.git', str(repo_dir)]
+        ]
+        
+        success = False
+        for cmd in git_commands:
+            result = subprocess.run(cmd, env=env, capture_output=True, timeout=120)
+            if result.returncode == 0:
+                success = True
+                break
+        
+        if not success:
+            raise RuntimeError("All git clone attempts failed")
+        
+        result = subprocess.run([sys.executable, '-m', 'pip', 'install', '-e', str(repo_dir)], 
+                     capture_output=True, env=env)
+        if result.returncode != 0:
+            raise RuntimeError(f"pip install from git failed: {result.stderr}")
+        
+        from transformers import GPT2Tokenizer
+        tokenizer = GPT2Tokenizer.from_pretrained('gpt2', cache_dir=str(self.cache_dir))
+        
+        if not hasattr(tokenizer, 'pad_token') or tokenizer.pad_token is None:
+            tokenizer.pad_token = tokenizer.eos_token
+            
+        return tokenizer
+    
     def _method_git_submodule(self):
         repo_dir = self.cache_dir / 'transformers_repo'
         if repo_dir.exists():
@@ -223,23 +303,26 @@ class AggressiveCorporateTokenizerLoader:
         env = os.environ.copy()
         env['GIT_SSL_NO_VERIFY'] = 'true'
         
-        subprocess.run([
+        result = subprocess.run([
             'git', 'clone', '--depth', '1', '--recursive',
             'https://github.com/huggingface/transformers.git', str(repo_dir)
         ], env=env, capture_output=True)
         
-        if repo_dir.exists():
-            subprocess.run([sys.executable, '-m', 'pip', 'install', '-e', str(repo_dir)], 
-                         capture_output=True)
+        if result.returncode != 0:
+            raise RuntimeError(f"git clone recursive failed: {result.stderr}")
+        
+        result = subprocess.run([sys.executable, '-m', 'pip', 'install', '-e', str(repo_dir)], 
+                     capture_output=True, env=env)
+        if result.returncode != 0:
+            raise RuntimeError(f"pip install from recursive git failed: {result.stderr}")
+        
+        from transformers import GPT2Tokenizer
+        tokenizer = GPT2Tokenizer.from_pretrained('gpt2', cache_dir=str(self.cache_dir))
+        
+        if not hasattr(tokenizer, 'pad_token') or tokenizer.pad_token is None:
+            tokenizer.pad_token = tokenizer.eos_token
             
-            from transformers import GPT2Tokenizer
-            tokenizer = GPT2Tokenizer.from_pretrained('gpt2', cache_dir=str(self.cache_dir))
-            
-            if not hasattr(tokenizer, 'pad_token') or tokenizer.pad_token is None:
-                tokenizer.pad_token = tokenizer.eos_token
-                
-            return tokenizer
-        return None
+        return tokenizer
     
     def _method_parallel_download(self):
         urls = {
@@ -257,62 +340,60 @@ class AggressiveCorporateTokenizerLoader:
             filename, url = item
             session = requests.Session()
             session.verify = False
-            if 'HTTP_PROXY' in os.environ:
-                session.proxies = {'http': os.environ['HTTP_PROXY'], 'https': os.environ['HTTP_PROXY']}
+            session.proxies = {'http': self.proxy, 'https': self.proxy}
             
-            try:
-                response = session.get(url, timeout=30)
-                response.raise_for_status()
-                (model_dir / filename).write_bytes(response.content)
-                return True
-            except:
-                return False
+            response = session.get(url, timeout=60)
+            response.raise_for_status()
+            (model_dir / filename).write_bytes(response.content)
+            return True
         
         with ThreadPoolExecutor(max_workers=len(urls)) as executor:
             futures = [executor.submit(download_file, item) for item in urls.items()]
             results = [future.result() for future in as_completed(futures)]
         
-        if all(results):
-            from transformers import GPT2Tokenizer
-            tokenizer = GPT2Tokenizer.from_pretrained(str(model_dir))
+        if not all(results):
+            raise RuntimeError("Parallel download failed")
+        
+        from transformers import GPT2Tokenizer
+        tokenizer = GPT2Tokenizer.from_pretrained(str(model_dir))
+        
+        if not hasattr(tokenizer, 'pad_token') or tokenizer.pad_token is None:
+            tokenizer.pad_token = tokenizer.eos_token
             
-            if not hasattr(tokenizer, 'pad_token') or tokenizer.pad_token is None:
-                tokenizer.pad_token = tokenizer.eos_token
-                
-            return tokenizer
-        return None
+        return tokenizer
     
     def _method_docker_extract(self):
-        try:
-            container_name = f"tokenizer_extract_{int(time.time())}"
+        container_name = f"tokenizer_extract_{int(time.time())}"
+        
+        result = subprocess.run([
+            'docker', 'run', '--name', container_name, '-d',
+            'huggingface/transformers-pytorch-cpu:latest',
+            'python', '-c', 
+            'from transformers import GPT2Tokenizer; GPT2Tokenizer.from_pretrained("gpt2", cache_dir="/cache")'
+        ], capture_output=True, env=os.environ.copy())
+        
+        if result.returncode != 0:
+            raise RuntimeError(f"docker run failed: {result.stderr}")
+        
+        time.sleep(30)
+        
+        result = subprocess.run([
+            'docker', 'cp', f'{container_name}:/cache', str(self.cache_dir / 'docker_cache')
+        ], capture_output=True)
+        
+        subprocess.run(['docker', 'rm', '-f', container_name], capture_output=True)
+        
+        docker_cache = self.cache_dir / 'docker_cache'
+        if not docker_cache.exists():
+            raise RuntimeError("Docker cache extraction failed")
+        
+        from transformers import GPT2Tokenizer
+        tokenizer = GPT2Tokenizer.from_pretrained(str(docker_cache))
+        
+        if not hasattr(tokenizer, 'pad_token') or tokenizer.pad_token is None:
+            tokenizer.pad_token = tokenizer.eos_token
             
-            subprocess.run([
-                'docker', 'run', '--name', container_name, '-d',
-                'huggingface/transformers-pytorch-cpu:latest',
-                'python', '-c', 
-                'from transformers import GPT2Tokenizer; GPT2Tokenizer.from_pretrained("gpt2", cache_dir="/cache")'
-            ], capture_output=True)
-            
-            time.sleep(30)
-            
-            subprocess.run([
-                'docker', 'cp', f'{container_name}:/cache', str(self.cache_dir / 'docker_cache')
-            ], capture_output=True)
-            
-            subprocess.run(['docker', 'rm', '-f', container_name], capture_output=True)
-            
-            docker_cache = self.cache_dir / 'docker_cache'
-            if docker_cache.exists():
-                from transformers import GPT2Tokenizer
-                tokenizer = GPT2Tokenizer.from_pretrained(str(docker_cache))
-                
-                if not hasattr(tokenizer, 'pad_token') or tokenizer.pad_token is None:
-                    tokenizer.pad_token = tokenizer.eos_token
-                    
-                return tokenizer
-        except:
-            pass
-        return None
+        return tokenizer
     
     def _method_build_from_source(self):
         source_dir = self.cache_dir / 'transformers_source'
@@ -323,57 +404,60 @@ class AggressiveCorporateTokenizerLoader:
         env = os.environ.copy()
         env['GIT_SSL_NO_VERIFY'] = 'true'
         
-        try:
-            subprocess.run([
-                'git', 'clone', 'https://github.com/huggingface/transformers.git', str(source_dir)
-            ], env=env, check=True, capture_output=True)
+        result = subprocess.run([
+            'git', 'clone', 'https://github.com/huggingface/transformers.git', str(source_dir)
+        ], env=env, check=True, capture_output=True)
+        
+        if result.returncode != 0:
+            raise RuntimeError(f"git clone source failed: {result.stderr}")
+        
+        result = subprocess.run([
+            sys.executable, 'setup.py', 'build'
+        ], cwd=source_dir, check=True, capture_output=True, env=env)
+        
+        if result.returncode != 0:
+            raise RuntimeError(f"source build failed: {result.stderr}")
+        
+        result = subprocess.run([
+            sys.executable, 'setup.py', 'install', '--user'
+        ], cwd=source_dir, check=True, capture_output=True, env=env)
+        
+        if result.returncode != 0:
+            raise RuntimeError(f"source install failed: {result.stderr}")
+        
+        from transformers import GPT2Tokenizer
+        tokenizer = GPT2Tokenizer.from_pretrained('gpt2', cache_dir=str(self.cache_dir))
+        
+        if not hasattr(tokenizer, 'pad_token') or tokenizer.pad_token is None:
+            tokenizer.pad_token = tokenizer.eos_token
             
-            subprocess.run([
-                sys.executable, 'setup.py', 'build'
-            ], cwd=source_dir, check=True, capture_output=True)
-            
-            subprocess.run([
-                sys.executable, 'setup.py', 'install', '--user'
-            ], cwd=source_dir, check=True, capture_output=True)
-            
-            from transformers import GPT2Tokenizer
-            tokenizer = GPT2Tokenizer.from_pretrained('gpt2', cache_dir=str(self.cache_dir))
-            
-            if not hasattr(tokenizer, 'pad_token') or tokenizer.pad_token is None:
-                tokenizer.pad_token = tokenizer.eos_token
-                
-            return tokenizer
-        except:
-            return None
+        return tokenizer
     
     def _method_huggingface_hub_download(self):
-        try:
-            subprocess.run([
-                sys.executable, '-m', 'pip', 'install', 'huggingface_hub'
-            ], capture_output=True)
+        result = subprocess.run([
+            sys.executable, '-m', 'pip', 'install', 'huggingface_hub'
+        ], capture_output=True, env=os.environ.copy())
+        
+        if result.returncode != 0:
+            raise RuntimeError(f"huggingface_hub install failed: {result.stderr}")
+        
+        from huggingface_hub import hf_hub_download
+        
+        files = ['config.json', 'tokenizer.json', 'vocab.json', 'merges.txt', 'tokenizer_config.json']
+        model_dir = self.cache_dir / 'gpt2_hub'
+        model_dir.mkdir(exist_ok=True)
+        
+        for filename in files:
+            file_path = hf_hub_download(repo_id="gpt2", filename=filename, cache_dir=str(self.cache_dir))
+            shutil.copy2(file_path, model_dir / filename)
+        
+        from transformers import GPT2Tokenizer
+        tokenizer = GPT2Tokenizer.from_pretrained(str(model_dir))
+        
+        if not hasattr(tokenizer, 'pad_token') or tokenizer.pad_token is None:
+            tokenizer.pad_token = tokenizer.eos_token
             
-            from huggingface_hub import hf_hub_download
-            
-            files = ['config.json', 'tokenizer.json', 'vocab.json', 'merges.txt', 'tokenizer_config.json']
-            model_dir = self.cache_dir / 'gpt2_hub'
-            model_dir.mkdir(exist_ok=True)
-            
-            for filename in files:
-                try:
-                    file_path = hf_hub_download(repo_id="gpt2", filename=filename, cache_dir=str(self.cache_dir))
-                    shutil.copy2(file_path, model_dir / filename)
-                except:
-                    continue
-            
-            from transformers import GPT2Tokenizer
-            tokenizer = GPT2Tokenizer.from_pretrained(str(model_dir))
-            
-            if not hasattr(tokenizer, 'pad_token') or tokenizer.pad_token is None:
-                tokenizer.pad_token = tokenizer.eos_token
-                
-            return tokenizer
-        except:
-            return None
+        return tokenizer
     
     def _method_alternative_package_managers(self):
         managers = [
@@ -383,9 +467,8 @@ class AggressiveCorporateTokenizerLoader:
         ]
         
         for manager_cmd in managers:
-            try:
-                subprocess.run(manager_cmd, capture_output=True, check=True)
-                
+            result = subprocess.run(manager_cmd, capture_output=True, env=os.environ.copy())
+            if result.returncode == 0:
                 from transformers import GPT2Tokenizer
                 tokenizer = GPT2Tokenizer.from_pretrained('gpt2', cache_dir=str(self.cache_dir))
                 
@@ -393,9 +476,8 @@ class AggressiveCorporateTokenizerLoader:
                     tokenizer.pad_token = tokenizer.eos_token
                     
                 return tokenizer
-            except:
-                continue
-        return None
+        
+        raise RuntimeError("All alternative package managers failed")
     
     def _method_system_package_install(self):
         system_commands = [
@@ -407,9 +489,8 @@ class AggressiveCorporateTokenizerLoader:
         ]
         
         for cmd in system_commands:
-            try:
-                subprocess.run(cmd, capture_output=True, check=True)
-                
+            result = subprocess.run(cmd, capture_output=True, env=os.environ.copy())
+            if result.returncode == 0:
                 from transformers import GPT2Tokenizer
                 tokenizer = GPT2Tokenizer.from_pretrained('gpt2', cache_dir=str(self.cache_dir))
                 
@@ -417,9 +498,8 @@ class AggressiveCorporateTokenizerLoader:
                     tokenizer.pad_token = tokenizer.eos_token
                     
                 return tokenizer
-            except:
-                continue
-        return None
+        
+        raise RuntimeError("All system package installs failed")
     
     def _method_local_build_complete(self):
         build_dir = self.cache_dir / 'local_build'
@@ -493,11 +573,8 @@ class LocalGPT2Tokenizer:
         (build_dir / 'local_tokenizer.py').write_text(tokenizer_code)
         
         sys.path.insert(0, str(build_dir))
-        try:
-            from local_tokenizer import LocalGPT2Tokenizer
-            return LocalGPT2Tokenizer()
-        except:
-            return None
+        from local_tokenizer import LocalGPT2Tokenizer
+        return LocalGPT2Tokenizer()
     
     def _method_cache_mining(self):
         possible_cache_locations = [
@@ -512,17 +589,15 @@ class LocalGPT2Tokenizer:
             if cache_location.exists():
                 for subdir in cache_location.iterdir():
                     if subdir.is_dir() and 'gpt2' in subdir.name.lower():
-                        try:
-                            from transformers import GPT2Tokenizer
-                            tokenizer = GPT2Tokenizer.from_pretrained(str(subdir))
+                        from transformers import GPT2Tokenizer
+                        tokenizer = GPT2Tokenizer.from_pretrained(str(subdir))
+                        
+                        if not hasattr(tokenizer, 'pad_token') or tokenizer.pad_token is None:
+                            tokenizer.pad_token = tokenizer.eos_token
                             
-                            if not hasattr(tokenizer, 'pad_token') or tokenizer.pad_token is None:
-                                tokenizer.pad_token = tokenizer.eos_token
-                                
-                            return tokenizer
-                        except:
-                            continue
-        return None
+                        return tokenizer
+        
+        raise RuntimeError("No cached tokenizers found")
     
     def _method_network_share_search(self):
         network_paths = [
@@ -533,20 +608,18 @@ class LocalGPT2Tokenizer:
         ]
         
         for network_path in network_paths:
-            try:
-                if network_path.exists():
-                    gpt2_path = network_path / 'gpt2'
-                    if gpt2_path.exists():
-                        from transformers import GPT2Tokenizer
-                        tokenizer = GPT2Tokenizer.from_pretrained(str(gpt2_path))
+            if network_path.exists():
+                gpt2_path = network_path / 'gpt2'
+                if gpt2_path.exists():
+                    from transformers import GPT2Tokenizer
+                    tokenizer = GPT2Tokenizer.from_pretrained(str(gpt2_path))
+                    
+                    if not hasattr(tokenizer, 'pad_token') or tokenizer.pad_token is None:
+                        tokenizer.pad_token = tokenizer.eos_token
                         
-                        if not hasattr(tokenizer, 'pad_token') or tokenizer.pad_token is None:
-                            tokenizer.pad_token = tokenizer.eos_token
-                            
-                        return tokenizer
-            except:
-                continue
-        return None
+                    return tokenizer
+        
+        raise RuntimeError("No network share tokenizers found")
     
     def _method_backup_mirrors(self):
         mirror_bases = [
@@ -557,122 +630,155 @@ class LocalGPT2Tokenizer:
         ]
         
         for mirror_base in mirror_bases:
-            try:
-                session = requests.Session()
-                session.verify = False
-                if 'HTTP_PROXY' in os.environ:
-                    session.proxies = {'http': os.environ['HTTP_PROXY'], 'https': os.environ['HTTP_PROXY']}
+            session = requests.Session()
+            session.verify = False
+            session.proxies = {'http': self.proxy, 'https': self.proxy}
+            
+            files = ['config.json', 'tokenizer.json', 'vocab.json', 'merges.txt']
+            model_dir = self.cache_dir / f'gpt2_mirror_{hash(mirror_base) % 1000}'
+            model_dir.mkdir(exist_ok=True)
+            
+            all_downloaded = True
+            for filename in files:
+                url = f'{mirror_base}/gpt2/resolve/main/{filename}'
+                response = session.get(url, timeout=30)
+                if response.status_code != 200:
+                    all_downloaded = False
+                    break
+                (model_dir / filename).write_bytes(response.content)
+            
+            if all_downloaded:
+                from transformers import GPT2Tokenizer
+                tokenizer = GPT2Tokenizer.from_pretrained(str(model_dir))
                 
-                files = ['config.json', 'tokenizer.json', 'vocab.json', 'merges.txt']
-                model_dir = self.cache_dir / f'gpt2_mirror_{hash(mirror_base) % 1000}'
-                model_dir.mkdir(exist_ok=True)
-                
-                all_downloaded = True
-                for filename in files:
-                    url = f'{mirror_base}/gpt2/resolve/main/{filename}'
-                    try:
-                        response = session.get(url, timeout=30)
-                        response.raise_for_status()
-                        (model_dir / filename).write_bytes(response.content)
-                    except:
-                        all_downloaded = False
-                        break
-                
-                if all_downloaded:
-                    from transformers import GPT2Tokenizer
-                    tokenizer = GPT2Tokenizer.from_pretrained(str(model_dir))
+                if not hasattr(tokenizer, 'pad_token') or tokenizer.pad_token is None:
+                    tokenizer.pad_token = tokenizer.eos_token
                     
-                    if not hasattr(tokenizer, 'pad_token') or tokenizer.pad_token is None:
-                        tokenizer.pad_token = tokenizer.eos_token
-                        
-                    return tokenizer
-            except:
-                continue
-        return None
+                return tokenizer
+        
+        raise RuntimeError("All backup mirrors failed")
     
-    def _method_authenticated_proxy(self):
-        import getpass
-        username = os.environ.get('FISERV_USER', getpass.getuser())
-        password = os.environ.get('FISERV_PASS', '')
+    def _method_offline_wheels(self):
+        wheel_dir = self.cache_dir / 'wheels'
+        wheel_dir.mkdir(exist_ok=True)
         
-        auth_proxy = f"http://{username}:{password}@proxy-na.fiserv.one:8080"
-        
-        os.environ['HTTP_PROXY'] = auth_proxy
-        os.environ['HTTPS_PROXY'] = auth_proxy
+        if any(wheel_dir.glob('*.whl')):
+            for wheel_file in wheel_dir.glob('*.whl'):
+                result = subprocess.run([sys.executable, '-m', 'pip', 'install', str(wheel_file)], 
+                             capture_output=True, env=os.environ.copy())
+                if result.returncode != 0:
+                    continue
+        else:
+            raise RuntimeError("No offline wheels found")
         
         from transformers import GPT2Tokenizer
-        return GPT2Tokenizer.from_pretrained('gpt2', cache_dir=str(self.cache_dir))
-    
-    def _method_ntlm_proxy(self):
-        try:
-            from requests_ntlm import HttpNtlmAuth
-            import requests
-            
-            session = requests.Session()
-            session.auth = HttpNtlmAuth(os.environ.get('USERNAME', ''), os.environ.get('PASSWORD', ''))
-            session.proxies = {'http': self.corporate_proxies[0], 'https': self.corporate_proxies[0]}
-            session.verify = False
-            
-            import transformers.utils.hub
-            transformers.utils.hub.http_get = lambda url, **kwargs: session.get(url, **kwargs)
-            
-            from transformers import GPT2Tokenizer
-            return GPT2Tokenizer.from_pretrained('gpt2', cache_dir=str(self.cache_dir))
-        except ImportError:
-            return None
-    
-    def _method_socks_proxy(self):
-        try:
-            import socks
-            import socket
-            
-            socks.set_default_proxy(socks.HTTP, "proxy-na.fiserv.one", 8080)
-            socket.socket = socks.socksocket
-            
-            from transformers import GPT2Tokenizer
-            return GPT2Tokenizer.from_pretrained('gpt2', cache_dir=str(self.cache_dir))
-        except ImportError:
-            return None
-    
-    def _method_pac_file(self):
-        pac_content = f"""
-        function FindProxyForURL(url, host) {{
-            return "PROXY proxy-na.fiserv.one:8080";
-        }}
-        """
+        tokenizer = GPT2Tokenizer.from_pretrained('gpt2', cache_dir=str(self.cache_dir))
         
-        pac_file = self.cache_dir / 'proxy.pac'
-        pac_file.write_text(pac_content)
+        if not hasattr(tokenizer, 'pad_token') or tokenizer.pad_token is None:
+            tokenizer.pad_token = tokenizer.eos_token
+            
+        return tokenizer
+    
+    def _method_source_install(self):
+        result = subprocess.run([
+            sys.executable, '-m', 'pip', 'install', '--no-binary', ':all:',
+            '--trusted-host', 'pypi.org', '--trusted-host', 'pypi.python.org',
+            'transformers', 'tokenizers'
+        ], capture_output=True, env=os.environ.copy())
         
-        os.environ['PROXY_PAC'] = str(pac_file)
-        os.environ['HTTP_PROXY'] = self.corporate_proxies[0]
-        os.environ['HTTPS_PROXY'] = self.corporate_proxies[0]
+        if result.returncode != 0:
+            raise RuntimeError(f"source install failed: {result.stderr}")
         
         from transformers import GPT2Tokenizer
-        return GPT2Tokenizer.from_pretrained('gpt2', cache_dir=str(self.cache_dir))
-    
-    def _method_corporate_certificate(self):
-        import certifi
+        tokenizer = GPT2Tokenizer.from_pretrained('gpt2', cache_dir=str(self.cache_dir))
         
-        cert_file = self.cache_dir / 'fiserv_ca.pem'
-        if not cert_file.exists():
-            session = requests.Session()
-            session.proxies = {'http': self.corporate_proxies[0], 'https': self.corporate_proxies[0]}
-            session.verify = False
+        if not hasattr(tokenizer, 'pad_token') or tokenizer.pad_token is None:
+            tokenizer.pad_token = tokenizer.eos_token
             
-            try:
-                response = session.get('https://huggingface.co/gpt2/resolve/main/config.json')
-                cert_file.write_text(certifi.where())
-            except:
-                pass
+        return tokenizer
+    
+    def _method_conda_force(self):
+        result = subprocess.run(['conda', 'install', '-y', '--force-reinstall', 'transformers', 'tokenizers'], 
+                     capture_output=True, env=os.environ.copy())
         
-        os.environ['REQUESTS_CA_BUNDLE'] = str(cert_file)
-        os.environ['CURL_CA_BUNDLE'] = str(cert_file)
-        os.environ['HTTP_PROXY'] = self.corporate_proxies[0]
-        os.environ['HTTPS_PROXY'] = self.corporate_proxies[0]
+        if result.returncode != 0:
+            raise RuntimeError(f"conda force install failed: {result.stderr}")
         
         from transformers import GPT2Tokenizer
-        return GPT2Tokenizer.from_pretrained('gpt2', cache_dir=str(self.cache_dir))
+        tokenizer = GPT2Tokenizer.from_pretrained('gpt2', cache_dir=str(self.cache_dir))
+        
+        if not hasattr(tokenizer, 'pad_token') or tokenizer.pad_token is None:
+            tokenizer.pad_token = tokenizer.eos_token
+            
+        return tokenizer
+    
+    def _method_pip_user_install(self):
+        result = subprocess.run([
+            sys.executable, '-m', 'pip', 'install', '--user',
+            '--trusted-host', 'pypi.org', '--trusted-host', 'pypi.python.org',
+            'transformers', 'tokenizers'
+        ], capture_output=True, env=os.environ.copy())
+        
+        if result.returncode != 0:
+            raise RuntimeError(f"pip user install failed: {result.stderr}")
+        
+        from transformers import GPT2Tokenizer
+        tokenizer = GPT2Tokenizer.from_pretrained('gpt2', cache_dir=str(self.cache_dir))
+        
+        if not hasattr(tokenizer, 'pad_token') or tokenizer.pad_token is None:
+            tokenizer.pad_token = tokenizer.eos_token
+            
+        return tokenizer
+    
+    def _method_venv_install(self):
+        venv_dir = self.cache_dir / 'venv'
+        
+        result = subprocess.run([sys.executable, '-m', 'venv', str(venv_dir)], 
+                     capture_output=True, env=os.environ.copy())
+        
+        if result.returncode != 0:
+            raise RuntimeError(f"venv creation failed: {result.stderr}")
+        
+        if os.name == 'nt':
+            pip_exe = venv_dir / 'Scripts' / 'pip.exe'
+        else:
+            pip_exe = venv_dir / 'bin' / 'pip'
+        
+        result = subprocess.run([str(pip_exe), 'install', 'transformers', 'tokenizers'], 
+                     capture_output=True, env=os.environ.copy())
+        
+        if result.returncode != 0:
+            raise RuntimeError(f"venv pip install failed: {result.stderr}")
+        
+        sys.path.insert(0, str(venv_dir / 'lib' / 'python3.8' / 'site-packages'))
+        
+        from transformers import GPT2Tokenizer
+        tokenizer = GPT2Tokenizer.from_pretrained('gpt2', cache_dir=str(self.cache_dir))
+        
+        if not hasattr(tokenizer, 'pad_token') or tokenizer.pad_token is None:
+            tokenizer.pad_token = tokenizer.eos_token
+            
+        return tokenizer
+    
+    def _method_system_python(self):
+        python_versions = [
+            'python3.11', 'python3.10', 'python3.9', 'python3.8', 'python3.7',
+            'python3', 'python', '/usr/bin/python3', '/usr/local/bin/python3'
+        ]
+        
+        for python_exe in python_versions:
+            result = subprocess.run([python_exe, '-m', 'pip', 'install', 'transformers', 'tokenizers'], 
+                         capture_output=True, env=os.environ.copy())
+            if result.returncode == 0:
+                from transformers import GPT2Tokenizer
+                tokenizer = GPT2Tokenizer.from_pretrained('gpt2', cache_dir=str(self.cache_dir))
+                
+                if not hasattr(tokenizer, 'pad_token') or tokenizer.pad_token is None:
+                    tokenizer.pad_token = tokenizer.eos_token
+                    
+                return tokenizer
+        
+        raise RuntimeError("All system python attempts failed")
 
 def load_corporate_tokenizer():
     loader = AggressiveCorporateTokenizerLoader()
