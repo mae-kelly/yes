@@ -1,9 +1,13 @@
+# ai/content.py - Full complexity version with proper ML initialization
+
 import re
 import statistics
 from typing import List, Dict, Tuple, Optional, Any
 from collections import Counter, defaultdict
 import hashlib
 import logging
+import numpy as np
+from datetime import datetime
 
 logger = logging.getLogger(__name__)
 
@@ -26,26 +30,65 @@ class QuantumContentAnalyzer:
             'pattern_signatures': {
                 'hostname_patterns': [
                     r'^[a-zA-Z][a-zA-Z0-9\-]{0,61}[a-zA-Z0-9]$',
-                    r'^[a-zA-Z0-9]+$'
+                    r'^[a-zA-Z0-9]+$',
+                    r'^[a-zA-Z]{2,4}[0-9]{1,6}$',
+                    r'^[a-zA-Z]+\-[a-zA-Z0-9]+\-[a-zA-Z0-9]+$'
                 ],
                 'ip_patterns': [
-                    r'^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$'
+                    r'^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$',
+                    r'^([0-9a-fA-F]{1,4}:){7}[0-9a-fA-F]{1,4}$'
+                ],
+                'mac_patterns': [
+                    r'^([0-9A-Fa-f]{2}[:-]){5}[0-9A-Fa-f]{2}$',
+                    r'^([0-9A-Fa-f]{4}\.){2}[0-9A-Fa-f]{4}$'
                 ]
             }
         }
         
         self.pattern_quantum_library = self._build_quantum_pattern_library()
         self.semantic_quantum_cache = {}
+        self.learning_quantum_memory = defaultdict(list)
+        self.concept_quantum_network = None
+        self.emergence_detector = {}
+        
         self.training_orchestrator = None
         self.ml_analyzer = None
-        
-        try:
-            self._initialize_ml_components()
-        except Exception as e:
-            logger.warning(f"ML components initialization failed: {e}")
+        self._initialize_ml_components()
         
     def _initialize_ml_components(self):
         try:
+            from .training_orchestrator import IntensiveTrainingOrchestrator, AdvancedContentAnalyzer as MLAnalyzer
+            self.training_orchestrator = IntensiveTrainingOrchestrator()
+            
+            class MLAnalyzerWrapper:
+                def __init__(self, orchestrator):
+                    self.orchestrator = orchestrator
+                
+                def analyze_column_quantum_intelligently(self, name, values, context):
+                    try:
+                        prediction_result = self.orchestrator.get_intelligent_field_prediction(
+                            name, values, context.get('column_names', []) if context else []
+                        )
+                        
+                        field_type = prediction_result['predicted_field_type']
+                        confidence = prediction_result['confidence_score']
+                        
+                        analysis_metadata = {
+                            'method': 'neural_field_classifier_with_proxy',
+                            'inference_time_ms': prediction_result['inference_time_ms'],
+                            'pattern_analysis': prediction_result.get('pattern_analysis', {}),
+                            'context_analysis': prediction_result.get('context_analysis', {}),
+                            'model_enhanced': True,
+                            'proxy_enabled': prediction_result.get('proxy_enabled', False),
+                            'tokenizer_method': prediction_result.get('tokenizer_method', 'unknown')
+                        }
+                        
+                        return (field_type, confidence, analysis_metadata)
+                    except Exception as e:
+                        logger.debug(f"ML analysis failed: {e}")
+                        return None
+            
+            self.ml_analyzer = MLAnalyzerWrapper(self.training_orchestrator)
             logger.info("ML-enhanced content analysis initialized")
         except Exception as e:
             logger.warning(f"ML components initialization failed: {e}")
@@ -66,6 +109,14 @@ class QuantumContentAnalyzer:
 
     def analyze_column_quantum_intelligently(self, name: str, values: List[str], 
                                            context: Dict = None) -> Optional[Tuple[str, float, Dict[str, Any]]]:
+        
+        if self.ml_analyzer:
+            try:
+                ml_result = self.ml_analyzer.analyze_column_quantum_intelligently(name, values, context)
+                if ml_result and ml_result[1] > 0.7:
+                    return ml_result
+            except Exception as e:
+                logger.debug(f"ML analysis failed, falling back to pattern matching: {e}")
         
         if self._should_skip_quantum_column(name):
             return None
