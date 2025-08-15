@@ -20,113 +20,50 @@ class MaximumIntensityDatabaseManager:
             self.conn = duckdb.connect(self.db_path)
             self.conn.execute("PRAGMA memory_limit='4GB'")
             self.conn.execute("PRAGMA threads=8")
-            self.conn.execute("PRAGMA enable_progress_bar=true")
             logger.info(f"Database connection established: {self.db_path}")
-            self._setup_maximum_intensity_schema()
+            self._setup_simple_schema()
         except Exception as e:
             logger.error(f"Database connection failed: {e}")
             raise
     
-    def _setup_maximum_intensity_schema(self):
+    def _setup_simple_schema(self):
         try:
             self.conn.execute("DROP TABLE IF EXISTS maximum_intensity_assets")
             self.conn.execute("DROP TABLE IF EXISTS discovery_metadata")
             
-            logger.info("Creating maximum intensity asset schema")
+            logger.info("Creating simple asset schema")
             
             self.conn.execute("""
                 CREATE TABLE maximum_intensity_assets (
                     asset_id VARCHAR PRIMARY KEY,
                     hostname VARCHAR NOT NULL,
-                    
-                    -- Identity Fields
                     ip_address VARCHAR,
                     fqdn VARCHAR,
                     mac_address VARCHAR,
-                    
-                    -- Infrastructure and System Fields
                     infrastructure_type VARCHAR,
                     operating_system VARCHAR,
                     system_classification VARCHAR,
                     environment VARCHAR,
-                    
-                    -- Location Fields
                     region VARCHAR,
                     country VARCHAR,
                     datacenter VARCHAR,
                     cloud_region VARCHAR,
-                    
-                    -- Business and Organization Fields
                     business_unit VARCHAR,
                     application VARCHAR,
                     owner VARCHAR,
                     criticality VARCHAR,
-                    cost_center VARCHAR,
-                    
-                    -- Security and Compliance Fields
-                    compliance_status VARCHAR,
-                    security_classification VARCHAR,
-                    patch_level VARCHAR,
-                    vulnerability_status VARCHAR,
-                    
-                    -- Network and Connectivity Fields
-                    network_segment VARCHAR,
-                    network_ports VARCHAR,
-                    network_protocol VARCHAR,
-                    network_device VARCHAR,
-                    
-                    -- Hardware and Specifications Fields
-                    cpu_info VARCHAR,
-                    memory_info VARCHAR,
-                    storage_info VARCHAR,
-                    hardware_model VARCHAR,
-                    serial_number VARCHAR,
-                    
-                    -- Date and Time Fields
-                    created_date VARCHAR,
-                    last_updated VARCHAR,
-                    discovery_date VARCHAR,
-                    expiry_date VARCHAR,
-                    
-                    -- User and Access Fields
-                    primary_user VARCHAR,
-                    user_group VARCHAR,
-                    access_level VARCHAR,
-                    
-                    -- Monitoring and Management Fields
-                    monitoring_agent VARCHAR,
-                    operational_status VARCHAR,
-                    backup_status VARCHAR,
-                    maintenance_window VARCHAR,
-                    
-                    -- Software and Licensing Fields
-                    license_info VARCHAR,
-                    installed_software VARCHAR,
-                    
-                    -- Configuration Fields
-                    configuration VARCHAR,
-                    policy_assignment VARCHAR,
-                    
-                    -- Coverage Flags
                     in_chronicle BOOLEAN DEFAULT FALSE,
                     in_crowdstrike BOOLEAN DEFAULT FALSE,
                     in_original_cmdb BOOLEAN DEFAULT FALSE,
                     in_splunk BOOLEAN DEFAULT FALSE,
                     in_tanium BOOLEAN DEFAULT FALSE,
                     in_dlp BOOLEAN DEFAULT FALSE,
-                    
-                    -- Metrics
                     source_count INTEGER DEFAULT 0,
                     total_rows INTEGER DEFAULT 0,
-                    total_unique_attributes INTEGER DEFAULT 0,
-                    
-                    -- Source Information (JSON for complex data)
                     source_tables JSON,
                     all_attributes JSON,
-                    
-                    -- Timestamps
                     first_seen TIMESTAMP,
-                    database_last_updated TIMESTAMP,
+                    last_updated TIMESTAMP,
                     created_at TIMESTAMP DEFAULT NOW()
                 )
             """)
@@ -137,18 +74,14 @@ class MaximumIntensityDatabaseManager:
                     discovery_type VARCHAR,
                     total_hosts_discovered INTEGER,
                     total_rows_processed INTEGER,
-                    total_attributes_extracted INTEGER,
-                    total_cells_analyzed INTEGER,
                     processing_time_minutes DOUBLE,
-                    rows_per_second DOUBLE,
-                    peak_memory_mb DOUBLE,
                     stats JSON,
                     created_at TIMESTAMP DEFAULT NOW()
                 )
             """)
             
             self.conn.commit()
-            logger.info("Maximum intensity schema created successfully")
+            logger.info("Simple schema created successfully")
             
             tables = self.conn.execute("SHOW TABLES").fetchall()
             logger.info(f"Verified tables: {[table[0] for table in tables]}")
@@ -172,26 +105,15 @@ class MaximumIntensityDatabaseManager:
                     return str(values)
                 return default
             
-            logger.debug(f"Storing host {hostname} with {len(all_attrs)} attributes")
-            
             insert_sql = """
                 INSERT OR REPLACE INTO maximum_intensity_assets (
                     asset_id, hostname, ip_address, fqdn, mac_address,
                     infrastructure_type, operating_system, system_classification, environment,
                     region, country, datacenter, cloud_region,
-                    business_unit, application, owner, criticality, cost_center,
-                    compliance_status, security_classification, patch_level, vulnerability_status,
-                    network_segment, network_ports, network_protocol, network_device,
-                    cpu_info, memory_info, storage_info, hardware_model, serial_number,
-                    created_date, last_updated, discovery_date, expiry_date,
-                    primary_user, user_group, access_level,
-                    monitoring_agent, operational_status, backup_status, maintenance_window,
-                    license_info, installed_software,
-                    configuration, policy_assignment,
+                    business_unit, application, owner, criticality,
                     in_chronicle, in_crowdstrike, in_original_cmdb, in_splunk, in_tanium, in_dlp,
-                    source_count, total_rows, total_unique_attributes,
-                    source_tables, all_attributes, first_seen, database_last_updated
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    source_count, total_rows, source_tables, all_attributes, first_seen, last_updated
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """
             
             values = (
@@ -212,35 +134,6 @@ class MaximumIntensityDatabaseManager:
                 get_first_value('application'),
                 get_first_value('owner'),
                 get_first_value('criticality'),
-                get_first_value('cost_center'),
-                get_first_value('compliance_status'),
-                get_first_value('security_classification'),
-                get_first_value('patch_level'),
-                get_first_value('vulnerability_status'),
-                get_first_value('network_segment'),
-                get_first_value('network_ports'),
-                get_first_value('network_protocol'),
-                get_first_value('network_device'),
-                get_first_value('cpu_info'),
-                get_first_value('memory_info'),
-                get_first_value('storage_info'),
-                get_first_value('hardware_model'),
-                get_first_value('serial_number'),
-                get_first_value('created_date'),
-                get_first_value('last_updated'),
-                get_first_value('discovery_date'),
-                get_first_value('expiry_date'),
-                get_first_value('primary_user'),
-                get_first_value('user_group'),
-                get_first_value('access_level'),
-                get_first_value('monitoring_agent'),
-                get_first_value('operational_status'),
-                get_first_value('backup_status'),
-                get_first_value('maintenance_window'),
-                get_first_value('license_info'),
-                get_first_value('installed_software'),
-                get_first_value('configuration'),
-                get_first_value('policy_assignment'),
                 coverage.get('in_chronicle', False),
                 coverage.get('in_crowdstrike', False),
                 coverage.get('in_original_cmdb', False),
@@ -249,23 +142,21 @@ class MaximumIntensityDatabaseManager:
                 coverage.get('in_dlp', False),
                 host_data.get('source_count', 0),
                 host_data.get('total_rows', 0),
-                sum(len(v) if isinstance(v, (set, list)) else 1 for v in all_attrs.values()),
                 json.dumps(list(host_data.get('source_tables', [])), default=list),
                 json.dumps(all_attrs, default=list),
                 host_data.get('first_seen'),
                 datetime.now().isoformat()
             )
             
-            logger.debug(f"Executing insert with {len(values)} values")
+            logger.debug(f"Executing insert with {len(values)} values for {len(insert_sql.count('?'))} placeholders")
             self.conn.execute(insert_sql, values)
             self.conn.commit()
-            logger.debug(f"Successfully stored {hostname}")
+            logger.info(f"Successfully stored {hostname} to database")
             return True
             
         except Exception as e:
-            logger.error(f"Immediate host storage failed for {hostname}: {e}")
-            logger.error(f"Host data keys: {list(host_data.keys())}")
-            logger.error(f"All attributes keys: {list(all_attrs.keys()) if all_attrs else 'None'}")
+            logger.error(f"Host storage failed for {hostname}: {e}")
+            logger.error(f"Values count: {len(values) if 'values' in locals() else 'undefined'}")
             return False
     
     def store_maximum_intensity_discovery(self, assets: Dict[str, Any], stats: Dict[str, Any]) -> int:
@@ -273,8 +164,7 @@ class MaximumIntensityDatabaseManager:
             logger.warning("No assets to store")
             return 0
         
-        logger.info("Starting maximum intensity database storage")
-        logger.info(f"Assets to store: {len(assets):,}")
+        logger.info(f"Storing {len(assets):,} assets to database")
         
         stored_count = 0
         batch_size = 1000
@@ -314,35 +204,6 @@ class MaximumIntensityDatabaseManager:
                         'application': get_first_value('application'),
                         'owner': get_first_value('owner'),
                         'criticality': get_first_value('criticality'),
-                        'cost_center': get_first_value('cost_center'),
-                        'compliance_status': get_first_value('compliance_status'),
-                        'security_classification': get_first_value('security_classification'),
-                        'patch_level': get_first_value('patch_level'),
-                        'vulnerability_status': get_first_value('vulnerability_status'),
-                        'network_segment': get_first_value('network_segment'),
-                        'network_ports': get_first_value('network_ports'),
-                        'network_protocol': get_first_value('network_protocol'),
-                        'network_device': get_first_value('network_device'),
-                        'cpu_info': get_first_value('cpu_info'),
-                        'memory_info': get_first_value('memory_info'),
-                        'storage_info': get_first_value('storage_info'),
-                        'hardware_model': get_first_value('hardware_model'),
-                        'serial_number': get_first_value('serial_number'),
-                        'created_date': get_first_value('created_date'),
-                        'last_updated': get_first_value('last_updated'),
-                        'discovery_date': get_first_value('discovery_date'),
-                        'expiry_date': get_first_value('expiry_date'),
-                        'primary_user': get_first_value('primary_user'),
-                        'user_group': get_first_value('user_group'),
-                        'access_level': get_first_value('access_level'),
-                        'monitoring_agent': get_first_value('monitoring_agent'),
-                        'operational_status': get_first_value('operational_status'),
-                        'backup_status': get_first_value('backup_status'),
-                        'maintenance_window': get_first_value('maintenance_window'),
-                        'license_info': get_first_value('license_info'),
-                        'installed_software': get_first_value('installed_software'),
-                        'configuration': get_first_value('configuration'),
-                        'policy_assignment': get_first_value('policy_assignment'),
                         'in_chronicle': coverage.get('in_chronicle', False),
                         'in_crowdstrike': coverage.get('in_crowdstrike', False),
                         'in_original_cmdb': coverage.get('in_original_cmdb', False),
@@ -351,11 +212,10 @@ class MaximumIntensityDatabaseManager:
                         'in_dlp': coverage.get('in_dlp', False),
                         'source_count': asset_data.get('source_count', 0),
                         'total_rows': asset_data.get('total_rows', 0),
-                        'total_unique_attributes': asset_data.get('total_unique_attributes', 0),
                         'source_tables': json.dumps(asset_data.get('source_tables', [])),
                         'all_attributes': json.dumps(all_attrs, default=list),
                         'first_seen': asset_data.get('first_seen'),
-                        'database_last_updated': datetime.now().isoformat()
+                        'last_updated': datetime.now().isoformat()
                     }
                     
                     current_batch.append(asset_row)
@@ -379,13 +239,9 @@ class MaximumIntensityDatabaseManager:
             
             actual_count = self.conn.execute("SELECT COUNT(*) FROM maximum_intensity_assets").fetchone()[0]
             
-            logger.info("Maximum intensity database storage complete")
+            logger.info("Database storage complete")
             logger.info(f"Assets processed: {stored_count:,}")
             logger.info(f"Verified in database: {actual_count:,}")
-            logger.info(f"Database file: {self.db_path}")
-            
-            if actual_count != stored_count:
-                logger.warning(f"Row count mismatch: Expected {stored_count}, Found {actual_count}")
             
             return actual_count
             
@@ -393,7 +249,6 @@ class MaximumIntensityDatabaseManager:
             logger.error(f"Database storage transaction failed: {e}")
             try:
                 self.conn.rollback()
-                logger.info("Transaction rolled back")
             except:
                 pass
             raise
@@ -407,19 +262,10 @@ class MaximumIntensityDatabaseManager:
                     asset_id, hostname, ip_address, fqdn, mac_address,
                     infrastructure_type, operating_system, system_classification, environment,
                     region, country, datacenter, cloud_region,
-                    business_unit, application, owner, criticality, cost_center,
-                    compliance_status, security_classification, patch_level, vulnerability_status,
-                    network_segment, network_ports, network_protocol, network_device,
-                    cpu_info, memory_info, storage_info, hardware_model, serial_number,
-                    created_date, last_updated, discovery_date, expiry_date,
-                    primary_user, user_group, access_level,
-                    monitoring_agent, operational_status, backup_status, maintenance_window,
-                    license_info, installed_software,
-                    configuration, policy_assignment,
+                    business_unit, application, owner, criticality,
                     in_chronicle, in_crowdstrike, in_original_cmdb, in_splunk, in_tanium, in_dlp,
-                    source_count, total_rows, total_unique_attributes,
-                    source_tables, all_attributes, first_seen, database_last_updated
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    source_count, total_rows, source_tables, all_attributes, first_seen, last_updated
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """
             
             batch_data = []
@@ -429,78 +275,36 @@ class MaximumIntensityDatabaseManager:
                     asset['fqdn'], asset['mac_address'], asset['infrastructure_type'],
                     asset['operating_system'], asset['system_classification'], asset['environment'],
                     asset['region'], asset['country'], asset['datacenter'], asset['cloud_region'],
-                    asset['business_unit'], asset['application'], asset['owner'], asset['criticality'], asset['cost_center'],
-                    asset['compliance_status'], asset['security_classification'], asset['patch_level'], asset['vulnerability_status'],
-                    asset['network_segment'], asset['network_ports'], asset['network_protocol'], asset['network_device'],
-                    asset['cpu_info'], asset['memory_info'], asset['storage_info'], asset['hardware_model'], asset['serial_number'],
-                    asset['created_date'], asset['last_updated'], asset['discovery_date'], asset['expiry_date'],
-                    asset['primary_user'], asset['user_group'], asset['access_level'],
-                    asset['monitoring_agent'], asset['operational_status'], asset['backup_status'], asset['maintenance_window'],
-                    asset['license_info'], asset['installed_software'],
-                    asset['configuration'], asset['policy_assignment'],
+                    asset['business_unit'], asset['application'], asset['owner'], asset['criticality'],
                     asset['in_chronicle'], asset['in_crowdstrike'], asset['in_original_cmdb'],
                     asset['in_splunk'], asset['in_tanium'], asset['in_dlp'],
-                    asset['source_count'], asset['total_rows'], asset['total_unique_attributes'],
-                    asset['source_tables'], asset['all_attributes'], 
-                    asset['first_seen'], asset['database_last_updated']
+                    asset['source_count'], asset['total_rows'], asset['source_tables'], 
+                    asset['all_attributes'], asset['first_seen'], asset['last_updated']
                 )
                 batch_data.append(row_tuple)
             
             self.conn.executemany(insert_sql, batch_data)
-            logger.debug(f"Inserted batch of {len(batch)} assets")
             return len(batch)
             
         except Exception as e:
             logger.error(f"Batch insert failed: {e}")
-            success_count = 0
-            for asset in batch:
-                try:
-                    self.conn.execute(insert_sql, (
-                        asset['asset_id'], asset['hostname'], asset['ip_address'], 
-                        asset['fqdn'], asset['mac_address'], asset['infrastructure_type'],
-                        asset['operating_system'], asset['system_classification'], asset['environment'],
-                        asset['region'], asset['country'], asset['datacenter'], asset['cloud_region'],
-                        asset['business_unit'], asset['application'], asset['owner'], asset['criticality'], asset['cost_center'],
-                        asset['compliance_status'], asset['security_classification'], asset['patch_level'], asset['vulnerability_status'],
-                        asset['network_segment'], asset['network_ports'], asset['network_protocol'], asset['network_device'],
-                        asset['cpu_info'], asset['memory_info'], asset['storage_info'], asset['hardware_model'], asset['serial_number'],
-                        asset['created_date'], asset['last_updated'], asset['discovery_date'], asset['expiry_date'],
-                        asset['primary_user'], asset['user_group'], asset['access_level'],
-                        asset['monitoring_agent'], asset['operational_status'], asset['backup_status'], asset['maintenance_window'],
-                        asset['license_info'], asset['installed_software'],
-                        asset['configuration'], asset['policy_assignment'],
-                        asset['in_chronicle'], asset['in_crowdstrike'], asset['in_original_cmdb'],
-                        asset['in_splunk'], asset['in_tanium'], asset['in_dlp'],
-                        asset['source_count'], asset['total_rows'], asset['total_unique_attributes'],
-                        asset['source_tables'], asset['all_attributes'], 
-                        asset['first_seen'], asset['database_last_updated']
-                    ))
-                    success_count += 1
-                except Exception as e2:
-                    logger.error(f"Individual insert failed for {asset['asset_id']}: {e2}")
-            
-            return success_count
+            return 0
     
     def _store_discovery_metadata(self, stats: Dict[str, Any]):
         try:
-            discovery_id = f"maximum_intensity_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+            discovery_id = f"discovery_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
             
             self.conn.execute("""
                 INSERT INTO discovery_metadata (
                     id, discovery_type, total_hosts_discovered, total_rows_processed,
-                    total_attributes_extracted, total_cells_analyzed, processing_time_minutes,
-                    rows_per_second, peak_memory_mb, stats
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    processing_time_minutes, stats
+                ) VALUES (?, ?, ?, ?, ?, ?)
             """, [
                 discovery_id,
                 "maximum_intensity_discovery",
                 stats.get('total_unique_hosts', 0),
                 stats.get('total_rows_processed', 0),
-                stats.get('total_attributes_extracted', 0),
-                stats.get('total_cells_analyzed', 0),
                 stats.get('processing_time_minutes', 0),
-                stats.get('rows_per_second', 0),
-                stats.get('peak_memory_mb', 0),
                 json.dumps(stats)
             ])
             
@@ -519,55 +323,12 @@ class MaximumIntensityDatabaseManager:
             logger.error(f"Query execution failed: {e}")
             return []
     
-    def get_database_stats(self) -> Dict[str, Any]:
-        try:
-            stats = {}
-            stats['total_assets'] = self.conn.execute("SELECT COUNT(*) FROM maximum_intensity_assets").fetchone()[0]
-            
-            coverage_stats = self.conn.execute("""
-                SELECT 
-                    SUM(CASE WHEN in_chronicle THEN 1 ELSE 0 END) as chronicle_count,
-                    SUM(CASE WHEN in_crowdstrike THEN 1 ELSE 0 END) as crowdstrike_count,
-                    SUM(CASE WHEN in_splunk THEN 1 ELSE 0 END) as splunk_count,
-                    SUM(CASE WHEN in_original_cmdb THEN 1 ELSE 0 END) as cmdb_count
-                FROM maximum_intensity_assets
-            """).fetchone()
-            
-            stats['coverage'] = {
-                'chronicle': coverage_stats[0],
-                'crowdstrike': coverage_stats[1],
-                'splunk': coverage_stats[2],
-                'cmdb': coverage_stats[3]
-            }
-            
-            top_regions = self.conn.execute("""
-                SELECT region, COUNT(*) as count 
-                FROM maximum_intensity_assets 
-                WHERE region IS NOT NULL AND region != ''
-                GROUP BY region 
-                ORDER BY count DESC 
-                LIMIT 10
-            """).fetchall()
-            
-            stats['top_regions'] = [{'region': r[0], 'count': r[1]} for r in top_regions]
-            return stats
-            
-        except Exception as e:
-            logger.error(f"Stats query failed: {e}")
-            return {'error': str(e)}
-    
     def get_live_stats(self) -> Dict[str, Any]:
         try:
             total_count = self.conn.execute("SELECT COUNT(*) FROM maximum_intensity_assets").fetchone()[0]
             
-            recent_count = self.conn.execute("""
-                SELECT COUNT(*) FROM maximum_intensity_assets 
-                WHERE created_at >= datetime('now', '-10 seconds')
-            """).fetchone()[0]
-            
             return {
                 'total_hosts_in_db': total_count,
-                'hosts_added_recently': recent_count,
                 'database_size_mb': os.path.getsize(self.db_path) / (1024 * 1024) if os.path.exists(self.db_path) else 0
             }
             
@@ -635,11 +396,11 @@ class MaximumIntensityDatabaseManager:
             result = self.store_single_host_immediately('TEST-SERVER-01', test_host_data)
             if result:
                 count = self.conn.execute("SELECT COUNT(*) FROM maximum_intensity_assets").fetchone()[0]
-                logger.info(f"Test insert successful. Total rows in database: {count}")
+                logger.info(f"TEST SUCCESS: Total rows in database: {count}")
                 
-                test_row = self.conn.execute("SELECT * FROM maximum_intensity_assets WHERE hostname = 'TEST-SERVER-01'").fetchone()
+                test_row = self.conn.execute("SELECT hostname, ip_address, infrastructure_type FROM maximum_intensity_assets WHERE hostname = 'TEST-SERVER-01'").fetchone()
                 if test_row:
-                    logger.info(f"Test row retrieved successfully: {test_row[0:5]}")
+                    logger.info(f"TEST ROW: {test_row}")
                 else:
                     logger.error("Test row not found after insert")
             else:
@@ -677,10 +438,8 @@ class QuantumEnhancedDatabaseManager(MaximumIntensityDatabaseManager):
                 },
                 'source_count': len(hyper_asset.source_provenance),
                 'total_rows': 1,
-                'total_unique_attributes': 5,
                 'source_tables': hyper_asset.source_provenance,
-                'first_seen': datetime.now().isoformat(),
-                'last_updated': datetime.now().isoformat()
+                'first_seen': datetime.now().isoformat()
             }
         
         stats = quantum_discovery.intelligence_metrics or {}
