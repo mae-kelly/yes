@@ -284,7 +284,7 @@ class ContinualFieldLearner:
         
         return EmergencyTokenizer()
     
-    def train_on_dataset(self, training_data: List[Dict[str, Any]], epochs: int = 5, batch_size: int = 16):
+    def train_on_dataset(self, training_data: List[Dict[str, Any]], epochs: int = 5, batch_size: int = 4):
         if not self.tokenizer:
             logger.error("Cannot train without functional tokenizer")
             return
@@ -293,7 +293,28 @@ class ContinualFieldLearner:
         logger.info(f"Using tokenizer: {getattr(self.tokenizer, 'method_used', 'unknown')}")
         
         dataset = AdvancedFieldClassificationDataset(training_data, self.tokenizer)
-        dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True, num_workers=0)
+        
+        def collate_fn(batch):
+            max_length = 256
+            input_ids = []
+            attention_masks = []
+            field_type_ids = []
+            confidences = []
+            
+            for item in batch:
+                input_ids.append(item['input_ids'][:max_length])
+                attention_masks.append(item['attention_mask'][:max_length])
+                field_type_ids.append(item['field_type_id'])
+                confidences.append(item['confidence'])
+            
+            return {
+                'input_ids': torch.stack([torch.cat([ids, torch.zeros(max_length - len(ids), dtype=torch.long)]) if len(ids) < max_length else ids[:max_length] for ids in input_ids]),
+                'attention_mask': torch.stack([torch.cat([mask, torch.zeros(max_length - len(mask), dtype=torch.long)]) if len(mask) < max_length else mask[:max_length] for mask in attention_masks]),
+                'field_type_id': torch.stack(field_type_ids),
+                'confidence': torch.stack(confidences)
+            }
+        
+        dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True, num_workers=0, collate_fn=collate_fn)
         
         self.model.train()
         
@@ -454,7 +475,7 @@ class ContinualFieldLearner:
     def continual_learning_update(self, new_data: List[Dict[str, Any]]):
         logger.info(f"Performing continual learning update with {len(new_data)} new samples")
         
-        self.train_on_dataset(new_data, epochs=1, batch_size=8)
+        self.train_on_dataset(new_data, epochs=1, batch_size=2)
         
         if len(self.training_stats['accuracy_history']) > 0:
             recent_accuracy = self.training_stats['accuracy_history'][-1]

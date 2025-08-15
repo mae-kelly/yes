@@ -93,9 +93,9 @@ class IntensiveTrainingOrchestrator:
         self.model_save_path = self.cache_dir / "field_classifier_model.pt"
         
         self.training_config = {
-            'initial_training_epochs': 10,
-            'continual_learning_epochs': 2,
-            'batch_size': 16,
+            'initial_training_epochs': 3,
+            'continual_learning_epochs': 1,
+            'batch_size': 8,
             'learning_rate': 2e-5,
             'pattern_update_frequency': 50,
             'model_save_frequency': 100,
@@ -141,64 +141,84 @@ class IntensiveTrainingOrchestrator:
         logger.info("Phase 3: Scanning public BigQuery datasets for training patterns")
         try:
             total_patterns = await self.scanner.scan_all_public_datasets()
+            logger.info(f"Collected {total_patterns} training patterns from BigQuery datasets")
         except Exception as e:
             logger.error(f"Dataset scanning failed: {e}")
             total_patterns = 0
         
-        if total_patterns == 0:
-            logger.warning("No training patterns collected, generating synthetic data")
-            training_data = self._generate_synthetic_training_data()
-        else:
+        if total_patterns > 0:
             logger.info(f"Phase 4: Retrieved {total_patterns} training patterns")
             training_data = self.scanner.get_training_data()
-        
-        if not training_data:
-            logger.error("No usable training data available")
-            return False
-        
-        logger.info(f"Phase 5: Training neural model on {len(training_data)} samples")
-        try:
-            self.learner.train_on_dataset(
-                training_data,
-                epochs=self.training_config['initial_training_epochs'],
-                batch_size=self.training_config['batch_size']
-            )
-        except Exception as e:
-            logger.error(f"Training failed: {e}")
-            return False
-        
-        logger.info("Phase 6: Evaluating model performance")
-        test_split = max(1, len(training_data) // 5)
-        train_data = training_data[:-test_split]
-        test_data = training_data[-test_split:]
-        
-        try:
-            evaluation_results = self.learner.evaluate_on_test_data(test_data)
             
-            self.training_stats['model_accuracy'] = evaluation_results['overall_accuracy']
-            self.training_stats['samples_processed'] = len(training_data)
-            self.training_stats['last_training_update'] = datetime.now()
-            
-            self.performance_metrics.update(evaluation_results.get('field_type_accuracies', {}))
-        except Exception as e:
-            logger.warning(f"Evaluation failed: {e}")
-            self.training_stats['model_accuracy'] = 0.5
+            if training_data and len(training_data) > 10:
+                logger.info(f"Phase 5: Training neural model on {len(training_data)} real samples")
+                try:
+                    normalized_training_data = self._normalize_training_data(training_data)
+                    self.learner.train_on_dataset(
+                        normalized_training_data,
+                        epochs=self.training_config['initial_training_epochs'],
+                        batch_size=self.training_config['batch_size']
+                    )
+                    
+                    test_split = max(1, len(normalized_training_data) // 5)
+                    test_data = normalized_training_data[-test_split:]
+                    
+                    evaluation_results = self.learner.evaluate_on_test_data(test_data)
+                    self.training_stats['model_accuracy'] = evaluation_results['overall_accuracy']
+                    self.training_stats['samples_processed'] = len(normalized_training_data)
+                    
+                    logger.info("Phase 6: Saving trained model")
+                    self.learner.save_model(str(self.model_save_path))
+                    
+                    training_time = (datetime.now() - start_time).total_seconds()
+                    self.training_stats['total_training_time'] = training_time
+                    self.training_stats['last_training_update'] = datetime.now()
+                    
+                    logger.info(f"Training completed successfully in {training_time:.2f} seconds")
+                    logger.info(f"Model accuracy: {self.training_stats['model_accuracy']:.4f}")
+                    return True
+                    
+                except Exception as e:
+                    logger.error(f"Training failed: {e}")
+                    return False
+            else:
+                logger.warning("Insufficient real training data, skipping ML training")
+                return False
+        else:
+            logger.warning("No training patterns collected, skipping ML training")
+            return False
+    
+    def _normalize_training_data(self, training_data: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        normalized = []
         
-        logger.info("Phase 7: Saving trained model")
-        try:
-            self.learner.save_model(str(self.model_save_path))
-        except Exception as e:
-            logger.warning(f"Model save failed: {e}")
+        for item in training_data:
+            try:
+                normalized_item = {
+                    'column_name': str(item.get('column_name', 'unknown')),
+                    'data_samples': list(item.get('data_samples', []))[:5],
+                    'field_type': str(item.get('field_type', 'unknown')),
+                    'context_columns': list(item.get('context_columns', []))[:3],
+                    'confidence': float(item.get('confidence', 0.5))
+                }
+                
+                if len(normalized_item['data_samples']) < 3:
+                    normalized_item['data_samples'].extend([''] * (3 - len(normalized_item['data_samples'])))
+                else:
+                    normalized_item['data_samples'] = normalized_item['data_samples'][:3]
+                
+                if len(normalized_item['context_columns']) < 2:
+                    normalized_item['context_columns'].extend([''] * (2 - len(normalized_item['context_columns'])))
+                else:
+                    normalized_item['context_columns'] = normalized_item['context_columns'][:2]
+                
+                normalized.append(normalized_item)
+                
+            except Exception as e:
+                logger.debug(f"Skipping malformed training item: {e}")
+                continue
         
-        training_time = (datetime.now() - start_time).total_seconds()
-        self.training_stats['total_training_time'] = training_time
-        
-        logger.info(f"Initial training completed in {training_time:.2f} seconds")
-        logger.info(f"Model accuracy: {self.training_stats['model_accuracy']:.4f}")
-        logger.info(f"Proxy method: {self.training_stats['proxy_method']}")
-        logger.info(f"Tokenizer method: {self.training_stats['tokenizer_method']}")
-        
-        return True
+        logger.info(f"Normalized {len(normalized)} training samples")
+        return normalized
     
     async def _test_corporate_connectivity(self):
         test_urls = [
@@ -240,43 +260,6 @@ class IntensiveTrainingOrchestrator:
             logger.error(f"Tokenizer initialization failed: {e}")
             self.training_stats['tokenizer_method'] = f'exception_{type(e).__name__}'
             return False
-    
-    def _generate_synthetic_training_data(self):
-        logger.info("Generating synthetic training data for offline training")
-        
-        synthetic_data = []
-        
-        base_examples = [
-            (['server01', 'web-prod-001', 'db-cluster-node-1'], 'hostname'),
-            (['host123', 'workstation-dev', 'app-server-02'], 'hostname'),
-            (['srv001', 'web001', 'db001'], 'hostname'),
-            (['computer-name', 'machine-id', 'device-001'], 'hostname'),
-            (['192.168.1.1', '10.0.0.1', '172.16.0.1'], 'ip_address'),
-            (['192.168.1.100', '10.1.1.1', '172.17.0.1'], 'ip_address'),
-            (['10.0.0.254', '192.168.0.1', '172.16.1.1'], 'ip_address'),
-            (['user@example.com', 'admin@company.org', 'test@domain.net'], 'email_address'),
-            (['john.doe@corp.com', 'jane.smith@org.net'], 'email_address'),
-            (['12345', '67890', 'abc123'], 'identifier'),
-            (['uuid-123-456', 'id-789', 'key-abc'], 'identifier')
-        ]
-        
-        for samples, field_type in base_examples:
-            column_variations = [
-                f'{field_type}', f'{field_type}_name', f'{field_type}_id',
-                f'src_{field_type}', f'dest_{field_type}', f'primary_{field_type}'
-            ]
-            
-            for column_name in column_variations:
-                synthetic_data.append({
-                    'column_name': column_name,
-                    'data_samples': samples,
-                    'field_type': field_type,
-                    'context_columns': ['table_id', 'created_at', 'updated_at'],
-                    'confidence': 0.9
-                })
-        
-        logger.info(f"Generated {len(synthetic_data)} synthetic training samples")
-        return synthetic_data
     
     def start_continuous_learning(self):
         if self.continuous_learning_active:
@@ -322,9 +305,10 @@ class IntensiveTrainingOrchestrator:
             ]
             
             if recent_data:
-                self.learner.continual_learning_update(recent_data)
+                normalized_data = self._normalize_training_data(recent_data)
+                self.learner.continual_learning_update(normalized_data)
                 self.learner.save_model(str(self.model_save_path))
-                logger.info(f"Model updated with {len(recent_data)} new samples")
+                logger.info(f"Model updated with {len(normalized_data)} new samples")
             else:
                 logger.info("No new training data available for update")
         
@@ -345,16 +329,17 @@ class IntensiveTrainingOrchestrator:
         logger.info("Performing scheduled performance evaluation")
         
         try:
-            test_data = self.scanner.get_training_data()[-1000:]
+            test_data = self.scanner.get_training_data()[-100:]
             
             if test_data:
                 start_time = time.time()
-                evaluation_results = self.learner.evaluate_on_test_data(test_data)
+                normalized_test_data = self._normalize_training_data(test_data)
+                evaluation_results = self.learner.evaluate_on_test_data(normalized_test_data)
                 evaluation_time = (time.time() - start_time) * 1000
                 
                 self.performance_metrics.update({
                     'overall_accuracy': evaluation_results['overall_accuracy'],
-                    'inference_speed_ms': evaluation_time / len(test_data)
+                    'inference_speed_ms': evaluation_time / len(normalized_test_data)
                 })
                 
                 logger.info(f"Performance evaluation: Accuracy={evaluation_results['overall_accuracy']:.4f}")
@@ -370,24 +355,12 @@ class IntensiveTrainingOrchestrator:
         if not user_training_examples:
             return
         
-        enriched_examples = []
-        
-        for example in user_training_examples:
-            enriched_example = {
-                'column_name': example.get('column_name', ''),
-                'data_samples': example.get('data_samples', []),
-                'field_type': example.get('field_type', 'unknown'),
-                'context_columns': example.get('context_columns', []),
-                'confidence': example.get('confidence', 1.0),
-                'user_provided': True,
-                'created_at': datetime.now().isoformat()
-            }
-            enriched_examples.append(enriched_example)
+        normalized_examples = self._normalize_training_data(user_training_examples)
         
         try:
-            self.learner.continual_learning_update(enriched_examples)
+            self.learner.continual_learning_update(normalized_examples)
             
-            self.training_stats['samples_processed'] += len(enriched_examples)
+            self.training_stats['samples_processed'] += len(normalized_examples)
             self.training_stats['last_training_update'] = datetime.now()
             
             logger.info("User data training completed")
@@ -507,7 +480,7 @@ class IntensiveTrainingOrchestrator:
             }
         }
     
-    def benchmark_inference_speed(self, num_samples: int = 1000) -> Dict[str, float]:
+    def benchmark_inference_speed(self, num_samples: int = 100) -> Dict[str, float]:
         logger.info(f"Benchmarking inference speed with {num_samples} samples")
         
         test_cases = [
