@@ -90,17 +90,26 @@ class GuaranteedRealtimeCMDBBuilder:
                 attribute_key = self._map_column_to_attribute(column_name)
                 
                 if attribute_key not in host['all_attributes']:
-                    host['all_attributes'][attribute_key] = set()
+                    host['all_attributes'][attribute_key] = []
+                
+                # Ensure it's a list, convert sets to lists
+                if isinstance(host['all_attributes'][attribute_key], set):
+                    host['all_attributes'][attribute_key] = list(host['all_attributes'][attribute_key])
+                elif not isinstance(host['all_attributes'][attribute_key], list):
+                    host['all_attributes'][attribute_key] = [host['all_attributes'][attribute_key]] if host['all_attributes'][attribute_key] else []
                 
                 old_size = len(host['all_attributes'][attribute_key])
-                host['all_attributes'][attribute_key].add(clean_value)
-                new_size = len(host['all_attributes'][attribute_key])
                 
-                if new_size > old_size:
-                    self.processing_stats['attributes_added'] += 1
-                    new_attributes += 1
-                    # 🔥 LOG NEW ATTRIBUTE DISCOVERIES
-                    logger.info(f"   ➕ NEW {attribute_key.upper()}: {clean_value}")
+                # Add value if not already present
+                if clean_value not in host['all_attributes'][attribute_key]:
+                    host['all_attributes'][attribute_key].append(clean_value)
+                    new_size = len(host['all_attributes'][attribute_key])
+                    
+                    if new_size > old_size:
+                        self.processing_stats['attributes_added'] += 1
+                        new_attributes += 1
+                        # 🔥 LOG NEW ATTRIBUTE DISCOVERIES
+                        logger.info(f"   ➕ NEW {attribute_key.upper()}: {clean_value}")
         
         # Track source information
         host['source_tables'].add(source_table)
@@ -179,9 +188,15 @@ class GuaranteedRealtimeCMDBBuilder:
         
         # Convert attribute sets to lists
         if 'all_attributes' in serializable:
+            converted_attributes = {}
             for key, value in serializable['all_attributes'].items():
                 if isinstance(value, set):
-                    serializable['all_attributes'][key] = list(value)
+                    converted_attributes[key] = list(value)
+                elif isinstance(value, list):
+                    converted_attributes[key] = value
+                else:
+                    converted_attributes[key] = [value] if value else []
+            serializable['all_attributes'] = converted_attributes
         
         return serializable
     
@@ -297,17 +312,27 @@ class GuaranteedRealtimeCMDBBuilder:
         serializable_cmdb = {}
         
         for hostname, host_data in self.cmdb.items():
+            # Convert all_attributes to proper format
+            serializable_attributes = {}
+            for key, value in host_data['all_attributes'].items():
+                if isinstance(value, set):
+                    serializable_attributes[key] = list(value)
+                elif isinstance(value, list):
+                    serializable_attributes[key] = value
+                else:
+                    serializable_attributes[key] = [value] if value else []
+            
             serializable_cmdb[hostname] = {
                 'asset_id': hostname,
                 'hostname': host_data['hostname'],
-                'source_tables': list(host_data['source_tables']),
-                'all_attributes': {k: list(v) for k, v in host_data['all_attributes'].items()},
+                'source_tables': list(host_data['source_tables']) if isinstance(host_data['source_tables'], set) else host_data['source_tables'],
+                'all_attributes': serializable_attributes,
                 'coverage_flags': host_data['coverage_flags'],
                 'first_seen': host_data['first_seen'],
                 'last_updated': host_data['last_updated'],
                 'source_count': host_data['source_count'],
                 'total_rows': host_data['total_rows'],
-                'total_unique_attributes': sum(len(v) for v in host_data['all_attributes'].values())
+                'total_unique_attributes': sum(len(v) for v in serializable_attributes.values())
             }
         
         return serializable_cmdb
