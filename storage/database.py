@@ -262,6 +262,8 @@ class MaximumIntensityDatabaseManager:
             except:
                 pass
             raise
+        finally:
+            pass
     
     def _insert_batch(self, batch: List[Dict[str, Any]]) -> int:
         try:
