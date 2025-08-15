@@ -1,5 +1,3 @@
-# storage/database.py - FIXED VERSION WITH GUARANTEED ROW INSERTION
-
 import duckdb
 import json
 import logging
@@ -18,85 +16,60 @@ class MaximumIntensityDatabaseManager:
         self._connect_and_setup()
     
     def _connect_and_setup(self):
-        """🔥 ESTABLISH DATABASE CONNECTION WITH MAXIMUM PERFORMANCE SETTINGS"""
         try:
             self.conn = duckdb.connect(self.db_path)
-            
-            # 🔥 MAXIMUM PERFORMANCE SETTINGS
             self.conn.execute("PRAGMA memory_limit='4GB'")
             self.conn.execute("PRAGMA threads=8")
             self.conn.execute("PRAGMA enable_progress_bar=true")
-            
-            logger.info(f"🔥 DATABASE CONNECTION ESTABLISHED: {self.db_path}")
+            logger.info(f"Database connection established: {self.db_path}")
             self._setup_maximum_intensity_schema()
-            
         except Exception as e:
-            logger.error(f"💥 DATABASE CONNECTION FAILED: {e}")
+            logger.error(f"Database connection failed: {e}")
             raise
     
     def _setup_maximum_intensity_schema(self):
-        """🔥 CREATE COMPREHENSIVE SCHEMA FOR MAXIMUM DATA STORAGE"""
         try:
-            # Drop existing tables to ensure clean start
             self.conn.execute("DROP TABLE IF EXISTS maximum_intensity_assets")
             self.conn.execute("DROP TABLE IF EXISTS discovery_metadata")
             
-            logger.info("🔥 CREATING MAXIMUM INTENSITY ASSET SCHEMA...")
+            logger.info("Creating maximum intensity asset schema")
             
-            # 🔥 COMPREHENSIVE ASSET TABLE WITH ALL POSSIBLE FIELDS
             self.conn.execute("""
                 CREATE TABLE maximum_intensity_assets (
                     asset_id VARCHAR PRIMARY KEY,
                     hostname VARCHAR NOT NULL,
-                    
-                    -- Identity Fields
                     ip_address VARCHAR,
                     fqdn VARCHAR,
                     mac_address VARCHAR,
-                    
-                    -- Infrastructure Fields
                     infrastructure_type VARCHAR,
                     operating_system VARCHAR,
                     system_classification VARCHAR,
                     environment VARCHAR,
-                    
-                    -- Location Fields
                     region VARCHAR,
                     country VARCHAR,
                     datacenter VARCHAR,
                     cloud_region VARCHAR,
-                    
-                    -- Business Fields
                     business_unit VARCHAR,
                     application VARCHAR,
                     owner VARCHAR,
                     criticality VARCHAR,
-                    
-                    -- Coverage Flags
                     in_chronicle BOOLEAN DEFAULT FALSE,
                     in_crowdstrike BOOLEAN DEFAULT FALSE,
                     in_original_cmdb BOOLEAN DEFAULT FALSE,
                     in_splunk BOOLEAN DEFAULT FALSE,
                     in_tanium BOOLEAN DEFAULT FALSE,
                     in_dlp BOOLEAN DEFAULT FALSE,
-                    
-                    -- Metrics
                     source_count INTEGER DEFAULT 0,
                     total_rows INTEGER DEFAULT 0,
                     total_unique_attributes INTEGER DEFAULT 0,
-                    
-                    -- Source Information
                     source_tables JSON,
                     all_attributes JSON,
-                    
-                    -- Timestamps
                     first_seen TIMESTAMP,
                     last_updated TIMESTAMP,
                     created_at TIMESTAMP DEFAULT NOW()
                 )
             """)
             
-            # Discovery metadata table
             self.conn.execute("""
                 CREATE TABLE discovery_metadata (
                     id VARCHAR PRIMARY KEY,
@@ -113,27 +86,21 @@ class MaximumIntensityDatabaseManager:
                 )
             """)
             
-            # Force commit the schema creation
             self.conn.commit()
+            logger.info("Maximum intensity schema created successfully")
             
-            logger.info("✅ MAXIMUM INTENSITY SCHEMA CREATED SUCCESSFULLY")
-            
-            # Verify tables were created
             tables = self.conn.execute("SHOW TABLES").fetchall()
-            logger.info(f"📊 VERIFIED TABLES: {[table[0] for table in tables]}")
+            logger.info(f"Verified tables: {[table[0] for table in tables]}")
             
         except Exception as e:
-            logger.error(f"💥 SCHEMA CREATION FAILED: {e}")
+            logger.error(f"Schema creation failed: {e}")
             raise
     
     def store_single_host_immediately(self, hostname: str, host_data: Dict[str, Any]):
-        """🔥 IMMEDIATELY STORE A SINGLE HOST TO DATABASE AS SOON AS IT'S DISCOVERED"""
         try:
-            # Extract all attributes with intelligent defaults
             all_attrs = host_data.get('all_attributes', {})
             coverage = host_data.get('coverage_flags', {})
             
-            # 🔥 EXTRACT FIRST VALUE FROM EACH ATTRIBUTE SET
             def get_first_value(attr_key: str, default: str = '') -> str:
                 values = all_attrs.get(attr_key, set())
                 if isinstance(values, (list, set)) and values:
@@ -142,7 +109,6 @@ class MaximumIntensityDatabaseManager:
                     return str(values)
                 return default
             
-            # Prepare comprehensive asset data
             insert_sql = """
                 INSERT OR REPLACE INTO maximum_intensity_assets (
                     asset_id, hostname, ip_address, fqdn, mac_address,
@@ -188,110 +154,34 @@ class MaximumIntensityDatabaseManager:
                 host_data.get('last_updated')
             )
             
-            # Execute immediate insert
             self.conn.execute(insert_sql, values)
-            self.conn.commit()  # Immediate commit for real-time storage
-            
+            self.conn.commit()
             return True
             
         except Exception as e:
-            logger.error(f"💥 IMMEDIATE HOST STORAGE FAILED for {hostname}: {e}")
+            logger.error(f"Immediate host storage failed for {hostname}: {e}")
             return False
     
-    def store_single_host_immediately(self, hostname: str, host_data: Dict[str, Any]):
-        """🔥 IMMEDIATELY STORE A SINGLE HOST TO DATABASE AS SOON AS IT'S DISCOVERED"""
-        try:
-            # Extract all attributes with intelligent defaults
-            all_attrs = host_data.get('all_attributes', {})
-            coverage = host_data.get('coverage_flags', {})
-            
-            # 🔥 EXTRACT FIRST VALUE FROM EACH ATTRIBUTE SET
-            def get_first_value(attr_key: str, default: str = '') -> str:
-                values = all_attrs.get(attr_key, set())
-                if isinstance(values, (list, set)) and values:
-                    return str(list(values)[0])
-                elif values:
-                    return str(values)
-                return default
-            
-            # Prepare comprehensive asset data
-            insert_sql = """
-                INSERT OR REPLACE INTO maximum_intensity_assets (
-                    asset_id, hostname, ip_address, fqdn, mac_address,
-                    infrastructure_type, operating_system, system_classification, environment,
-                    region, country, datacenter, cloud_region,
-                    business_unit, application, owner, criticality,
-                    in_chronicle, in_crowdstrike, in_original_cmdb, in_splunk, in_tanium, in_dlp,
-                    source_count, total_rows, total_unique_attributes,
-                    source_tables, all_attributes, first_seen, last_updated
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """
-            
-            values = (
-                hostname,
-                host_data.get('hostname', hostname),
-                get_first_value('ip_address'),
-                get_first_value('fqdn'),
-                get_first_value('mac_address'),
-                get_first_value('infrastructure_type'),
-                get_first_value('operating_system'),
-                get_first_value('system_classification'),
-                get_first_value('environment'),
-                get_first_value('region'),
-                get_first_value('country'),
-                get_first_value('datacenter'),
-                get_first_value('cloud_region'),
-                get_first_value('business_unit'),
-                get_first_value('application'),
-                get_first_value('owner'),
-                get_first_value('criticality'),
-                coverage.get('in_chronicle', False),
-                coverage.get('in_crowdstrike', False),
-                coverage.get('in_original_cmdb', False),
-                coverage.get('in_splunk', False),
-                coverage.get('in_tanium', False),
-                coverage.get('in_dlp', False),
-                host_data.get('source_count', 0),
-                host_data.get('total_rows', 0),
-                sum(len(v) if isinstance(v, (set, list)) else 1 for v in all_attrs.values()),
-                json.dumps(list(host_data.get('source_tables', [])), default=list),
-                json.dumps(all_attrs, default=list),
-                host_data.get('first_seen'),
-                host_data.get('last_updated')
-            )
-            
-            # Execute immediate insert
-            self.conn.execute(insert_sql, values)
-            self.conn.commit()  # Immediate commit for real-time storage
-            
-            return True
-            
     def store_maximum_intensity_discovery(self, assets: Dict[str, Any], stats: Dict[str, Any]) -> int:
-        """🔥 STORE DISCOVERY RESULTS WITH MAXIMUM INTENSITY AND GUARANTEED INSERTION"""
-        
         if not assets:
-            logger.warning("⚠️  NO ASSETS TO STORE!")
+            logger.warning("No assets to store")
             return 0
         
-        logger.info("🔥🔥🔥 STARTING MAXIMUM INTENSITY DATABASE STORAGE 🔥🔥🔥")
-        logger.info(f"📊 ASSETS TO STORE: {len(assets):,}")
-        logger.info(f"🌪️  THIS WILL MAKE YOUR STORAGE WORK HARD!")
+        logger.info("Starting maximum intensity database storage")
+        logger.info(f"Assets to store: {len(assets):,}")
         
         stored_count = 0
         batch_size = 1000
         current_batch = []
         
         try:
-            # Start transaction
             self.conn.begin()
             
             for asset_id, asset_data in assets.items():
                 try:
-                    # Extract all attributes with intelligent defaults
                     all_attrs = asset_data.get('all_attributes', {})
                     coverage = asset_data.get('coverage_flags', {})
                     
-                    # 🔥 EXTRACT FIRST VALUE FROM EACH ATTRIBUTE SET
                     def get_first_value(attr_key: str, default: str = '') -> str:
                         values = all_attrs.get(attr_key, set())
                         if isinstance(values, (list, set)) and values:
@@ -300,7 +190,6 @@ class MaximumIntensityDatabaseManager:
                             return str(values)
                         return default
                     
-                    # Prepare comprehensive asset data
                     asset_row = {
                         'asset_id': asset_id,
                         'hostname': asset_data.get('hostname', asset_id),
@@ -336,57 +225,46 @@ class MaximumIntensityDatabaseManager:
                     
                     current_batch.append(asset_row)
                     
-                    # Process in batches for better performance
                     if len(current_batch) >= batch_size:
                         batch_stored = self._insert_batch(current_batch)
                         stored_count += batch_stored
                         current_batch = []
-                        
-                        logger.info(f"⚡ BATCH STORED: {stored_count:,} assets so far...")
+                        logger.info(f"Batch stored: {stored_count:,} assets so far")
                     
                 except Exception as e:
-                    logger.error(f"💥 FAILED TO PREPARE ASSET {asset_id}: {e}")
+                    logger.error(f"Failed to prepare asset {asset_id}: {e}")
                     continue
             
-            # Insert remaining assets
             if current_batch:
                 batch_stored = self._insert_batch(current_batch)
                 stored_count += batch_stored
             
-            # Store discovery metadata
             self._store_discovery_metadata(stats)
-            
-            # Commit all changes
             self.conn.commit()
             
-            # 🔥 VERIFICATION - Count actual rows in database
             actual_count = self.conn.execute("SELECT COUNT(*) FROM maximum_intensity_assets").fetchone()[0]
             
-            logger.info("🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥")
-            logger.info("🎉 MAXIMUM INTENSITY DATABASE STORAGE COMPLETE! 🎉")
-            logger.info(f"📊 ASSETS PROCESSED: {stored_count:,}")
-            logger.info(f"✅ VERIFIED IN DATABASE: {actual_count:,}")
-            logger.info(f"💾 DATABASE FILE: {self.db_path}")
-            logger.info("🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥")
+            logger.info("Maximum intensity database storage complete")
+            logger.info(f"Assets processed: {stored_count:,}")
+            logger.info(f"Verified in database: {actual_count:,}")
+            logger.info(f"Database file: {self.db_path}")
             
             if actual_count != stored_count:
-                logger.warning(f"⚠️  ROW COUNT MISMATCH: Expected {stored_count}, Found {actual_count}")
+                logger.warning(f"Row count mismatch: Expected {stored_count}, Found {actual_count}")
             
             return actual_count
             
         except Exception as e:
-            logger.error(f"💥 DATABASE STORAGE TRANSACTION FAILED: {e}")
+            logger.error(f"Database storage transaction failed: {e}")
             try:
                 self.conn.rollback()
-                logger.info("🔄 TRANSACTION ROLLED BACK")
+                logger.info("Transaction rolled back")
             except:
                 pass
             raise
     
     def _insert_batch(self, batch: List[Dict[str, Any]]) -> int:
-        """🔥 INSERT BATCH OF ASSETS WITH ERROR HANDLING"""
         try:
-            # Prepare the INSERT statement
             insert_sql = """
                 INSERT INTO maximum_intensity_assets (
                     asset_id, hostname, ip_address, fqdn, mac_address,
@@ -399,7 +277,6 @@ class MaximumIntensityDatabaseManager:
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """
             
-            # Prepare batch data
             batch_data = []
             for asset in batch:
                 row_tuple = (
@@ -416,15 +293,12 @@ class MaximumIntensityDatabaseManager:
                 )
                 batch_data.append(row_tuple)
             
-            # Execute batch insert
             self.conn.executemany(insert_sql, batch_data)
-            
-            logger.debug(f"✅ INSERTED BATCH OF {len(batch)} ASSETS")
+            logger.debug(f"Inserted batch of {len(batch)} assets")
             return len(batch)
             
         except Exception as e:
-            logger.error(f"💥 BATCH INSERT FAILED: {e}")
-            # Try individual inserts as fallback
+            logger.error(f"Batch insert failed: {e}")
             success_count = 0
             for asset in batch:
                 try:
@@ -442,12 +316,11 @@ class MaximumIntensityDatabaseManager:
                     ))
                     success_count += 1
                 except Exception as e2:
-                    logger.error(f"💥 INDIVIDUAL INSERT FAILED FOR {asset['asset_id']}: {e2}")
+                    logger.error(f"Individual insert failed for {asset['asset_id']}: {e2}")
             
             return success_count
     
     def _store_discovery_metadata(self, stats: Dict[str, Any]):
-        """🔥 STORE DISCOVERY METADATA"""
         try:
             discovery_id = f"maximum_intensity_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
             
@@ -470,33 +343,26 @@ class MaximumIntensityDatabaseManager:
                 json.dumps(stats)
             ])
             
-            logger.info(f"✅ DISCOVERY METADATA STORED: {discovery_id}")
+            logger.info(f"Discovery metadata stored: {discovery_id}")
             
         except Exception as e:
-            logger.error(f"💥 METADATA STORAGE FAILED: {e}")
+            logger.error(f"Metadata storage failed: {e}")
     
     def query_assets(self, query: str) -> List[Dict[str, Any]]:
-        """🔥 EXECUTE QUERY AND RETURN RESULTS"""
         try:
             cursor = self.conn.execute(query)
             columns = [desc[0] for desc in cursor.description]
             rows = cursor.fetchall()
-            
             return [dict(zip(columns, row)) for row in rows]
-            
         except Exception as e:
-            logger.error(f"💥 QUERY EXECUTION FAILED: {e}")
+            logger.error(f"Query execution failed: {e}")
             return []
     
     def get_database_stats(self) -> Dict[str, Any]:
-        """🔥 GET COMPREHENSIVE DATABASE STATISTICS"""
         try:
             stats = {}
-            
-            # Asset count
             stats['total_assets'] = self.conn.execute("SELECT COUNT(*) FROM maximum_intensity_assets").fetchone()[0]
             
-            # Coverage statistics
             coverage_stats = self.conn.execute("""
                 SELECT 
                     SUM(CASE WHEN in_chronicle THEN 1 ELSE 0 END) as chronicle_count,
@@ -513,7 +379,6 @@ class MaximumIntensityDatabaseManager:
                 'cmdb': coverage_stats[3]
             }
             
-            # Top regions
             top_regions = self.conn.execute("""
                 SELECT region, COUNT(*) as count 
                 FROM maximum_intensity_assets 
@@ -524,19 +389,16 @@ class MaximumIntensityDatabaseManager:
             """).fetchall()
             
             stats['top_regions'] = [{'region': r[0], 'count': r[1]} for r in top_regions]
-            
             return stats
             
         except Exception as e:
-            logger.error(f"💥 STATS QUERY FAILED: {e}")
+            logger.error(f"Stats query failed: {e}")
             return {'error': str(e)}
     
     def get_live_stats(self) -> Dict[str, Any]:
-        """🔥 GET REAL-TIME DATABASE STATISTICS FOR CONSOLE LOGGING"""
         try:
             total_count = self.conn.execute("SELECT COUNT(*) FROM maximum_intensity_assets").fetchone()[0]
             
-            # Get recent additions (last 10 seconds)
             recent_count = self.conn.execute("""
                 SELECT COUNT(*) FROM maximum_intensity_assets 
                 WHERE created_at >= datetime('now', '-10 seconds')
@@ -552,7 +414,6 @@ class MaximumIntensityDatabaseManager:
             return {'error': str(e), 'total_hosts_in_db': 0}
     
     def show_sample_hosts(self, limit: int = 5) -> List[str]:
-        """🔥 SHOW SAMPLE HOSTS FROM DATABASE FOR VERIFICATION"""
         try:
             results = self.conn.execute(f"""
                 SELECT hostname, ip_address, infrastructure_type, in_chronicle, in_crowdstrike
@@ -583,24 +444,20 @@ class MaximumIntensityDatabaseManager:
             return sample_hosts
             
         except Exception as e:
-            logger.error(f"💥 SAMPLE HOSTS QUERY FAILED: {e}")
+            logger.error(f"Sample hosts query failed: {e}")
             return []
     
     def close(self):
-        """🔥 CLOSE DATABASE CONNECTION"""
         if self.conn:
             try:
                 self.conn.commit()
                 self.conn.close()
-                logger.info("✅ DATABASE CONNECTION CLOSED")
+                logger.info("Database connection closed")
             except Exception as e:
-                logger.error(f"💥 DATABASE CLOSE FAILED: {e}")
+                logger.error(f"Database close failed: {e}")
 
-# Legacy compatibility
 class QuantumEnhancedDatabaseManager(MaximumIntensityDatabaseManager):
     def store_comprehensive_discovery(self, quantum_discovery: QuantumDiscovery) -> int:
-        """Legacy compatibility method"""
-        # Convert HyperAssets to dictionary format
         assets_dict = {}
         for asset_id, hyper_asset in quantum_discovery.hyper_assets.items():
             assets_dict[asset_id] = {
@@ -629,7 +486,6 @@ class QuantumEnhancedDatabaseManager(MaximumIntensityDatabaseManager):
         stats = quantum_discovery.intelligence_metrics or {}
         return self.store_maximum_intensity_discovery(assets_dict, stats)
 
-# Aliases for compatibility
 DatabaseManager = MaximumIntensityDatabaseManager
 EnhancedDatabaseManager = MaximumIntensityDatabaseManager
 ContentDatabase = MaximumIntensityDatabaseManager
