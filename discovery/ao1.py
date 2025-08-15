@@ -137,14 +137,12 @@ class SmartKeywordProcessor:
     def __init__(self):
         self.entity_resolver = HostEntityResolver()
         
-        self.primary_keywords = {
-            'host': ['host'],
-            'hostname': ['hostname'],
-            'fqdn': ['fqdn'],
-            'computer_name': ['computer_name', 'computername']
-        }
+        self.host_identifier = 'host'
         
         self.secondary_keywords = {
+            'hostname': ['hostname'],
+            'fqdn': ['fqdn'],
+            'computer_name': ['computer_name', 'computername'],
             'ip_address': ['ip'],
             'mac_address': ['mac'],
             'asset_id': ['asset_id', 'assetid'],
@@ -200,6 +198,12 @@ class SmartKeywordProcessor:
         
         return bool(re.search(pattern, column_lower))
     
+    def _has_host_column(self, columns: List[str]) -> bool:
+        for column in columns:
+            if self._contains_exact_word(column, self.host_identifier):
+                return True
+        return False
+    
     def find_keyword_columns(self, columns: List[str]) -> Dict[str, List[str]]:
         keyword_columns = {}
         
@@ -208,22 +212,20 @@ class SmartKeywordProcessor:
         if not has_host_column:
             self.stats['non_host_tables_skipped'] += 1
             self.stats['columns_processed'] += len(columns)
+            logger.debug(f"⏭️  SKIPPING TABLE - No 'host' columns found")
             return keyword_columns
         
+        logger.info(f"🎯 HOST TABLE DETECTED - Contains 'host' column")
         self.stats['host_tables_found'] += 1
         
-        for keyword, patterns in self.primary_keywords.items():
-            matching_columns = []
-            
-            for column in columns:
-                for pattern in patterns:
-                    if self._contains_exact_word(column, pattern):
-                        matching_columns.append(column)
-                        break
-            
-            if matching_columns:
-                keyword_columns[keyword] = matching_columns
-                self.stats['keywords_found'][keyword] = len(matching_columns)
+        host_columns = []
+        for column in columns:
+            if self._contains_exact_word(column, self.host_identifier):
+                host_columns.append(column)
+        
+        if host_columns:
+            keyword_columns['host'] = host_columns
+            self.stats['keywords_found']['host'] = len(host_columns)
         
         if keyword_columns:
             for keyword, patterns in self.secondary_keywords.items():
@@ -241,16 +243,6 @@ class SmartKeywordProcessor:
         
         self.stats['columns_processed'] += len(columns)
         return keyword_columns
-    
-    def _has_host_column(self, columns: List[str]) -> bool:
-        host_indicators = ['host', 'hostname', 'fqdn', 'computer_name', 'computername']
-        
-        for column in columns:
-            for indicator in host_indicators:
-                if self._contains_exact_word(column, indicator):
-                    return True
-        
-        return False
     
     def add_extracted_value(self, value: str, field_type: str, table_path: str, column_name: str):
         source_info = {
@@ -386,9 +378,9 @@ class ComprehensiveDiscoveryOrchestrator:
     async def execute_comprehensive_discovery(self, client_managers: Dict[str, Any]) -> Dict[str, Any]:
         self.orchestration_stats['processing_start_time'] = datetime.now()
         
-        logger.info("🚀 EXACT WORD MATCHING DISCOVERY INITIATED")
-        logger.info("🎯 USING PRECISE KEYWORD DETECTION WITH WORD BOUNDARIES")
-        logger.info("⚡ ENTITY RESOLUTION WITH EXACT MATCHING")
+        logger.info("🚀 HOST-ONLY DISCOVERY INITIATED")
+        logger.info("🎯 ONLY PROCESSING TABLES WITH 'HOST' COLUMNS")
+        logger.info("⚡ ENTITY RESOLUTION WITH HOST-CENTRIC APPROACH")
         
         for project_id, client_manager in client_managers.items():
             logger.info(f"🎯 PROJECT: {project_id}")
@@ -406,7 +398,7 @@ class ComprehensiveDiscoveryOrchestrator:
         
         processing_time = (datetime.now() - self.orchestration_stats['processing_start_time']).total_seconds()
         
-        logger.info("🎉 EXACT WORD MATCHING DISCOVERY COMPLETE")
+        logger.info("🎉 HOST-ONLY DISCOVERY COMPLETE")
         logger.info(f"📊 UNIQUE HOSTS DISCOVERED: {len(resolved_entities):,}")
         logger.info(f"📋 HOST TABLES PROCESSED: {self.processor.stats['host_tables_found']:,}")
         logger.info(f"📋 NON-HOST TABLES SKIPPED: {self.processor.stats['non_host_tables_skipped']:,}")
@@ -420,7 +412,7 @@ class ComprehensiveDiscoveryOrchestrator:
                 'non_host_tables_skipped': self.processor.stats['non_host_tables_skipped'],
                 'entity_clusters_resolved': self.processor.stats['identity_clusters_created'],
                 'processing_time_minutes': processing_time / 60,
-                'exact_word_matching_enabled': True,
+                'host_only_mode': True,
                 'entity_resolution_enabled': True
             },
             'assets': resolved_entities,
