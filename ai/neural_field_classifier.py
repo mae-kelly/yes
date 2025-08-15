@@ -284,7 +284,7 @@ class ContinualFieldLearner:
         
         return EmergencyTokenizer()
     
-    def train_on_dataset(self, training_data: List[Dict[str, Any]], epochs: int = 5, batch_size: int = 32):
+    def train_on_dataset(self, training_data: List[Dict[str, Any]], epochs: int = 5, batch_size: int = 16):
         if not self.tokenizer:
             logger.error("Cannot train without functional tokenizer")
             return
@@ -360,7 +360,7 @@ class ContinualFieldLearner:
                 padding='max_length',
                 max_length=256,
                 return_tensors='pt'
-            )
+            ).to(self.model.device)
             input_ids = encoding['input_ids'].to(self.model.device)
             attention_mask = encoding['attention_mask'].to(self.model.device)
         except Exception as e:
@@ -454,7 +454,7 @@ class ContinualFieldLearner:
     def continual_learning_update(self, new_data: List[Dict[str, Any]]):
         logger.info(f"Performing continual learning update with {len(new_data)} new samples")
         
-        self.train_on_dataset(new_data, epochs=1, batch_size=16)
+        self.train_on_dataset(new_data, epochs=1, batch_size=8)
         
         if len(self.training_stats['accuracy_history']) > 0:
             recent_accuracy = self.training_stats['accuracy_history'][-1]

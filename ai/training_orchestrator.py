@@ -95,7 +95,7 @@ class IntensiveTrainingOrchestrator:
         self.training_config = {
             'initial_training_epochs': 10,
             'continual_learning_epochs': 2,
-            'batch_size': 32,
+            'batch_size': 16,
             'learning_rate': 2e-5,
             'pattern_update_frequency': 50,
             'model_save_frequency': 100,
@@ -246,47 +246,34 @@ class IntensiveTrainingOrchestrator:
         
         synthetic_data = []
         
-        hostname_examples = [
+        base_examples = [
             (['server01', 'web-prod-001', 'db-cluster-node-1'], 'hostname'),
             (['host123', 'workstation-dev', 'app-server-02'], 'hostname'),
             (['srv001', 'web001', 'db001'], 'hostname'),
-            (['computer-name', 'machine-id', 'device-001'], 'hostname')
-        ]
-        
-        ip_examples = [
+            (['computer-name', 'machine-id', 'device-001'], 'hostname'),
             (['192.168.1.1', '10.0.0.1', '172.16.0.1'], 'ip_address'),
             (['192.168.1.100', '10.1.1.1', '172.17.0.1'], 'ip_address'),
-            (['10.0.0.254', '192.168.0.1', '172.16.1.1'], 'ip_address')
-        ]
-        
-        email_examples = [
+            (['10.0.0.254', '192.168.0.1', '172.16.1.1'], 'ip_address'),
             (['user@example.com', 'admin@company.org', 'test@domain.net'], 'email_address'),
-            (['john.doe@corp.com', 'jane.smith@org.net'], 'email_address')
-        ]
-        
-        id_examples = [
+            (['john.doe@corp.com', 'jane.smith@org.net'], 'email_address'),
             (['12345', '67890', 'abc123'], 'identifier'),
             (['uuid-123-456', 'id-789', 'key-abc'], 'identifier')
         ]
         
-        all_examples = hostname_examples + ip_examples + email_examples + id_examples
-        
-        for samples, field_type in all_examples:
-            for i in range(10):
-                column_variations = [
-                    f'{field_type}', f'{field_type}_name', f'{field_type}_id',
-                    f'src_{field_type}', f'dest_{field_type}', f'primary_{field_type}'
-                ]
-                
-                for column_name in column_variations:
-                    synthetic_data.append({
-                        'column_name': column_name,
-                        'data_samples': samples,
-                        'field_type': field_type,
-                        'context_columns': ['table_id', 'created_at', 'updated_at'],
-                        'confidence': 0.9,
-                        'synthetic': True
-                    })
+        for samples, field_type in base_examples:
+            column_variations = [
+                f'{field_type}', f'{field_type}_name', f'{field_type}_id',
+                f'src_{field_type}', f'dest_{field_type}', f'primary_{field_type}'
+            ]
+            
+            for column_name in column_variations:
+                synthetic_data.append({
+                    'column_name': column_name,
+                    'data_samples': samples,
+                    'field_type': field_type,
+                    'context_columns': ['table_id', 'created_at', 'updated_at'],
+                    'confidence': 0.9
+                })
         
         logger.info(f"Generated {len(synthetic_data)} synthetic training samples")
         return synthetic_data
