@@ -192,6 +192,14 @@ class SmartKeywordProcessor:
             'identity_clusters_created': 0
         }
     
+    def _contains_exact_word(self, column_name: str, keyword: str) -> bool:
+        column_lower = column_name.lower()
+        keyword_lower = keyword.lower()
+        
+        pattern = r'\b' + re.escape(keyword_lower) + r'\b'
+        
+        return bool(re.search(pattern, column_lower))
+    
     def find_keyword_columns(self, columns: List[str]) -> Dict[str, List[str]]:
         keyword_columns = {}
         
@@ -208,9 +216,8 @@ class SmartKeywordProcessor:
             matching_columns = []
             
             for column in columns:
-                column_lower = column.lower()
                 for pattern in patterns:
-                    if pattern in column_lower:
+                    if self._contains_exact_word(column, pattern):
                         matching_columns.append(column)
                         break
             
@@ -223,9 +230,8 @@ class SmartKeywordProcessor:
                 matching_columns = []
                 
                 for column in columns:
-                    column_lower = column.lower()
                     for pattern in patterns:
-                        if pattern in column_lower:
+                        if self._contains_exact_word(column, pattern):
                             matching_columns.append(column)
                             break
                 
@@ -240,9 +246,8 @@ class SmartKeywordProcessor:
         host_indicators = ['host', 'hostname', 'fqdn', 'computer_name', 'computername']
         
         for column in columns:
-            column_lower = column.lower()
             for indicator in host_indicators:
-                if indicator in column_lower:
+                if self._contains_exact_word(column, indicator):
                     return True
         
         return False
@@ -381,9 +386,9 @@ class ComprehensiveDiscoveryOrchestrator:
     async def execute_comprehensive_discovery(self, client_managers: Dict[str, Any]) -> Dict[str, Any]:
         self.orchestration_stats['processing_start_time'] = datetime.now()
         
-        logger.info("🚀 HOST ENTITY RESOLUTION DISCOVERY INITIATED")
-        logger.info("🎯 NORMALIZING HOSTNAMES AND RESOLVING ENTITY CLUSTERS")
-        logger.info("⚡ MERGING DUPLICATE HOST IDENTITIES")
+        logger.info("🚀 EXACT WORD MATCHING DISCOVERY INITIATED")
+        logger.info("🎯 USING PRECISE KEYWORD DETECTION WITH WORD BOUNDARIES")
+        logger.info("⚡ ENTITY RESOLUTION WITH EXACT MATCHING")
         
         for project_id, client_manager in client_managers.items():
             logger.info(f"🎯 PROJECT: {project_id}")
@@ -401,7 +406,7 @@ class ComprehensiveDiscoveryOrchestrator:
         
         processing_time = (datetime.now() - self.orchestration_stats['processing_start_time']).total_seconds()
         
-        logger.info("🎉 ENTITY RESOLUTION DISCOVERY COMPLETE")
+        logger.info("🎉 EXACT WORD MATCHING DISCOVERY COMPLETE")
         logger.info(f"📊 UNIQUE HOSTS DISCOVERED: {len(resolved_entities):,}")
         logger.info(f"📋 HOST TABLES PROCESSED: {self.processor.stats['host_tables_found']:,}")
         logger.info(f"📋 NON-HOST TABLES SKIPPED: {self.processor.stats['non_host_tables_skipped']:,}")
@@ -415,8 +420,8 @@ class ComprehensiveDiscoveryOrchestrator:
                 'non_host_tables_skipped': self.processor.stats['non_host_tables_skipped'],
                 'entity_clusters_resolved': self.processor.stats['identity_clusters_created'],
                 'processing_time_minutes': processing_time / 60,
-                'entity_resolution_enabled': True,
-                'hostname_normalization_enabled': True
+                'exact_word_matching_enabled': True,
+                'entity_resolution_enabled': True
             },
             'assets': resolved_entities,
             'processing_statistics': {
