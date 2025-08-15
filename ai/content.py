@@ -3,6 +3,10 @@ import statistics
 from typing import List, Dict, Tuple, Optional, Any
 from collections import Counter, defaultdict
 import hashlib
+import logging
+from .training_orchestrator import IntensiveTrainingOrchestrator, AdvancedContentAnalyzer
+
+logger = logging.getLogger(__name__)
 
 class QuantumContentAnalyzer:
     def __init__(self):
@@ -34,6 +38,20 @@ class QuantumContentAnalyzer:
         self.pattern_quantum_library = self._build_quantum_pattern_library()
         self.semantic_quantum_cache = {}
         
+        self.training_orchestrator = None
+        self.ml_analyzer = None
+        self._initialize_ml_components()
+        
+    def _initialize_ml_components(self):
+        try:
+            self.training_orchestrator = IntensiveTrainingOrchestrator()
+            self.ml_analyzer = AdvancedContentAnalyzer(self.training_orchestrator)
+            logger.info("ML-enhanced content analysis initialized")
+        except Exception as e:
+            logger.warning(f"ML components initialization failed: {e}")
+            self.training_orchestrator = None
+            self.ml_analyzer = None
+        
     def _build_quantum_pattern_library(self):
         return {
             'hostname': {
@@ -48,6 +66,15 @@ class QuantumContentAnalyzer:
 
     def analyze_column_quantum_intelligently(self, name: str, values: List[str], 
                                            context: Dict = None) -> Optional[Tuple[str, float, Dict[str, Any]]]:
+        
+        if self.ml_analyzer:
+            try:
+                ml_result = self.ml_analyzer.analyze_column_quantum_intelligently(name, values, context)
+                if ml_result and ml_result[1] > 0.7:
+                    return ml_result
+            except Exception as e:
+                logger.debug(f"ML analysis failed, falling back to pattern matching: {e}")
+        
         if self._should_skip_quantum_column(name):
             return None
         
@@ -187,6 +214,28 @@ class QuantumContentAnalyzer:
     
     def analyze_column(self, name: str, values: List[str], context: Dict = None):
         return self.analyze_column_quantum_intelligently(name, values, context)
+    
+    async def start_intensive_training(self):
+        if self.training_orchestrator:
+            logger.info("Starting intensive ML training for content analysis")
+            success = await self.training_orchestrator.perform_intensive_initial_training()
+            if success:
+                self.training_orchestrator.start_continuous_learning()
+                logger.info("Intensive training completed and continuous learning activated")
+            return success
+        return False
+    
+    def provide_training_feedback(self, column_name: str, data_samples: List[str], 
+                                 correct_field_type: str, context_columns: List[str] = None):
+        if self.training_orchestrator:
+            self.training_orchestrator.provide_learning_feedback(
+                column_name, data_samples, correct_field_type, context_columns
+            )
+    
+    def get_ml_statistics(self) -> Dict[str, Any]:
+        if self.training_orchestrator:
+            return self.training_orchestrator.get_training_statistics()
+        return {'ml_enabled': False}
 
 AdvancedContentAnalyzer = QuantumContentAnalyzer
 ContentAnalyzer = QuantumContentAnalyzer
