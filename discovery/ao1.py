@@ -255,7 +255,7 @@ class GuaranteedRealtimeCMDBBuilder:
         # Infrastructure mapping
         elif any(word in column_lower for word in ['infrastructure', 'hosting', 'deployment']):
             return 'infrastructure_type'
-        elif any(word in column_lower for word in ['os', 'operating', 'system']):
+        elif any(word in column_lower for word in ['os', 'operating_system', 'operatingsystem', 'platform']):
             return 'operating_system'
         elif any(word in column_lower for word in ['region', 'location', 'geo']):
             return 'region'
@@ -265,7 +265,7 @@ class GuaranteedRealtimeCMDBBuilder:
             return 'business_unit'
         elif any(word in column_lower for word in ['environment', 'env']):
             return 'environment'
-        elif any(word in column_lower for word in ['application', 'app']):
+        elif any(word in column_lower for word in ['application_name', 'app_name', 'application_class', 'app_class']):
             return 'application'
         elif any(word in column_lower for word in ['owner', 'responsible']):
             return 'owner'
