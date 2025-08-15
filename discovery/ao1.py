@@ -9,134 +9,106 @@ from collections import defaultdict
 
 logger = logging.getLogger(__name__)
 
-class HostEntityResolver:
+class RealtimeCMDBBuilder:
     def __init__(self):
-        self.identity_hierarchy = [
-            'hostname', 'fqdn', 'computer_name', 'host', 
-            'asset_id', 'serial_number', 
-            'ip_address', 'mac_address'
-        ]
-        
-        self.entity_clusters = defaultdict(set)
-        self.canonical_identities = {}
-        self.identity_mappings = defaultdict(set)
-        
-    def normalize_hostname(self, value: str) -> str:
-        if not value or not isinstance(value, str):
+        self.cmdb = {}
+        self.stats = {
+            'hosts_discovered': 0,
+            'attributes_added': 0,
+            'tables_processed': 0,
+            'rows_processed': 0
+        }
+    
+    def normalize_hostname(self, hostname: str) -> str:
+        if not hostname:
             return ""
         
-        value = value.strip().upper()
+        hostname = str(hostname).strip().upper()
         
-        if '.' in value:
-            hostname = value.split('.')[0]
-        else:
-            hostname = value
+        if '.' in hostname:
+            hostname = hostname.split('.')[0]
         
         hostname = re.sub(r'[^A-Z0-9\-]', '', hostname)
         
-        if len(hostname) < 1 or len(hostname) > 63:
-            return ""
-            
         return hostname
     
-    def normalize_ip_address(self, value: str) -> str:
-        if not value:
-            return ""
+    def add_host_to_cmdb(self, hostname: str, attribute_type: str, attribute_value: str, source_table: str):
+        normalized_hostname = self.normalize_hostname(hostname)
         
-        ip_pattern = r'^(\d{1,3}\.){3}\d{1,3}$'
-        if re.match(ip_pattern, str(value).strip()):
-            return str(value).strip()
-        return ""
-    
-    def create_canonical_identity(self, value: str, field_type: str) -> Optional[str]:
-        if field_type in ['hostname', 'fqdn', 'computer_name', 'host']:
-            normalized = self.normalize_hostname(value)
-            if normalized:
-                return f"HOST_{normalized}"
+        if not normalized_hostname:
+            return
         
-        elif field_type == 'asset_id':
-            clean_value = str(value).strip().upper()
-            if clean_value and len(clean_value) > 2:
-                return f"ASSET_{clean_value}"
-        
-        elif field_type == 'serial_number':
-            clean_value = str(value).strip().upper()
-            if clean_value and len(clean_value) > 3:
-                return f"SERIAL_{clean_value}"
-        
-        elif field_type == 'ip_address':
-            normalized = self.normalize_ip_address(value)
-            if normalized:
-                return f"IP_{normalized}"
-        
-        elif field_type == 'mac_address':
-            mac = re.sub(r'[^0-9A-Fa-f]', '', str(value).upper())
-            if len(mac) == 12:
-                normalized = ':'.join([mac[i:i+2] for i in range(0, 12, 2)])
-                return f"MAC_{normalized}"
-        
-        return None
-    
-    def add_identity(self, value: str, field_type: str, source_info: Dict[str, Any]):
-        canonical = self.create_canonical_identity(value, field_type)
-        if not canonical:
-            return None
-        
-        raw_value = str(value).strip()
-        
-        self.identity_mappings[canonical].add((raw_value, field_type, source_info['table_path']))
-        
-        if canonical.startswith('HOST_'):
-            hostname_key = canonical.split('_', 1)[1]
-            self.entity_clusters[hostname_key].add(canonical)
-            
-            if hostname_key not in self.canonical_identities:
-                self.canonical_identities[hostname_key] = canonical
-        
-        return canonical
-    
-    def resolve_entity_clusters(self) -> Dict[str, Dict[str, Any]]:
-        resolved_entities = {}
-        
-        for hostname_key, identity_set in self.entity_clusters.items():
-            primary_identity = self.canonical_identities.get(hostname_key, list(identity_set)[0])
-            
-            merged_entity = {
-                'primary_identity': primary_identity,
-                'hostname_key': hostname_key,
-                'all_identities': list(identity_set),
+        if normalized_hostname not in self.cmdb:
+            self.cmdb[normalized_hostname] = {
+                'hostname': normalized_hostname,
+                'original_hostnames': set(),
                 'attributes': defaultdict(set),
                 'source_tables': set(),
                 'source_columns': set(),
-                'coverage_flags': {},
-                'identity_sources': defaultdict(list)
+                'coverage_flags': set(),
+                'first_seen': datetime.now().isoformat(),
+                'last_updated': datetime.now().isoformat()
             }
-            
-            for identity in identity_set:
-                for raw_value, field_type, table_path in self.identity_mappings[identity]:
-                    merged_entity['attributes'][field_type].add(raw_value)
-                    merged_entity['source_tables'].add(table_path)
-                    merged_entity['source_columns'].add(f"{table_path}:{field_type}")
-                    merged_entity['identity_sources'][identity].append({
-                        'value': raw_value,
-                        'field_type': field_type,
-                        'table': table_path
-                    })
-            
-            for attr_type, value_set in merged_entity['attributes'].items():
-                merged_entity['attributes'][attr_type] = list(value_set)
-            
-            merged_entity['source_tables'] = list(merged_entity['source_tables'])
-            merged_entity['source_columns'] = list(merged_entity['source_columns'])
-            
-            resolved_entities[hostname_key] = merged_entity
+            self.stats['hosts_discovered'] += 1
+            logger.info(f"🆕 NEW HOST DISCOVERED: {normalized_hostname}")
         
-        return resolved_entities
+        host = self.cmdb[normalized_hostname]
+        
+        host['original_hostnames'].add(hostname)
+        
+        if attribute_value and str(attribute_value).strip():
+            clean_value = str(attribute_value).strip()
+            if clean_value not in host['attributes'][attribute_type]:
+                host['attributes'][attribute_type].add(clean_value)
+                self.stats['attributes_added'] += 1
+                logger.debug(f"   ➕ Added {attribute_type}: {clean_value}")
+        
+        host['source_tables'].add(source_table)
+        host['source_columns'].add(f"{source_table}:{attribute_type}")
+        
+        if 'splunk' in source_table.lower():
+            host['coverage_flags'].add('splunk_coverage')
+        elif 'chronicle' in source_table.lower():
+            host['coverage_flags'].add('chronicle_coverage')
+        elif 'crowdstrike' in source_table.lower() or 'edr' in source_table.lower():
+            host['coverage_flags'].add('edr_coverage')
+        elif 'cmdb' in source_table.lower() or 'endpoint' in source_table.lower():
+            host['coverage_flags'].add('cmdb_coverage')
+        
+        host['last_updated'] = datetime.now().isoformat()
+    
+    def get_current_cmdb_snapshot(self) -> Dict[str, Any]:
+        serializable_cmdb = {}
+        
+        for hostname, host_data in self.cmdb.items():
+            serializable_cmdb[hostname] = {
+                'hostname': host_data['hostname'],
+                'original_hostnames': list(host_data['original_hostnames']),
+                'attributes': {k: list(v) for k, v in host_data['attributes'].items()},
+                'source_tables': list(host_data['source_tables']),
+                'source_columns': list(host_data['source_columns']),
+                'coverage_flags': list(host_data['coverage_flags']),
+                'first_seen': host_data['first_seen'],
+                'last_updated': host_data['last_updated'],
+                'total_sources': len(host_data['source_tables']),
+                'total_attributes': sum(len(v) for v in host_data['attributes'].values())
+            }
+        
+        return serializable_cmdb
+    
+    def get_stats(self) -> Dict[str, Any]:
+        return {
+            'total_hosts': len(self.cmdb),
+            'hosts_discovered': self.stats['hosts_discovered'],
+            'attributes_added': self.stats['attributes_added'],
+            'tables_processed': self.stats['tables_processed'],
+            'rows_processed': self.stats['rows_processed'],
+            'avg_attributes_per_host': self.stats['attributes_added'] / max(len(self.cmdb), 1)
+        }
 
 class SmartKeywordProcessor:
-    def __init__(self):
-        self.entity_resolver = HostEntityResolver()
-        
+    def __init__(self, cmdb_builder: RealtimeCMDBBuilder):
+        self.cmdb_builder = cmdb_builder
         self.host_identifier = 'host'
         
         self.secondary_keywords = {
@@ -185,9 +157,7 @@ class SmartKeywordProcessor:
             'values_extracted': 0,
             'tables_scanned': 0,
             'host_tables_found': 0,
-            'non_host_tables_skipped': 0,
-            'entities_resolved': 0,
-            'identity_clusters_created': 0
+            'non_host_tables_skipped': 0
         }
     
     def _contains_exact_word(self, column_name: str, keyword: str) -> bool:
@@ -243,23 +213,8 @@ class SmartKeywordProcessor:
         
         self.stats['columns_processed'] += len(columns)
         return keyword_columns
-    
-    def add_extracted_value(self, value: str, field_type: str, table_path: str, column_name: str):
-        source_info = {
-            'table_path': table_path,
-            'column_name': column_name
-        }
-        
-        canonical_identity = self.entity_resolver.add_identity(value, field_type, source_info)
-        return canonical_identity
-    
-    def resolve_all_entities(self) -> Dict[str, Dict[str, Any]]:
-        resolved = self.entity_resolver.resolve_entity_clusters()
-        self.stats['entities_resolved'] = len(resolved)
-        self.stats['identity_clusters_created'] = len(self.entity_resolver.entity_clusters)
-        return resolved
 
-class AdvancedAssetExtractor:
+class RealtimeAssetExtractor:
     def __init__(self, keyword_processor: SmartKeywordProcessor):
         self.processor = keyword_processor
         self.extraction_stats = {
@@ -269,102 +224,107 @@ class AdvancedAssetExtractor:
             'extraction_errors': 0
         }
     
-    async def extract_all_column_values(self, client, table_path: str, column_name: str, keyword_type: str) -> int:
-        total_extracted = 0
+    async def extract_and_build_cmdb_realtime(self, client, table_path: str, keyword_columns: Dict[str, List[str]]) -> int:
+        total_rows_processed = 0
         
-        count_query = f"""
-        SELECT COUNT(*) as total 
-        FROM `{table_path}` 
-        WHERE `{column_name}` IS NOT NULL 
-        AND SAFE_CAST(`{column_name}` AS STRING) IS NOT NULL
-        AND SAFE_CAST(`{column_name}` AS STRING) != ''
-        AND SAFE_CAST(`{column_name}` AS STRING) NOT IN ('NULL', 'NONE', 'UNKNOWN', 'N/A', 'NIL', '0')
-        """
-        count_job = client.query(count_query)
-        count_result = list(count_job.result())
-        total_values = count_result[0]['total'] if count_result else 0
-        
-        if total_values == 0:
-            return 0
-        
-        logger.info(f"🔥 EXTRACTING {total_values:,} VALUES FROM {column_name} ({keyword_type})")
-        
-        batch_size = 2000000
-        offset = 0
-        
-        while True:
-            extraction_query = f"""
-            SELECT SAFE_CAST(`{column_name}` AS STRING) as value
-            FROM `{table_path}`
-            WHERE `{column_name}` IS NOT NULL
-            AND SAFE_CAST(`{column_name}` AS STRING) IS NOT NULL
-            AND SAFE_CAST(`{column_name}` AS STRING) != ''
-            AND SAFE_CAST(`{column_name}` AS STRING) NOT IN ('NULL', 'NONE', 'UNKNOWN', 'N/A', 'NIL', '0')
-            LIMIT {batch_size} OFFSET {offset}
-            """
+        try:
+            table = client.get_table(table_path)
             
-            try:
-                job = client.query(extraction_query)
-                results = list(job.result())
-                
-                if not results:
-                    break
-                
-                batch_extracted = self._process_value_batch_for_entity_resolution(results, table_path, column_name, keyword_type)
-                
-                total_extracted += batch_extracted
-                offset += batch_size
-                
-                logger.info(f"📊 EXTRACTED {total_extracted:,}/{total_values:,} values")
-                
-                if len(results) < batch_size:
-                    break
-                    
-            except Exception as e:
-                logger.error(f"❌ EXTRACTION FAILED: {e}")
-                self.extraction_stats['extraction_errors'] += 1
+            if not table.schema or table.num_rows == 0:
+                return 0
+            
+            logger.info(f"🔥 REAL-TIME PROCESSING: {table_path} ({table.num_rows:,} rows)")
+            
+            all_columns = [field.name for field in table.schema]
+            
+            host_column = None
+            for col in keyword_columns.get('host', []):
+                host_column = col
                 break
+            
+            if not host_column:
+                logger.warning(f"No host column found in {table_path}")
+                return 0
+            
+            batch_size = 100000
+            offset = 0
+            
+            while True:
+                query = f"""
+                SELECT *
+                FROM `{table_path}`
+                WHERE `{host_column}` IS NOT NULL
+                AND SAFE_CAST(`{host_column}` AS STRING) != ''
+                AND SAFE_CAST(`{host_column}` AS STRING) NOT IN ('NULL', 'NONE', 'UNKNOWN', 'N/A', 'NIL')
+                LIMIT {batch_size} OFFSET {offset}
+                """
+                
+                try:
+                    job = client.query(query)
+                    results = list(job.result())
+                    
+                    if not results:
+                        break
+                    
+                    batch_rows = self._process_rows_to_cmdb_realtime(results, table_path, all_columns, keyword_columns, host_column)
+                    
+                    total_rows_processed += batch_rows
+                    offset += batch_size
+                    
+                    logger.info(f"📊 PROCESSED {total_rows_processed:,} ROWS - CMDB NOW HAS {len(self.processor.cmdb_builder.cmdb):,} HOSTS")
+                    
+                    if len(results) < batch_size:
+                        break
+                        
+                except Exception as e:
+                    logger.error(f"❌ BATCH PROCESSING FAILED: {e}")
+                    self.extraction_stats['extraction_errors'] += 1
+                    break
+            
+            self.processor.cmdb_builder.stats['tables_processed'] += 1
+            
+        except Exception as e:
+            logger.error(f"❌ TABLE PROCESSING FAILED: {e}")
+            self.extraction_stats['extraction_errors'] += 1
         
-        self.extraction_stats['total_values'] += total_extracted
-        
-        return total_extracted
+        return total_rows_processed
     
-    def _process_value_batch_for_entity_resolution(self, results: List, table_path: str, column_name: str, keyword_type: str) -> int:
-        extracted_count = 0
+    def _process_rows_to_cmdb_realtime(self, results: List, table_path: str, all_columns: List[str], keyword_columns: Dict[str, List[str]], host_column: str) -> int:
+        rows_processed = 0
+        
+        host_column_idx = all_columns.index(host_column)
         
         for row in results:
-            value = None
-            
-            if hasattr(row, 'value'):
-                value = row.value
-            elif isinstance(row, dict):
-                value = row.get('value')
-            elif isinstance(row, (list, tuple)) and len(row) > 0:
-                value = row[0]
-            
-            if value is not None:
-                clean_value = str(value).strip()
+            if host_column_idx < len(row) and row[host_column_idx]:
+                hostname = str(row[host_column_idx]).strip()
                 
-                if self._is_valid_asset_value(clean_value):
-                    self.processor.add_extracted_value(clean_value, keyword_type, table_path, column_name)
-                    extracted_count += 1
+                if not hostname or hostname.upper() in ['NULL', 'NONE', 'UNKNOWN', 'N/A', 'NIL']:
+                    continue
+                
+                for keyword_type, columns in keyword_columns.items():
+                    for column_name in columns:
+                        try:
+                            column_idx = all_columns.index(column_name)
+                            if column_idx < len(row) and row[column_idx] is not None:
+                                attribute_value = str(row[column_idx]).strip()
+                                if attribute_value:
+                                    self.processor.cmdb_builder.add_host_to_cmdb(
+                                        hostname, keyword_type, attribute_value, table_path
+                                    )
+                        except (ValueError, IndexError):
+                            continue
+                
+                rows_processed += 1
+                self.processor.cmdb_builder.stats['rows_processed'] += 1
         
-        return extracted_count
-    
-    def _is_valid_asset_value(self, value: str) -> bool:
-        if not value or len(value) < 1 or len(value) > 1000:
-            return False
-        
-        if value.upper() in {'NULL', 'NONE', '', '-', '0', 'N/A'}:
-            return False
-        
-        return True
+        return rows_processed
 
 class ComprehensiveDiscoveryOrchestrator:
     def __init__(self, config: Dict[str, Any]):
         self.config = config
-        self.processor = SmartKeywordProcessor()
-        self.extractor = AdvancedAssetExtractor(self.processor)
+        self.cmdb_builder = RealtimeCMDBBuilder()
+        self.processor = SmartKeywordProcessor(self.cmdb_builder)
+        self.extractor = RealtimeAssetExtractor(self.processor)
         
         self.orchestration_stats = {
             'projects_processed': 0,
@@ -378,9 +338,9 @@ class ComprehensiveDiscoveryOrchestrator:
     async def execute_comprehensive_discovery(self, client_managers: Dict[str, Any]) -> Dict[str, Any]:
         self.orchestration_stats['processing_start_time'] = datetime.now()
         
-        logger.info("🚀 HOST-ONLY DISCOVERY INITIATED")
-        logger.info("🎯 ONLY PROCESSING TABLES WITH 'HOST' COLUMNS")
-        logger.info("⚡ ENTITY RESOLUTION WITH HOST-CENTRIC APPROACH")
+        logger.info("🚀 REAL-TIME CMDB BUILDING INITIATED")
+        logger.info("🎯 BUILDING CMDB ROW-BY-ROW AS WE PROCESS EACH TABLE")
+        logger.info("⚡ LIVE HOST DISCOVERY AND ATTRIBUTE MAPPING")
         
         for project_id, client_manager in client_managers.items():
             logger.info(f"🎯 PROJECT: {project_id}")
@@ -393,29 +353,32 @@ class ComprehensiveDiscoveryOrchestrator:
                 logger.error(f"❌ PROJECT {project_id} FAILED: {e}")
                 self.orchestration_stats['processing_errors'] += 1
         
-        logger.info("🔗 RESOLVING ENTITY CLUSTERS...")
-        resolved_entities = self.processor.resolve_all_entities()
+        final_cmdb = self.cmdb_builder.get_current_cmdb_snapshot()
+        cmdb_stats = self.cmdb_builder.get_stats()
         
         processing_time = (datetime.now() - self.orchestration_stats['processing_start_time']).total_seconds()
         
-        logger.info("🎉 HOST-ONLY DISCOVERY COMPLETE")
-        logger.info(f"📊 UNIQUE HOSTS DISCOVERED: {len(resolved_entities):,}")
+        logger.info("🎉 REAL-TIME CMDB BUILDING COMPLETE")
+        logger.info(f"📊 FINAL CMDB SIZE: {len(final_cmdb):,} UNIQUE HOSTS")
         logger.info(f"📋 HOST TABLES PROCESSED: {self.processor.stats['host_tables_found']:,}")
         logger.info(f"📋 NON-HOST TABLES SKIPPED: {self.processor.stats['non_host_tables_skipped']:,}")
-        logger.info(f"🔗 ENTITY CLUSTERS RESOLVED: {self.processor.stats['identity_clusters_created']:,}")
+        logger.info(f"📊 TOTAL ATTRIBUTES ADDED: {cmdb_stats['attributes_added']:,}")
+        logger.info(f"📊 TOTAL ROWS PROCESSED: {cmdb_stats['rows_processed']:,}")
         logger.info(f"⏱️ PROCESSING TIME: {processing_time/60:.1f} minutes")
         
         return {
             'discovery_stats': {
-                'total_assets': len(resolved_entities),
+                'total_assets': len(final_cmdb),
                 'host_tables_processed': self.processor.stats['host_tables_found'],
                 'non_host_tables_skipped': self.processor.stats['non_host_tables_skipped'],
-                'entity_clusters_resolved': self.processor.stats['identity_clusters_created'],
+                'total_attributes_added': cmdb_stats['attributes_added'],
+                'total_rows_processed': cmdb_stats['rows_processed'],
                 'processing_time_minutes': processing_time / 60,
-                'host_only_mode': True,
-                'entity_resolution_enabled': True
+                'realtime_cmdb_building': True,
+                'row_by_row_processing': True
             },
-            'assets': resolved_entities,
+            'assets': final_cmdb,
+            'cmdb_stats': cmdb_stats,
             'processing_statistics': {
                 'orchestration': self.orchestration_stats,
                 'keyword_processing': self.processor.stats,
@@ -475,21 +438,14 @@ class ComprehensiveDiscoveryOrchestrator:
             if not keyword_columns:
                 return
             
-            logger.info(f"🔥 {table_path}: Found {sum(len(cols) for cols in keyword_columns.values())} keyword columns")
+            logger.info(f"🔥 {table_path}: Found {sum(len(cols) for cols in keyword_columns.values())} keyword columns - PROCESSING ROWS NOW")
             
-            for keyword_type, matching_columns in keyword_columns.items():
-                for column_name in matching_columns:
-                    try:
-                        extracted_count = await self.extractor.extract_all_column_values(
-                            client, table_path, column_name, keyword_type
-                        )
-                        
-                        if extracted_count > 0:
-                            logger.info(f"✅ {column_name}: {extracted_count:,} values added to entity resolution")
-                        
-                    except Exception as e:
-                        logger.error(f"❌ COLUMN {column_name} EXTRACTION FAILED: {e}")
-                        self.orchestration_stats['processing_errors'] += 1
+            rows_processed = await self.extractor.extract_and_build_cmdb_realtime(
+                client, table_path, keyword_columns
+            )
+            
+            if rows_processed > 0:
+                logger.info(f"✅ {table_path}: Processed {rows_processed:,} rows - CMDB updated in real-time")
             
         except Exception as e:
             logger.error(f"❌ TABLE SCHEMA ACCESS FAILED: {e}")
