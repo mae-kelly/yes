@@ -5,15 +5,143 @@ import logging
 import re
 from typing import Dict, List, Any, Optional, Tuple
 from datetime import datetime
+from collections import defaultdict
 
 logger = logging.getLogger(__name__)
 
+class HostEntityResolver:
+    def __init__(self):
+        self.identity_hierarchy = [
+            'hostname', 'fqdn', 'computer_name', 'host', 
+            'asset_id', 'serial_number', 
+            'ip_address', 'mac_address'
+        ]
+        
+        self.entity_clusters = defaultdict(set)
+        self.canonical_identities = {}
+        self.identity_mappings = defaultdict(set)
+        
+    def normalize_hostname(self, value: str) -> str:
+        if not value or not isinstance(value, str):
+            return ""
+        
+        value = value.strip().upper()
+        
+        if '.' in value:
+            hostname = value.split('.')[0]
+        else:
+            hostname = value
+        
+        hostname = re.sub(r'[^A-Z0-9\-]', '', hostname)
+        
+        if len(hostname) < 1 or len(hostname) > 63:
+            return ""
+            
+        return hostname
+    
+    def normalize_ip_address(self, value: str) -> str:
+        if not value:
+            return ""
+        
+        ip_pattern = r'^(\d{1,3}\.){3}\d{1,3}$'
+        if re.match(ip_pattern, str(value).strip()):
+            return str(value).strip()
+        return ""
+    
+    def create_canonical_identity(self, value: str, field_type: str) -> Optional[str]:
+        if field_type in ['hostname', 'fqdn', 'computer_name', 'host']:
+            normalized = self.normalize_hostname(value)
+            if normalized:
+                return f"HOST_{normalized}"
+        
+        elif field_type == 'asset_id':
+            clean_value = str(value).strip().upper()
+            if clean_value and len(clean_value) > 2:
+                return f"ASSET_{clean_value}"
+        
+        elif field_type == 'serial_number':
+            clean_value = str(value).strip().upper()
+            if clean_value and len(clean_value) > 3:
+                return f"SERIAL_{clean_value}"
+        
+        elif field_type == 'ip_address':
+            normalized = self.normalize_ip_address(value)
+            if normalized:
+                return f"IP_{normalized}"
+        
+        elif field_type == 'mac_address':
+            mac = re.sub(r'[^0-9A-Fa-f]', '', str(value).upper())
+            if len(mac) == 12:
+                normalized = ':'.join([mac[i:i+2] for i in range(0, 12, 2)])
+                return f"MAC_{normalized}"
+        
+        return None
+    
+    def add_identity(self, value: str, field_type: str, source_info: Dict[str, Any]):
+        canonical = self.create_canonical_identity(value, field_type)
+        if not canonical:
+            return None
+        
+        raw_value = str(value).strip()
+        
+        self.identity_mappings[canonical].add((raw_value, field_type, source_info['table_path']))
+        
+        if canonical.startswith('HOST_'):
+            hostname_key = canonical.split('_', 1)[1]
+            self.entity_clusters[hostname_key].add(canonical)
+            
+            if hostname_key not in self.canonical_identities:
+                self.canonical_identities[hostname_key] = canonical
+        
+        return canonical
+    
+    def resolve_entity_clusters(self) -> Dict[str, Dict[str, Any]]:
+        resolved_entities = {}
+        
+        for hostname_key, identity_set in self.entity_clusters.items():
+            primary_identity = self.canonical_identities.get(hostname_key, list(identity_set)[0])
+            
+            merged_entity = {
+                'primary_identity': primary_identity,
+                'hostname_key': hostname_key,
+                'all_identities': list(identity_set),
+                'attributes': defaultdict(set),
+                'source_tables': set(),
+                'source_columns': set(),
+                'coverage_flags': {},
+                'identity_sources': defaultdict(list)
+            }
+            
+            for identity in identity_set:
+                for raw_value, field_type, table_path in self.identity_mappings[identity]:
+                    merged_entity['attributes'][field_type].add(raw_value)
+                    merged_entity['source_tables'].add(table_path)
+                    merged_entity['source_columns'].add(f"{table_path}:{field_type}")
+                    merged_entity['identity_sources'][identity].append({
+                        'value': raw_value,
+                        'field_type': field_type,
+                        'table': table_path
+                    })
+            
+            for attr_type, value_set in merged_entity['attributes'].items():
+                merged_entity['attributes'][attr_type] = list(value_set)
+            
+            merged_entity['source_tables'] = list(merged_entity['source_tables'])
+            merged_entity['source_columns'] = list(merged_entity['source_columns'])
+            
+            resolved_entities[hostname_key] = merged_entity
+        
+        return resolved_entities
+
 class SmartKeywordProcessor:
     def __init__(self):
+        self.entity_resolver = HostEntityResolver()
+        
         self.primary_keywords = {
             'host': ['host'],
             'hostname': ['hostname'],
-            'fqdn': ['fqdn']
+            'fqdn': ['fqdn'],
+            'computer_name': ['computer_name', 'computername']
         }
         
         self.secondary_keywords = {
@@ -59,7 +187,9 @@ class SmartKeywordProcessor:
             'values_extracted': 0,
             'tables_scanned': 0,
             'host_tables_found': 0,
-            'non_host_tables_skipped': 0
+            'non_host_tables_skipped': 0,
+            'entities_resolved': 0,
+            'identity_clusters_created': 0
         }
     
     def find_keyword_columns(self, columns: List[str]) -> Dict[str, List[str]]:
@@ -107,7 +237,7 @@ class SmartKeywordProcessor:
         return keyword_columns
     
     def _has_host_column(self, columns: List[str]) -> bool:
-        host_indicators = ['host', 'hostname', 'fqdn']
+        host_indicators = ['host', 'hostname', 'fqdn', 'computer_name', 'computername']
         
         for column in columns:
             column_lower = column.lower()
@@ -116,6 +246,21 @@ class SmartKeywordProcessor:
                     return True
         
         return False
+    
+    def add_extracted_value(self, value: str, field_type: str, table_path: str, column_name: str):
+        source_info = {
+            'table_path': table_path,
+            'column_name': column_name
+        }
+        
+        canonical_identity = self.entity_resolver.add_identity(value, field_type, source_info)
+        return canonical_identity
+    
+    def resolve_all_entities(self) -> Dict[str, Dict[str, Any]]:
+        resolved = self.entity_resolver.resolve_entity_clusters()
+        self.stats['entities_resolved'] = len(resolved)
+        self.stats['identity_clusters_created'] = len(self.entity_resolver.entity_clusters)
+        return resolved
 
 class AdvancedAssetExtractor:
     def __init__(self, keyword_processor: SmartKeywordProcessor):
@@ -127,8 +272,7 @@ class AdvancedAssetExtractor:
             'extraction_errors': 0
         }
     
-    async def extract_all_column_values(self, client, table_path: str, column_name: str, keyword_type: str) -> Dict[str, Any]:
-        assets = {}
+    async def extract_all_column_values(self, client, table_path: str, column_name: str, keyword_type: str) -> int:
         total_extracted = 0
         
         count_query = f"""
@@ -144,7 +288,7 @@ class AdvancedAssetExtractor:
         total_values = count_result[0]['total'] if count_result else 0
         
         if total_values == 0:
-            return assets
+            return 0
         
         logger.info(f"🔥 EXTRACTING {total_values:,} VALUES FROM {column_name} ({keyword_type})")
         
@@ -169,15 +313,9 @@ class AdvancedAssetExtractor:
                 if not results:
                     break
                 
-                batch_assets = self._process_value_batch(results, table_path, column_name, keyword_type)
+                batch_extracted = self._process_value_batch_for_entity_resolution(results, table_path, column_name, keyword_type)
                 
-                for asset_id, asset_data in batch_assets.items():
-                    if asset_id in assets:
-                        assets[asset_id] = self._combine_asset_data(assets[asset_id], asset_data)
-                    else:
-                        assets[asset_id] = asset_data
-                
-                total_extracted += len(results)
+                total_extracted += batch_extracted
                 offset += batch_size
                 
                 logger.info(f"📊 EXTRACTED {total_extracted:,}/{total_values:,} values")
@@ -191,12 +329,11 @@ class AdvancedAssetExtractor:
                 break
         
         self.extraction_stats['total_values'] += total_extracted
-        self.extraction_stats['unique_assets'] += len(assets)
         
-        return assets
+        return total_extracted
     
-    def _process_value_batch(self, results: List, table_path: str, column_name: str, keyword_type: str) -> Dict[str, Any]:
-        batch_assets = {}
+    def _process_value_batch_for_entity_resolution(self, results: List, table_path: str, column_name: str, keyword_type: str) -> int:
+        extracted_count = 0
         
         for row in results:
             value = None
@@ -212,66 +349,10 @@ class AdvancedAssetExtractor:
                 clean_value = str(value).strip()
                 
                 if self._is_valid_asset_value(clean_value):
-                    asset_id = clean_value.upper()
-                    
-                    if asset_id not in batch_assets:
-                        batch_assets[asset_id] = self._create_asset_record(asset_id, keyword_type)
-                    
-                    asset = batch_assets[asset_id]
-                    asset['occurrence_count'] += 1
-                    asset['source_tables'].add(table_path)
-                    asset['source_columns'].add(f"{table_path}:{column_name}")
-                    
-                    self._update_asset_attributes(asset, keyword_type, clean_value, table_path)
+                    self.processor.add_extracted_value(clean_value, keyword_type, table_path, column_name)
+                    extracted_count += 1
         
-        for asset in batch_assets.values():
-            asset['source_tables'] = list(asset['source_tables'])
-            asset['source_columns'] = list(asset['source_columns'])
-        
-        return batch_assets
-    
-    def _create_asset_record(self, asset_id: str, keyword_type: str) -> Dict[str, Any]:
-        return {
-            'asset_id': asset_id,
-            'primary_value': asset_id,
-            'keyword_type': keyword_type,
-            'occurrence_count': 0,
-            'source_tables': set(),
-            'source_columns': set(),
-            'attributes': {},
-            'coverage_flags': {},
-            'discovery_metadata': {
-                'discovered_at': datetime.now().isoformat(),
-                'discovery_method': 'keyword_extraction'
-            }
-        }
-    
-    def _update_asset_attributes(self, asset: Dict[str, Any], keyword_type: str, value: str, table_path: str):
-        if keyword_type not in asset['attributes']:
-            asset['attributes'][keyword_type] = set()
-        
-        asset['attributes'][keyword_type].add(value)
-        
-        source_type = self._determine_source_type(table_path)
-        if source_type:
-            asset['coverage_flags'][f"{source_type}_coverage"] = True
-    
-    def _determine_source_type(self, table_path: str) -> str:
-        path_lower = table_path.lower()
-        
-        if 'sas_bi' in path_lower:
-            if 'endpoint' in path_lower:
-                return 'cmdb'
-            elif 'splunk' in path_lower or 'spl' in path_lower:
-                return 'splunk'
-            elif 'agent' in path_lower:
-                return 'edr'
-        elif 'chronicle' in path_lower:
-            return 'chronicle'
-        elif 'security' in path_lower:
-            return 'security'
-        
-        return 'discovery'
+        return extracted_count
     
     def _is_valid_asset_value(self, value: str) -> bool:
         if not value or len(value) < 1 or len(value) > 1000:
@@ -281,22 +362,6 @@ class AdvancedAssetExtractor:
             return False
         
         return True
-    
-    def _combine_asset_data(self, primary: Dict[str, Any], secondary: Dict[str, Any]) -> Dict[str, Any]:
-        combined = primary.copy()
-        
-        combined['occurrence_count'] += secondary['occurrence_count']
-        combined['source_tables'].extend([t for t in secondary['source_tables'] if t not in combined['source_tables']])
-        combined['source_columns'].extend([c for c in secondary['source_columns'] if c not in combined['source_columns']])
-        
-        for attr_type, values in secondary['attributes'].items():
-            if attr_type not in combined['attributes']:
-                combined['attributes'][attr_type] = set()
-            combined['attributes'][attr_type].update(values)
-        
-        combined['coverage_flags'].update(secondary['coverage_flags'])
-        
-        return combined
 
 class ComprehensiveDiscoveryOrchestrator:
     def __init__(self, config: Dict[str, Any]):
@@ -316,53 +381,44 @@ class ComprehensiveDiscoveryOrchestrator:
     async def execute_comprehensive_discovery(self, client_managers: Dict[str, Any]) -> Dict[str, Any]:
         self.orchestration_stats['processing_start_time'] = datetime.now()
         
-        logger.info("🚀 HOST-CENTRIC DISCOVERY INITIATED")
-        logger.info("🎯 ONLY PROCESSING TABLES WITH HOST/HOSTNAME/FQDN COLUMNS")
-        logger.info("⚡ EXTRACTING HOST-RELATED ATTRIBUTES")
-        
-        all_discovered_assets = {}
+        logger.info("🚀 HOST ENTITY RESOLUTION DISCOVERY INITIATED")
+        logger.info("🎯 NORMALIZING HOSTNAMES AND RESOLVING ENTITY CLUSTERS")
+        logger.info("⚡ MERGING DUPLICATE HOST IDENTITIES")
         
         for project_id, client_manager in client_managers.items():
             logger.info(f"🎯 PROJECT: {project_id}")
             
             try:
-                project_assets = await self._process_complete_project(client_manager, project_id)
-                
-                for asset_id, asset_data in project_assets.items():
-                    if asset_id in all_discovered_assets:
-                        all_discovered_assets[asset_id] = self.extractor._combine_asset_data(
-                            all_discovered_assets[asset_id], asset_data
-                        )
-                    else:
-                        all_discovered_assets[asset_id] = asset_data
-                
+                await self._process_complete_project(client_manager, project_id)
                 self.orchestration_stats['projects_processed'] += 1
-                logger.info(f"✅ PROJECT {project_id}: {len(project_assets):,} assets")
                 
             except Exception as e:
                 logger.error(f"❌ PROJECT {project_id} FAILED: {e}")
                 self.orchestration_stats['processing_errors'] += 1
         
-        self._finalize_asset_attributes(all_discovered_assets)
+        logger.info("🔗 RESOLVING ENTITY CLUSTERS...")
+        resolved_entities = self.processor.resolve_all_entities()
         
         processing_time = (datetime.now() - self.orchestration_stats['processing_start_time']).total_seconds()
         
-        logger.info("🎉 HOST-CENTRIC DISCOVERY COMPLETE")
-        logger.info(f"📊 TOTAL ASSETS: {len(all_discovered_assets):,}")
+        logger.info("🎉 ENTITY RESOLUTION DISCOVERY COMPLETE")
+        logger.info(f"📊 UNIQUE HOSTS DISCOVERED: {len(resolved_entities):,}")
         logger.info(f"📋 HOST TABLES PROCESSED: {self.processor.stats['host_tables_found']:,}")
         logger.info(f"📋 NON-HOST TABLES SKIPPED: {self.processor.stats['non_host_tables_skipped']:,}")
+        logger.info(f"🔗 ENTITY CLUSTERS RESOLVED: {self.processor.stats['identity_clusters_created']:,}")
         logger.info(f"⏱️ PROCESSING TIME: {processing_time/60:.1f} minutes")
         
         return {
             'discovery_stats': {
-                'total_assets': len(all_discovered_assets),
+                'total_assets': len(resolved_entities),
                 'host_tables_processed': self.processor.stats['host_tables_found'],
                 'non_host_tables_skipped': self.processor.stats['non_host_tables_skipped'],
+                'entity_clusters_resolved': self.processor.stats['identity_clusters_created'],
                 'processing_time_minutes': processing_time / 60,
-                'host_centric_discovery_mode': True,
-                'cmdb_focused': True
+                'entity_resolution_enabled': True,
+                'hostname_normalization_enabled': True
             },
-            'assets': all_discovered_assets,
+            'assets': resolved_entities,
             'processing_statistics': {
                 'orchestration': self.orchestration_stats,
                 'keyword_processing': self.processor.stats,
@@ -370,9 +426,7 @@ class ComprehensiveDiscoveryOrchestrator:
             }
         }
     
-    async def _process_complete_project(self, client_manager, project_id: str) -> Dict[str, Any]:
-        project_assets = {}
-        
+    async def _process_complete_project(self, client_manager, project_id: str):
         with client_manager.get_client() as client:
             try:
                 datasets = list(client.list_datasets(project=project_id))
@@ -381,16 +435,7 @@ class ComprehensiveDiscoveryOrchestrator:
                 
                 for priority, dataset in prioritized_datasets:
                     try:
-                        dataset_assets = await self._process_complete_dataset(client, project_id, dataset.dataset_id)
-                        
-                        for asset_id, asset_data in dataset_assets.items():
-                            if asset_id in project_assets:
-                                project_assets[asset_id] = self.extractor._combine_asset_data(
-                                    project_assets[asset_id], asset_data
-                                )
-                            else:
-                                project_assets[asset_id] = asset_data
-                        
+                        await self._process_complete_dataset(client, project_id, dataset.dataset_id)
                         self.orchestration_stats['datasets_processed'] += 1
                         
                     except Exception as e:
@@ -400,12 +445,8 @@ class ComprehensiveDiscoveryOrchestrator:
             except Exception as e:
                 logger.error(f"❌ PROJECT LISTING FAILED: {e}")
                 self.orchestration_stats['processing_errors'] += 1
-        
-        return project_assets
     
-    async def _process_complete_dataset(self, client, project_id: str, dataset_id: str) -> Dict[str, Any]:
-        dataset_assets = {}
-        
+    async def _process_complete_dataset(self, client, project_id: str, dataset_id: str):
         try:
             dataset_ref = client.dataset(dataset_id, project=project_id)
             tables = list(client.list_tables(dataset_ref))
@@ -414,20 +455,8 @@ class ComprehensiveDiscoveryOrchestrator:
                 table_path = f"{project_id}.{dataset_id}.{table_ref.table_id}"
                 
                 try:
-                    table_assets = await self._process_complete_table(client, table_path)
-                    
-                    for asset_id, asset_data in table_assets.items():
-                        if asset_id in dataset_assets:
-                            dataset_assets[asset_id] = self.extractor._combine_asset_data(
-                                dataset_assets[asset_id], asset_data
-                            )
-                        else:
-                            dataset_assets[asset_id] = asset_data
-                    
+                    await self._process_complete_table(client, table_path)
                     self.orchestration_stats['tables_processed'] += 1
-                    
-                    if len(table_assets) > 0:
-                        logger.info(f"🎯 {table_ref.table_id}: {len(table_assets):,} assets")
                     
                 except Exception as e:
                     logger.error(f"❌ TABLE {table_ref.table_id} FAILED: {e}")
@@ -436,39 +465,30 @@ class ComprehensiveDiscoveryOrchestrator:
         except Exception as e:
             logger.error(f"❌ DATASET PROCESSING FAILED: {e}")
             self.orchestration_stats['processing_errors'] += 1
-        
-        return dataset_assets
     
-    async def _process_complete_table(self, client, table_path: str) -> Dict[str, Any]:
-        table_assets = {}
-        
+    async def _process_complete_table(self, client, table_path: str):
         try:
             table = client.get_table(table_path)
             if not table.schema:
-                return table_assets
+                return
             
             columns = [field.name for field in table.schema]
             keyword_columns = self.processor.find_keyword_columns(columns)
             
             if not keyword_columns:
-                return table_assets
+                return
             
             logger.info(f"🔥 {table_path}: Found {sum(len(cols) for cols in keyword_columns.values())} keyword columns")
             
             for keyword_type, matching_columns in keyword_columns.items():
                 for column_name in matching_columns:
                     try:
-                        column_assets = await self.extractor.extract_all_column_values(
+                        extracted_count = await self.extractor.extract_all_column_values(
                             client, table_path, column_name, keyword_type
                         )
                         
-                        for asset_id, asset_data in column_assets.items():
-                            if asset_id in table_assets:
-                                table_assets[asset_id] = self.extractor._combine_asset_data(
-                                    table_assets[asset_id], asset_data
-                                )
-                            else:
-                                table_assets[asset_id] = asset_data
+                        if extracted_count > 0:
+                            logger.info(f"✅ {column_name}: {extracted_count:,} values added to entity resolution")
                         
                     except Exception as e:
                         logger.error(f"❌ COLUMN {column_name} EXTRACTION FAILED: {e}")
@@ -477,8 +497,6 @@ class ComprehensiveDiscoveryOrchestrator:
         except Exception as e:
             logger.error(f"❌ TABLE SCHEMA ACCESS FAILED: {e}")
             self.orchestration_stats['processing_errors'] += 1
-        
-        return table_assets
     
     def _prioritize_datasets(self, datasets) -> List[Tuple[int, Any]]:
         prioritized = []
@@ -497,13 +515,6 @@ class ComprehensiveDiscoveryOrchestrator:
             prioritized.append((priority, dataset))
         
         return sorted(prioritized, key=lambda x: x[0])
-    
-    def _finalize_asset_attributes(self, assets: Dict[str, Any]):
-        for asset in assets.values():
-            for attr_type, value_set in asset['attributes'].items():
-                asset['attributes'][attr_type] = list(value_set)
-        
-        self.orchestration_stats['total_assets_discovered'] = len(assets)
 
 class AO1SuperEngine:
     def __init__(self, config: Dict[str, Any]):
