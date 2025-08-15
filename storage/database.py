@@ -38,34 +38,95 @@ class MaximumIntensityDatabaseManager:
                 CREATE TABLE maximum_intensity_assets (
                     asset_id VARCHAR PRIMARY KEY,
                     hostname VARCHAR NOT NULL,
+                    
+                    -- Identity Fields
                     ip_address VARCHAR,
                     fqdn VARCHAR,
                     mac_address VARCHAR,
+                    
+                    -- Infrastructure and System Fields
                     infrastructure_type VARCHAR,
                     operating_system VARCHAR,
                     system_classification VARCHAR,
                     environment VARCHAR,
+                    
+                    -- Location Fields
                     region VARCHAR,
                     country VARCHAR,
                     datacenter VARCHAR,
                     cloud_region VARCHAR,
+                    
+                    -- Business and Organization Fields
                     business_unit VARCHAR,
                     application VARCHAR,
                     owner VARCHAR,
                     criticality VARCHAR,
+                    cost_center VARCHAR,
+                    
+                    -- Security and Compliance Fields
+                    compliance_status VARCHAR,
+                    security_classification VARCHAR,
+                    patch_level VARCHAR,
+                    vulnerability_status VARCHAR,
+                    
+                    -- Network and Connectivity Fields
+                    network_segment VARCHAR,
+                    network_ports VARCHAR,
+                    network_protocol VARCHAR,
+                    network_device VARCHAR,
+                    
+                    -- Hardware and Specifications Fields
+                    cpu_info VARCHAR,
+                    memory_info VARCHAR,
+                    storage_info VARCHAR,
+                    hardware_model VARCHAR,
+                    serial_number VARCHAR,
+                    
+                    -- Date and Time Fields
+                    created_date VARCHAR,
+                    last_updated VARCHAR,
+                    discovery_date VARCHAR,
+                    expiry_date VARCHAR,
+                    
+                    -- User and Access Fields
+                    primary_user VARCHAR,
+                    user_group VARCHAR,
+                    access_level VARCHAR,
+                    
+                    -- Monitoring and Management Fields
+                    monitoring_agent VARCHAR,
+                    operational_status VARCHAR,
+                    backup_status VARCHAR,
+                    maintenance_window VARCHAR,
+                    
+                    -- Software and Licensing Fields
+                    license_info VARCHAR,
+                    installed_software VARCHAR,
+                    
+                    -- Configuration Fields
+                    configuration VARCHAR,
+                    policy_assignment VARCHAR,
+                    
+                    -- Coverage Flags
                     in_chronicle BOOLEAN DEFAULT FALSE,
                     in_crowdstrike BOOLEAN DEFAULT FALSE,
                     in_original_cmdb BOOLEAN DEFAULT FALSE,
                     in_splunk BOOLEAN DEFAULT FALSE,
                     in_tanium BOOLEAN DEFAULT FALSE,
                     in_dlp BOOLEAN DEFAULT FALSE,
+                    
+                    -- Metrics
                     source_count INTEGER DEFAULT 0,
                     total_rows INTEGER DEFAULT 0,
                     total_unique_attributes INTEGER DEFAULT 0,
+                    
+                    -- Source Information (JSON for complex data)
                     source_tables JSON,
                     all_attributes JSON,
+                    
+                    -- Timestamps
                     first_seen TIMESTAMP,
-                    last_updated TIMESTAMP,
+                    database_last_updated TIMESTAMP,
                     created_at TIMESTAMP DEFAULT NOW()
                 )
             """)
@@ -114,11 +175,19 @@ class MaximumIntensityDatabaseManager:
                     asset_id, hostname, ip_address, fqdn, mac_address,
                     infrastructure_type, operating_system, system_classification, environment,
                     region, country, datacenter, cloud_region,
-                    business_unit, application, owner, criticality,
+                    business_unit, application, owner, criticality, cost_center,
+                    compliance_status, security_classification, patch_level, vulnerability_status,
+                    network_segment, network_ports, network_protocol, network_device,
+                    cpu_info, memory_info, storage_info, hardware_model, serial_number,
+                    created_date, last_updated, discovery_date, expiry_date,
+                    primary_user, user_group, access_level,
+                    monitoring_agent, operational_status, backup_status, maintenance_window,
+                    license_info, installed_software,
+                    configuration, policy_assignment,
                     in_chronicle, in_crowdstrike, in_original_cmdb, in_splunk, in_tanium, in_dlp,
                     source_count, total_rows, total_unique_attributes,
-                    source_tables, all_attributes, first_seen, last_updated
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    source_tables, all_attributes, first_seen, database_last_updated
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """
             
             values = (
@@ -139,6 +208,35 @@ class MaximumIntensityDatabaseManager:
                 get_first_value('application'),
                 get_first_value('owner'),
                 get_first_value('criticality'),
+                get_first_value('cost_center'),
+                get_first_value('compliance_status'),
+                get_first_value('security_classification'),
+                get_first_value('patch_level'),
+                get_first_value('vulnerability_status'),
+                get_first_value('network_segment'),
+                get_first_value('network_ports'),
+                get_first_value('network_protocol'),
+                get_first_value('network_device'),
+                get_first_value('cpu_info'),
+                get_first_value('memory_info'),
+                get_first_value('storage_info'),
+                get_first_value('hardware_model'),
+                get_first_value('serial_number'),
+                get_first_value('created_date'),
+                get_first_value('last_updated'),
+                get_first_value('discovery_date'),
+                get_first_value('expiry_date'),
+                get_first_value('primary_user'),
+                get_first_value('user_group'),
+                get_first_value('access_level'),
+                get_first_value('monitoring_agent'),
+                get_first_value('operational_status'),
+                get_first_value('backup_status'),
+                get_first_value('maintenance_window'),
+                get_first_value('license_info'),
+                get_first_value('installed_software'),
+                get_first_value('configuration'),
+                get_first_value('policy_assignment'),
                 coverage.get('in_chronicle', False),
                 coverage.get('in_crowdstrike', False),
                 coverage.get('in_original_cmdb', False),
@@ -151,7 +249,7 @@ class MaximumIntensityDatabaseManager:
                 json.dumps(list(host_data.get('source_tables', [])), default=list),
                 json.dumps(all_attrs, default=list),
                 host_data.get('first_seen'),
-                host_data.get('last_updated')
+                datetime.now().isoformat()
             )
             
             self.conn.execute(insert_sql, values)
@@ -208,6 +306,35 @@ class MaximumIntensityDatabaseManager:
                         'application': get_first_value('application'),
                         'owner': get_first_value('owner'),
                         'criticality': get_first_value('criticality'),
+                        'cost_center': get_first_value('cost_center'),
+                        'compliance_status': get_first_value('compliance_status'),
+                        'security_classification': get_first_value('security_classification'),
+                        'patch_level': get_first_value('patch_level'),
+                        'vulnerability_status': get_first_value('vulnerability_status'),
+                        'network_segment': get_first_value('network_segment'),
+                        'network_ports': get_first_value('network_ports'),
+                        'network_protocol': get_first_value('network_protocol'),
+                        'network_device': get_first_value('network_device'),
+                        'cpu_info': get_first_value('cpu_info'),
+                        'memory_info': get_first_value('memory_info'),
+                        'storage_info': get_first_value('storage_info'),
+                        'hardware_model': get_first_value('hardware_model'),
+                        'serial_number': get_first_value('serial_number'),
+                        'created_date': get_first_value('created_date'),
+                        'last_updated': get_first_value('last_updated'),
+                        'discovery_date': get_first_value('discovery_date'),
+                        'expiry_date': get_first_value('expiry_date'),
+                        'primary_user': get_first_value('primary_user'),
+                        'user_group': get_first_value('user_group'),
+                        'access_level': get_first_value('access_level'),
+                        'monitoring_agent': get_first_value('monitoring_agent'),
+                        'operational_status': get_first_value('operational_status'),
+                        'backup_status': get_first_value('backup_status'),
+                        'maintenance_window': get_first_value('maintenance_window'),
+                        'license_info': get_first_value('license_info'),
+                        'installed_software': get_first_value('installed_software'),
+                        'configuration': get_first_value('configuration'),
+                        'policy_assignment': get_first_value('policy_assignment'),
                         'in_chronicle': coverage.get('in_chronicle', False),
                         'in_crowdstrike': coverage.get('in_crowdstrike', False),
                         'in_original_cmdb': coverage.get('in_original_cmdb', False),
@@ -220,7 +347,7 @@ class MaximumIntensityDatabaseManager:
                         'source_tables': json.dumps(asset_data.get('source_tables', [])),
                         'all_attributes': json.dumps(all_attrs, default=list),
                         'first_seen': asset_data.get('first_seen'),
-                        'last_updated': asset_data.get('last_updated')
+                        'database_last_updated': datetime.now().isoformat()
                     }
                     
                     current_batch.append(asset_row)
@@ -272,11 +399,19 @@ class MaximumIntensityDatabaseManager:
                     asset_id, hostname, ip_address, fqdn, mac_address,
                     infrastructure_type, operating_system, system_classification, environment,
                     region, country, datacenter, cloud_region,
-                    business_unit, application, owner, criticality,
+                    business_unit, application, owner, criticality, cost_center,
+                    compliance_status, security_classification, patch_level, vulnerability_status,
+                    network_segment, network_ports, network_protocol, network_device,
+                    cpu_info, memory_info, storage_info, hardware_model, serial_number,
+                    created_date, last_updated, discovery_date, expiry_date,
+                    primary_user, user_group, access_level,
+                    monitoring_agent, operational_status, backup_status, maintenance_window,
+                    license_info, installed_software,
+                    configuration, policy_assignment,
                     in_chronicle, in_crowdstrike, in_original_cmdb, in_splunk, in_tanium, in_dlp,
                     source_count, total_rows, total_unique_attributes,
-                    source_tables, all_attributes, first_seen, last_updated
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    source_tables, all_attributes, first_seen, database_last_updated
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """
             
             batch_data = []
@@ -286,12 +421,20 @@ class MaximumIntensityDatabaseManager:
                     asset['fqdn'], asset['mac_address'], asset['infrastructure_type'],
                     asset['operating_system'], asset['system_classification'], asset['environment'],
                     asset['region'], asset['country'], asset['datacenter'], asset['cloud_region'],
-                    asset['business_unit'], asset['application'], asset['owner'], asset['criticality'],
+                    asset['business_unit'], asset['application'], asset['owner'], asset['criticality'], asset['cost_center'],
+                    asset['compliance_status'], asset['security_classification'], asset['patch_level'], asset['vulnerability_status'],
+                    asset['network_segment'], asset['network_ports'], asset['network_protocol'], asset['network_device'],
+                    asset['cpu_info'], asset['memory_info'], asset['storage_info'], asset['hardware_model'], asset['serial_number'],
+                    asset['created_date'], asset['last_updated'], asset['discovery_date'], asset['expiry_date'],
+                    asset['primary_user'], asset['user_group'], asset['access_level'],
+                    asset['monitoring_agent'], asset['operational_status'], asset['backup_status'], asset['maintenance_window'],
+                    asset['license_info'], asset['installed_software'],
+                    asset['configuration'], asset['policy_assignment'],
                     asset['in_chronicle'], asset['in_crowdstrike'], asset['in_original_cmdb'],
                     asset['in_splunk'], asset['in_tanium'], asset['in_dlp'],
                     asset['source_count'], asset['total_rows'], asset['total_unique_attributes'],
                     asset['source_tables'], asset['all_attributes'], 
-                    asset['first_seen'], asset['last_updated']
+                    asset['first_seen'], asset['database_last_updated']
                 )
                 batch_data.append(row_tuple)
             
@@ -309,12 +452,20 @@ class MaximumIntensityDatabaseManager:
                         asset['fqdn'], asset['mac_address'], asset['infrastructure_type'],
                         asset['operating_system'], asset['system_classification'], asset['environment'],
                         asset['region'], asset['country'], asset['datacenter'], asset['cloud_region'],
-                        asset['business_unit'], asset['application'], asset['owner'], asset['criticality'],
+                        asset['business_unit'], asset['application'], asset['owner'], asset['criticality'], asset['cost_center'],
+                        asset['compliance_status'], asset['security_classification'], asset['patch_level'], asset['vulnerability_status'],
+                        asset['network_segment'], asset['network_ports'], asset['network_protocol'], asset['network_device'],
+                        asset['cpu_info'], asset['memory_info'], asset['storage_info'], asset['hardware_model'], asset['serial_number'],
+                        asset['created_date'], asset['last_updated'], asset['discovery_date'], asset['expiry_date'],
+                        asset['primary_user'], asset['user_group'], asset['access_level'],
+                        asset['monitoring_agent'], asset['operational_status'], asset['backup_status'], asset['maintenance_window'],
+                        asset['license_info'], asset['installed_software'],
+                        asset['configuration'], asset['policy_assignment'],
                         asset['in_chronicle'], asset['in_crowdstrike'], asset['in_original_cmdb'],
                         asset['in_splunk'], asset['in_tanium'], asset['in_dlp'],
                         asset['source_count'], asset['total_rows'], asset['total_unique_attributes'],
                         asset['source_tables'], asset['all_attributes'], 
-                        asset['first_seen'], asset['last_updated']
+                        asset['first_seen'], asset['database_last_updated']
                     ))
                     success_count += 1
                 except Exception as e2:
