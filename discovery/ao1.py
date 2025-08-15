@@ -12,14 +12,14 @@ class SmartKeywordProcessor:
     def __init__(self):
         self.keyword_patterns = {
             'host': ['host'],
-            'hostname': ['hostname', 'computer', 'machine', 'device', 'endpoint', 'asset', 'server', 'workstation'],
-            'ip_address': ['ip', 'addr', 'address'],
-            'fqdn': ['fqdn', 'domain', 'dns'],
-            'mac_address': ['mac', 'physical'],
-            'system': ['system', 'os', 'platform'],
-            'location': ['location', 'site', 'datacenter', 'region'],
-            'owner': ['owner', 'user', 'contact'],
-            'environment': ['env', 'environment', 'stage']
+            'hostname': ['hostname'],
+            'ip_address': ['ip'],
+            'fqdn': ['fqdn'],
+            'mac_address': ['mac'],
+            'system': ['system'],
+            'location': ['location'],
+            'owner': ['owner'],
+            'environment': ['environment']
         }
         
         self.stats = {
@@ -38,12 +38,10 @@ class SmartKeywordProcessor:
             for column in columns:
                 column_lower = column.lower()
                 
-                if keyword == 'host':
-                    if 'host' in column_lower and not any(other in column_lower for other in ['hostname', 'ghost']):
+                for pattern in patterns:
+                    if pattern in column_lower:
                         matching_columns.append(column)
-                else:
-                    if any(pattern in column_lower for pattern in patterns):
-                        matching_columns.append(column)
+                        break
             
             if matching_columns:
                 keyword_columns[keyword] = matching_columns
@@ -66,7 +64,14 @@ class AdvancedAssetExtractor:
         assets = {}
         total_extracted = 0
         
-        count_query = f"SELECT COUNT(*) as total FROM `{table_path}` WHERE `{column_name}` IS NOT NULL"
+        count_query = f"""
+        SELECT COUNT(*) as total 
+        FROM `{table_path}` 
+        WHERE `{column_name}` IS NOT NULL 
+        AND SAFE_CAST(`{column_name}` AS STRING) IS NOT NULL
+        AND SAFE_CAST(`{column_name}` AS STRING) != ''
+        AND SAFE_CAST(`{column_name}` AS STRING) NOT IN ('NULL', 'NONE', 'UNKNOWN', 'N/A', 'NIL', '0')
+        """
         count_job = client.query(count_query)
         count_result = list(count_job.result())
         total_values = count_result[0]['total'] if count_result else 0
@@ -81,10 +86,12 @@ class AdvancedAssetExtractor:
         
         while True:
             extraction_query = f"""
-            SELECT `{column_name}` as value
+            SELECT SAFE_CAST(`{column_name}` AS STRING) as value
             FROM `{table_path}`
             WHERE `{column_name}` IS NOT NULL
-            AND `{column_name}` != ''
+            AND SAFE_CAST(`{column_name}` AS STRING) IS NOT NULL
+            AND SAFE_CAST(`{column_name}` AS STRING) != ''
+            AND SAFE_CAST(`{column_name}` AS STRING) NOT IN ('NULL', 'NONE', 'UNKNOWN', 'N/A', 'NIL', '0')
             LIMIT {batch_size} OFFSET {offset}
             """
             
