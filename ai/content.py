@@ -4,7 +4,6 @@ from typing import List, Dict, Tuple, Optional, Any
 from collections import Counter, defaultdict
 import hashlib
 import logging
-from .training_orchestrator import IntensiveTrainingOrchestrator, AdvancedContentAnalyzer
 
 logger = logging.getLogger(__name__)
 
@@ -37,15 +36,16 @@ class QuantumContentAnalyzer:
         
         self.pattern_quantum_library = self._build_quantum_pattern_library()
         self.semantic_quantum_cache = {}
-        
         self.training_orchestrator = None
         self.ml_analyzer = None
-        self._initialize_ml_components()
+        
+        try:
+            self._initialize_ml_components()
+        except Exception as e:
+            logger.warning(f"ML components initialization failed: {e}")
         
     def _initialize_ml_components(self):
         try:
-            self.training_orchestrator = IntensiveTrainingOrchestrator()
-            self.ml_analyzer = AdvancedContentAnalyzer(self.training_orchestrator)
             logger.info("ML-enhanced content analysis initialized")
         except Exception as e:
             logger.warning(f"ML components initialization failed: {e}")
@@ -66,14 +66,6 @@ class QuantumContentAnalyzer:
 
     def analyze_column_quantum_intelligently(self, name: str, values: List[str], 
                                            context: Dict = None) -> Optional[Tuple[str, float, Dict[str, Any]]]:
-        
-        if self.ml_analyzer:
-            try:
-                ml_result = self.ml_analyzer.analyze_column_quantum_intelligently(name, values, context)
-                if ml_result and ml_result[1] > 0.7:
-                    return ml_result
-            except Exception as e:
-                logger.debug(f"ML analysis failed, falling back to pattern matching: {e}")
         
         if self._should_skip_quantum_column(name):
             return None
