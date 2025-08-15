@@ -3,7 +3,7 @@ import json
 import logging
 import time
 import os
-from typing import Dict, List, Any
+from typing import Dict, List, Any, Set
 from datetime import datetime
 from core.types import HyperAsset, QuantumDiscovery
 
@@ -21,18 +21,21 @@ class MaximumIntensityDatabaseManager:
             self.conn.execute("PRAGMA memory_limit='4GB'")
             self.conn.execute("PRAGMA threads=8")
             logger.info(f"Database connection established: {self.db_path}")
-            self._setup_simple_schema()
+            self._setup_optimized_schema()
         except Exception as e:
             logger.error(f"Database connection failed: {e}")
             raise
     
-    def _setup_simple_schema(self):
+    def _setup_optimized_schema(self):
         try:
+            # Drop and recreate tables for clean start
             self.conn.execute("DROP TABLE IF EXISTS maximum_intensity_assets")
             self.conn.execute("DROP TABLE IF EXISTS discovery_metadata")
+            self.conn.execute("DROP TABLE IF EXISTS storage_audit_log")
             
-            logger.info("Creating simple asset schema")
+            logger.info("Creating optimized asset schema with audit trail")
             
+            # Main assets table with comprehensive columns
             self.conn.execute("""
                 CREATE TABLE maximum_intensity_assets (
                     asset_id VARCHAR PRIMARY KEY,
@@ -60,14 +63,16 @@ class MaximumIntensityDatabaseManager:
                     in_dlp BOOLEAN DEFAULT FALSE,
                     source_count INTEGER DEFAULT 0,
                     total_rows INTEGER DEFAULT 0,
-                    source_tables JSON,
-                    all_attributes JSON,
+                    source_tables TEXT,
+                    all_attributes TEXT,
                     first_seen TIMESTAMP,
-                    last_updated TIMESTAMP,
-                    created_at TIMESTAMP DEFAULT NOW()
+                    last_updated TIMESTAMP DEFAULT NOW(),
+                    created_at TIMESTAMP DEFAULT NOW(),
+                    storage_method VARCHAR DEFAULT 'guaranteed_merge'
                 )
             """)
             
+            # Discovery metadata table
             self.conn.execute("""
                 CREATE TABLE discovery_metadata (
                     id VARCHAR PRIMARY KEY,
@@ -75,232 +80,435 @@ class MaximumIntensityDatabaseManager:
                     total_hosts_discovered INTEGER,
                     total_rows_processed INTEGER,
                     processing_time_minutes DOUBLE,
-                    stats JSON,
+                    guaranteed_stores INTEGER DEFAULT 0,
+                    failed_stores INTEGER DEFAULT 0,
+                    stats TEXT,
                     created_at TIMESTAMP DEFAULT NOW()
                 )
             """)
             
-            self.conn.commit()
-            logger.info("Simple schema created successfully")
+            # Storage audit log for tracking all operations
+            self.conn.execute("""
+                CREATE TABLE storage_audit_log (
+                    id INTEGER PRIMARY KEY,
+                    asset_id VARCHAR,
+                    operation VARCHAR,
+                    success BOOLEAN,
+                    method_used VARCHAR,
+                    changes_made TEXT,
+                    error_message TEXT,
+                    timestamp TIMESTAMP DEFAULT NOW()
+                )
+            """)
             
-            tables = self.conn.execute("SHOW TABLES").fetchall()
-            logger.info(f"Verified tables: {[table[0] for table in tables]}")
+            # Create indexes for performance
+            self.conn.execute("CREATE INDEX idx_hostname ON maximum_intensity_assets(hostname)")
+            self.conn.execute("CREATE INDEX idx_ip_address ON maximum_intensity_assets(ip_address)")
+            self.conn.execute("CREATE INDEX idx_last_updated ON maximum_intensity_assets(last_updated)")
+            self.conn.execute("CREATE INDEX idx_source_count ON maximum_intensity_assets(source_count)")
             
-            self.test_insert()
+            logger.info("Optimized schema created successfully with indexes")
             
         except Exception as e:
             logger.error(f"Schema creation failed: {e}")
             raise
     
-    def store_single_host_immediately(self, hostname: str, host_data: Dict[str, Any]):
+    def _log_storage_operation(self, asset_id: str, operation: str, success: bool, 
+                              method_used: str, changes_made: str = None, error_message: str = None):
+        """Log all storage operations for audit trail"""
         try:
+            self.conn.execute("""
+                INSERT INTO storage_audit_log (
+                    asset_id, operation, success, method_used, changes_made, error_message
+                ) VALUES (?, ?, ?, ?, ?, ?)
+            """, [asset_id, operation, success, method_used, changes_made, error_message])
+        except Exception as e:
+            logger.error(f"Failed to log storage operation: {e}")
+    
+    def _merge_column_value(self, existing_value: str, new_value: str, column_name: str) -> tuple:
+        """
+        Merge column values with comma separation for discrepancies
+        Returns: (merged_value, has_changes, change_description)
+        """
+        if not existing_value:
+            return new_value, True, f"Added {column_name}: {new_value}"
+        if not new_value:
+            return existing_value, False, None
+        
+        # Clean values
+        existing_clean = str(existing_value).strip()
+        new_clean = str(new_value).strip()
+        
+        if existing_clean.lower() == new_clean.lower():
+            return existing_clean, False, None  # Same value, no change
+        
+        # Different values - check if new value is already in existing (comma-separated)
+        existing_parts = [part.strip() for part in existing_clean.split(',')]
+        
+        # Check if new value already exists in the list
+        for part in existing_parts:
+            if part.lower() == new_clean.lower():
+                return existing_clean, False, None  # Already exists, no change
+        
+        # New discrepant value - append with comma
+        merged = f"{existing_clean},{new_clean}"
+        change_desc = f"Conflict in {column_name}: '{existing_clean}' + '{new_clean}'"
+        logger.info(f"   🔀 DISCREPANCY in {column_name}: '{existing_clean}' + '{new_clean}' = '{merged}'")
+        return merged, True, change_desc
+    
+    def store_single_host_immediately(self, hostname: str, host_data: Dict[str, Any]) -> bool:
+        """Store or update a single host with guaranteed smart value merging"""
+        changes_made = []
+        
+        try:
+            asset_id = str(hostname).upper()
             all_attrs = host_data.get('all_attributes', {})
             coverage = host_data.get('coverage_flags', {})
             
-            def get_first_value(attr_key: str, default: str = '') -> str:
+            # Extract new values from attributes
+            def get_first_value(attr_key: str) -> str:
                 values = all_attrs.get(attr_key, set())
                 if isinstance(values, (list, set)) and values:
-                    return str(list(values)[0])
+                    return str(list(values)[0]).strip()
                 elif values:
-                    return str(values)
-                return default
+                    return str(values).strip()
+                return ''
             
-            insert_sql = """
-                INSERT OR REPLACE INTO maximum_intensity_assets (
-                    asset_id, hostname, ip_address, fqdn, mac_address,
-                    infrastructure_type, operating_system, system_classification, environment,
-                    region, country, datacenter, cloud_region,
-                    business_unit, application, owner, criticality,
-                    in_chronicle, in_crowdstrike, in_original_cmdb, in_splunk, in_tanium, in_dlp,
-                    source_count, total_rows, source_tables, all_attributes, first_seen, last_updated
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """
+            new_values = {
+                'ip_address': get_first_value('ip_address'),
+                'fqdn': get_first_value('fqdn'), 
+                'mac_address': get_first_value('mac_address'),
+                'infrastructure_type': get_first_value('infrastructure_type'),
+                'operating_system': get_first_value('operating_system'),
+                'system_classification': get_first_value('system_classification'),
+                'environment': get_first_value('environment'),
+                'region': get_first_value('region'),
+                'country': get_first_value('country'),
+                'datacenter': get_first_value('datacenter'),
+                'cloud_region': get_first_value('cloud_region'),
+                'business_unit': get_first_value('business_unit'),
+                'application': get_first_value('application'),
+                'owner': get_first_value('owner'),
+                'criticality': get_first_value('criticality')
+            }
             
-            # Ensure all values are properly typed
-            source_count = host_data.get('source_count', 0)
-            total_rows = host_data.get('total_rows', 0)
-            source_tables = host_data.get('source_tables', [])
+            # Check if host already exists
+            existing = self.conn.execute("""
+                SELECT ip_address, fqdn, mac_address, infrastructure_type, operating_system,
+                       system_classification, environment, region, country, datacenter, cloud_region,
+                       business_unit, application, owner, criticality, source_tables, source_count,
+                       total_rows, in_chronicle, in_crowdstrike, in_original_cmdb, in_splunk, 
+                       in_tanium, in_dlp, all_attributes
+                FROM maximum_intensity_assets WHERE asset_id = ?
+            """, [asset_id]).fetchone()
             
-            # Convert to proper types
-            if isinstance(source_count, str):
-                source_count = int(source_count) if source_count.isdigit() else 0
-            if isinstance(total_rows, str):
-                total_rows = int(total_rows) if total_rows.isdigit() else 0
-            if isinstance(source_tables, set):
-                source_tables = list(source_tables)
+            if existing:
+                # MERGE WITH EXISTING DATA
+                (existing_ip, existing_fqdn, existing_mac, existing_infra, existing_os,
+                 existing_sys_class, existing_env, existing_region, existing_country, 
+                 existing_dc, existing_cloud_region, existing_bu, existing_app, 
+                 existing_owner, existing_crit, existing_tables_str, existing_source_count,
+                 existing_total_rows, existing_chronicle, existing_cs, existing_cmdb,
+                 existing_splunk, existing_tanium, existing_dlp, existing_attrs_str) = existing
+                
+                # Merge each column value and track changes
+                merged_values = {}
+                for field_name, new_value in new_values.items():
+                    existing_value = locals().get(f'existing_{field_name.replace("_", "_")}') or locals().get(f'existing_{field_name}')
+                    if field_name == 'ip_address':
+                        existing_value = existing_ip
+                    elif field_name == 'fqdn':
+                        existing_value = existing_fqdn
+                    elif field_name == 'mac_address':
+                        existing_value = existing_mac
+                    elif field_name == 'infrastructure_type':
+                        existing_value = existing_infra
+                    elif field_name == 'operating_system':
+                        existing_value = existing_os
+                    elif field_name == 'system_classification':
+                        existing_value = existing_sys_class
+                    elif field_name == 'environment':
+                        existing_value = existing_env
+                    elif field_name == 'region':
+                        existing_value = existing_region
+                    elif field_name == 'country':
+                        existing_value = existing_country
+                    elif field_name == 'datacenter':
+                        existing_value = existing_dc
+                    elif field_name == 'cloud_region':
+                        existing_value = existing_cloud_region
+                    elif field_name == 'business_unit':
+                        existing_value = existing_bu
+                    elif field_name == 'application':
+                        existing_value = existing_app
+                    elif field_name == 'owner':
+                        existing_value = existing_owner
+                    elif field_name == 'criticality':
+                        existing_value = existing_crit
+                    
+                    merged_value, has_change, change_desc = self._merge_column_value(
+                        existing_value or '', new_value, field_name
+                    )
+                    merged_values[field_name] = merged_value
+                    
+                    if has_change:
+                        changes_made.append(change_desc)
+                
+                # Merge source tables
+                try:
+                    existing_tables = json.loads(existing_tables_str) if existing_tables_str else []
+                except:
+                    existing_tables = []
+                
+                new_tables = host_data.get('source_tables', [])
+                if isinstance(new_tables, set):
+                    new_tables = list(new_tables)
+                
+                merged_tables = list(set(existing_tables + new_tables))
+                merged_source_count = len(merged_tables)
+                merged_total_rows = existing_total_rows + host_data.get('total_rows', 1)
+                
+                if len(merged_tables) > len(existing_tables):
+                    changes_made.append(f"Added {len(merged_tables) - len(existing_tables)} new source tables")
+                
+                # Merge coverage flags (OR logic - if either is True, result is True)
+                merged_coverage = {
+                    'in_chronicle': existing_chronicle or coverage.get('in_chronicle', False),
+                    'in_crowdstrike': existing_cs or coverage.get('in_crowdstrike', False),
+                    'in_original_cmdb': existing_cmdb or coverage.get('in_original_cmdb', False),
+                    'in_splunk': existing_splunk or coverage.get('in_splunk', False),
+                    'in_tanium': existing_tanium or coverage.get('in_tanium', False),
+                    'in_dlp': existing_dlp or coverage.get('in_dlp', False)
+                }
+                
+                # Track coverage changes
+                coverage_changes = []
+                if merged_coverage['in_chronicle'] and not existing_chronicle:
+                    coverage_changes.append("Chronicle")
+                if merged_coverage['in_crowdstrike'] and not existing_cs:
+                    coverage_changes.append("CrowdStrike")
+                if merged_coverage['in_original_cmdb'] and not existing_cmdb:
+                    coverage_changes.append("CMDB")
+                if merged_coverage['in_splunk'] and not existing_splunk:
+                    coverage_changes.append("Splunk")
+                if merged_coverage['in_tanium'] and not existing_tanium:
+                    coverage_changes.append("Tanium")
+                if merged_coverage['in_dlp'] and not existing_dlp:
+                    coverage_changes.append("DLP")
+                
+                if coverage_changes:
+                    changes_made.append(f"New coverage: {', '.join(coverage_changes)}")
+                
+                # Merge all_attributes JSON
+                try:
+                    existing_all_attrs = json.loads(existing_attrs_str) if existing_attrs_str else {}
+                except:
+                    existing_all_attrs = {}
+                
+                merged_all_attrs = existing_all_attrs.copy()
+                new_attr_count = 0
+                
+                for key, values in all_attrs.items():
+                    if key not in merged_all_attrs:
+                        merged_all_attrs[key] = []
+                        new_attr_count += 1
+                    
+                    # Ensure it's a list
+                    if not isinstance(merged_all_attrs[key], list):
+                        merged_all_attrs[key] = [merged_all_attrs[key]] if merged_all_attrs[key] else []
+                    
+                    # Add new values
+                    if isinstance(values, (list, set)):
+                        for v in values:
+                            if str(v).strip() and str(v).strip() not in merged_all_attrs[key]:
+                                merged_all_attrs[key].append(str(v).strip())
+                                new_attr_count += 1
+                    elif values and str(values).strip() not in merged_all_attrs[key]:
+                        merged_all_attrs[key].append(str(values).strip())
+                        new_attr_count += 1
+                
+                if new_attr_count > 0:
+                    changes_made.append(f"Added {new_attr_count} new attribute values")
+                
+                # Update existing record
+                update_sql = """
+                    UPDATE maximum_intensity_assets SET
+                        ip_address = ?, fqdn = ?, mac_address = ?, infrastructure_type = ?,
+                        operating_system = ?, system_classification = ?, environment = ?,
+                        region = ?, country = ?, datacenter = ?, cloud_region = ?,
+                        business_unit = ?, application = ?, owner = ?, criticality = ?,
+                        in_chronicle = ?, in_crowdstrike = ?, in_original_cmdb = ?,
+                        in_splunk = ?, in_tanium = ?, in_dlp = ?,
+                        source_count = ?, total_rows = ?, source_tables = ?,
+                        all_attributes = ?, last_updated = ?, storage_method = ?
+                    WHERE asset_id = ?
+                """
+                
+                update_values = (
+                    merged_values['ip_address'] or None,
+                    merged_values['fqdn'] or None,
+                    merged_values['mac_address'] or None,
+                    merged_values['infrastructure_type'] or None,
+                    merged_values['operating_system'] or None,
+                    merged_values['system_classification'] or None,
+                    merged_values['environment'] or None,
+                    merged_values['region'] or None,
+                    merged_values['country'] or None,
+                    merged_values['datacenter'] or None,
+                    merged_values['cloud_region'] or None,
+                    merged_values['business_unit'] or None,
+                    merged_values['application'] or None,
+                    merged_values['owner'] or None,
+                    merged_values['criticality'] or None,
+                    merged_coverage['in_chronicle'],
+                    merged_coverage['in_crowdstrike'],
+                    merged_coverage['in_original_cmdb'],
+                    merged_coverage['in_splunk'],
+                    merged_coverage['in_tanium'],
+                    merged_coverage['in_dlp'],
+                    merged_source_count,
+                    merged_total_rows,
+                    json.dumps(merged_tables),
+                    json.dumps(merged_all_attrs, default=str),
+                    datetime.now().isoformat(),
+                    'guaranteed_merge_update',
+                    asset_id
+                )
+                
+                self.conn.execute(update_sql, update_values)
+                
+                operation_desc = f"UPDATED: {hostname} (sources: {existing_source_count} → {merged_source_count})"
+                if changes_made:
+                    operation_desc += f" - Changes: {'; '.join(changes_made)}"
+                
+                logger.info(f"   🔄 {operation_desc}")
+                
+                # Log the operation
+                self._log_storage_operation(
+                    asset_id, 'UPDATE', True, 'guaranteed_merge_update', 
+                    '; '.join(changes_made) if changes_made else 'No changes'
+                )
+                
+            else:
+                # INSERT NEW RECORD
+                source_tables = host_data.get('source_tables', [])
+                if isinstance(source_tables, set):
+                    source_tables = list(source_tables)
+                
+                insert_sql = """
+                    INSERT INTO maximum_intensity_assets (
+                        asset_id, hostname, ip_address, fqdn, mac_address,
+                        infrastructure_type, operating_system, system_classification, environment,
+                        region, country, datacenter, cloud_region,
+                        business_unit, application, owner, criticality,
+                        in_chronicle, in_crowdstrike, in_original_cmdb, in_splunk, in_tanium, in_dlp,
+                        source_count, total_rows, source_tables, all_attributes, first_seen, 
+                        last_updated, storage_method
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """
+                
+                insert_values = (
+                    asset_id,
+                    hostname,
+                    new_values['ip_address'] or None,
+                    new_values['fqdn'] or None,
+                    new_values['mac_address'] or None,
+                    new_values['infrastructure_type'] or None,
+                    new_values['operating_system'] or None,
+                    new_values['system_classification'] or None,
+                    new_values['environment'] or None,
+                    new_values['region'] or None,
+                    new_values['country'] or None,
+                    new_values['datacenter'] or None,
+                    new_values['cloud_region'] or None,
+                    new_values['business_unit'] or None,
+                    new_values['application'] or None,
+                    new_values['owner'] or None,
+                    new_values['criticality'] or None,
+                    coverage.get('in_chronicle', False),
+                    coverage.get('in_crowdstrike', False),
+                    coverage.get('in_original_cmdb', False),
+                    coverage.get('in_splunk', False),
+                    coverage.get('in_tanium', False),
+                    coverage.get('in_dlp', False),
+                    host_data.get('source_count', 1),
+                    host_data.get('total_rows', 1),
+                    json.dumps(source_tables),
+                    json.dumps(all_attrs, default=str),
+                    host_data.get('first_seen', datetime.now().isoformat()),
+                    datetime.now().isoformat(),
+                    'guaranteed_merge_insert'
+                )
+                
+                self.conn.execute(insert_sql, insert_values)
+                logger.info(f"   ➕ INSERTED: {hostname}")
+                
+                # Log the operation
+                self._log_storage_operation(
+                    asset_id, 'INSERT', True, 'guaranteed_merge_insert', 
+                    f"New host with {len(all_attrs)} attributes"
+                )
             
-            values = (
-                str(hostname),
-                str(host_data.get('hostname', hostname)),
-                get_first_value('ip_address'),
-                get_first_value('fqdn'),
-                get_first_value('mac_address'),
-                get_first_value('infrastructure_type'),
-                get_first_value('operating_system'),
-                get_first_value('system_classification'),
-                get_first_value('environment'),
-                get_first_value('region'),
-                get_first_value('country'),
-                get_first_value('datacenter'),
-                get_first_value('cloud_region'),
-                get_first_value('business_unit'),
-                get_first_value('application'),
-                get_first_value('owner'),
-                get_first_value('criticality'),
-                bool(coverage.get('in_chronicle', False)),
-                bool(coverage.get('in_crowdstrike', False)),
-                bool(coverage.get('in_original_cmdb', False)),
-                bool(coverage.get('in_splunk', False)),
-                bool(coverage.get('in_tanium', False)),
-                bool(coverage.get('in_dlp', False)),
-                int(source_count),
-                int(total_rows),
-                json.dumps(source_tables, default=str),
-                json.dumps(all_attrs, default=str),
-                str(host_data.get('first_seen', datetime.now().isoformat())),
-                str(datetime.now().isoformat())
-            )
-            
-            logger.debug(f"Storing {hostname}: {len(values)} values prepared")
-            self.conn.execute(insert_sql, values)
             self.conn.commit()
-            logger.info(f"STORED TO DB: {hostname}")
             return True
             
         except Exception as e:
-            logger.error(f"DB STORAGE FAILED for {hostname}: {e}")
+            logger.error(f"💥 DB OPERATION FAILED for {hostname}: {e}")
+            
+            # Log the failed operation
+            self._log_storage_operation(
+                hostname, 'FAILED', False, 'guaranteed_merge', None, str(e)
+            )
+            
+            try:
+                self.conn.rollback()
+            except:
+                pass
             return False
     
     def store_maximum_intensity_discovery(self, assets: Dict[str, Any], stats: Dict[str, Any]) -> int:
+        """Store all assets using the single host method for consistency"""
         if not assets:
             logger.warning("No assets to store")
             return 0
         
         logger.info(f"Storing {len(assets):,} assets to database")
-        
         stored_count = 0
-        batch_size = 1000
-        current_batch = []
+        failed_count = 0
+        
+        start_time = time.time()
         
         try:
-            self.conn.begin()
-            
             for asset_id, asset_data in assets.items():
-                try:
-                    all_attrs = asset_data.get('all_attributes', {})
-                    coverage = asset_data.get('coverage_flags', {})
-                    
-                    def get_first_value(attr_key: str, default: str = '') -> str:
-                        values = all_attrs.get(attr_key, set())
-                        if isinstance(values, (list, set)) and values:
-                            return str(list(values)[0])
-                        elif values:
-                            return str(values)
-                        return default
-                    
-                    asset_row = {
-                        'asset_id': asset_id,
-                        'hostname': asset_data.get('hostname', asset_id),
-                        'ip_address': get_first_value('ip_address'),
-                        'fqdn': get_first_value('fqdn'),
-                        'mac_address': get_first_value('mac_address'),
-                        'infrastructure_type': get_first_value('infrastructure_type'),
-                        'operating_system': get_first_value('operating_system'),
-                        'system_classification': get_first_value('system_classification'),
-                        'environment': get_first_value('environment'),
-                        'region': get_first_value('region'),
-                        'country': get_first_value('country'),
-                        'datacenter': get_first_value('datacenter'),
-                        'cloud_region': get_first_value('cloud_region'),
-                        'business_unit': get_first_value('business_unit'),
-                        'application': get_first_value('application'),
-                        'owner': get_first_value('owner'),
-                        'criticality': get_first_value('criticality'),
-                        'in_chronicle': coverage.get('in_chronicle', False),
-                        'in_crowdstrike': coverage.get('in_crowdstrike', False),
-                        'in_original_cmdb': coverage.get('in_original_cmdb', False),
-                        'in_splunk': coverage.get('in_splunk', False),
-                        'in_tanium': coverage.get('in_tanium', False),
-                        'in_dlp': coverage.get('in_dlp', False),
-                        'source_count': asset_data.get('source_count', 0),
-                        'total_rows': asset_data.get('total_rows', 0),
-                        'source_tables': json.dumps(asset_data.get('source_tables', [])),
-                        'all_attributes': json.dumps(all_attrs, default=list),
-                        'first_seen': asset_data.get('first_seen'),
-                        'last_updated': datetime.now().isoformat()
-                    }
-                    
-                    current_batch.append(asset_row)
-                    
-                    if len(current_batch) >= batch_size:
-                        batch_stored = self._insert_batch(current_batch)
-                        stored_count += batch_stored
-                        current_batch = []
-                        logger.info(f"Batch stored: {stored_count:,} assets so far")
-                    
-                except Exception as e:
-                    logger.error(f"Failed to prepare asset {asset_id}: {e}")
-                    continue
+                success = self.store_single_host_immediately(asset_id, asset_data)
+                if success:
+                    stored_count += 1
+                else:
+                    failed_count += 1
+                
+                if (stored_count + failed_count) % 1000 == 0:
+                    logger.info(f"Progress: {stored_count:,} stored, {failed_count:,} failed")
             
-            if current_batch:
-                batch_stored = self._insert_batch(current_batch)
-                stored_count += batch_stored
+            # Update stats with storage results
+            stats['guaranteed_stores'] = stored_count
+            stats['failed_stores'] = failed_count
+            stats['storage_success_rate'] = stored_count / (stored_count + failed_count) if (stored_count + failed_count) > 0 else 0
             
             self._store_discovery_metadata(stats)
-            self.conn.commit()
             
             actual_count = self.conn.execute("SELECT COUNT(*) FROM maximum_intensity_assets").fetchone()[0]
+            processing_time = time.time() - start_time
             
-            logger.info("Database storage complete")
-            logger.info(f"Assets processed: {stored_count:,}")
+            logger.info(f"Database storage complete in {processing_time:.1f}s")
+            logger.info(f"Successfully stored: {stored_count:,}")
+            logger.info(f"Failed to store: {failed_count:,}")
             logger.info(f"Verified in database: {actual_count:,}")
             
             return actual_count
             
         except Exception as e:
-            logger.error(f"Database storage transaction failed: {e}")
-            try:
-                self.conn.rollback()
-            except:
-                pass
-            raise
-        finally:
-            pass
-    
-    def _insert_batch(self, batch: List[Dict[str, Any]]) -> int:
-        try:
-            insert_sql = """
-                INSERT INTO maximum_intensity_assets (
-                    asset_id, hostname, ip_address, fqdn, mac_address,
-                    infrastructure_type, operating_system, system_classification, environment,
-                    region, country, datacenter, cloud_region,
-                    business_unit, application, owner, criticality,
-                    in_chronicle, in_crowdstrike, in_original_cmdb, in_splunk, in_tanium, in_dlp,
-                    source_count, total_rows, source_tables, all_attributes, first_seen, last_updated
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """
-            
-            batch_data = []
-            for asset in batch:
-                row_tuple = (
-                    asset['asset_id'], asset['hostname'], asset['ip_address'], 
-                    asset['fqdn'], asset['mac_address'], asset['infrastructure_type'],
-                    asset['operating_system'], asset['system_classification'], asset['environment'],
-                    asset['region'], asset['country'], asset['datacenter'], asset['cloud_region'],
-                    asset['business_unit'], asset['application'], asset['owner'], asset['criticality'],
-                    asset['in_chronicle'], asset['in_crowdstrike'], asset['in_original_cmdb'],
-                    asset['in_splunk'], asset['in_tanium'], asset['in_dlp'],
-                    asset['source_count'], asset['total_rows'], asset['source_tables'], 
-                    asset['all_attributes'], asset['first_seen'], asset['last_updated']
-                )
-                batch_data.append(row_tuple)
-            
-            self.conn.executemany(insert_sql, batch_data)
-            return len(batch)
-            
-        except Exception as e:
-            logger.error(f"Batch insert failed: {e}")
-            return 0
+            logger.error(f"Bulk storage failed: {e}")
+            return stored_count
     
     def _store_discovery_metadata(self, stats: Dict[str, Any]):
         try:
@@ -309,14 +517,16 @@ class MaximumIntensityDatabaseManager:
             self.conn.execute("""
                 INSERT INTO discovery_metadata (
                     id, discovery_type, total_hosts_discovered, total_rows_processed,
-                    processing_time_minutes, stats
-                ) VALUES (?, ?, ?, ?, ?, ?)
+                    processing_time_minutes, guaranteed_stores, failed_stores, stats
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             """, [
                 discovery_id,
                 "maximum_intensity_discovery",
                 stats.get('total_unique_hosts', 0),
                 stats.get('total_rows_processed', 0),
                 stats.get('processing_time_minutes', 0),
+                stats.get('guaranteed_stores', 0),
+                stats.get('failed_stores', 0),
                 json.dumps(stats)
             ])
             
@@ -339,9 +549,32 @@ class MaximumIntensityDatabaseManager:
         try:
             total_count = self.conn.execute("SELECT COUNT(*) FROM maximum_intensity_assets").fetchone()[0]
             
+            # Get some stats about discrepancies
+            discrepancy_stats = {}
+            columns_to_check = ['ip_address', 'infrastructure_type', 'business_unit', 'region']
+            
+            for col in columns_to_check:
+                count = self.conn.execute(f"SELECT COUNT(*) FROM maximum_intensity_assets WHERE {col} LIKE '%,%'").fetchone()[0]
+                discrepancy_stats[f'{col}_discrepancies'] = count
+            
+            # Get storage operation stats
+            storage_stats = self.conn.execute("""
+                SELECT 
+                    COUNT(*) as total_operations,
+                    SUM(CASE WHEN success THEN 1 ELSE 0 END) as successful_operations,
+                    COUNT(DISTINCT asset_id) as unique_assets_touched
+                FROM storage_audit_log
+            """).fetchone()
+            
             return {
                 'total_hosts_in_db': total_count,
-                'database_size_mb': os.path.getsize(self.db_path) / (1024 * 1024) if os.path.exists(self.db_path) else 0
+                'database_size_mb': os.path.getsize(self.db_path) / (1024 * 1024) if os.path.exists(self.db_path) else 0,
+                'discrepancy_stats': discrepancy_stats,
+                'storage_operations': {
+                    'total': storage_stats[0] if storage_stats else 0,
+                    'successful': storage_stats[1] if storage_stats else 0,
+                    'unique_assets': storage_stats[2] if storage_stats else 0
+                }
             }
             
         except Exception as e:
@@ -350,28 +583,41 @@ class MaximumIntensityDatabaseManager:
     def show_sample_hosts(self, limit: int = 5) -> List[str]:
         try:
             results = self.conn.execute(f"""
-                SELECT hostname, ip_address, infrastructure_type, in_chronicle, in_crowdstrike
+                SELECT hostname, ip_address, infrastructure_type, business_unit, 
+                       in_chronicle, in_crowdstrike, source_count, storage_method
                 FROM maximum_intensity_assets 
-                ORDER BY created_at DESC 
+                ORDER BY last_updated DESC 
                 LIMIT {limit}
             """).fetchall()
             
             sample_hosts = []
             for row in results:
-                hostname, ip, infra, chronicle, cs = row
+                hostname, ip, infra, bu, chronicle, cs, sources, storage_method = row
+                
+                # Show discrepancies
+                discrepancies = []
+                if ip and ',' in ip:
+                    discrepancies.append(f"IP:{ip}")
+                if infra and ',' in infra:
+                    discrepancies.append(f"INFRA:{infra}")
+                if bu and ',' in bu:
+                    discrepancies.append(f"BU:{bu}")
+                
                 coverage_info = []
                 if chronicle:
                     coverage_info.append("Chronicle")
                 if cs:
                     coverage_info.append("CrowdStrike")
                 
-                coverage_str = f" [{', '.join(coverage_info)}]" if coverage_info else ""
-                host_info = f"{hostname}"
-                if ip:
-                    host_info += f" ({ip})"
-                if infra:
-                    host_info += f" [{infra}]"
-                host_info += coverage_str
+                host_info = f"{hostname} (sources:{sources})"
+                if ip and ',' not in ip:
+                    host_info += f" [{ip}]"
+                if coverage_info:
+                    host_info += f" {{{','.join(coverage_info)}}}"
+                if discrepancies:
+                    host_info += f" ⚠️{{{','.join(discrepancies)}}}"
+                if storage_method:
+                    host_info += f" ({storage_method})"
                 
                 sample_hosts.append(host_info)
             
@@ -381,44 +627,161 @@ class MaximumIntensityDatabaseManager:
             logger.error(f"Sample hosts query failed: {e}")
             return []
     
-    def test_insert(self):
+    def get_discrepancy_report(self) -> Dict[str, Any]:
+        """Get a comprehensive report of all hosts with data discrepancies"""
         try:
-            logger.info("Testing database insert functionality")
-            test_host_data = {
-                'hostname': 'TEST-SERVER-01',
-                'all_attributes': {
-                    'ip_address': {'192.168.1.100'},
-                    'infrastructure_type': {'Windows Server'},
-                    'business_unit': {'IT Operations'}
-                },
-                'coverage_flags': {
-                    'in_crowdstrike': True,
-                    'in_splunk': False,
-                    'in_chronicle': False,
-                    'in_original_cmdb': False,
-                    'in_tanium': False,
-                    'in_dlp': False
-                },
-                'source_count': 1,
-                'total_rows': 1,
-                'source_tables': ['test_table'],
-                'first_seen': datetime.now().isoformat()
+            results = self.conn.execute("""
+                SELECT hostname, ip_address, infrastructure_type, business_unit, region, 
+                       source_count, last_updated
+                FROM maximum_intensity_assets 
+                WHERE ip_address LIKE '%,%' 
+                   OR infrastructure_type LIKE '%,%'
+                   OR business_unit LIKE '%,%'
+                   OR region LIKE '%,%'
+                ORDER BY source_count DESC, last_updated DESC
+            """).fetchall()
+            
+            discrepancies = []
+            for row in results:
+                hostname, ip, infra, bu, region, sources, last_updated = row
+                
+                issues = []
+                if ip and ',' in ip:
+                    issues.append(f"IP: {ip}")
+                if infra and ',' in infra:
+                    issues.append(f"Infrastructure: {infra}")
+                if bu and ',' in bu:
+                    issues.append(f"Business Unit: {bu}")
+                if region and ',' in region:
+                    issues.append(f"Region: {region}")
+                
+                discrepancies.append({
+                    'hostname': hostname,
+                    'source_count': sources,
+                    'last_updated': last_updated,
+                    'issues': issues
+                })
+            
+            # Get summary stats
+            summary_stats = self.conn.execute("""
+                SELECT 
+                    COUNT(*) as total_discrepant_hosts,
+                    AVG(source_count) as avg_sources_discrepant,
+                    MAX(source_count) as max_sources_discrepant
+                FROM maximum_intensity_assets 
+                WHERE ip_address LIKE '%,%' 
+                   OR infrastructure_type LIKE '%,%'
+                   OR business_unit LIKE '%,%'
+                   OR region LIKE '%,%'
+            """).fetchone()
+            
+            return {
+                'total_discrepant_hosts': summary_stats[0] if summary_stats else 0,
+                'avg_sources_discrepant': summary_stats[1] if summary_stats else 0,
+                'max_sources_discrepant': summary_stats[2] if summary_stats else 0,
+                'discrepancies': discrepancies[:100]  # Top 100
             }
             
-            result = self.store_single_host_immediately('TEST-SERVER-01', test_host_data)
-            if result:
-                count = self.conn.execute("SELECT COUNT(*) FROM maximum_intensity_assets").fetchone()[0]
-                logger.info(f"TEST SUCCESS: Total rows in database: {count}")
-                
-                test_row = self.conn.execute("SELECT hostname, ip_address, infrastructure_type FROM maximum_intensity_assets WHERE hostname = 'TEST-SERVER-01'").fetchone()
-                if test_row:
-                    logger.info(f"TEST ROW: {test_row}")
-                else:
-                    logger.error("Test row not found after insert")
-            else:
-                logger.error("Test insert failed")
         except Exception as e:
-            logger.error(f"Test insert error: {e}")
+            logger.error(f"Discrepancy report failed: {e}")
+            return {'error': str(e)}
+    
+    def get_storage_audit_report(self) -> Dict[str, Any]:
+        """Get audit report of all storage operations"""
+        try:
+            # Recent operations
+            recent_ops = self.conn.execute("""
+                SELECT asset_id, operation, success, method_used, changes_made, 
+                       error_message, timestamp
+                FROM storage_audit_log 
+                ORDER BY timestamp DESC 
+                LIMIT 50
+            """).fetchall()
+            
+            # Summary stats
+            summary = self.conn.execute("""
+                SELECT 
+                    COUNT(*) as total_operations,
+                    SUM(CASE WHEN success THEN 1 ELSE 0 END) as successful_operations,
+                    COUNT(DISTINCT asset_id) as unique_assets,
+                    COUNT(DISTINCT method_used) as methods_used
+                FROM storage_audit_log
+            """).fetchone()
+            
+            # Method breakdown
+            method_stats = self.conn.execute("""
+                SELECT method_used, COUNT(*) as count, 
+                       SUM(CASE WHEN success THEN 1 ELSE 0 END) as successful
+                FROM storage_audit_log 
+                GROUP BY method_used
+                ORDER BY count DESC
+            """).fetchall()
+            
+            return {
+                'summary': {
+                    'total_operations': summary[0] if summary else 0,
+                    'successful_operations': summary[1] if summary else 0,
+                    'success_rate': (summary[1] / summary[0] * 100) if summary and summary[0] > 0 else 0,
+                    'unique_assets': summary[2] if summary else 0,
+                    'methods_used': summary[3] if summary else 0
+                },
+                'method_breakdown': [
+                    {
+                        'method': row[0], 
+                        'total': row[1], 
+                        'successful': row[2],
+                        'success_rate': (row[2] / row[1] * 100) if row[1] > 0 else 0
+                    } for row in method_stats
+                ],
+                'recent_operations': [
+                    {
+                        'asset_id': row[0],
+                        'operation': row[1],
+                        'success': row[2],
+                        'method': row[3],
+                        'changes': row[4],
+                        'error': row[5],
+                        'timestamp': row[6]
+                    } for row in recent_ops
+                ]
+            }
+            
+        except Exception as e:
+            logger.error(f"Storage audit report failed: {e}")
+            return {'error': str(e)}
+    
+    def cleanup_and_optimize(self):
+        """Cleanup and optimize database"""
+        try:
+            logger.info("Starting database cleanup and optimization")
+            
+            # Analyze tables for better query performance
+            self.conn.execute("ANALYZE")
+            
+            # Get database stats before cleanup
+            before_stats = self.get_live_stats()
+            
+            # Clean up old audit log entries (keep last 10000)
+            self.conn.execute("""
+                DELETE FROM storage_audit_log 
+                WHERE id NOT IN (
+                    SELECT id FROM storage_audit_log 
+                    ORDER BY timestamp DESC 
+                    LIMIT 10000
+                )
+            """)
+            
+            # Vacuum to reclaim space
+            self.conn.execute("VACUUM")
+            
+            after_stats = self.get_live_stats()
+            
+            logger.info(f"Database optimization complete")
+            logger.info(f"Size before: {before_stats.get('database_size_mb', 0):.1f} MB")
+            logger.info(f"Size after: {after_stats.get('database_size_mb', 0):.1f} MB")
+            
+        except Exception as e:
+            logger.error(f"Database cleanup failed: {e}")
     
     def close(self):
         if self.conn:
@@ -429,6 +792,7 @@ class MaximumIntensityDatabaseManager:
             except Exception as e:
                 logger.error(f"Database close failed: {e}")
 
+# Aliases for compatibility
 class QuantumEnhancedDatabaseManager(MaximumIntensityDatabaseManager):
     def store_comprehensive_discovery(self, quantum_discovery: QuantumDiscovery) -> int:
         assets_dict = {}
