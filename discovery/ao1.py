@@ -16,7 +16,8 @@ class RealtimeCMDBBuilder:
             'hosts_discovered': 0,
             'attributes_added': 0,
             'tables_processed': 0,
-            'rows_processed': 0
+            'rows_processed': 0,
+            'duplicate_hosts_updated': 0
         }
     
     def normalize_hostname(self, hostname: str) -> str:
@@ -32,25 +33,47 @@ class RealtimeCMDBBuilder:
         
         return hostname
     
+    def get_coverage_flag(self, source_table: str) -> Optional[str]:
+        table_lower = source_table.lower()
+        
+        if 'chronicle-fisv.datalake.events' in table_lower:
+            return 'in_chronicle'
+        elif 'v_dim_endpointagent' in table_lower:
+            return 'in_crowdstrike'
+        elif 'v_dim_endpoint' in table_lower and 'agent' not in table_lower:
+            return 'in_original_cmdb'
+        elif 'v_spl_endpoint_log' in table_lower:
+            return 'in_splunk'
+        
+        return None
+    
     def add_host_to_cmdb(self, hostname: str, attribute_type: str, attribute_value: str, source_table: str):
         normalized_hostname = self.normalize_hostname(hostname)
         
         if not normalized_hostname:
             return
         
-        if normalized_hostname not in self.cmdb:
+        is_new_host = normalized_hostname not in self.cmdb
+        
+        if is_new_host:
             self.cmdb[normalized_hostname] = {
                 'hostname': normalized_hostname,
                 'original_hostnames': set(),
                 'attributes': defaultdict(set),
                 'source_tables': set(),
                 'source_columns': set(),
-                'coverage_flags': set(),
+                'in_chronicle': False,
+                'in_crowdstrike': False,
+                'in_original_cmdb': False,
+                'in_splunk': False,
                 'first_seen': datetime.now().isoformat(),
                 'last_updated': datetime.now().isoformat()
             }
             self.stats['hosts_discovered'] += 1
-            logger.info(f"🆕 NEW HOST DISCOVERED: {normalized_hostname}")
+            logger.info(f"NEW HOST DISCOVERED: {normalized_hostname}")
+        else:
+            self.stats['duplicate_hosts_updated'] += 1
+            logger.info(f"DUPLICATE HOST FOUND - ADDING NEW ATTRIBUTES: {normalized_hostname}")
         
         host = self.cmdb[normalized_hostname]
         
@@ -58,22 +81,21 @@ class RealtimeCMDBBuilder:
         
         if attribute_value and str(attribute_value).strip():
             clean_value = str(attribute_value).strip()
-            if clean_value not in host['attributes'][attribute_type]:
-                host['attributes'][attribute_type].add(clean_value)
+            old_count = len(host['attributes'][attribute_type])
+            host['attributes'][attribute_type].add(clean_value)
+            new_count = len(host['attributes'][attribute_type])
+            
+            if new_count > old_count:
                 self.stats['attributes_added'] += 1
-                logger.debug(f"   ➕ Added {attribute_type}: {clean_value}")
+                logger.info(f"   ADDING VALUE FOR {attribute_type.upper()}: {clean_value}")
         
         host['source_tables'].add(source_table)
         host['source_columns'].add(f"{source_table}:{attribute_type}")
         
-        if 'splunk' in source_table.lower():
-            host['coverage_flags'].add('splunk_coverage')
-        elif 'chronicle' in source_table.lower():
-            host['coverage_flags'].add('chronicle_coverage')
-        elif 'crowdstrike' in source_table.lower() or 'edr' in source_table.lower():
-            host['coverage_flags'].add('edr_coverage')
-        elif 'cmdb' in source_table.lower() or 'endpoint' in source_table.lower():
-            host['coverage_flags'].add('cmdb_coverage')
+        coverage_flag = self.get_coverage_flag(source_table)
+        if coverage_flag:
+            host[coverage_flag] = True
+            logger.info(f"   SETTING {coverage_flag.upper()}: YES")
         
         host['last_updated'] = datetime.now().isoformat()
     
@@ -82,16 +104,20 @@ class RealtimeCMDBBuilder:
         
         for hostname, host_data in self.cmdb.items():
             serializable_cmdb[hostname] = {
+                'asset_id': hostname,
                 'hostname': host_data['hostname'],
                 'original_hostnames': list(host_data['original_hostnames']),
                 'attributes': {k: list(v) for k, v in host_data['attributes'].items()},
                 'source_tables': list(host_data['source_tables']),
                 'source_columns': list(host_data['source_columns']),
-                'coverage_flags': list(host_data['coverage_flags']),
+                'in_chronicle': host_data['in_chronicle'],
+                'in_crowdstrike': host_data['in_crowdstrike'],
+                'in_original_cmdb': host_data['in_original_cmdb'],
+                'in_splunk': host_data['in_splunk'],
                 'first_seen': host_data['first_seen'],
                 'last_updated': host_data['last_updated'],
                 'total_sources': len(host_data['source_tables']),
-                'total_attributes': sum(len(v) for v in host_data['attributes'].values())
+                'total_attributes': sum(len(v) for v in host_data['attributes'].items())
             }
         
         return serializable_cmdb
@@ -100,10 +126,10 @@ class RealtimeCMDBBuilder:
         return {
             'total_hosts': len(self.cmdb),
             'hosts_discovered': self.stats['hosts_discovered'],
+            'duplicate_hosts_updated': self.stats['duplicate_hosts_updated'],
             'attributes_added': self.stats['attributes_added'],
             'tables_processed': self.stats['tables_processed'],
-            'rows_processed': self.stats['rows_processed'],
-            'avg_attributes_per_host': self.stats['attributes_added'] / max(len(self.cmdb), 1)
+            'rows_processed': self.stats['rows_processed']
         }
 
 class SmartKeywordProcessor:
@@ -154,8 +180,6 @@ class SmartKeywordProcessor:
         self.stats = {
             'keywords_found': {},
             'columns_processed': 0,
-            'values_extracted': 0,
-            'tables_scanned': 0,
             'host_tables_found': 0,
             'non_host_tables_skipped': 0
         }
@@ -181,11 +205,8 @@ class SmartKeywordProcessor:
         
         if not has_host_column:
             self.stats['non_host_tables_skipped'] += 1
-            self.stats['columns_processed'] += len(columns)
-            logger.debug(f"⏭️  SKIPPING TABLE - No 'host' columns found")
             return keyword_columns
         
-        logger.info(f"🎯 HOST TABLE DETECTED - Contains 'host' column")
         self.stats['host_tables_found'] += 1
         
         host_columns = []
@@ -211,7 +232,6 @@ class SmartKeywordProcessor:
                     keyword_columns[keyword] = matching_columns
                     self.stats['keywords_found'][keyword] = len(matching_columns)
         
-        self.stats['columns_processed'] += len(columns)
         return keyword_columns
 
 class RealtimeAssetExtractor:
@@ -219,8 +239,7 @@ class RealtimeAssetExtractor:
         self.processor = keyword_processor
         self.extraction_stats = {
             'batches_processed': 0,
-            'total_values': 0,
-            'unique_assets': 0,
+            'total_rows_processed': 0,
             'extraction_errors': 0
         }
     
@@ -233,7 +252,7 @@ class RealtimeAssetExtractor:
             if not table.schema or table.num_rows == 0:
                 return 0
             
-            logger.info(f"🔥 REAL-TIME PROCESSING: {table_path} ({table.num_rows:,} rows)")
+            logger.info(f"PROCESSING TABLE: {table_path} ({table.num_rows:,} rows)")
             
             all_columns = [field.name for field in table.schema]
             
@@ -243,7 +262,6 @@ class RealtimeAssetExtractor:
                 break
             
             if not host_column:
-                logger.warning(f"No host column found in {table_path}")
                 return 0
             
             batch_size = 100000
@@ -271,20 +289,20 @@ class RealtimeAssetExtractor:
                     total_rows_processed += batch_rows
                     offset += batch_size
                     
-                    logger.info(f"📊 PROCESSED {total_rows_processed:,} ROWS - CMDB NOW HAS {len(self.processor.cmdb_builder.cmdb):,} HOSTS")
+                    logger.info(f"PROCESSED {total_rows_processed:,} ROWS - CMDB HAS {len(self.processor.cmdb_builder.cmdb):,} HOSTS")
                     
                     if len(results) < batch_size:
                         break
                         
                 except Exception as e:
-                    logger.error(f"❌ BATCH PROCESSING FAILED: {e}")
+                    logger.error(f"BATCH PROCESSING FAILED: {e}")
                     self.extraction_stats['extraction_errors'] += 1
                     break
             
             self.processor.cmdb_builder.stats['tables_processed'] += 1
             
         except Exception as e:
-            logger.error(f"❌ TABLE PROCESSING FAILED: {e}")
+            logger.error(f"TABLE PROCESSING FAILED: {e}")
             self.extraction_stats['extraction_errors'] += 1
         
         return total_rows_processed
@@ -330,7 +348,6 @@ class ComprehensiveDiscoveryOrchestrator:
             'projects_processed': 0,
             'datasets_processed': 0,
             'tables_processed': 0,
-            'total_assets_discovered': 0,
             'processing_start_time': None,
             'processing_errors': 0
         }
@@ -338,19 +355,17 @@ class ComprehensiveDiscoveryOrchestrator:
     async def execute_comprehensive_discovery(self, client_managers: Dict[str, Any]) -> Dict[str, Any]:
         self.orchestration_stats['processing_start_time'] = datetime.now()
         
-        logger.info("🚀 REAL-TIME CMDB BUILDING INITIATED")
-        logger.info("🎯 BUILDING CMDB ROW-BY-ROW AS WE PROCESS EACH TABLE")
-        logger.info("⚡ LIVE HOST DISCOVERY AND ATTRIBUTE MAPPING")
+        logger.info("REAL-TIME CMDB BUILDING INITIATED")
         
         for project_id, client_manager in client_managers.items():
-            logger.info(f"🎯 PROJECT: {project_id}")
+            logger.info(f"PROJECT: {project_id}")
             
             try:
                 await self._process_complete_project(client_manager, project_id)
                 self.orchestration_stats['projects_processed'] += 1
                 
             except Exception as e:
-                logger.error(f"❌ PROJECT {project_id} FAILED: {e}")
+                logger.error(f"PROJECT {project_id} FAILED: {e}")
                 self.orchestration_stats['processing_errors'] += 1
         
         final_cmdb = self.cmdb_builder.get_current_cmdb_snapshot()
@@ -358,13 +373,12 @@ class ComprehensiveDiscoveryOrchestrator:
         
         processing_time = (datetime.now() - self.orchestration_stats['processing_start_time']).total_seconds()
         
-        logger.info("🎉 REAL-TIME CMDB BUILDING COMPLETE")
-        logger.info(f"📊 FINAL CMDB SIZE: {len(final_cmdb):,} UNIQUE HOSTS")
-        logger.info(f"📋 HOST TABLES PROCESSED: {self.processor.stats['host_tables_found']:,}")
-        logger.info(f"📋 NON-HOST TABLES SKIPPED: {self.processor.stats['non_host_tables_skipped']:,}")
-        logger.info(f"📊 TOTAL ATTRIBUTES ADDED: {cmdb_stats['attributes_added']:,}")
-        logger.info(f"📊 TOTAL ROWS PROCESSED: {cmdb_stats['rows_processed']:,}")
-        logger.info(f"⏱️ PROCESSING TIME: {processing_time/60:.1f} minutes")
+        logger.info("REAL-TIME CMDB BUILDING COMPLETE")
+        logger.info(f"FINAL CMDB SIZE: {len(final_cmdb):,} UNIQUE HOSTS")
+        logger.info(f"HOST TABLES PROCESSED: {self.processor.stats['host_tables_found']:,}")
+        logger.info(f"NON-HOST TABLES SKIPPED: {self.processor.stats['non_host_tables_skipped']:,}")
+        logger.info(f"TOTAL ATTRIBUTES ADDED: {cmdb_stats['attributes_added']:,}")
+        logger.info(f"TOTAL ROWS PROCESSED: {cmdb_stats['rows_processed']:,}")
         
         return {
             'discovery_stats': {
@@ -373,17 +387,12 @@ class ComprehensiveDiscoveryOrchestrator:
                 'non_host_tables_skipped': self.processor.stats['non_host_tables_skipped'],
                 'total_attributes_added': cmdb_stats['attributes_added'],
                 'total_rows_processed': cmdb_stats['rows_processed'],
+                'duplicate_hosts_updated': cmdb_stats['duplicate_hosts_updated'],
                 'processing_time_minutes': processing_time / 60,
-                'realtime_cmdb_building': True,
-                'row_by_row_processing': True
+                'realtime_cmdb_building': True
             },
             'assets': final_cmdb,
-            'cmdb_stats': cmdb_stats,
-            'processing_statistics': {
-                'orchestration': self.orchestration_stats,
-                'keyword_processing': self.processor.stats,
-                'extraction': self.extractor.extraction_stats
-            }
+            'cmdb_stats': cmdb_stats
         }
     
     async def _process_complete_project(self, client_manager, project_id: str):
@@ -399,11 +408,11 @@ class ComprehensiveDiscoveryOrchestrator:
                         self.orchestration_stats['datasets_processed'] += 1
                         
                     except Exception as e:
-                        logger.error(f"❌ DATASET {dataset.dataset_id} FAILED: {e}")
+                        logger.error(f"DATASET {dataset.dataset_id} FAILED: {e}")
                         self.orchestration_stats['processing_errors'] += 1
                         
             except Exception as e:
-                logger.error(f"❌ PROJECT LISTING FAILED: {e}")
+                logger.error(f"PROJECT LISTING FAILED: {e}")
                 self.orchestration_stats['processing_errors'] += 1
     
     async def _process_complete_dataset(self, client, project_id: str, dataset_id: str):
@@ -419,11 +428,11 @@ class ComprehensiveDiscoveryOrchestrator:
                     self.orchestration_stats['tables_processed'] += 1
                     
                 except Exception as e:
-                    logger.error(f"❌ TABLE {table_ref.table_id} FAILED: {e}")
+                    logger.error(f"TABLE {table_ref.table_id} FAILED: {e}")
                     self.orchestration_stats['processing_errors'] += 1
             
         except Exception as e:
-            logger.error(f"❌ DATASET PROCESSING FAILED: {e}")
+            logger.error(f"DATASET PROCESSING FAILED: {e}")
             self.orchestration_stats['processing_errors'] += 1
     
     async def _process_complete_table(self, client, table_path: str):
@@ -438,17 +447,17 @@ class ComprehensiveDiscoveryOrchestrator:
             if not keyword_columns:
                 return
             
-            logger.info(f"🔥 {table_path}: Found {sum(len(cols) for cols in keyword_columns.values())} keyword columns - PROCESSING ROWS NOW")
+            logger.info(f"HOST TABLE FOUND: {table_path}")
             
             rows_processed = await self.extractor.extract_and_build_cmdb_realtime(
                 client, table_path, keyword_columns
             )
             
             if rows_processed > 0:
-                logger.info(f"✅ {table_path}: Processed {rows_processed:,} rows - CMDB updated in real-time")
+                logger.info(f"COMPLETED: {table_path} - {rows_processed:,} rows processed")
             
         except Exception as e:
-            logger.error(f"❌ TABLE SCHEMA ACCESS FAILED: {e}")
+            logger.error(f"TABLE PROCESSING FAILED: {e}")
             self.orchestration_stats['processing_errors'] += 1
     
     def _prioritize_datasets(self, datasets) -> List[Tuple[int, Any]]:
