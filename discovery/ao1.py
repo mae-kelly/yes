@@ -10,34 +10,75 @@ logger = logging.getLogger(__name__)
 
 class SmartKeywordProcessor:
     def __init__(self):
-        self.keyword_patterns = {
+        self.primary_keywords = {
             'host': ['host'],
             'hostname': ['hostname'],
+            'fqdn': ['fqdn']
+        }
+        
+        self.secondary_keywords = {
             'ip_address': ['ip'],
-            'fqdn': ['fqdn'],
             'mac_address': ['mac'],
-            'system': ['system'],
-            'location': ['location'],
-            'owner': ['owner'],
-            'environment': ['environment']
+            'asset_id': ['asset_id', 'assetid'],
+            'serial_number': ['serial'],
+            'domain': ['domain'],
+            'infrastructure_type': ['hosting', 'infrastructure'],
+            'cloud_provider': ['aws', 'azure', 'gcp', 'cloud'],
+            'cloud_region': ['region'],
+            'datacenter': ['datacenter', 'dc'],
+            'vpc': ['vpc', 'vlan'],
+            'global_region': ['americas', 'emea', 'apac'],
+            'country': ['country'],
+            'site': ['site', 'building'],
+            'business_unit': ['business_unit', 'bu'],
+            'cio': ['cio'],
+            'apm': ['apm'],
+            'application_class': ['app_class', 'application_class'],
+            'application_name': ['app_name', 'application'],
+            'os_type': ['os', 'operating'],
+            'os_version': ['version'],
+            'server_role': ['role', 'function'],
+            'virtualization': ['virtual', 'vm', 'container'],
+            'edr_status': ['edr', 'crowdstrike', 'sentinelone'],
+            'tanium_status': ['tanium'],
+            'dlp_status': ['dlp'],
+            'firewall': ['firewall'],
+            'encryption': ['encryption'],
+            'vulnerability': ['vuln', 'vulnerability'],
+            'logging_platform': ['splunk', 'chronicle', 'siem'],
+            'log_source': ['log_source', 'logsource'],
+            'log_type': ['log_type', 'logtype'],
+            'compliance': ['compliance'],
+            'external_exposure': ['external', 'internet'],
+            'lifecycle_status': ['lifecycle', 'status']
         }
         
         self.stats = {
             'keywords_found': {},
             'columns_processed': 0,
             'values_extracted': 0,
-            'tables_scanned': 0
+            'tables_scanned': 0,
+            'host_tables_found': 0,
+            'non_host_tables_skipped': 0
         }
     
     def find_keyword_columns(self, columns: List[str]) -> Dict[str, List[str]]:
         keyword_columns = {}
         
-        for keyword, patterns in self.keyword_patterns.items():
+        has_host_column = self._has_host_column(columns)
+        
+        if not has_host_column:
+            self.stats['non_host_tables_skipped'] += 1
+            self.stats['columns_processed'] += len(columns)
+            return keyword_columns
+        
+        self.stats['host_tables_found'] += 1
+        
+        for keyword, patterns in self.primary_keywords.items():
             matching_columns = []
             
             for column in columns:
                 column_lower = column.lower()
-                
                 for pattern in patterns:
                     if pattern in column_lower:
                         matching_columns.append(column)
@@ -47,8 +88,34 @@ class SmartKeywordProcessor:
                 keyword_columns[keyword] = matching_columns
                 self.stats['keywords_found'][keyword] = len(matching_columns)
         
+        if keyword_columns:
+            for keyword, patterns in self.secondary_keywords.items():
+                matching_columns = []
+                
+                for column in columns:
+                    column_lower = column.lower()
+                    for pattern in patterns:
+                        if pattern in column_lower:
+                            matching_columns.append(column)
+                            break
+                
+                if matching_columns:
+                    keyword_columns[keyword] = matching_columns
+                    self.stats['keywords_found'][keyword] = len(matching_columns)
+        
         self.stats['columns_processed'] += len(columns)
         return keyword_columns
+    
+    def _has_host_column(self, columns: List[str]) -> bool:
+        host_indicators = ['host', 'hostname', 'fqdn']
+        
+        for column in columns:
+            column_lower = column.lower()
+            for indicator in host_indicators:
+                if indicator in column_lower:
+                    return True
+        
+        return False
 
 class AdvancedAssetExtractor:
     def __init__(self, keyword_processor: SmartKeywordProcessor):
@@ -249,9 +316,9 @@ class ComprehensiveDiscoveryOrchestrator:
     async def execute_comprehensive_discovery(self, client_managers: Dict[str, Any]) -> Dict[str, Any]:
         self.orchestration_stats['processing_start_time'] = datetime.now()
         
-        logger.info("🚀 COMPREHENSIVE KEYWORD-BASED DISCOVERY INITIATED")
-        logger.info("🎯 PROCESSING ALL PROJECTS, DATASETS, AND TABLES")
-        logger.info("⚡ EXTRACTING ALL VALUES FROM KEYWORD COLUMNS")
+        logger.info("🚀 HOST-CENTRIC DISCOVERY INITIATED")
+        logger.info("🎯 ONLY PROCESSING TABLES WITH HOST/HOSTNAME/FQDN COLUMNS")
+        logger.info("⚡ EXTRACTING HOST-RELATED ATTRIBUTES")
         
         all_discovered_assets = {}
         
@@ -280,18 +347,20 @@ class ComprehensiveDiscoveryOrchestrator:
         
         processing_time = (datetime.now() - self.orchestration_stats['processing_start_time']).total_seconds()
         
-        logger.info("🎉 COMPREHENSIVE DISCOVERY COMPLETE")
+        logger.info("🎉 HOST-CENTRIC DISCOVERY COMPLETE")
         logger.info(f"📊 TOTAL ASSETS: {len(all_discovered_assets):,}")
-        logger.info(f"📋 TABLES PROCESSED: {self.orchestration_stats['tables_processed']:,}")
+        logger.info(f"📋 HOST TABLES PROCESSED: {self.processor.stats['host_tables_found']:,}")
+        logger.info(f"📋 NON-HOST TABLES SKIPPED: {self.processor.stats['non_host_tables_skipped']:,}")
         logger.info(f"⏱️ PROCESSING TIME: {processing_time/60:.1f} minutes")
         
         return {
             'discovery_stats': {
                 'total_assets': len(all_discovered_assets),
-                'tables_processed': self.orchestration_stats['tables_processed'],
+                'host_tables_processed': self.processor.stats['host_tables_found'],
+                'non_host_tables_skipped': self.processor.stats['non_host_tables_skipped'],
                 'processing_time_minutes': processing_time / 60,
-                'keyword_discovery_mode': True,
-                'comprehensive_extraction': True
+                'host_centric_discovery_mode': True,
+                'cmdb_focused': True
             },
             'assets': all_discovered_assets,
             'processing_statistics': {
@@ -420,12 +489,10 @@ class ComprehensiveDiscoveryOrchestrator:
             
             if 'SAS_BI' in name:
                 priority = 1
-            elif any(keyword in name for keyword in ['HOST', 'ENDPOINT', 'ASSET']):
+            elif any(keyword in name for keyword in ['HOST', 'ENDPOINT', 'ASSET', 'CMDB']):
                 priority = 2
             elif any(keyword in name for keyword in ['SECURITY', 'LOG']):
                 priority = 3
-            elif 'CMDB' in name:
-                priority = 4
             
             prioritized.append((priority, dataset))
         
