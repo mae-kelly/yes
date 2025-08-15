@@ -55,6 +55,7 @@ class QuantumContentAnalyzer:
         
     def _initialize_ml_components(self):
         try:
+            from .training_orchestrator import IntensiveTrainingOrchestrator, AdvancedContentAnalyzer
             self.training_orchestrator = IntensiveTrainingOrchestrator()
             self.ml_analyzer = AdvancedContentAnalyzer(self.training_orchestrator)
             logger.info("ML-enhanced content analysis initialized")
