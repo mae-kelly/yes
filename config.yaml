@@ -1,245 +1,186 @@
-# config.yaml
+project_ids:
+  - chronicle-fisv
+  - fisv-security
+  - fisv-logs
+  - fisv-data
+  - fisv-compliance
+  - fisv-infrastructure
+  - fisv-cloud
+  - fisv-network
 
-# Memory and Performance Configuration
-max_memory_mb: 8192
-max_disk_gb: 100
-cache_dir: ".cache"
-database_path: "quantum_discovery.db"
-content_db_path: "content_discovery.db"
-max_workers: 64
-parallel_processing_enabled: true
-max_concurrent_tables: 24
-intelligent_backoff: true
-adaptive_timeouts: true
-graceful_degradation: true
+output_dir: visibility_output
 
-# Machine Learning Configuration
-enable_machine_learning: true
-enable_deep_analysis: true
-enable_semantic_matching: true
-enable_predictive_enrichment: true
-enable_neural_field_classification: true
-ml_training_epochs: 15
-ml_batch_size: 64
-ml_learning_rate: 0.001
-enable_continuous_learning: true
-ml_validation_split: 0.2
+discovery_settings:
+  max_sample_size: 10000
+  sample_ratio: 0.1
+  min_confidence: 0.7
+  batch_size: 5000
+  max_workers: 32
+  max_tables_per_project: 1000
+  max_rows_per_query: 100000
 
-# Intelligence and Analysis Configuration
-intelligence_level: "expert"
-semantic_confidence_threshold: 0.75
-validation_confidence_threshold: 0.8
-data_quality_threshold: 0.8
-enable_pattern_recognition: true
-enable_statistical_analysis: true
-enable_anomaly_detection: true
-enable_correlation_analysis: true
-enable_predictive_analytics: true
+coverage_thresholds:
+  cmdb_target: 0.95
+  edr_target: 0.90
+  tanium_target: 0.85
+  dlp_target: 0.80
+  splunk_target: 0.95
+  gso_target: 0.95
+  chronicle_target: 0.85
+  crowdstrike_target: 0.90
 
-# Discovery Engine Configuration
-use_universal_scanner: true
-sample_size_adaptive: true
-min_sample_size: 10
-max_sample_size: 500
-enable_multi_source_fusion: true
-enable_conflict_resolution: true
-enable_confidence_weighting: true
-data_freshness_weight: 0.3
-source_reliability_weight: 0.4
-validation_score_weight: 0.3
+infrastructure_types:
+  - on_premise
+  - cloud
+  - saas
+  - api
 
-# Network and Security Configuration
-enable_network_discovery: true
-enable_ip_validation: true
-enable_mac_discovery: true
-enable_domain_extraction: true
-enable_security_classification: true
-enable_risk_scoring: true
-prioritize_security_sources: true
-enable_vulnerability_assessment: true
-enable_compliance_monitoring: true
+regions:
+  - na
+  - latam
+  - europe
+  - apac
 
-# Geographic and Infrastructure Configuration
-enable_geo_intelligence: true
-enable_datacenter_mapping: true
-enable_cloud_detection: true
-enable_hybrid_infrastructure_analysis: true
-enable_container_discovery: true
-enable_kubernetes_analysis: true
+system_classifications:
+  - web_server
+  - windows_server
+  - linux_server
+  - nix
+  - mainframe
+  - database
+  - network_appliance
 
-# Business and Organizational Configuration
-enable_business_mapping: true
-enable_owner_identification: true
-enable_criticality_assessment: true
-enable_cost_center_mapping: true
-enable_department_analysis: true
-enable_application_classification: true
+business_units:
+  - fig
+  - bank_solutions
+  - credit_union_solutions
+  - wealth_management
+  - investment_banking
+  - retail_banking
+  - commercial_banking
+  - treasury
+  - risk_management
+  - compliance
+  - payments
+  - cards
+  - lending
+  - mortgage
+  - capital_markets
 
-# Additional Project Configuration
-additional_projects:
-  - "chronicle-fisv"
-  - "fisv-security"
-  - "fisv-logs"
-  - "fisv-data"
-  - "fisv-compliance"
-  - "fisv-risk"
-  - "fisv-audit"
-  - "fisv-infrastructure"
-  - "fisv-cloud"
-  - "fisv-network"
+log_role_mappings:
+  network:
+    log_types:
+      - firewall_traffic
+      - ids_ips
+      - ndr
+      - proxy
+      - dns
+      - waf
+    visibility_factors:
+      - url_fqdn_coverage
+      - cmdb_visibility
+      - network_zones
+      - ipam_public_ip
+      - geolocation
+      - vpc
+      
+  endpoint:
+    log_types:
+      - os_logs
+      - edr
+      - dlp
+      - fim
+      - winEvt
+      - linux_syslog
+    visibility_factors:
+      - cmdb_visibility
+      - crowdstrike_coverage
+      - log_ingest_volume
+      
+  cloud:
+    log_types:
+      - cloud_event
+      - cloud_load_balancer
+      - cloud_config
+      - theom
+      - wiz
+      - cloud_security
+    visibility_factors:
+      - vpc
+      - ipam_public_ip
+      - url_fqdn_coverage
+      - crowdstrike_coverage
+      
+  application:
+    log_types:
+      - web_logs
+      - api_gateway
+      - http_access
+    visibility_factors:
+      - url_fqdn_coverage
+      - control_coverage
+      - domain
+      
+  identity:
+    log_types:
+      - authentication_attempts
+      - privilege_escalation
+      - identity_operations
+    visibility_factors:
+      - domain
+      - internal
+      - external
+      - controls
 
-# Source Priority Configuration
-source_priorities:
-  cmdb: 100
-  crowdstrike: 95
-  chronicle: 90
-  splunk: 85
-  tanium: 80
-  dlp: 75
-  security_tools: 70
-  network_monitoring: 65
-  cloud_platforms: 60
-  manual_inventory: 50
+visibility_weights:
+  cmdb_visibility: 0.25
+  edr_coverage: 0.15
+  tanium_coverage: 0.10
+  dlp_coverage: 0.10
+  splunk_logging: 0.15
+  gso_logging: 0.10
+  crowdstrike_coverage: 0.10
+  chronicle_coverage: 0.05
 
-# Field Type Priority Configuration
-field_type_priorities:
-  hostname: 100
-  fqdn: 95
-  ip_address: 90
-  mac_address: 85
-  infrastructure_type: 80
-  system_classification: 75
-  global_region: 70
-  business_unit: 65
-  datacenter: 60
-  environment: 55
-  application_class: 50
-  criticality: 45
-  owner: 40
-
-# Discovery Engine Weights
-engine_weights:
-  ao1_discovery: 0.4
-  content_discovery: 0.35
-  core_discovery: 0.25
-
-# Quality Metrics Configuration
-quality_metrics:
-  completeness_weight: 0.3
-  accuracy_weight: 0.25
-  consistency_weight: 0.2
-  timeliness_weight: 0.15
-  validity_weight: 0.1
-
-# Cache Configuration
-intelligent_cache_eviction: true
-promote_hot_data: true
-compress_cold_data: true
-cache_hit_optimization: true
-cache_compression_threshold_kb: 100
-cache_ttl_hours: 48
-
-# Database Configuration
-enable_database_optimization: true
-enable_indexing: true
-enable_query_optimization: true
-enable_connection_pooling: true
-database_vacuum_interval_hours: 24
-enable_wal_mode: true
-
-# Query and Processing Configuration
-enable_query_optimization: true
-enable_sampling_optimization: true
-max_query_cost_usd: 100.0
-max_tables_per_dataset: 1000
-max_rows_per_query: 2000000
-max_processing_time_hours: 24
-memory_safety_margin: 0.15
-disk_safety_margin: 0.1
-
-# Error Handling and Recovery Configuration
-intelligent_error_handling: true
-enable_retry_strategies: true
-enable_fallback_mechanisms: true
-adaptive_error_recovery: true
-max_retry_attempts: 5
-retry_backoff_multiplier: 2.0
-circuit_breaker_enabled: true
-
-# Logging and Monitoring Configuration
-log_level: "INFO"
-enable_performance_logging: true
-enable_quality_metrics: true
-enable_security_audit_logging: true
-enable_compliance_logging: true
-log_rotation_enabled: true
-max_log_size_mb: 100
-log_retention_days: 30
-
-# Reporting and Visualization Configuration
-generate_intelligent_reports: true
-enable_visualization_data: true
-enable_recommendation_engine: true
-enable_trend_analysis: true
-enable_forecasting: true
-export_formats: ["json", "csv", "sql", "excel"]
-generate_executive_summary: true
-enable_interactive_dashboards: true
-
-# Validation and Compliance Configuration
-enable_data_validation: true
-enable_format_validation: true
-enable_semantic_validation: true
-enable_business_rule_validation: true
-validation_strictness: "moderate"
-enable_gdpr_compliance: true
-enable_sox_compliance: true
-enable_hipaa_compliance: true
-
-# Performance and Scalability Configuration
-enable_horizontal_scaling: true
-enable_load_balancing: true
-enable_auto_scaling: true
-performance_monitoring_enabled: true
-resource_utilization_threshold: 0.8
-scale_up_threshold: 0.85
-scale_down_threshold: 0.3
-
-# Advanced Analytics Configuration
-enable_machine_learning_insights: true
-enable_behavioral_analytics: true
-enable_predictive_modeling: true
-enable_clustering_analysis: true
-enable_time_series_analysis: true
-enable_natural_language_processing: true
-
-# Security and Privacy Configuration
-enable_data_encryption: true
-enable_pii_detection: true
-enable_sensitive_data_masking: true
-enable_access_control: true
-enable_audit_trails: true
-data_retention_policy_days: 365
-enable_secure_communications: true
-
-# Integration Configuration
-enable_api_integration: true
-enable_webhook_notifications: true
-enable_slack_integration: false
-enable_email_notifications: false
-enable_siem_integration: true
-enable_cmdb_synchronization: true
-
-# Feature Flags
-experimental_features_enabled: true
-beta_features_enabled: true
-enable_quantum_algorithms: true
-enable_ai_recommendations: true
-enable_automated_remediation: false
-
-# Version and Metadata
-config_version: "2.0"
-schema_version: "1.5"
-created_by: "ultimate_quantum_discovery_system"
-created_at: "2024-01-01T00:00:00Z"
-last_modified: "2024-12-19T00:00:00Z"
+risk_factors:
+  no_edr: high
+  no_logging: critical
+  no_cmdb: medium
+  low_visibility: high
+  no_dlp: medium
+  
+compliance_requirements:
+  logging_standard: GSO and Splunk
+  endpoint_protection: EDR or Tanium
+  data_protection: DLP Agent
+  asset_management: CMDB
+  
+ml_settings:
+  enable_neural_classification: true
+  confidence_threshold: 0.7
+  use_transformer_embeddings: true
+  model_type: sentence-transformers/all-MiniLM-L6-v2
+  
+database_settings:
+  type: duckdb
+  path: ao1_visibility.duckdb
+  enable_compression: true
+  enable_indexes: true
+  
+reporting:
+  generate_executive_report: true
+  generate_csv_export: true
+  generate_json_results: true
+  generate_coverage_heatmap: true
+  
+performance:
+  memory_limit_gb: 16
+  cpu_cores: 8
+  enable_parallel_processing: true
+  cache_enabled: true
+  
+monitoring:
+  log_level: INFO
+  enable_metrics: true
+  enable_tracing: false
+  metrics_interval_seconds: 60
