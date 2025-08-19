@@ -11,6 +11,32 @@ from core.types import QuantumDiscovery, HyperAsset
 
 logger = logging.getLogger(__name__)
 
+class RecommendationEngine:
+    def __init__(self, config):
+        self.config = config
+    
+    async def generate_recommendations(self, discovery: QuantumDiscovery, 
+                                     insights: List[Dict[str, Any]]) -> List[str]:
+        recommendations = []
+        
+        high_priority_insights = [i for i in insights if i.get('priority') == 'critical']
+        
+        if high_priority_insights:
+            recommendations.append("Address critical security and compliance gaps immediately")
+        
+        coverage_insights = [i for i in insights if i.get('type') == 'security_coverage_analysis']
+        if coverage_insights:
+            recommendations.append("Implement comprehensive security tool deployment strategy")
+        
+        visibility_insights = [i for i in insights if 'visibility' in i.get('type', '')]
+        if visibility_insights:
+            recommendations.append("Enhance asset visibility and monitoring capabilities")
+        
+        recommendations.append("Establish continuous compliance monitoring program")
+        recommendations.append("Develop incident response procedures for high-risk assets")
+        
+        return recommendations
+
 class QuantumIntelligenceEngine:
     def __init__(self, config: Dict[str, Any]):
         self.config = config
@@ -654,31 +680,5 @@ class AnomalyDetector:
 class CorrelationEngine:
     def correlate(self, assets):
         pass
-
-class RecommendationEngine:
-    def __init__(self, config):
-        self.config = config
-    
-    async def generate_recommendations(self, discovery: QuantumDiscovery, 
-                                     insights: List[Dict[str, Any]]) -> List[str]:
-        recommendations = []
-        
-        high_priority_insights = [i for i in insights if i.get('priority') == 'critical']
-        
-        if high_priority_insights:
-            recommendations.append("Address critical security and compliance gaps immediately")
-        
-        coverage_insights = [i for i in insights if i.get('type') == 'security_coverage_analysis']
-        if coverage_insights:
-            recommendations.append("Implement comprehensive security tool deployment strategy")
-        
-        visibility_insights = [i for i in insights if 'visibility' in i.get('type', '')]
-        if visibility_insights:
-            recommendations.append("Enhance asset visibility and monitoring capabilities")
-        
-        recommendations.append("Establish continuous compliance monitoring program")
-        recommendations.append("Develop incident response procedures for high-risk assets")
-        
-        return recommendations
 
 IntelligenceEngine = QuantumIntelligenceEngine
