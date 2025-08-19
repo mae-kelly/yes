@@ -22,6 +22,10 @@ class QuantumEnhancedDatabaseManager:
     
     def _initialize_database(self):
         try:
+            if os.path.exists(self.db_path):
+                os.remove(self.db_path)
+                logger.info(f"Removed existing database: {self.db_path}")
+            
             self.conn = duckdb.connect(self.db_path)
             self._create_comprehensive_schema()
             logger.info(f"Quantum database initialized: {self.db_path}")
@@ -31,199 +35,210 @@ class QuantumEnhancedDatabaseManager:
     
     def _create_comprehensive_schema(self):
         try:
-            self.conn.execute("DROP TABLE IF EXISTS assets")
-            self.conn.execute("DROP TABLE IF EXISTS discovery_metadata")
-            self.conn.execute("DROP TABLE IF EXISTS asset_relationships")
-            self.conn.execute("DROP TABLE IF EXISTS data_sources")
-            self.conn.execute("DROP TABLE IF EXISTS audit_log")
-        except:
-            pass
+            self.conn.execute("""
+                CREATE TABLE assets (
+                    asset_id VARCHAR PRIMARY KEY,
+                    hostname VARCHAR NOT NULL,
+                    primary_identity VARCHAR,
+                    
+                    ip_address VARCHAR,
+                    fqdn VARCHAR,
+                    mac_address VARCHAR,
+                    
+                    infrastructure_type VARCHAR,
+                    system_classification VARCHAR,
+                    operating_system VARCHAR,
+                    platform VARCHAR,
+                    architecture VARCHAR,
+                    
+                    business_unit VARCHAR,
+                    department VARCHAR,
+                    cost_center VARCHAR,
+                    application_name VARCHAR,
+                    application_class VARCHAR,
+                    criticality VARCHAR,
+                    
+                    global_region VARCHAR,
+                    country VARCHAR,
+                    state_province VARCHAR,
+                    city VARCHAR,
+                    datacenter VARCHAR,
+                    zone VARCHAR,
+                    cloud_provider VARCHAR,
+                    cloud_region VARCHAR,
+                    availability_zone VARCHAR,
+                    
+                    owner VARCHAR,
+                    technical_contact VARCHAR,
+                    business_contact VARCHAR,
+                    manager VARCHAR,
+                    cio VARCHAR,
+                    
+                    environment VARCHAR,
+                    lifecycle_stage VARCHAR,
+                    support_tier VARCHAR,
+                    maintenance_window VARCHAR,
+                    
+                    asset_tag VARCHAR,
+                    serial_number VARCHAR,
+                    model VARCHAR,
+                    manufacturer VARCHAR,
+                    purchase_date VARCHAR,
+                    warranty_expiration VARCHAR,
+                    
+                    network_segment VARCHAR,
+                    vlan VARCHAR,
+                    subnet VARCHAR,
+                    domain VARCHAR,
+                    forest VARCHAR,
+                    
+                    edr_coverage BOOLEAN DEFAULT false,
+                    edr_agent_version VARCHAR,
+                    dlp_coverage BOOLEAN DEFAULT false,
+                    dlp_agent_version VARCHAR,
+                    tanium_coverage BOOLEAN DEFAULT false,
+                    tanium_agent_version VARCHAR,
+                    splunk_coverage BOOLEAN DEFAULT false,
+                    splunk_forwarder_version VARCHAR,
+                    chronicle_coverage BOOLEAN DEFAULT false,
+                    chronicle_collector_version VARCHAR,
+                    crowdstrike_coverage BOOLEAN DEFAULT false,
+                    crowdstrike_agent_version VARCHAR,
+                    cmdb_visibility BOOLEAN DEFAULT false,
+                    cmdb_last_update VARCHAR,
+                    
+                    antivirus_installed BOOLEAN DEFAULT false,
+                    antivirus_product VARCHAR,
+                    antivirus_version VARCHAR,
+                    firewall_enabled BOOLEAN DEFAULT false,
+                    encryption_status VARCHAR,
+                    patch_level VARCHAR,
+                    vulnerability_score REAL,
+                    
+                    visibility_score REAL DEFAULT 0.0,
+                    quality_score REAL DEFAULT 0.0,
+                    confidence_score REAL DEFAULT 0.0,
+                    intelligence_quotient REAL DEFAULT 0.0,
+                    risk_score REAL DEFAULT 0.0,
+                    compliance_score REAL DEFAULT 0.0,
+                    
+                    ml_confidence REAL DEFAULT 0.0,
+                    ml_field_type VARCHAR,
+                    ml_processing_method VARCHAR,
+                    
+                    source_count INTEGER DEFAULT 0,
+                    total_rows INTEGER DEFAULT 0,
+                    source_tables TEXT,
+                    all_data_json TEXT,
+                    
+                    coverage_analysis TEXT,
+                    risk_assessment TEXT,
+                    compliance_status TEXT,
+                    
+                    first_seen TIMESTAMP,
+                    last_updated TIMESTAMP,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+        except Exception as e:
+            logger.error(f"Assets table creation failed: {e}")
+            raise
         
-        self.conn.execute("""
-            CREATE TABLE assets (
-                asset_id VARCHAR PRIMARY KEY,
-                hostname VARCHAR NOT NULL,
-                primary_identity VARCHAR,
-                
-                ip_address VARCHAR,
-                fqdn VARCHAR,
-                mac_address VARCHAR,
-                
-                infrastructure_type VARCHAR,
-                system_classification VARCHAR,
-                operating_system VARCHAR,
-                platform VARCHAR,
-                architecture VARCHAR,
-                
-                business_unit VARCHAR,
-                department VARCHAR,
-                cost_center VARCHAR,
-                application_name VARCHAR,
-                application_class VARCHAR,
-                criticality VARCHAR,
-                
-                global_region VARCHAR,
-                country VARCHAR,
-                state_province VARCHAR,
-                city VARCHAR,
-                datacenter VARCHAR,
-                zone VARCHAR,
-                cloud_provider VARCHAR,
-                cloud_region VARCHAR,
-                availability_zone VARCHAR,
-                
-                owner VARCHAR,
-                technical_contact VARCHAR,
-                business_contact VARCHAR,
-                manager VARCHAR,
-                cio VARCHAR,
-                
-                environment VARCHAR,
-                lifecycle_stage VARCHAR,
-                support_tier VARCHAR,
-                maintenance_window VARCHAR,
-                
-                asset_tag VARCHAR,
-                serial_number VARCHAR,
-                model VARCHAR,
-                manufacturer VARCHAR,
-                purchase_date VARCHAR,
-                warranty_expiration VARCHAR,
-                
-                network_segment VARCHAR,
-                vlan VARCHAR,
-                subnet VARCHAR,
-                domain VARCHAR,
-                forest VARCHAR,
-                
-                edr_coverage BOOLEAN DEFAULT false,
-                edr_agent_version VARCHAR,
-                dlp_coverage BOOLEAN DEFAULT false,
-                dlp_agent_version VARCHAR,
-                tanium_coverage BOOLEAN DEFAULT false,
-                tanium_agent_version VARCHAR,
-                splunk_coverage BOOLEAN DEFAULT false,
-                splunk_forwarder_version VARCHAR,
-                chronicle_coverage BOOLEAN DEFAULT false,
-                chronicle_collector_version VARCHAR,
-                crowdstrike_coverage BOOLEAN DEFAULT false,
-                crowdstrike_agent_version VARCHAR,
-                cmdb_visibility BOOLEAN DEFAULT false,
-                cmdb_last_update VARCHAR,
-                
-                antivirus_installed BOOLEAN DEFAULT false,
-                antivirus_product VARCHAR,
-                antivirus_version VARCHAR,
-                firewall_enabled BOOLEAN DEFAULT false,
-                encryption_status VARCHAR,
-                patch_level VARCHAR,
-                vulnerability_score REAL,
-                
-                visibility_score REAL DEFAULT 0.0,
-                quality_score REAL DEFAULT 0.0,
-                confidence_score REAL DEFAULT 0.0,
-                intelligence_quotient REAL DEFAULT 0.0,
-                risk_score REAL DEFAULT 0.0,
-                compliance_score REAL DEFAULT 0.0,
-                
-                ml_confidence REAL DEFAULT 0.0,
-                ml_field_type VARCHAR,
-                ml_processing_method VARCHAR,
-                
-                source_count INTEGER DEFAULT 0,
-                total_rows INTEGER DEFAULT 0,
-                source_tables TEXT,
-                all_data_json TEXT,
-                
-                coverage_analysis TEXT,
-                risk_assessment TEXT,
-                compliance_status TEXT,
-                
-                first_seen TIMESTAMP,
-                last_updated TIMESTAMP,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        """)
+        try:
+            self.conn.execute("""
+                CREATE TABLE discovery_metadata (
+                    id INTEGER PRIMARY KEY,
+                    discovery_timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    project_id VARCHAR,
+                    total_assets_discovered INTEGER,
+                    total_tables_processed INTEGER,
+                    total_rows_processed INTEGER,
+                    ml_predictions_made INTEGER,
+                    high_confidence_predictions INTEGER,
+                    processing_time_seconds REAL,
+                    ml_enabled BOOLEAN,
+                    engines_used TEXT,
+                    configuration TEXT,
+                    statistics TEXT
+                )
+            """)
+        except Exception as e:
+            logger.error(f"Discovery metadata table creation failed: {e}")
+            raise
         
-        self.conn.execute("""
-            CREATE TABLE discovery_metadata (
-                id INTEGER PRIMARY KEY,
-                discovery_timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                project_id VARCHAR,
-                total_assets_discovered INTEGER,
-                total_tables_processed INTEGER,
-                total_rows_processed INTEGER,
-                ml_predictions_made INTEGER,
-                high_confidence_predictions INTEGER,
-                processing_time_seconds REAL,
-                ml_enabled BOOLEAN,
-                engines_used TEXT,
-                configuration TEXT,
-                statistics TEXT
-            )
-        """)
+        try:
+            self.conn.execute("""
+                CREATE TABLE asset_relationships (
+                    id INTEGER PRIMARY KEY,
+                    source_asset_id VARCHAR,
+                    target_asset_id VARCHAR,
+                    relationship_type VARCHAR,
+                    confidence REAL,
+                    discovered_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (source_asset_id) REFERENCES assets(asset_id),
+                    FOREIGN KEY (target_asset_id) REFERENCES assets(asset_id)
+                )
+            """)
+        except Exception as e:
+            logger.error(f"Asset relationships table creation failed: {e}")
+            raise
         
-        self.conn.execute("""
-            CREATE TABLE asset_relationships (
-                id INTEGER PRIMARY KEY,
-                source_asset_id VARCHAR,
-                target_asset_id VARCHAR,
-                relationship_type VARCHAR,
-                confidence REAL,
-                discovered_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (source_asset_id) REFERENCES assets(asset_id),
-                FOREIGN KEY (target_asset_id) REFERENCES assets(asset_id)
-            )
-        """)
+        try:
+            self.conn.execute("""
+                CREATE TABLE data_sources (
+                    id INTEGER PRIMARY KEY,
+                    asset_id VARCHAR,
+                    table_path VARCHAR,
+                    column_name VARCHAR,
+                    sample_value VARCHAR,
+                    field_type VARCHAR,
+                    confidence REAL,
+                    discovery_method VARCHAR,
+                    discovered_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (asset_id) REFERENCES assets(asset_id)
+                )
+            """)
+        except Exception as e:
+            logger.error(f"Data sources table creation failed: {e}")
+            raise
         
-        self.conn.execute("""
-            CREATE TABLE data_sources (
-                id INTEGER PRIMARY KEY,
-                asset_id VARCHAR,
-                table_path VARCHAR,
-                column_name VARCHAR,
-                sample_value VARCHAR,
-                field_type VARCHAR,
-                confidence REAL,
-                discovery_method VARCHAR,
-                discovered_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (asset_id) REFERENCES assets(asset_id)
-            )
-        """)
-        
-        self.conn.execute("""
-            CREATE TABLE audit_log (
-                id INTEGER PRIMARY KEY,
-                asset_id VARCHAR,
-                action VARCHAR,
-                old_values TEXT,
-                new_values TEXT,
-                changed_by VARCHAR,
-                change_reason VARCHAR,
-                timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        """)
+        try:
+            self.conn.execute("""
+                CREATE TABLE audit_log (
+                    id INTEGER PRIMARY KEY,
+                    asset_id VARCHAR,
+                    action VARCHAR,
+                    old_values TEXT,
+                    new_values TEXT,
+                    changed_by VARCHAR,
+                    change_reason VARCHAR,
+                    timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+        except Exception as e:
+            logger.error(f"Audit log table creation failed: {e}")
+            raise
         
         self._create_indexes()
         self.conn.commit()
     
     def _create_indexes(self):
         indexes = [
-            "CREATE INDEX IF NOT EXISTS idx_assets_hostname ON assets(hostname)",
-            "CREATE INDEX IF NOT EXISTS idx_assets_ip ON assets(ip_address)",
-            "CREATE INDEX IF NOT EXISTS idx_assets_business_unit ON assets(business_unit)",
-            "CREATE INDEX IF NOT EXISTS idx_assets_region ON assets(global_region)",
-            "CREATE INDEX IF NOT EXISTS idx_assets_visibility ON assets(visibility_score)",
-            "CREATE INDEX IF NOT EXISTS idx_assets_risk ON assets(risk_score)",
-            "CREATE INDEX IF NOT EXISTS idx_assets_criticality ON assets(criticality)",
-            "CREATE INDEX IF NOT EXISTS idx_assets_environment ON assets(environment)",
-            "CREATE INDEX IF NOT EXISTS idx_assets_edr ON assets(edr_coverage)",
-            "CREATE INDEX IF NOT EXISTS idx_assets_chronicle ON assets(chronicle_coverage)",
-            "CREATE INDEX IF NOT EXISTS idx_assets_last_updated ON assets(last_updated)",
-            "CREATE INDEX IF NOT EXISTS idx_relationships_source ON asset_relationships(source_asset_id)",
-            "CREATE INDEX IF NOT EXISTS idx_relationships_target ON asset_relationships(target_asset_id)",
-            "CREATE INDEX IF NOT EXISTS idx_data_sources_asset ON data_sources(asset_id)",
-            "CREATE INDEX IF NOT EXISTS idx_data_sources_table ON data_sources(table_path)"
+            "CREATE INDEX idx_assets_hostname ON assets(hostname)",
+            "CREATE INDEX idx_assets_ip ON assets(ip_address)",
+            "CREATE INDEX idx_assets_business_unit ON assets(business_unit)",
+            "CREATE INDEX idx_assets_region ON assets(global_region)",
+            "CREATE INDEX idx_assets_visibility ON assets(visibility_score)",
+            "CREATE INDEX idx_assets_risk ON assets(risk_score)",
+            "CREATE INDEX idx_assets_criticality ON assets(criticality)",
+            "CREATE INDEX idx_assets_environment ON assets(environment)",
+            "CREATE INDEX idx_assets_edr ON assets(edr_coverage)",
+            "CREATE INDEX idx_assets_chronicle ON assets(chronicle_coverage)",
+            "CREATE INDEX idx_assets_last_updated ON assets(last_updated)",
+            "CREATE INDEX idx_relationships_source ON asset_relationships(source_asset_id)",
+            "CREATE INDEX idx_relationships_target ON asset_relationships(target_asset_id)",
+            "CREATE INDEX idx_data_sources_asset ON data_sources(asset_id)",
+            "CREATE INDEX idx_data_sources_table ON data_sources(table_path)"
         ]
         
         for index_sql in indexes:
