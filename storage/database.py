@@ -13,14 +13,7 @@ logger = logging.getLogger(__name__)
 
 class QuantumEnhancedDatabaseManager:
     def __init__(self, db_path: str = None):
-        if db_path is None:
-            db_path = f"universal_cmdb_{datetime.now().strftime('%Y%m%d_%H%M%S')}.db"
-        
-        if not os.path.isabs(db_path):
-            self.db_path = os.path.join(os.getcwd(), db_path)
-        else:
-            self.db_path = str(db_path)
-            
+        self.db_path = None
         self.conn = None
         self.stored_count = 0
         self.updated_count = 0
@@ -29,29 +22,65 @@ class QuantumEnhancedDatabaseManager:
     
     def _initialize_database(self):
         try:
+            import uuid
+            import time
+            
+            unique_suffix = f"{int(time.time())}_{uuid.uuid4().hex[:8]}"
+            base_name = f"universal_cmdb_{unique_suffix}.db"
+            self.db_path = os.path.join(os.getcwd(), base_name)
+            
             logger.info(f"Current working directory: {os.getcwd()}")
-            logger.info(f"Database will be created at: {self.db_path}")
+            logger.info(f"Creating completely fresh database at: {self.db_path}")
             
             if os.path.exists(self.db_path):
                 logger.info(f"Removing existing database file: {self.db_path}")
                 os.remove(self.db_path)
             
-            logger.info(f"Creating new database connection to: {self.db_path}")
-            self.conn = duckdb.connect(self.db_path)
+            time.sleep(0.1)
+            
+            logger.info(f"Establishing new DuckDB connection...")
+            self.conn = duckdb.connect(database=self.db_path, read_only=False)
+            
+            logger.info("Testing connection with simple query...")
+            test_result = self.conn.execute("SELECT 1 as test").fetchone()
+            logger.info(f"Connection test result: {test_result}")
+            
             self._create_comprehensive_schema()
-            logger.info(f"Quantum database initialized successfully at: {self.db_path}")
+            logger.info(f"Database successfully created at: {self.db_path}")
+            
         except Exception as e:
             logger.error(f"Database initialization failed: {e}")
             logger.error(f"Attempted database path: {self.db_path}")
-            raise
+            
+            try:
+                if hasattr(self, 'conn') and self.conn:
+                    self.conn.close()
+            except:
+                pass
+            
+            try:
+                logger.info("Attempting fallback with in-memory database...")
+                self.conn = duckdb.connect(':memory:')
+                self._create_comprehensive_schema()
+                logger.info("Fallback to in-memory database successful")
+            except Exception as fallback_error:
+                logger.error(f"Even in-memory fallback failed: {fallback_error}")
+                raise
     
     def _create_comprehensive_schema(self):
-        logger.info("Starting schema creation...")
+        logger.info("Starting fresh schema creation...")
         
         try:
-            logger.info("Creating assets table...")
+            logger.info("Executing PRAGMA commands for fresh start...")
+            self.conn.execute("PRAGMA force_checkpoint")
+            self.conn.execute("PRAGMA wal_autocheckpoint=1000")
+        except:
+            pass
+        
+        try:
+            logger.info("Creating assets table with CREATE TABLE IF NOT EXISTS...")
             self.conn.execute("""
-                CREATE TABLE assets (
+                CREATE TABLE IF NOT EXISTS assets (
                     asset_id VARCHAR PRIMARY KEY,
                     hostname VARCHAR NOT NULL,
                     primary_identity VARCHAR,
@@ -160,8 +189,9 @@ class QuantumEnhancedDatabaseManager:
             raise
         
         try:
+            logger.info("Creating discovery_metadata table...")
             self.conn.execute("""
-                CREATE TABLE discovery_metadata (
+                CREATE TABLE IF NOT EXISTS discovery_metadata (
                     id INTEGER PRIMARY KEY,
                     discovery_timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     project_id VARCHAR,
@@ -182,8 +212,9 @@ class QuantumEnhancedDatabaseManager:
             raise
         
         try:
+            logger.info("Creating asset_relationships table...")
             self.conn.execute("""
-                CREATE TABLE asset_relationships (
+                CREATE TABLE IF NOT EXISTS asset_relationships (
                     id INTEGER PRIMARY KEY,
                     source_asset_id VARCHAR,
                     target_asset_id VARCHAR,
@@ -199,8 +230,9 @@ class QuantumEnhancedDatabaseManager:
             raise
         
         try:
+            logger.info("Creating data_sources table...")
             self.conn.execute("""
-                CREATE TABLE data_sources (
+                CREATE TABLE IF NOT EXISTS data_sources (
                     id INTEGER PRIMARY KEY,
                     asset_id VARCHAR,
                     table_path VARCHAR,
@@ -218,8 +250,9 @@ class QuantumEnhancedDatabaseManager:
             raise
         
         try:
+            logger.info("Creating audit_log table...")
             self.conn.execute("""
-                CREATE TABLE audit_log (
+                CREATE TABLE IF NOT EXISTS audit_log (
                     id INTEGER PRIMARY KEY,
                     asset_id VARCHAR,
                     action VARCHAR,
