@@ -68,19 +68,23 @@ class QuantumEnhancedDatabaseManager:
                 raise
     
     def _create_comprehensive_schema(self):
-        logger.info("Starting fresh schema creation...")
+        logger.info("Starting aggressive table cleanup and fresh schema creation...")
         
         try:
-            logger.info("Executing PRAGMA commands for fresh start...")
+            logger.info("Finding and dropping ALL existing tables...")
+            self._drop_all_existing_tables()
+            
+            logger.info("Executing PRAGMA commands for complete fresh start...")
             self.conn.execute("PRAGMA force_checkpoint")
             self.conn.execute("PRAGMA wal_autocheckpoint=1000")
-        except:
-            pass
+            self.conn.execute("VACUUM")
+        except Exception as e:
+            logger.warning(f"Cleanup commands failed (continuing anyway): {e}")
         
         try:
-            logger.info("Creating assets table with CREATE TABLE IF NOT EXISTS...")
+            logger.info("Creating assets table...")
             self.conn.execute("""
-                CREATE TABLE IF NOT EXISTS assets (
+                CREATE TABLE assets (
                     asset_id VARCHAR PRIMARY KEY,
                     hostname VARCHAR NOT NULL,
                     primary_identity VARCHAR,
@@ -191,7 +195,7 @@ class QuantumEnhancedDatabaseManager:
         try:
             logger.info("Creating discovery_metadata table...")
             self.conn.execute("""
-                CREATE TABLE IF NOT EXISTS discovery_metadata (
+                CREATE TABLE discovery_metadata (
                     id INTEGER PRIMARY KEY,
                     discovery_timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     project_id VARCHAR,
@@ -214,7 +218,7 @@ class QuantumEnhancedDatabaseManager:
         try:
             logger.info("Creating asset_relationships table...")
             self.conn.execute("""
-                CREATE TABLE IF NOT EXISTS asset_relationships (
+                CREATE TABLE asset_relationships (
                     id INTEGER PRIMARY KEY,
                     source_asset_id VARCHAR,
                     target_asset_id VARCHAR,
@@ -232,7 +236,7 @@ class QuantumEnhancedDatabaseManager:
         try:
             logger.info("Creating data_sources table...")
             self.conn.execute("""
-                CREATE TABLE IF NOT EXISTS data_sources (
+                CREATE TABLE data_sources (
                     id INTEGER PRIMARY KEY,
                     asset_id VARCHAR,
                     table_path VARCHAR,
@@ -252,7 +256,7 @@ class QuantumEnhancedDatabaseManager:
         try:
             logger.info("Creating audit_log table...")
             self.conn.execute("""
-                CREATE TABLE IF NOT EXISTS audit_log (
+                CREATE TABLE audit_log (
                     id INTEGER PRIMARY KEY,
                     asset_id VARCHAR,
                     action VARCHAR,
@@ -269,6 +273,56 @@ class QuantumEnhancedDatabaseManager:
         
         self._create_indexes()
         self.conn.commit()
+        logger.info("Schema creation completed successfully")
+    
+    def _drop_all_existing_tables(self):
+        try:
+            logger.info("Querying for all existing tables...")
+            
+            table_queries = [
+                "SELECT table_name FROM information_schema.tables WHERE table_schema = 'main'",
+                "SELECT name FROM sqlite_master WHERE type='table'",
+                "SHOW TABLES"
+            ]
+            
+            existing_tables = set()
+            
+            for query in table_queries:
+                try:
+                    result = self.conn.execute(query).fetchall()
+                    for row in result:
+                        if isinstance(row, tuple):
+                            existing_tables.add(row[0])
+                        else:
+                            existing_tables.add(row)
+                    logger.info(f"Query '{query}' found tables: {list(existing_tables)}")
+                except Exception as e:
+                    logger.debug(f"Table query failed (normal): {query} - {e}")
+                    continue
+            
+            target_tables = ['assets', 'discovery_metadata', 'asset_relationships', 'data_sources', 'audit_log']
+            all_tables_to_drop = list(existing_tables) + target_tables
+            
+            logger.info(f"Tables to drop: {all_tables_to_drop}")
+            
+            for table_name in all_tables_to_drop:
+                if table_name and table_name.strip():
+                    try:
+                        logger.info(f"Dropping table: {table_name}")
+                        self.conn.execute(f"DROP TABLE IF EXISTS {table_name}")
+                        logger.info(f"Successfully dropped table: {table_name}")
+                    except Exception as e:
+                        logger.debug(f"Failed to drop table {table_name}: {e}")
+            
+            try:
+                self.conn.execute("VACUUM")
+                logger.info("Database vacuumed successfully")
+            except Exception as e:
+                logger.debug(f"Vacuum failed: {e}")
+                
+        except Exception as e:
+            logger.warning(f"Table dropping process failed: {e}")
+            logger.info("Continuing with schema creation anyway...")
     
     def _create_indexes(self):
         indexes = [
