@@ -220,32 +220,589 @@ class CorporateProxyHandler:
         except Exception as e:
             logger.debug(f"mac system proxy detection failed: {e}")
     
-    def _try_pac_file_configuration(self):
+    def _try_netrc_configuration(self):
         """
-        method 4: proxy auto-configuration (pac) file parsing
-        many corporations use pac files for dynamic proxy configuration
+        method 3: reads proxy credentials from .netrc file
+        standard unix/mac method for storing network credentials
         """
         try:
-            # check for pac file in environment
-            pac_url = os.environ.get('PAC_URL', '')
-            if not pac_url:
-                # try to detect from system
-                result = subprocess.run(
-                    ['networksetup', '-getautoproxyurl', 'Wi-Fi'],
+            import netrc
+            netrc_path = os.path.expanduser('~/.netrc')
+            
+            if os.path.exists(netrc_path):
+                nrc = netrc.netrc(netrc_path)
+                
+                # look for proxy entries
+                proxy_hosts = ['proxy', 'proxy.company.com', 'http-proxy', 'https-proxy']
+                
+                for host in proxy_hosts:
+                    try:
+                        auth = nrc.authenticators(host)
+                        if auth:
+                            username, account, password = auth
+                            proxy_url = f"http://{username}:{password}@{host}:8080"
+                            
+                            self.proxy_configs.append({
+                                'method': 'netrc',
+                                'proxies': {
+                                    'http': proxy_url,
+                                    'https': proxy_url
+                                },
+                                'priority': 3
+                            })
+                            logger.info(f"found proxy credentials in .netrc for {host}")
+                            break
+                    except:
+                        continue
+        except Exception as e:
+            logger.debug(f"netrc configuration failed: {e}")
+    
+    def _try_wpad_discovery(self):
+        """
+        method 5: web proxy auto-discovery protocol
+        automatically discovers proxy settings via dhcp/dns
+        """
+        try:
+            # try to find wpad url via dns
+            wpad_urls = [
+                'http://wpad/wpad.dat',
+                'http://wpad.company.com/wpad.dat',
+                'http://proxy.company.com/wpad.dat'
+            ]
+            
+            for wpad_url in wpad_urls:
+                try:
+                    response = requests.get(wpad_url, timeout=5)
+                    if response.status_code == 200:
+                        # parse wpad file for proxy settings
+                        wpad_content = response.text
+                        
+                        # simple parsing for proxy directive
+                        if 'PROXY' in wpad_content:
+                            import re
+                            proxy_match = re.search(r'PROXY\s+([^;]+)', wpad_content)
+                            if proxy_match:
+                                proxy_server = proxy_match.group(1).strip()
+                                proxy_url = f"http://{proxy_server}"
+                                
+                                self.proxy_configs.append({
+                                    'method': 'wpad',
+                                    'proxies': {
+                                        'http': proxy_url,
+                                        'https': proxy_url
+                                    },
+                                    'priority': 5
+                                })
+                                logger.info(f"found proxy via wpad: {proxy_server}")
+                                break
+                except:
+                    continue
+        except Exception as e:
+            logger.debug(f"wpad discovery failed: {e}")
+    
+    def _try_curl_configuration(self):
+        """
+        method 6: reads proxy settings from curl configuration
+        curl is commonly configured in corporate environments
+        """
+        try:
+            curlrc_paths = [
+                os.path.expanduser('~/.curlrc'),
+                '/etc/curlrc',
+                os.path.expanduser('~/.curl-config')
+            ]
+            
+            for curlrc_path in curlrc_paths:
+                if os.path.exists(curlrc_path):
+                    with open(curlrc_path, 'r') as f:
+                        for line in f:
+                            line = line.strip()
+                            if line.startswith('proxy'):
+                                # parse proxy = "http://proxy:port"
+                                parts = line.split('=', 1)
+                                if len(parts) == 2:
+                                    proxy_url = parts[1].strip().strip('"')
+                                    
+                                    self.proxy_configs.append({
+                                        'method': 'curl_config',
+                                        'proxies': {
+                                            'http': proxy_url,
+                                            'https': proxy_url
+                                        },
+                                        'priority': 6
+                                    })
+                                    logger.info(f"found proxy in curl config: {proxy_url}")
+                                    break
+        except Exception as e:
+            logger.debug(f"curl configuration failed: {e}")
+    
+    def _try_git_proxy_settings(self):
+        """
+        method 7: reads proxy from git configuration
+        developers often have git configured with corporate proxy
+        """
+        try:
+            result = subprocess.run(
+                ['git', 'config', '--global', 'http.proxy'],
+                capture_output=True, text=True, timeout=5
+            )
+            
+            if result.returncode == 0 and result.stdout.strip():
+                http_proxy = result.stdout.strip()
+                
+                # also try https proxy
+                https_result = subprocess.run(
+                    ['git', 'config', '--global', 'https.proxy'],
                     capture_output=True, text=True, timeout=5
                 )
-                if 'URL:' in result.stdout:
-                    pac_url = result.stdout.split('URL:')[1].strip()
-            
-            if pac_url and pac_url != '(null)':
-                logger.info(f"found pac file: {pac_url}")
+                
+                https_proxy = https_result.stdout.strip() if https_result.returncode == 0 else http_proxy
+                
                 self.proxy_configs.append({
-                    'method': 'pac_file',
-                    'pac_url': pac_url,
-                    'priority': 4
+                    'method': 'git_config',
+                    'proxies': {
+                        'http': http_proxy,
+                        'https': https_proxy
+                    },
+                    'priority': 7
                 })
+                logger.info(f"found proxy in git config: {http_proxy}")
         except Exception as e:
-            logger.debug(f"pac file detection failed: {e}")
+            logger.debug(f"git proxy settings failed: {e}")
+    
+    def _try_npm_proxy_settings(self):
+        """
+        method 8: reads proxy from npm configuration
+        node developers have npm configured with proxy
+        """
+        try:
+            result = subprocess.run(
+                ['npm', 'config', 'get', 'proxy'],
+                capture_output=True, text=True, timeout=5
+            )
+            
+            if result.returncode == 0 and result.stdout.strip() != 'null':
+                npm_proxy = result.stdout.strip()
+                
+                # also get https proxy
+                https_result = subprocess.run(
+                    ['npm', 'config', 'get', 'https-proxy'],
+                    capture_output=True, text=True, timeout=5
+                )
+                
+                https_proxy = https_result.stdout.strip() if https_result.returncode == 0 else npm_proxy
+                
+                self.proxy_configs.append({
+                    'method': 'npm_config',
+                    'proxies': {
+                        'http': npm_proxy,
+                        'https': https_proxy
+                    },
+                    'priority': 8
+                })
+                logger.info(f"found proxy in npm config: {npm_proxy}")
+        except Exception as e:
+            logger.debug(f"npm proxy settings failed: {e}")
+    
+    def _try_java_system_properties(self):
+        """
+        method 9: reads java system properties for proxy
+        java applications often set system properties
+        """
+        try:
+            # check common java property files
+            java_paths = [
+                os.path.expanduser('~/.java/deployment/deployment.properties'),
+                '/etc/java/deployment/deployment.properties'
+            ]
+            
+            for java_path in java_paths:
+                if os.path.exists(java_path):
+                    with open(java_path, 'r') as f:
+                        for line in f:
+                            if 'deployment.proxy.http.host' in line:
+                                # parse the properties
+                                host_line = line.strip()
+                                port_line = next((l for l in f if 'deployment.proxy.http.port' in l), 'port=8080')
+                                
+                                host = host_line.split('=')[1].strip() if '=' in host_line else 'proxy'
+                                port = port_line.split('=')[1].strip() if '=' in port_line else '8080'
+                                
+                                proxy_url = f"http://{host}:{port}"
+                                
+                                self.proxy_configs.append({
+                                    'method': 'java_properties',
+                                    'proxies': {
+                                        'http': proxy_url,
+                                        'https': proxy_url
+                                    },
+                                    'priority': 9
+                                })
+                                logger.info(f"found proxy in java properties: {proxy_url}")
+                                break
+        except Exception as e:
+            logger.debug(f"java system properties failed: {e}")
+    
+    def _try_keychain_credentials(self):
+        """
+        method 10: reads proxy credentials from mac keychain
+        corporate macs often store proxy passwords in keychain
+        """
+        try:
+            # use security command to find proxy passwords
+            result = subprocess.run(
+                ['security', 'find-internet-password', '-s', 'proxy'],
+                capture_output=True, text=True, timeout=5
+            )
+            
+            if result.returncode == 0:
+                output = result.stdout
+                
+                # parse keychain output
+                server = None
+                port = None
+                account = None
+                
+                for line in output.split('\n'):
+                    if 'server' in line:
+                        server = line.split('"')[1] if '"' in line else None
+                    elif 'port' in line:
+                        port = line.split('"')[1] if '"' in line else '8080'
+                    elif 'account' in line:
+                        account = line.split('"')[1] if '"' in line else None
+                
+                if server:
+                    proxy_url = f"http://{server}:{port}"
+                    
+                    self.proxy_configs.append({
+                        'method': 'keychain',
+                        'proxies': {
+                            'http': proxy_url,
+                            'https': proxy_url
+                        },
+                        'priority': 10
+                    })
+                    logger.info(f"found proxy in keychain: {server}")
+        except Exception as e:
+            logger.debug(f"keychain credentials failed: {e}")
+    
+    def _try_urllib_proxy(self):
+        """
+        method 12: configures urllib with proxy handler
+        standard python library proxy configuration
+        """
+        try:
+            import urllib.request
+            
+            # get proxy from urllib
+            proxy_handler = urllib.request.getproxies()
+            
+            if proxy_handler:
+                self.proxy_configs.append({
+                    'method': 'urllib',
+                    'proxies': proxy_handler,
+                    'priority': 12
+                })
+                logger.info(f"found proxy via urllib: {proxy_handler}")
+        except Exception as e:
+            logger.debug(f"urllib proxy failed: {e}")
+    
+    def _try_httpx_client(self):
+        """
+        method 13: tests httpx client with proxy
+        modern async http client with proxy support
+        """
+        try:
+            import httpx
+            
+            # check for proxy in environment
+            proxies = {}
+            if 'HTTP_PROXY' in os.environ:
+                proxies['http://'] = os.environ['HTTP_PROXY']
+            if 'HTTPS_PROXY' in os.environ:
+                proxies['https://'] = os.environ['HTTPS_PROXY']
+            
+            if proxies:
+                # test connection
+                with httpx.Client(proxies=proxies, verify=False) as client:
+                    response = client.get('https://www.google.com', timeout=5)
+                    if response.status_code == 200:
+                        self.proxy_configs.append({
+                            'method': 'httpx',
+                            'proxies': proxies,
+                            'priority': 13
+                        })
+                        logger.info("httpx proxy configuration successful")
+        except Exception as e:
+            logger.debug(f"httpx client failed: {e}")
+    
+    def _try_aiohttp_proxy(self):
+        """
+        method 14: configures aiohttp with proxy
+        async http client for high-performance requests
+        """
+        try:
+            # prepare aiohttp proxy configuration
+            proxy = os.environ.get('HTTP_PROXY', os.environ.get('http_proxy'))
+            
+            if proxy:
+                self.proxy_configs.append({
+                    'method': 'aiohttp',
+                    'proxies': {
+                        'http': proxy,
+                        'https': proxy
+                    },
+                    'priority': 14
+                })
+                logger.info(f"aiohttp proxy configuration prepared: {proxy}")
+        except Exception as e:
+            logger.debug(f"aiohttp proxy failed: {e}")
+    
+    def _try_pycurl_proxy(self):
+        """
+        method 15: configures pycurl with proxy
+        low-level curl bindings for complex proxy scenarios
+        """
+        try:
+            import pycurl
+            from io import BytesIO
+            
+            proxy = os.environ.get('HTTP_PROXY', '')
+            
+            if proxy:
+                # test with pycurl
+                buffer = BytesIO()
+                c = pycurl.Curl()
+                c.setopt(c.URL, 'https://www.google.com')
+                c.setopt(c.PROXY, proxy)
+                c.setopt(c.WRITEDATA, buffer)
+                c.setopt(c.TIMEOUT, 5)
+                c.setopt(c.SSL_VERIFYPEER, 0)
+                
+                try:
+                    c.perform()
+                    c.close()
+                    
+                    self.proxy_configs.append({
+                        'method': 'pycurl',
+                        'proxies': {
+                            'http': proxy,
+                            'https': proxy
+                        },
+                        'priority': 15
+                    })
+                    logger.info(f"pycurl proxy configuration successful: {proxy}")
+                except:
+                    c.close()
+        except Exception as e:
+            logger.debug(f"pycurl proxy failed: {e}")
+    
+    def _try_wget_proxy(self):
+        """
+        method 16: reads wget configuration for proxy
+        wget is commonly used for downloads in corporate environments
+        """
+        try:
+            wgetrc_paths = [
+                os.path.expanduser('~/.wgetrc'),
+                '/etc/wgetrc',
+                '/usr/local/etc/wgetrc'
+            ]
+            
+            for wgetrc_path in wgetrc_paths:
+                if os.path.exists(wgetrc_path):
+                    with open(wgetrc_path, 'r') as f:
+                        for line in f:
+                            if 'http_proxy' in line or 'https_proxy' in line:
+                                # parse proxy setting
+                                parts = line.split('=', 1)
+                                if len(parts) == 2:
+                                    proxy_url = parts[1].strip()
+                                    
+                                    self.proxy_configs.append({
+                                        'method': 'wget_config',
+                                        'proxies': {
+                                            'http': proxy_url,
+                                            'https': proxy_url
+                                        },
+                                        'priority': 16
+                                    })
+                                    logger.info(f"found proxy in wget config: {proxy_url}")
+                                    break
+        except Exception as e:
+            logger.debug(f"wget proxy failed: {e}")
+    
+    def _try_browser_proxy(self):
+        """
+        method 17: detects proxy from browser settings
+        reads safari and chrome proxy configurations on mac
+        """
+        try:
+            # check safari preferences
+            safari_plist = os.path.expanduser('~/Library/Preferences/com.apple.Safari.plist')
+            
+            if os.path.exists(safari_plist):
+                result = subprocess.run(
+                    ['defaults', 'read', 'com.apple.Safari', 'ProxyAutoConfigEnable'],
+                    capture_output=True, text=True, timeout=5
+                )
+                
+                if result.returncode == 0 and result.stdout.strip() == '1':
+                    # pac is enabled, get pac url
+                    pac_result = subprocess.run(
+                        ['defaults', 'read', 'com.apple.Safari', 'ProxyAutoConfigURLString'],
+                        capture_output=True, text=True, timeout=5
+                    )
+                    
+                    if pac_result.returncode == 0:
+                        pac_url = pac_result.stdout.strip()
+                        
+                        self.proxy_configs.append({
+                            'method': 'browser_safari',
+                            'pac_url': pac_url,
+                            'priority': 17
+                        })
+                        logger.info(f"found safari pac url: {pac_url}")
+        except Exception as e:
+            logger.debug(f"browser proxy detection failed: {e}")
+    
+    def _try_network_interface_proxy(self):
+        """
+        method 18: detects proxy from network interface settings
+        reads active network interface configuration
+        """
+        try:
+            # get active network interface
+            result = subprocess.run(
+                ['route', 'get', 'default'],
+                capture_output=True, text=True, timeout=5
+            )
+            
+            if result.returncode == 0:
+                # parse interface name
+                for line in result.stdout.split('\n'):
+                    if 'interface:' in line:
+                        interface = line.split(':')[1].strip()
+                        
+                        # get proxy for this interface
+                        proxy_result = subprocess.run(
+                            ['networksetup', '-getwebproxy', interface],
+                            capture_output=True, text=True, timeout=5
+                        )
+                        
+                        if 'Enabled: Yes' in proxy_result.stdout:
+                            # parse proxy details
+                            server = None
+                            port = None
+                            
+                            for pline in proxy_result.stdout.split('\n'):
+                                if 'Server:' in pline:
+                                    server = pline.split(':')[1].strip()
+                                elif 'Port:' in pline:
+                                    port = pline.split(':')[1].strip()
+                            
+                            if server and port:
+                                proxy_url = f"http://{server}:{port}"
+                                
+                                self.proxy_configs.append({
+                                    'method': 'network_interface',
+                                    'proxies': {
+                                        'http': proxy_url,
+                                        'https': proxy_url
+                                    },
+                                    'priority': 18
+                                })
+                                logger.info(f"found proxy on interface {interface}: {proxy_url}")
+                                break
+        except Exception as e:
+            logger.debug(f"network interface proxy detection failed: {e}")
+    
+    def _try_dns_proxy_detection(self):
+        """
+        method 19: detects proxy via dns lookups
+        tries to resolve common corporate proxy hostnames
+        """
+        try:
+            import socket
+            
+            # common corporate proxy hostnames
+            proxy_hostnames = [
+                'proxy',
+                'proxy.company.com',
+                'webproxy',
+                'corpproxy',
+                'gateway',
+                'firewall'
+            ]
+            
+            for hostname in proxy_hostnames:
+                try:
+                    # try to resolve the hostname
+                    ip = socket.gethostbyname(hostname)
+                    
+                    if ip:
+                        # assume standard proxy port
+                        proxy_url = f"http://{hostname}:8080"
+                        
+                        # test the proxy
+                        test_session = requests.Session()
+                        test_session.proxies = {
+                            'http': proxy_url,
+                            'https': proxy_url
+                        }
+                        test_session.verify = False
+                        
+                        response = test_session.get('https://www.google.com', timeout=5)
+                        
+                        if response.status_code == 200:
+                            self.proxy_configs.append({
+                                'method': 'dns_discovery',
+                                'proxies': {
+                                    'http': proxy_url,
+                                    'https': proxy_url
+                                },
+                                'priority': 19
+                            })
+                            logger.info(f"found proxy via dns: {hostname} ({ip})")
+                            break
+                except:
+                    continue
+        except Exception as e:
+            logger.debug(f"dns proxy detection failed: {e}")
+    
+    def _try_certificate_auth_proxy(self):
+        """
+        method 20: configures proxy with certificate authentication
+        handles corporate proxies requiring client certificates
+        """
+        try:
+            # look for client certificates
+            cert_paths = [
+                os.path.expanduser('~/.ssl/client.pem'),
+                os.path.expanduser('~/.certificates/corporate.pem'),
+                '/etc/ssl/client-cert.pem',
+                os.path.expanduser('~/Library/Certificates/client.p12')
+            ]
+            
+            for cert_path in cert_paths:
+                if os.path.exists(cert_path):
+                    # get proxy from environment
+                    proxy = os.environ.get('HTTPS_PROXY', os.environ.get('https_proxy', ''))
+                    
+                    if proxy:
+                        self.proxy_configs.append({
+                            'method': 'certificate_auth',
+                            'proxies': {
+                                'http': proxy,
+                                'https': proxy
+                            },
+                            'cert': cert_path,
+                            'priority': 20
+                        })
+                        logger.info(f"found client certificate for proxy: {cert_path}")
+                        break
+        except Exception as e:
+            logger.debug(f"certificate auth proxy failed: {e}")
     
     def _try_custom_ca_bundle(self):
         """
