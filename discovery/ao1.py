@@ -1,5 +1,3 @@
-# discovery/ao1.py
-
 import asyncio
 import logging
 import re
@@ -15,6 +13,25 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 import threading
 
 logger = logging.getLogger(__name__)
+
+def safe_divide(numerator, denominator, default=0.0):
+    try:
+        if denominator == 0:
+            return default
+        return numerator / denominator
+    except (ZeroDivisionError, TypeError):
+        return default
+
+def safe_ratio(numerator, denominator, default=0.0):
+    return safe_divide(numerator, max(denominator, 1), default)
+
+def safe_percentage(part, total, default=0.0):
+    return safe_divide(part, total, default) * 100
+
+def safe_average(values, default=0.0):
+    if not values:
+        return default
+    return sum(values) / len(values)
 
 class RealtimeCMDBBuilder:
     def __init__(self, database_manager=None):
@@ -303,7 +320,7 @@ class RealtimeCMDBBuilder:
             
             for pattern in self.field_mappings['hostname']:
                 if pattern in column_lower:
-                    confidence_score = max(confidence_score, len(pattern) / len(column_lower))
+                    confidence_score = max(confidence_score, safe_ratio(len(pattern), len(column_lower)))
             
             if confidence_score > 0.3 and self.is_valid_hostname(value_str):
                 candidates.append((value_str, column_name, confidence_score))
@@ -319,7 +336,7 @@ class RealtimeCMDBBuilder:
         for field_type, patterns in self.field_mappings.items():
             for pattern in patterns:
                 if pattern in column_lower:
-                    score = len(pattern) / len(column_lower)
+                    score = safe_ratio(len(pattern), len(column_lower))
                     if score > best_score:
                         best_score = score
                         best_match = field_type
@@ -557,7 +574,7 @@ class RealtimeCMDBBuilder:
                     'source_table': source_table,
                     'timestamp': datetime.now().isoformat(),
                     'attributes_added': new_attributes_count,
-                    'data_quality_score': 1.0 - (data_quality_issues / max(len(row_data), 1))
+                    'data_quality_score': 1.0 - safe_ratio(data_quality_issues, len(row_data))
                 })
                 
                 host['processing_history'].append({
@@ -611,13 +628,13 @@ class RealtimeCMDBBuilder:
         all_data = host_data.get('all_data', {})
         coverage_flags = host_data.get('coverage_flags', {})
         
-        total_possible_fields = len(self.field_mappings)
+        total_possible_fields = max(len(self.field_mappings), 1)
         filled_fields = len([v for v in all_data.values() if v])
         data_completeness = filled_fields / total_possible_fields
         
-        total_coverage_flags = len(coverage_flags)
+        total_coverage_flags = max(len(coverage_flags), 1)
         true_coverage_flags = sum(1 for v in coverage_flags.values() if v)
-        coverage_score = true_coverage_flags / max(total_coverage_flags, 1)
+        coverage_score = true_coverage_flags / total_coverage_flags
         
         source_reliability = min(1.0, host_data.get('source_count', 0) / 5.0)
         
@@ -716,7 +733,7 @@ class RealtimeCMDBBuilder:
             if field_type in self.data_validators:
                 validator = self.data_validators[field_type]
                 valid_count = sum(1 for value in values if validator(str(value)))
-                validation_results[field_type] = valid_count / len(values) > 0.8
+                validation_results[field_type] = valid_count / max(len(values), 1) > 0.8
             else:
                 validation_results[field_type] = True
         
@@ -802,9 +819,9 @@ class RealtimeCMDBBuilder:
             consistency_scores.append(quality_metrics.get('data_consistency', 0.0))
         
         return {
-            'average_quality_score': sum(quality_scores) / len(quality_scores),
-            'average_completeness': sum(completeness_scores) / len(completeness_scores),
-            'average_consistency': sum(consistency_scores) / len(consistency_scores),
+            'average_quality_score': safe_average(quality_scores),
+            'average_completeness': safe_average(completeness_scores),
+            'average_consistency': safe_average(consistency_scores),
             'high_quality_assets': len([s for s in quality_scores if s > 0.8]),
             'medium_quality_assets': len([s for s in quality_scores if 0.5 <= s <= 0.8]),
             'low_quality_assets': len([s for s in quality_scores if s < 0.5])
@@ -824,7 +841,7 @@ class RealtimeCMDBBuilder:
                     coverage_summary[flag] += 1
         
         coverage_percentages = {
-            flag: (count / total_hosts * 100) for flag, count in coverage_summary.items()
+            flag: safe_percentage(count, total_hosts) for flag, count in coverage_summary.items()
         }
         
         return {
@@ -840,6 +857,7 @@ class RealtimeCMDBBuilder:
                 if sum(host.get('coverage_flags', {}).values()) == 0
             ])
         }
+
 
 class PerformanceMonitor:
     def __init__(self):
@@ -873,7 +891,7 @@ class PerformanceMonitor:
             operation_stats[operation] = {
                 'count': len(times),
                 'total_time': sum(times),
-                'average_time': sum(times) / len(times) if times else 0,
+                'average_time': safe_average(times),
                 'min_time': min(times) if times else 0,
                 'max_time': max(times) if times else 0
             }
@@ -884,19 +902,20 @@ class PerformanceMonitor:
             'memory_usage': {
                 'current_mb': self.memory_samples[-1] if self.memory_samples else 0,
                 'peak_mb': max(self.memory_samples) if self.memory_samples else 0,
-                'average_mb': sum(self.memory_samples) / len(self.memory_samples) if self.memory_samples else 0
+                'average_mb': safe_average(self.memory_samples)
             },
             'cpu_usage': {
                 'current_percent': self.cpu_samples[-1] if self.cpu_samples else 0,
                 'peak_percent': max(self.cpu_samples) if self.cpu_samples else 0,
-                'average_percent': sum(self.cpu_samples) / len(self.cpu_samples) if self.cpu_samples else 0
+                'average_percent': safe_average(self.cpu_samples)
             },
             'processing_rates': {
                 'current_items_per_second': self.processing_rates[-1] if self.processing_rates else 0,
                 'peak_items_per_second': max(self.processing_rates) if self.processing_rates else 0,
-                'average_items_per_second': sum(self.processing_rates) / len(self.processing_rates) if self.processing_rates else 0
+                'average_items_per_second': safe_average(self.processing_rates)
             }
         }
+
 
 class AdvancedTableProcessor:
     def __init__(self, cmdb_builder: RealtimeCMDBBuilder):
@@ -943,7 +962,7 @@ class AdvancedTableProcessor:
             
             for indicator in hostname_indicators:
                 if indicator in field_name:
-                    score = len(indicator) / len(field_name)
+                    score = safe_ratio(len(indicator), len(field_name))
                     confidence_score = max(confidence_score, score)
             
             if confidence_score > 0.3:
@@ -1142,7 +1161,7 @@ class AdvancedTableProcessor:
                 'rows_processed': total_processed,
                 'hosts_found': hosts_found,
                 'hostname_column': primary_hostname_column,
-                'batch_operations': offset // batch_size + 1,
+                'batch_operations': safe_ratio(offset, batch_size) + 1,
                 'success': True
             }
             
@@ -1291,12 +1310,12 @@ class AdvancedTableProcessor:
         stats = self.processing_stats.copy()
         
         if stats['tables_attempted'] > 0:
-            stats['success_rate'] = (stats['tables_successful'] / stats['tables_attempted']) * 100
-            stats['skip_rate'] = (stats['tables_skipped'] / stats['tables_attempted']) * 100
-            stats['error_rate'] = (stats['processing_errors'] / stats['tables_attempted']) * 100
+            stats['success_rate'] = safe_percentage(stats['tables_successful'], stats['tables_attempted'])
+            stats['skip_rate'] = safe_percentage(stats['tables_skipped'], stats['tables_attempted'])
+            stats['error_rate'] = safe_percentage(stats['processing_errors'], stats['tables_attempted'])
         
         if stats['rows_processed'] > 0:
-            stats['host_discovery_rate'] = (stats['hosts_found'] / stats['rows_processed']) * 100
+            stats['host_discovery_rate'] = safe_percentage(stats['hosts_found'], stats['rows_processed'])
         
         return stats
     
@@ -1314,9 +1333,10 @@ class AdvancedTableProcessor:
             'size_distribution': dict(size_distribution),
             'total_rows_across_tables': total_rows,
             'total_columns_across_tables': total_columns,
-            'average_rows_per_table': total_rows / len(self.table_metadata) if self.table_metadata else 0,
-            'average_columns_per_table': total_columns / len(self.table_metadata) if self.table_metadata else 0
+            'average_rows_per_table': safe_ratio(total_rows, len(self.table_metadata)),
+            'average_columns_per_table': safe_ratio(total_columns, len(self.table_metadata))
         }
+
 
 class AO1SuperEngine:
     def __init__(self, config: Dict[str, Any]):
@@ -1631,12 +1651,12 @@ class AO1SuperEngine:
             'execution_performance': {
                 'total_runtime_seconds': self.discovery_stats['total_execution_time'],
                 'hosts_discovered_per_second': self.discovery_stats['processing_rate'],
-                'tables_processed_per_minute': (self.discovery_stats['tables_processed'] / 
-                                               max(self.discovery_stats['total_execution_time'] / 60, 1)),
+                'tables_processed_per_minute': safe_ratio(self.discovery_stats['tables_processed'], 
+                                                        max(self.discovery_stats['total_execution_time'] / 60, 1)),
                 'memory_efficiency': self._calculate_memory_efficiency(),
                 'cpu_efficiency': self._calculate_cpu_efficiency(),
-                'error_rate_percentage': (self.discovery_stats['error_count'] / 
-                                         max(self.discovery_stats['tables_processed'], 1)) * 100
+                'error_rate_percentage': safe_percentage(self.discovery_stats['error_count'], 
+                                                       max(self.discovery_stats['tables_processed'], 1))
             },
             'resource_utilization': performance_summary,
             'processing_breakdown': {
@@ -1667,7 +1687,7 @@ class AO1SuperEngine:
         avg_cpu = cpu_info.get('average_percent', 0)
         
         if avg_cpu > 0:
-            return min(100, (self.discovery_stats['processing_rate'] * 100) / avg_cpu)
+            return min(100, safe_ratio(self.discovery_stats['processing_rate'] * 100, avg_cpu))
         return 0.0
     
     def _calculate_optimization_impact(self) -> Dict[str, Any]:
@@ -1676,8 +1696,8 @@ class AO1SuperEngine:
         return {
             'optimization_applications': self.discovery_stats['optimization_applied'],
             'batch_operations_used': table_stats.get('batch_operations', 0),
-            'cache_hit_rate': (table_stats.get('cache_hits', 0) / 
-                              max(table_stats.get('cache_hits', 0) + table_stats.get('cache_misses', 0), 1)) * 100,
+            'cache_hit_rate': safe_percentage(table_stats.get('cache_hits', 0), 
+                                            table_stats.get('cache_hits', 0) + table_stats.get('cache_misses', 0)),
             'processing_strategy_distribution': self._get_strategy_distribution()
         }
     
@@ -1698,7 +1718,7 @@ class AO1SuperEngine:
         quality_issues = cmdb_stats.get('data_quality_issues', 0)
         
         if total_attributes > 0:
-            return max(0.0, 1.0 - (quality_issues / total_attributes))
+            return max(0.0, 1.0 - safe_ratio(quality_issues, total_attributes))
         return 0.0
     
     def _calculate_coverage_completeness(self) -> float:
@@ -1719,7 +1739,7 @@ class AO1SuperEngine:
         validation_failures = cmdb_stats.get('validation_failures', 0)
         
         if total_discovered > 0:
-            return max(0.0, 1.0 - (validation_failures / total_discovered))
+            return max(0.0, 1.0 - safe_ratio(validation_failures, total_discovered))
         return 0.0
     
     def cleanup_resources(self):
@@ -1739,6 +1759,7 @@ class AO1SuperEngine:
         
         except Exception as e:
             logger.error(f"Resource cleanup failed: {e}")
+
 
 class AO1DiscoveryOrchestrator:
     def __init__(self, config: Dict[str, Any]):
