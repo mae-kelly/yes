@@ -12,7 +12,7 @@ from pathlib import Path
 logger = logging.getLogger(__name__)
 
 class QuantumEnhancedDatabaseManager:
-    def __init__(self, db_path: str = "quantum_discovery.db"):
+    def __init__(self, db_path: str = "universal_cmdb.db"):
         self.db_path = str(db_path)
         self.conn = None
         self.stored_count = 0
@@ -22,11 +22,6 @@ class QuantumEnhancedDatabaseManager:
     
     def _initialize_database(self):
         try:
-            if os.path.exists(self.db_path):
-                backup_path = f"{self.db_path}.backup_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
-                os.rename(self.db_path, backup_path)
-                logger.info(f"Backed up existing database to {backup_path}")
-            
             self.conn = duckdb.connect(self.db_path)
             self._create_comprehensive_schema()
             logger.info(f"Quantum database initialized: {self.db_path}")
@@ -35,6 +30,15 @@ class QuantumEnhancedDatabaseManager:
             raise
     
     def _create_comprehensive_schema(self):
+        try:
+            self.conn.execute("DROP TABLE IF EXISTS assets")
+            self.conn.execute("DROP TABLE IF EXISTS discovery_metadata")
+            self.conn.execute("DROP TABLE IF EXISTS asset_relationships")
+            self.conn.execute("DROP TABLE IF EXISTS data_sources")
+            self.conn.execute("DROP TABLE IF EXISTS audit_log")
+        except:
+            pass
+        
         self.conn.execute("""
             CREATE TABLE assets (
                 asset_id VARCHAR PRIMARY KEY,
@@ -205,21 +209,21 @@ class QuantumEnhancedDatabaseManager:
     
     def _create_indexes(self):
         indexes = [
-            "CREATE INDEX idx_assets_hostname ON assets(hostname)",
-            "CREATE INDEX idx_assets_ip ON assets(ip_address)",
-            "CREATE INDEX idx_assets_business_unit ON assets(business_unit)",
-            "CREATE INDEX idx_assets_region ON assets(global_region)",
-            "CREATE INDEX idx_assets_visibility ON assets(visibility_score)",
-            "CREATE INDEX idx_assets_risk ON assets(risk_score)",
-            "CREATE INDEX idx_assets_criticality ON assets(criticality)",
-            "CREATE INDEX idx_assets_environment ON assets(environment)",
-            "CREATE INDEX idx_assets_edr ON assets(edr_coverage)",
-            "CREATE INDEX idx_assets_chronicle ON assets(chronicle_coverage)",
-            "CREATE INDEX idx_assets_last_updated ON assets(last_updated)",
-            "CREATE INDEX idx_relationships_source ON asset_relationships(source_asset_id)",
-            "CREATE INDEX idx_relationships_target ON asset_relationships(target_asset_id)",
-            "CREATE INDEX idx_data_sources_asset ON data_sources(asset_id)",
-            "CREATE INDEX idx_data_sources_table ON data_sources(table_path)"
+            "CREATE INDEX IF NOT EXISTS idx_assets_hostname ON assets(hostname)",
+            "CREATE INDEX IF NOT EXISTS idx_assets_ip ON assets(ip_address)",
+            "CREATE INDEX IF NOT EXISTS idx_assets_business_unit ON assets(business_unit)",
+            "CREATE INDEX IF NOT EXISTS idx_assets_region ON assets(global_region)",
+            "CREATE INDEX IF NOT EXISTS idx_assets_visibility ON assets(visibility_score)",
+            "CREATE INDEX IF NOT EXISTS idx_assets_risk ON assets(risk_score)",
+            "CREATE INDEX IF NOT EXISTS idx_assets_criticality ON assets(criticality)",
+            "CREATE INDEX IF NOT EXISTS idx_assets_environment ON assets(environment)",
+            "CREATE INDEX IF NOT EXISTS idx_assets_edr ON assets(edr_coverage)",
+            "CREATE INDEX IF NOT EXISTS idx_assets_chronicle ON assets(chronicle_coverage)",
+            "CREATE INDEX IF NOT EXISTS idx_assets_last_updated ON assets(last_updated)",
+            "CREATE INDEX IF NOT EXISTS idx_relationships_source ON asset_relationships(source_asset_id)",
+            "CREATE INDEX IF NOT EXISTS idx_relationships_target ON asset_relationships(target_asset_id)",
+            "CREATE INDEX IF NOT EXISTS idx_data_sources_asset ON data_sources(asset_id)",
+            "CREATE INDEX IF NOT EXISTS idx_data_sources_table ON data_sources(table_path)"
         ]
         
         for index_sql in indexes:
