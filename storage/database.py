@@ -12,8 +12,15 @@ from pathlib import Path
 logger = logging.getLogger(__name__)
 
 class QuantumEnhancedDatabaseManager:
-    def __init__(self, db_path: str = "universal_cmdb.db"):
-        self.db_path = str(db_path)
+    def __init__(self, db_path: str = None):
+        if db_path is None:
+            db_path = f"universal_cmdb_{datetime.now().strftime('%Y%m%d_%H%M%S')}.db"
+        
+        if not os.path.isabs(db_path):
+            self.db_path = os.path.join(os.getcwd(), db_path)
+        else:
+            self.db_path = str(db_path)
+            
         self.conn = None
         self.stored_count = 0
         self.updated_count = 0
@@ -22,19 +29,27 @@ class QuantumEnhancedDatabaseManager:
     
     def _initialize_database(self):
         try:
-            if os.path.exists(self.db_path):
-                os.remove(self.db_path)
-                logger.info(f"Removed existing database: {self.db_path}")
+            logger.info(f"Current working directory: {os.getcwd()}")
+            logger.info(f"Database will be created at: {self.db_path}")
             
+            if os.path.exists(self.db_path):
+                logger.info(f"Removing existing database file: {self.db_path}")
+                os.remove(self.db_path)
+            
+            logger.info(f"Creating new database connection to: {self.db_path}")
             self.conn = duckdb.connect(self.db_path)
             self._create_comprehensive_schema()
-            logger.info(f"Quantum database initialized: {self.db_path}")
+            logger.info(f"Quantum database initialized successfully at: {self.db_path}")
         except Exception as e:
             logger.error(f"Database initialization failed: {e}")
+            logger.error(f"Attempted database path: {self.db_path}")
             raise
     
     def _create_comprehensive_schema(self):
+        logger.info("Starting schema creation...")
+        
         try:
+            logger.info("Creating assets table...")
             self.conn.execute("""
                 CREATE TABLE assets (
                     asset_id VARCHAR PRIMARY KEY,
