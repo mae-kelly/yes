@@ -1,55 +1,4 @@
-def find_nearest_semantic_vectors(self, query_vector, k=5):
-        if not hasattr(self, 'semantic_index'):
-            return []
-        
-        query_vector = query_vector.astype('float32')
-        if len(query_vector.shape) == 1:
-            query_vector = query_vector.reshape(1, -1)
-        
-        results = []
-        
-        # Try Annoy first
-        try:
-            if hasattr(self, 'semantic_index'):
-                indices = self.semantic_index.get_nns_by_vector(query_vector[0], k)
-                for idx in indices:
-                    results.append(self.semantic_keys[idx])
-                if results:
-                    return results
-        except:
-            pass
-        
-        # Try HNSW
-        try:
-            if hasattr(self, 'hnsw_index'):
-                labels, distances = self.hnsw_index.knn_query(query_vector, k=k)
-                for idx in labels[0]:
-                    results.append(self.semantic_keys[idx])
-                if results:
-                    return results
-        except:
-            pass
-        
-        # Try sklearn
-        try:
-            if hasattr(self, 'sklearn_index'):
-                distances, indices = self.sklearn_index.kneighbors(query_vector, n_neighbors=k)
-                for idx in indices[0]:
-                    results.append(self.semantic_keys[idx])
-                if results:
-                    return results
-        except:
-            pass
-        
-        # Fallback to cosine similarity
-        if self.semantic_vectors:
-            all_vectors = np.array(list(self.semantic_vectors.values()))
-            similarities = cosine_similarity(query_vector, all_vectors)[0]
-            top_k_indices = np.argsort(similarities)[-k:][::-1]
-            for idx in top_k_indices:
-                results.append(self.semantic_keys[idx])
-        
-        return resultsimport torch
+import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import numpy as np
@@ -77,15 +26,16 @@ from sklearn.neural_network import MLPClassifier
 from sklearn.preprocessing import StandardScaler
 from sklearn.pipeline import Pipeline
 from sklearn.metrics.pairwise import cosine_similarity
+from sklearn.neighbors import NearestNeighbors
 import annoy
 import hnswlib
-from sklearn.neighbors import NearestNeighbors
-from sklearn.metrics.pairwise import cosine_similarity
+
 try:
     import nmslib
     NMSLIB_AVAILABLE = True
 except ImportError:
     NMSLIB_AVAILABLE = False
+
 try:
     import pynndescent
     PYNNDESCENT_AVAILABLE = True
@@ -286,6 +236,59 @@ class HybridEmbeddingModel:
                 self.pynndescent_index = pynndescent.NNDescent(vectors, metric='cosine')
             else:
                 self.pynndescent_index = None
+    
+    def find_nearest_semantic_vectors(self, query_vector, k=5):
+        if not hasattr(self, 'semantic_index'):
+            return []
+        
+        query_vector = query_vector.astype('float32')
+        if len(query_vector.shape) == 1:
+            query_vector = query_vector.reshape(1, -1)
+        
+        results = []
+        
+        # Try Annoy first
+        try:
+            if hasattr(self, 'semantic_index'):
+                indices = self.semantic_index.get_nns_by_vector(query_vector[0], k)
+                for idx in indices:
+                    results.append(self.semantic_keys[idx])
+                if results:
+                    return results
+        except:
+            pass
+        
+        # Try HNSW
+        try:
+            if hasattr(self, 'hnsw_index'):
+                labels, distances = self.hnsw_index.knn_query(query_vector, k=k)
+                for idx in labels[0]:
+                    results.append(self.semantic_keys[idx])
+                if results:
+                    return results
+        except:
+            pass
+        
+        # Try sklearn
+        try:
+            if hasattr(self, 'sklearn_index'):
+                distances, indices = self.sklearn_index.kneighbors(query_vector, n_neighbors=k)
+                for idx in indices[0]:
+                    results.append(self.semantic_keys[idx])
+                if results:
+                    return results
+        except:
+            pass
+        
+        # Fallback to cosine similarity
+        if self.semantic_vectors:
+            all_vectors = np.array(list(self.semantic_vectors.values()))
+            similarities = cosine_similarity(query_vector, all_vectors)[0]
+            top_k_indices = np.argsort(similarities)[-k:][::-1]
+            for idx in top_k_indices:
+                results.append(self.semantic_keys[idx])
+        
+        return results
     
     def encode(self, texts, convert_to_tensor=False):
         if isinstance(texts, str):
@@ -488,6 +491,30 @@ class HyperIntelligence:
             }
         }
         
+        self.infrastructure_types = {
+            'on_premise': ['onprem', 'on-prem', 'datacenter', 'physical', 'bare_metal', 'local'],
+            'cloud': ['aws', 'azure', 'gcp', 'cloud', 'ec2', 'vm', 'virtual'],
+            'saas': ['saas', 'software_as_service', 'hosted', 'managed_service'],
+            'api': ['api', 'endpoint', 'service', 'gateway', 'rest', 'soap']
+        }
+        
+        self.system_classifications = {
+            'web_server': ['web', 'apache', 'nginx', 'iis', 'tomcat', 'http'],
+            'windows_server': ['windows', 'win', 'microsoft', 'server2019', 'server2016'],
+            'linux_server': ['linux', 'ubuntu', 'centos', 'rhel', 'debian', 'suse'],
+            'nix': ['aix', 'solaris', 'unix', 'hpux', 'bsd'],
+            'mainframe': ['mainframe', 'zos', 'mvs', 'as400'],
+            'database': ['database', 'sql', 'oracle', 'postgres', 'mysql', 'mongodb', 'db'],
+            'network_appliance': ['firewall', 'router', 'switch', 'proxy', 'loadbalancer', 'fw', 'ndr']
+        }
+        
+        self.regional_mappings = {
+            'na': ['north_america', 'usa', 'united_states', 'canada', 'mexico', 'us-east', 'us-west'],
+            'latam': ['latin_america', 'south_america', 'brazil', 'argentina', 'chile', 'colombia'],
+            'europe': ['europe', 'eu', 'uk', 'germany', 'france', 'spain', 'italy', 'emea'],
+            'apac': ['asia', 'pacific', 'japan', 'china', 'india', 'australia', 'singapore']
+        }
+        
         self.pattern_cache = {}
         self.classification_cache = {}
         
@@ -665,16 +692,18 @@ class HyperIntelligence:
     def _calculate_semantic_score(self, text: str, field_type: str) -> float:
         text_lower = text.lower()
         
-        semantic_groups = {
-            'infrastructure_type': ['cloud', 'aws', 'azure', 'gcp', 'onprem', 'saas', 'virtual', 'physical'],
-            'system_classification': ['windows', 'linux', 'unix', 'mainframe', 'server', 'database', 'network'],
-            'region': ['north', 'south', 'east', 'west', 'europe', 'asia', 'america', 'pacific']
-        }
-        
-        if field_type in semantic_groups:
-            keywords = semantic_groups[field_type]
-            matches = sum(1 for kw in keywords if kw in text_lower)
-            return min(1.0, matches / max(1, len(keywords) * 0.3))
+        if field_type == 'infrastructure_type':
+            for infra_type, keywords in self.infrastructure_types.items():
+                if any(kw in text_lower for kw in keywords):
+                    return 0.9
+        elif field_type == 'system_classification':
+            for sys_class, keywords in self.system_classifications.items():
+                if any(kw in text_lower for kw in keywords):
+                    return 0.9
+        elif field_type == 'region':
+            for region, keywords in self.regional_mappings.items():
+                if any(kw in text_lower for kw in keywords):
+                    return 0.9
         
         return 0.5
     
@@ -765,14 +794,8 @@ class HyperIntelligence:
     
     def classify_infrastructure(self, text: str) -> str:
         text_lower = text.lower()
-        infra_keywords = {
-            'cloud': ['aws', 'azure', 'gcp', 'cloud', 'ec2', 'lambda', 's3'],
-            'on_premise': ['onprem', 'datacenter', 'physical', 'bare_metal'],
-            'saas': ['saas', 'software_as_service', 'hosted'],
-            'api': ['api', 'endpoint', 'rest', 'graphql']
-        }
         
-        for infra_type, keywords in infra_keywords.items():
+        for infra_type, keywords in self.infrastructure_types.items():
             if any(kw in text_lower for kw in keywords):
                 return infra_type
         
@@ -780,15 +803,8 @@ class HyperIntelligence:
     
     def classify_system(self, text: str) -> str:
         text_lower = text.lower()
-        sys_keywords = {
-            'web_server': ['web', 'apache', 'nginx', 'iis', 'http'],
-            'windows_server': ['windows', 'win', 'server2019', 'server2016'],
-            'linux_server': ['linux', 'ubuntu', 'centos', 'rhel', 'debian'],
-            'database': ['database', 'sql', 'oracle', 'postgres', 'mysql'],
-            'network_appliance': ['firewall', 'router', 'switch', 'proxy']
-        }
         
-        for sys_class, keywords in sys_keywords.items():
+        for sys_class, keywords in self.system_classifications.items():
             if any(kw in text_lower for kw in keywords):
                 return sys_class
         
@@ -796,14 +812,8 @@ class HyperIntelligence:
     
     def map_region(self, text: str) -> str:
         text_lower = text.lower()
-        regions = {
-            'na': ['north_america', 'usa', 'canada', 'us-east', 'us-west'],
-            'europe': ['europe', 'eu', 'uk', 'germany', 'france'],
-            'apac': ['asia', 'pacific', 'japan', 'china', 'india'],
-            'latam': ['latin', 'brazil', 'mexico', 'argentina']
-        }
         
-        for region, keywords in regions.items():
+        for region, keywords in self.regional_mappings.items():
             if any(kw in text_lower for kw in keywords):
                 return region
         
