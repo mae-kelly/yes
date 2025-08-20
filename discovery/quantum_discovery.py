@@ -147,12 +147,20 @@ class QuantumDiscoveryEngine:
         try:
             table = client.get_table(table_path)
             if table.num_rows == 0:
+                logger.debug(f"Table {table_path} is empty, skipping")
                 return table_assets
             
             columns = [field.name for field in table.schema]
+            
+            # Skip tables that are likely not asset-related
+            if 'log_types' in table_path.lower() or 'metadata' in table_path.lower():
+                logger.debug(f"Skipping metadata/config table: {table_path}")
+                return table_assets
+            
             column_classifications = self._classify_columns(columns, table_path, client)
             
             if 'hostname' not in column_classifications:
+                logger.debug(f"No hostname column found in {table_path}, skipping")
                 return table_assets
             
             hostname_col = column_classifications['hostname']
@@ -171,60 +179,110 @@ class QuantumDiscoveryEngine:
             query_job = client.query(query)
             results = query_job.result()
             
-            log_type_info = self.intelligence.identify_log_type(table_path, columns)
+            # Get log type info with error handling
+            try:
+                log_type_info = self.intelligence.identify_log_type(table_path, columns)
+            except Exception as e:
+                logger.warning(f"Failed to identify log type for {table_path}: {e}")
+                log_type_info = {
+                    'role': 'unknown',
+                    'confidence': 0.5,
+                    'log_types': [],
+                    'visibility_factors': []
+                }
             
+            row_count = 0
             for row in results:
-                hostname = getattr(row, hostname_col, None)
-                if not hostname or not self._is_valid_hostname(str(hostname)):
+                try:
+                    hostname = getattr(row, hostname_col, None)
+                    if not hostname or not self._is_valid_hostname(str(hostname)):
+                        continue
+                    
+                    asset = self._create_asset_from_row(row, column_classifications, table_path, log_type_info)
+                    asset_id = asset.get_unique_id()
+                    
+                    if asset_id in table_assets:
+                        table_assets[asset_id] = table_assets[asset_id].merge_with(asset)
+                    else:
+                        table_assets[asset_id] = asset
+                    
+                    row_count += 1
+                    
+                except Exception as e:
+                    logger.debug(f"Failed to process row in {table_path}: {e}")
                     continue
-                
-                asset = self._create_asset_from_row(row, column_classifications, table_path, log_type_info)
-                asset_id = asset.get_unique_id()
-                
-                if asset_id in table_assets:
-                    table_assets[asset_id] = table_assets[asset_id].merge_with(asset)
-                else:
-                    table_assets[asset_id] = asset
-        
+            
+            logger.info(f"Processed {row_count} assets from {table_path}")
+            
         except Exception as e:
             logger.error(f"Error processing table {table_path}: {e}")
+            import traceback
+            logger.debug(traceback.format_exc())
         
         return table_assets
     
     def _classify_columns(self, columns: List[str], table_path: str, client) -> Dict[str, str]:
         classifications = {}
         
-        sample_query = f"""
-        SELECT *
-        FROM `{table_path}`
-        LIMIT 100
-        """
-        
-        try:
-            query_job = client.query(sample_query)
-            sample_rows = list(query_job.result())
+        # Quick check for common patterns first
+        for column in columns:
+            column_lower = column.lower()
             
-            for column in columns:
-                sample_values = [str(getattr(row, column, '')) for row in sample_rows if getattr(row, column, None)]
+            # Priority patterns for quick matching
+            if any(pattern in column_lower for pattern in ['hostname', 'host_name', 'computer_name', 'server_name']):
+                classifications['hostname'] = column
+                break
+        
+        # If no hostname found in quick check, try ML classification
+        if 'hostname' not in classifications:
+            sample_query = f"""
+            SELECT *
+            FROM `{table_path}`
+            LIMIT 100
+            """
+            
+            try:
+                query_job = client.query(sample_query)
+                sample_rows = list(query_job.result())
                 
-                if sample_values:
-                    field_type, confidence, metadata = self.intelligence.classify_column(column, sample_values)
-                    
-                    if confidence >= self.sampling_config['min_confidence']:
-                        classifications[field_type] = column
-        except Exception as e:
-            logger.warning(f"Failed to classify columns for {table_path}: {e}")
-            # Fallback to basic pattern matching
+                if sample_rows:
+                    for column in columns:
+                        # Skip obvious non-hostname columns
+                        if column.lower() in ['log_types', 'timestamp', 'date', 'time', 'id', 'index']:
+                            continue
+                        
+                        sample_values = []
+                        for row in sample_rows:
+                            value = getattr(row, column, None)
+                            if value is not None:
+                                sample_values.append(str(value))
+                        
+                        if sample_values:
+                            try:
+                                field_type, confidence, metadata = self.intelligence.classify_column(column, sample_values)
+                                
+                                if confidence >= self.sampling_config['min_confidence']:
+                                    classifications[field_type] = column
+                                    
+                                    # If we found hostname, we can continue with other fields
+                                    if field_type == 'hostname':
+                                        logger.debug(f"Found hostname column: {column} with confidence {confidence}")
+                            except Exception as e:
+                                logger.debug(f"Failed to classify column {column}: {e}")
+                                continue
+                
+            except Exception as e:
+                logger.warning(f"Failed to run sample query for {table_path}: {e}")
+        
+        # Final fallback for hostname if still not found
+        if 'hostname' not in classifications:
             for column in columns:
                 column_lower = column.lower()
-                if 'hostname' in column_lower or 'host_name' in column_lower:
+                # Extended pattern matching
+                if any(pattern in column_lower for pattern in ['host', 'name', 'server', 'node', 'computer', 'machine', 'device']):
                     classifications['hostname'] = column
-                elif 'ip' in column_lower and 'address' in column_lower:
-                    classifications['ip_address'] = column
-                elif 'region' in column_lower:
-                    classifications['region'] = column
-                elif 'country' in column_lower:
-                    classifications['country'] = column
+                    logger.debug(f"Using fallback hostname column: {column}")
+                    break
         
         return classifications
     
@@ -254,11 +312,27 @@ class QuantumDiscoveryEngine:
         
         self._detect_coverage_flags(asset, table_path, classifications)
         
-        asset.log_types[log_type_info['role']] = log_type_info['log_types']
-        for visibility_factor in log_type_info['visibility_factors']:
-            asset.visibility_factors[visibility_factor] = log_type_info['confidence']
+        # Fix: Properly handle log_types assignment
+        if log_type_info and isinstance(log_type_info, dict):
+            role = log_type_info.get('role', 'unknown')
+            log_types_list = log_type_info.get('log_types', [])
+            
+            # Ensure log_types is a dictionary
+            if not isinstance(asset.log_types, dict):
+                asset.log_types = {}
+            
+            # Store log types as a list under the role key
+            asset.log_types[role] = log_types_list
+            
+            # Handle visibility factors
+            visibility_factors = log_type_info.get('visibility_factors', [])
+            if visibility_factors and isinstance(visibility_factors, list):
+                for factor in visibility_factors:
+                    asset.visibility_factors[factor] = log_type_info.get('confidence', 0.5)
+            
+            # Set ML confidence
+            asset.ml_confidence = log_type_info.get('confidence', 0.5)
         
-        asset.ml_confidence = log_type_info['confidence']
         asset.calculate_visibility_score()
         
         return asset
