@@ -1,176 +1,163 @@
-from claude_intelligence import ClaudeLevelIntelligence
-from discovery.quantum_discovery import QuantumDiscoveryEngine
-from gcp.client import BigQueryClientManager
-import yaml
-import asyncio
+from smart_claude_intelligence import ClaudeLevelIntelligence
+import json
 
-class EnhancedDiscoveryWithClaude:
-    def __init__(self, config_path='config.yaml'):
-        with open(config_path, 'r') as f:
-            self.config = yaml.safe_load(f)
-        
-        self.intelligence = ClaudeLevelIntelligence()
-        self.project_ids = self.config['project_ids']
-        
-    async def discover_with_understanding(self):
-        discovery = QuantumDiscoveryEngine(self.project_ids, self.config)
-        assets = await discovery.discover_all_assets()
-        
-        enhanced_assets = {}
-        for asset_id, asset in assets.items():
-            asset_data = {
-                'hostname': asset.hostname,
-                'infrastructure_type': asset.infrastructure_type,
-                'region': asset.region,
-                'business_unit': asset.business_unit,
-                'edr_coverage': asset.edr_coverage,
-                'tanium_coverage': asset.tanium_coverage,
-                'splunk_logging': asset.splunk_logging,
-                'gso_logging': asset.gso_logging,
-                'cmdb_visibility': asset.cmdb_visibility
-            }
-            
-            concept = self.intelligence.knowledge_graph.understand_entity(asset_data)
-            
-            query_context = {
-                'intent': 'security_assessment',
-                'target': 'asset',
-                'expected_output': 'risk_analysis'
-            }
-            
-            reasoning = self.intelligence.reasoning_engine.reason_about_data(query_context, asset_data)
-            
-            enhanced_assets[asset_id] = {
-                'original': asset,
-                'semantic_understanding': concept,
-                'reasoning': reasoning,
-                'risk_score': self._calculate_risk_score(concept, reasoning),
-                'recommendations': self._generate_recommendations(concept, reasoning)
-            }
-        
-        return enhanced_assets
+def test_dynamic_understanding():
+    intelligence = ClaudeLevelIntelligence()
     
-    def _calculate_risk_score(self, concept, reasoning):
-        base_score = 50
-        
-        if 'production_system' in concept.inferences:
-            base_score += 20
-        
-        if 'security_gap_critical' in concept.inferences:
-            base_score += 30
-        
-        if 'visibility_gap_high' in concept.inferences:
-            base_score += 20
-        
-        confidence_adjustment = (1 - reasoning['confidence']) * 10
-        base_score += confidence_adjustment
-        
-        return min(100, max(0, base_score))
+    print("MODEL INFO:")
+    print(f"Encoding method: {intelligence.knowledge_graph.embedding_engine.encoding_method}")
+    print(f"Encoder type: {type(intelligence.knowledge_graph.embedding_engine.encoder)}")
+    print("-" * 50)
     
-    def _generate_recommendations(self, concept, reasoning):
-        recommendations = []
-        
-        if 'security_gap_critical' in concept.inferences:
-            recommendations.append({
-                'priority': 'CRITICAL',
-                'action': 'Deploy EDR coverage immediately',
-                'reason': reasoning['explanation']
-            })
-        
-        if 'visibility_gap_high' in concept.inferences:
-            recommendations.append({
-                'priority': 'HIGH',
-                'action': 'Enable comprehensive logging',
-                'reason': 'Missing visibility into system activities'
-            })
-        
-        if 'production_system' in concept.inferences and 'legacy_system' in concept.inferences:
-            recommendations.append({
-                'priority': 'MEDIUM',
-                'action': 'Plan migration to modern infrastructure',
-                'reason': 'Legacy production systems pose increased risk'
-            })
-        
-        return recommendations
+    test_host = {
+        'hostname': 'prod-web-server-01',
+        'ip_address': '10.100.50.25',
+        'os_type': 'Windows',
+        'os_version': 'Server 2019',
+        'domain': 'corp.company.com',
+        'business_unit': 'Finance',
+        'environment': 'Production',
+        'edr_coverage': False,
+        'splunk_logging': True,
+        'last_patch_date': '2024-01-15',
+        'criticality': 'high',
+        'owner': 'john.smith@company.com'
+    }
+    
+    concept = intelligence.knowledge_graph.understand_entity(test_host)
+    
+    print("\nENTITY ANALYSIS:")
+    print(f"Type detected: {concept.concept_type}")
+    print(f"Confidence (calculated): {concept.confidence:.2%}")
+    print(f"Inferences found: {concept.inferences}")
+    
+    print("\nPROPERTY CONFIDENCES:")
+    for prop, details in concept.properties.items():
+        print(f"  {prop}: {details['confidence']:.2%} (type: {details['semantic_type']})")
+    
+    query_context = {
+        'intent': 'security_assessment',
+        'target': 'host',
+        'expected_output': 'risk_analysis'
+    }
+    
+    reasoning = intelligence.reasoning_engine.reason_about_data(query_context, test_host)
+    
+    print("\nREASONING RESULTS:")
+    if reasoning['conclusion']:
+        print(f"Conclusion: {reasoning['conclusion']['statement']}")
+        print(f"Severity: {reasoning['conclusion']['severity']}")
+        print(f"Confidence: {reasoning['conclusion']['confidence']:.2%}")
+    print(f"Explanation: {reasoning['explanation']}")
+    
+    print("\nEVIDENCE:")
+    for evidence in reasoning['evidence']:
+        print(f"  - {evidence}")
+    
+    print("\nREASONING CHAIN:")
+    for inference in reasoning['reasoning_chain']:
+        print(f"  - {inference}")
 
-    def analyze_table_intelligently(self, table_path):
-        parts = table_path.split('.')
-        project_id = parts[0]
-        
-        manager = BigQueryClientManager(project_id)
-        
-        with manager.get_client() as client:
-            table = client.get_table(table_path)
-            
-            columns = [field.name for field in table.schema]
-            
-            query = f"SELECT * FROM `{table_path}` LIMIT 100"
-            query_job = client.query(query)
-            results = list(query_job.result())
-            
-            sample_data = []
-            for row in results:
-                row_dict = {}
-                for col in columns:
-                    row_dict[col] = getattr(row, col, None)
-                sample_data.append(row_dict)
-            
-            table_metadata = {
-                'table_name': table_path,
-                'columns': columns,
-                'row_count': table.num_rows
-            }
-            
-            understanding = self.intelligence.understand_table_semantically(table_metadata, sample_data)
-            
-            return {
-                'table_path': table_path,
-                'understanding': understanding,
-                'purpose': understanding['mental_model']['purpose'],
-                'confidence': understanding['understanding_confidence'],
-                'recommendations': self._generate_table_recommendations(understanding)
-            }
+def test_table_understanding():
+    intelligence = ClaudeLevelIntelligence()
     
-    def _generate_table_recommendations(self, understanding):
-        recommendations = []
-        
-        purpose = understanding['mental_model']['purpose']['primary']
-        
-        if purpose == 'event_logging' and not any('severity' in col for col in understanding['column_semantics']):
-            recommendations.append('Consider adding severity classification to events')
-        
-        if purpose == 'asset_inventory' and not any('criticality' in col for col in understanding['column_semantics']):
-            recommendations.append('Add criticality ratings to assets')
-        
-        if understanding['understanding_confidence'] < 0.7:
-            recommendations.append('Table structure may benefit from clearer naming conventions')
-        
-        return recommendations
+    table_metadata = {
+        'table_name': 'security_event_logs',
+        'columns': ['event_id', 'timestamp', 'source_host', 'destination_host', 
+                   'event_type', 'severity', 'user_id', 'action_taken', 'outcome']
+    }
+    
+    sample_data = [
+        {
+            'event_id': 'EVT-2024-001',
+            'timestamp': '2024-01-20 14:30:00',
+            'source_host': 'workstation-042',
+            'destination_host': 'file-server-01',
+            'event_type': 'authentication_failure',
+            'severity': 'high',
+            'user_id': 'admin_user',
+            'action_taken': 'blocked',
+            'outcome': 'prevented'
+        },
+        {
+            'event_id': 'EVT-2024-002',
+            'timestamp': '2024-01-20 14:31:00',
+            'source_host': 'workstation-042',
+            'destination_host': 'file-server-01',
+            'event_type': 'brute_force_attempt',
+            'severity': 'critical',
+            'user_id': 'admin_user',
+            'action_taken': 'alert_sent',
+            'outcome': 'investigating'
+        }
+    ]
+    
+    understanding = intelligence.understand_table_semantically(table_metadata, sample_data)
+    
+    print("\n" + "=" * 50)
+    print("TABLE UNDERSTANDING:")
+    print(f"Primary purpose: {understanding['table_concept']['primary_purpose']}")
+    print(f"Purpose confidence: {understanding['table_concept']['confidence']:.2%}")
+    print(f"Overall understanding: {understanding['understanding_confidence']:.2%}")
+    
+    print("\nCOLUMN ANALYSIS:")
+    for column, semantics in understanding['column_semantics'].items():
+        print(f"  {column}:")
+        print(f"    Type: {semantics['semantic_type']}")
+        print(f"    Confidence: {semantics['confidence']:.2%}")
+        print(f"    Unique ratio: {semantics['unique_ratio']:.2%}")
 
-async def main():
-    enhancer = EnhancedDiscoveryWithClaude()
+def test_multiple_hosts():
+    intelligence = ClaudeLevelIntelligence()
     
-    print("Starting Claude-Enhanced Discovery...")
-    assets = await enhancer.discover_with_understanding()
+    hosts = [
+        {
+            'hostname': 'prod-db-01',
+            'criticality': 'high',
+            'edr_coverage': True,
+            'splunk_logging': True,
+            'environment': 'production'
+        },
+        {
+            'hostname': 'dev-test-05',
+            'criticality': 'low',
+            'edr_coverage': False,
+            'splunk_logging': False,
+            'environment': 'development'
+        },
+        {
+            'hostname': 'prod-web-03',
+            'criticality': 'high',
+            'edr_coverage': False,
+            'splunk_logging': True,
+            'environment': 'production',
+            'last_patch_date': '2023-10-01'
+        }
+    ]
     
-    critical_risks = []
-    for asset_id, enhanced in assets.items():
-        if enhanced['risk_score'] > 80:
-            critical_risks.append({
-                'hostname': enhanced['original'].hostname,
-                'risk_score': enhanced['risk_score'],
-                'reasoning': enhanced['reasoning']['explanation'],
-                'recommendations': enhanced['recommendations']
-            })
+    print("\n" + "=" * 50)
+    print("BATCH ANALYSIS:")
     
-    print(f"\nDiscovered {len(assets)} assets")
-    print(f"Critical risks found: {len(critical_risks)}")
-    
-    for risk in critical_risks[:5]:
-        print(f"\n{risk['hostname']} - Risk Score: {risk['risk_score']}")
-        print(f"  Reasoning: {risk['reasoning']}")
-        for rec in risk['recommendations']:
-            print(f"  [{rec['priority']}] {rec['action']}")
+    for host in hosts:
+        concept = intelligence.knowledge_graph.understand_entity(host)
+        reasoning = intelligence.reasoning_engine.reason_about_data(
+            {'intent': 'risk_assessment'}, host
+        )
+        
+        print(f"\n{host['hostname']}:")
+        print(f"  Confidence: {concept.confidence:.2%}")
+        print(f"  Issues: {[inf for inf in concept.inferences if 'gap' in inf or 'no_' in inf]}")
+        if reasoning['conclusion']:
+            print(f"  Risk: {reasoning['conclusion']['statement']}")
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    print("=" * 60)
+    print("SMART CLAUDE INTELLIGENCE TEST")
+    print("=" * 60)
+    
+    test_dynamic_understanding()
+    test_table_understanding()
+    test_multiple_hosts()
+    
+    print("\n" + "=" * 60)
+    print("TEST COMPLETE")

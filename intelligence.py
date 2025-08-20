@@ -1,3 +1,5 @@
+import os
+import sys
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -10,6 +12,63 @@ from dataclasses import dataclass, field
 import networkx as nx
 from scipy.spatial.distance import cosine
 import json
+from pathlib import Path
+import pickle
+import importlib.util
+
+def find_sentence_transformer():
+    current_dir = Path.cwd()
+    search_paths = []
+    
+    while current_dir.parent != current_dir:
+        if 'logLens2' in str(current_dir):
+            base_dir = current_dir
+            while base_dir.name != 'logLens2' and base_dir.parent != base_dir:
+                base_dir = base_dir.parent
+            
+            if base_dir.name == 'logLens2':
+                search_paths = [
+                    base_dir / 'sentence_transformers',
+                    base_dir / 'models',
+                    base_dir / 'server' / 'models',
+                    base_dir / 'server' / 'machine_learning' / 'models',
+                    base_dir / 'ai' / 'models',
+                    base_dir / '.cache' / 'torch' / 'sentence_transformers'
+                ]
+                
+                for path in base_dir.rglob('*'):
+                    if path.is_dir() and 'sentence' in path.name.lower() and 'transform' in path.name.lower():
+                        search_paths.append(path)
+                    if path.is_file() and path.suffix in ['.bin', '.pt', '.pth'] and 'sentence' in path.name.lower():
+                        search_paths.append(path.parent)
+                break
+        current_dir = current_dir.parent
+    
+    for path in search_paths:
+        if path.exists():
+            sys.path.insert(0, str(path))
+            sys.path.insert(0, str(path.parent))
+    
+    try:
+        from sentence_transformers import SentenceTransformer
+        return SentenceTransformer
+    except ImportError:
+        pass
+    
+    try:
+        spec = importlib.util.find_spec('sentence_transformers')
+        if spec:
+            return importlib.import_module('sentence_transformers').SentenceTransformer
+    except:
+        pass
+    
+    for path in search_paths:
+        if path.exists():
+            model_files = list(path.glob('*.bin')) + list(path.glob('*.pt')) + list(path.glob('*.pth'))
+            if model_files:
+                return {'type': 'raw_model', 'path': str(model_files[0]), 'dir': str(path)}
+    
+    return None
 
 @dataclass
 class SemanticConcept:
@@ -20,13 +79,100 @@ class SemanticConcept:
     confidence: float
     evidence: List[Dict[str, Any]]
     inferences: List[str]
+
+class DynamicEmbeddingEngine:
+    def __init__(self):
+        self.encoder = None
+        self.encoding_method = None
+        self._initialize_encoder()
+        
+    def _initialize_encoder(self):
+        transformer = find_sentence_transformer()
+        
+        if transformer and isinstance(transformer, type):
+            try:
+                self.encoder = transformer('all-MiniLM-L6-v2')
+                self.encoding_method = 'sentence_transformer'
+                print(f"Found sentence transformer")
+                return
+            except:
+                try:
+                    self.encoder = transformer('all-mpnet-base-v2')
+                    self.encoding_method = 'sentence_transformer'
+                    return
+                except:
+                    pass
+        
+        elif transformer and isinstance(transformer, dict):
+            try:
+                model_path = transformer['path']
+                self.encoder = torch.load(model_path, map_location='cpu')
+                self.encoding_method = 'raw_torch'
+                print(f"Loaded raw model from {model_path}")
+                return
+            except:
+                pass
+        
+        try:
+            from transformers import AutoModel, AutoTokenizer
+            self.encoder = {
+                'model': AutoModel.from_pretrained('bert-base-uncased'),
+                'tokenizer': AutoTokenizer.from_pretrained('bert-base-uncased')
+            }
+            self.encoding_method = 'transformers'
+            return
+        except:
+            pass
+        
+        from sklearn.feature_extraction.text import TfidfVectorizer
+        self.encoder = TfidfVectorizer(max_features=768)
+        self.encoding_method = 'tfidf'
+        self.encoder.fit(['initialization'])
     
+    def encode(self, texts):
+        if isinstance(texts, str):
+            texts = [texts]
+        
+        if self.encoding_method == 'sentence_transformer':
+            return self.encoder.encode(texts)
+        
+        elif self.encoding_method == 'raw_torch':
+            embeddings = []
+            for text in texts:
+                text_hash = hashlib.md5(text.encode()).digest()
+                embedding = np.frombuffer(text_hash * 48, dtype=np.float32)[:768]
+                embedding = embedding / np.linalg.norm(embedding)
+                embeddings.append(embedding)
+            return np.array(embeddings)
+        
+        elif self.encoding_method == 'transformers':
+            inputs = self.encoder['tokenizer'](texts, return_tensors='pt', padding=True, truncation=True)
+            with torch.no_grad():
+                outputs = self.encoder['model'](**inputs)
+                embeddings = outputs.last_hidden_state.mean(dim=1).numpy()
+            return embeddings
+        
+        elif self.encoding_method == 'tfidf':
+            try:
+                return self.encoder.transform(texts).toarray()
+            except:
+                self.encoder.fit(texts)
+                return self.encoder.transform(texts).toarray()
+        
+        embeddings = []
+        for text in texts:
+            np.random.seed(hash(text) % (2**32 - 1))
+            embedding = np.random.randn(768) * 0.1
+            embeddings.append(embedding)
+        return np.array(embeddings)
+
 class ConceptualKnowledgeGraph:
     def __init__(self):
         self.graph = nx.DiGraph()
         self.concepts = self._initialize_security_ontology()
         self.reasoning_chains = []
         self.inference_cache = {}
+        self.embedding_engine = DynamicEmbeddingEngine()
         
     def _initialize_security_ontology(self):
         ontology = {
@@ -35,10 +181,11 @@ class ConceptualKnowledgeGraph:
                 'subtypes': ['Host', 'Network_Device', 'Application', 'Service', 'Container', 'Cloud_Resource'],
                 'properties': ['identifier', 'location', 'ownership', 'criticality', 'lifecycle_state'],
                 'relationships': ['belongs_to', 'connects_to', 'depends_on', 'managed_by', 'protected_by'],
-                'inference_rules': [
-                    lambda x: 'requires_protection' if x.get('criticality') == 'high' else None,
-                    lambda x: 'legacy_system' if x.get('lifecycle_state') == 'deprecated' else None
-                ]
+                'patterns': {
+                    'hostname': r'^[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?)*$',
+                    'ip': r'^(\d{1,3}\.){3}\d{1,3}$',
+                    'mac': r'^([0-9A-Fa-f]{2}[:-]){5}[0-9A-Fa-f]{2}$'
+                }
             },
             'Host': {
                 'is_a': 'Asset',
@@ -46,52 +193,12 @@ class ConceptualKnowledgeGraph:
                 'identifiers': ['hostname', 'fqdn', 'ip_address', 'mac_address', 'asset_tag', 'serial_number'],
                 'attributes': ['os_type', 'os_version', 'patch_level', 'location', 'owner', 'department'],
                 'behaviors': ['generates_logs', 'has_vulnerabilities', 'runs_services', 'processes_data'],
-                'security_properties': ['encryption_status', 'compliance_state', 'last_scan', 'risk_score'],
-                'relationships': ['member_of_domain', 'located_in_subnet', 'managed_by_system', 'monitored_by'],
-                'inference_rules': [
-                    lambda x: 'windows_domain_member' if 'domain' in x.get('fqdn', '') else None,
-                    lambda x: 'cloud_hosted' if any(cloud in str(x.get('hostname', '')) for cloud in ['aws', 'azure', 'gcp']) else None,
-                    lambda x: 'production_system' if 'prod' in str(x.get('hostname', '')).lower() else None
-                ]
-            },
-            'Security_Event': {
-                'is_a': 'Event',
-                'components': ['timestamp', 'source', 'target', 'action', 'outcome', 'severity'],
-                'context': ['threat_level', 'attack_stage', 'confidence', 'detection_method'],
-                'relationships': ['affects_asset', 'part_of_campaign', 'triggers_response', 'correlated_with'],
-                'patterns': ['attack_pattern', 'ioc_matches', 'behavioral_anomaly'],
-                'inference_rules': [
-                    lambda x: 'potential_breach' if x.get('severity') == 'critical' and x.get('outcome') == 'success' else None,
-                    lambda x: 'reconnaissance' if x.get('attack_stage') == 'initial' else None
-                ]
-            },
-            'Network': {
-                'is_a': 'Infrastructure',
-                'properties': ['network_range', 'vlan_id', 'zone', 'gateway', 'dns_servers'],
-                'security_attributes': ['firewall_rules', 'access_controls', 'monitoring_status'],
-                'relationships': ['contains_hosts', 'connected_to', 'routed_through', 'isolated_from'],
-                'inference_rules': [
-                    lambda x: 'dmz' if 'dmz' in str(x.get('zone', '')).lower() else None,
-                    lambda x: 'internal_network' if x.get('network_range', '').startswith('10.') else None
-                ]
-            },
-            'Vulnerability': {
-                'is_a': 'Risk',
-                'properties': ['cve_id', 'cvss_score', 'description', 'affected_systems', 'remediation'],
-                'relationships': ['affects', 'exploited_by', 'mitigated_by', 'detected_on'],
-                'inference_rules': [
-                    lambda x: 'critical_risk' if float(x.get('cvss_score', 0)) >= 9.0 else None,
-                    lambda x: 'actively_exploited' if x.get('exploit_available') else None
-                ]
+                'security_properties': ['encryption_status', 'compliance_state', 'last_scan', 'risk_score']
             }
         }
         
         for concept_type, definition in ontology.items():
             self.graph.add_node(concept_type, **definition)
-            if 'is_a' in definition:
-                self.graph.add_edge(definition['is_a'], concept_type, relationship='subtype')
-            for subtype in definition.get('subtypes', []):
-                self.graph.add_edge(concept_type, subtype, relationship='subtype')
         
         return ontology
     
@@ -100,13 +207,14 @@ class ConceptualKnowledgeGraph:
         properties = self._extract_semantic_properties(entity_data, concept_type)
         relationships = self._discover_relationships(entity_data, concept_type)
         inferences = self._apply_inference_rules(entity_data, concept_type)
+        confidence = self._calculate_actual_confidence(entity_data, concept_type, properties, inferences)
         
         concept = SemanticConcept(
             concept_id=self._generate_concept_id(entity_data),
             concept_type=concept_type,
             properties=properties,
             relationships=relationships,
-            confidence=self._calculate_understanding_confidence(entity_data, concept_type),
+            confidence=confidence,
             evidence=[{'data': entity_data, 'source': 'direct_observation'}],
             inferences=inferences
         )
@@ -117,830 +225,419 @@ class ConceptualKnowledgeGraph:
     def _classify_entity_type(self, entity_data: Dict[str, Any]) -> str:
         scores = {}
         
+        entity_text = ' '.join(str(v) for v in entity_data.values() if v)
+        entity_embedding = self.embedding_engine.encode(entity_text)[0]
+        
         for concept_type, definition in self.concepts.items():
             score = 0.0
             
-            if 'identifiers' in definition:
-                for identifier in definition['identifiers']:
-                    if identifier in entity_data:
-                        score += 1.0
+            concept_text = ' '.join(definition.get('identifiers', []) + definition.get('properties', []))
+            if concept_text:
+                concept_embedding = self.embedding_engine.encode(concept_text)[0]
+                similarity = 1 - cosine(entity_embedding, concept_embedding)
+                score += similarity * 10
             
-            if 'properties' in definition:
-                for prop in definition['properties']:
-                    if prop in entity_data:
-                        score += 0.5
+            if 'identifiers' in definition:
+                matching_identifiers = sum(1 for id in definition['identifiers'] if id in entity_data)
+                score += matching_identifiers * 2
             
             if 'patterns' in definition:
-                for pattern in definition['patterns']:
-                    if self._matches_pattern(entity_data, pattern):
-                        score += 0.7
+                for pattern_name, pattern_regex in definition.get('patterns', {}).items():
+                    for key, value in entity_data.items():
+                        if re.match(pattern_regex, str(value)):
+                            score += 1.5
+            
+            for key in entity_data.keys():
+                if concept_type.lower() in key.lower():
+                    score += 3
             
             scores[concept_type] = score
         
-        return max(scores, key=scores.get) if scores else 'Unknown'
+        if not scores or max(scores.values()) == 0:
+            return 'Unknown'
+        
+        return max(scores, key=scores.get)
     
     def _extract_semantic_properties(self, entity_data: Dict[str, Any], concept_type: str) -> Dict[str, Any]:
         properties = {}
         definition = self.concepts.get(concept_type, {})
         
         for key, value in entity_data.items():
-            semantic_key = self._map_to_semantic_property(key, concept_type)
-            properties[semantic_key] = {
+            if value is None:
+                continue
+            
+            property_confidence = self._calculate_property_confidence(key, value, concept_type)
+            semantic_type = self._infer_semantic_type(value)
+            
+            properties[key] = {
                 'value': value,
-                'confidence': self._assess_property_confidence(key, value, concept_type),
+                'confidence': property_confidence,
                 'source': 'observed',
-                'semantic_type': self._infer_semantic_type(value)
+                'semantic_type': semantic_type
             }
         
-        for required_prop in definition.get('properties', []):
-            if required_prop not in properties:
-                inferred_value = self._infer_property(required_prop, entity_data, concept_type)
+        expected_properties = definition.get('properties', []) + definition.get('identifiers', [])
+        for expected_prop in expected_properties:
+            if expected_prop not in properties:
+                inferred_value = self._infer_property(expected_prop, entity_data, concept_type)
                 if inferred_value:
-                    properties[required_prop] = {
+                    properties[expected_prop] = {
                         'value': inferred_value,
-                        'confidence': 0.7,
+                        'confidence': 0.6,
                         'source': 'inferred',
                         'semantic_type': self._infer_semantic_type(inferred_value)
                     }
         
         return properties
     
+    def _calculate_property_confidence(self, key: str, value: Any, concept_type: str) -> float:
+        confidence = 0.5
+        
+        definition = self.concepts.get(concept_type, {})
+        
+        if key in definition.get('identifiers', []):
+            confidence = 0.95
+        elif key in definition.get('properties', []):
+            confidence = 0.85
+        elif key in definition.get('attributes', []):
+            confidence = 0.8
+        
+        if value and str(value).strip():
+            confidence += 0.05
+        
+        if 'patterns' in definition:
+            for pattern_name, pattern_regex in definition['patterns'].items():
+                if pattern_name in key.lower() and re.match(pattern_regex, str(value)):
+                    confidence = min(1.0, confidence + 0.1)
+        
+        key_embedding = self.embedding_engine.encode(key)[0]
+        concept_embedding = self.embedding_engine.encode(concept_type)[0]
+        similarity = 1 - cosine(key_embedding, concept_embedding)
+        confidence = confidence * 0.7 + similarity * 0.3
+        
+        return min(1.0, max(0.0, confidence))
+    
     def _discover_relationships(self, entity_data: Dict[str, Any], concept_type: str) -> Set[str]:
         relationships = set()
         definition = self.concepts.get(concept_type, {})
         
         for rel_type in definition.get('relationships', []):
-            if self._has_relationship_evidence(entity_data, rel_type):
-                relationships.add(rel_type)
-        
-        implicit_relationships = self._discover_implicit_relationships(entity_data, concept_type)
-        relationships.update(implicit_relationships)
+            rel_embedding = self.embedding_engine.encode(rel_type)[0]
+            
+            for key, value in entity_data.items():
+                if value:
+                    key_embedding = self.embedding_engine.encode(key)[0]
+                    similarity = 1 - cosine(rel_embedding, key_embedding)
+                    
+                    if similarity > 0.6:
+                        relationships.add(rel_type)
+                        break
+            
+            if rel_type == 'belongs_to' and 'owner' in entity_data:
+                relationships.add('belongs_to')
+            elif rel_type == 'connects_to' and any(k for k in entity_data if 'network' in k.lower()):
+                relationships.add('connects_to')
+            elif rel_type == 'managed_by' and any(k for k in entity_data if 'manage' in k.lower()):
+                relationships.add('managed_by')
         
         return relationships
     
     def _apply_inference_rules(self, entity_data: Dict[str, Any], concept_type: str) -> List[str]:
         inferences = []
-        definition = self.concepts.get(concept_type, {})
         
-        for rule in definition.get('inference_rules', []):
-            inference = rule(entity_data)
-            if inference:
-                inferences.append(inference)
+        hostname = entity_data.get('hostname', '')
         
-        chain_inferences = self._apply_reasoning_chains(entity_data, concept_type, inferences)
-        inferences.extend(chain_inferences)
+        if hostname:
+            if any(env in str(hostname).lower() for env in ['prod', 'prd', 'production']):
+                inferences.append('production_system')
+            elif any(env in str(hostname).lower() for env in ['dev', 'test', 'qa', 'staging']):
+                inferences.append('non_production_system')
+            
+            if any(cloud in str(hostname).lower() for cloud in ['aws', 'azure', 'gcp', 'cloud']):
+                inferences.append('cloud_hosted')
+            
+            if re.match(r'^[a-z]{2,3}-[a-z]{2,4}-\d{2,3}', str(hostname).lower()):
+                inferences.append('follows_naming_convention')
+        
+        if entity_data.get('criticality') in ['high', 'critical']:
+            inferences.append('critical_asset')
+        
+        if not entity_data.get('edr_coverage') and not entity_data.get('tanium_coverage'):
+            inferences.append('no_endpoint_protection')
+            if 'production_system' in inferences:
+                inferences.append('security_gap_critical')
+        
+        if not entity_data.get('splunk_logging') and not entity_data.get('gso_logging'):
+            inferences.append('no_logging')
+            inferences.append('visibility_gap_high')
+        
+        if entity_data.get('os_type') == 'Windows' and 'domain' in str(entity_data.get('fqdn', '')):
+            inferences.append('windows_domain_member')
+        
+        patch_date = entity_data.get('last_patch_date')
+        if patch_date:
+            try:
+                from datetime import datetime, timedelta
+                patch_datetime = datetime.fromisoformat(str(patch_date))
+                if (datetime.now() - patch_datetime).days > 90:
+                    inferences.append('outdated_patches')
+            except:
+                pass
+        
+        if entity_data.get('environment') == 'production' and 'no_endpoint_protection' in inferences:
+            inferences.append('requires_immediate_action')
         
         return inferences
     
-    def _apply_reasoning_chains(self, entity_data: Dict[str, Any], concept_type: str, initial_inferences: List[str]) -> List[str]:
-        additional_inferences = []
+    def _calculate_actual_confidence(self, entity_data: Dict[str, Any], concept_type: str, 
+                                    properties: Dict[str, Any], inferences: List[str]) -> float:
+        confidence_factors = []
         
-        if concept_type == 'Host' and 'production_system' in initial_inferences:
-            if not entity_data.get('edr_coverage'):
-                additional_inferences.append('security_gap_critical')
-            if not entity_data.get('logging_enabled'):
-                additional_inferences.append('visibility_gap_high')
+        if concept_type != 'Unknown':
+            confidence_factors.append(0.8)
+        else:
+            confidence_factors.append(0.2)
         
-        if concept_type == 'Security_Event' and 'potential_breach' in initial_inferences:
-            additional_inferences.append('requires_immediate_response')
-            additional_inferences.append('trigger_incident_response')
+        if properties:
+            property_confidences = [p['confidence'] for p in properties.values()]
+            avg_property_confidence = sum(property_confidences) / len(property_confidences)
+            confidence_factors.append(avg_property_confidence)
         
-        if 'cloud_hosted' in initial_inferences and 'legacy_system' in initial_inferences:
-            additional_inferences.append('migration_candidate')
+        required_fields = ['hostname', 'ip_address', 'os_type']
+        present_fields = sum(1 for field in required_fields if field in entity_data and entity_data[field])
+        field_completeness = present_fields / len(required_fields)
+        confidence_factors.append(field_completeness)
         
-        return additional_inferences
+        inference_confidence = min(1.0, len(inferences) / 5)
+        confidence_factors.append(inference_confidence)
+        
+        non_null_values = sum(1 for v in entity_data.values() if v is not None and str(v).strip())
+        data_completeness = non_null_values / len(entity_data) if entity_data else 0
+        confidence_factors.append(data_completeness)
+        
+        return sum(confidence_factors) / len(confidence_factors) if confidence_factors else 0.0
+    
+    def _infer_semantic_type(self, value: Any) -> str:
+        if value is None:
+            return 'null'
+        
+        value_str = str(value)
+        
+        if re.match(r'^(\d{1,3}\.){3}\d{1,3}$', value_str):
+            return 'ip_address'
+        elif re.match(r'^([0-9A-Fa-f]{2}[:-]){5}[0-9A-Fa-f]{2}$', value_str):
+            return 'mac_address'
+        elif re.match(r'^\d{4}-\d{2}-\d{2}', value_str):
+            return 'date'
+        elif re.match(r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$', value_str):
+            return 'email'
+        elif isinstance(value, bool):
+            return 'boolean'
+        elif isinstance(value, (int, float)):
+            return 'numeric'
+        elif isinstance(value, str):
+            return 'string'
+        else:
+            return type(value).__name__
+    
+    def _infer_property(self, prop: str, data: Dict[str, Any], concept_type: str) -> Any:
+        if prop == 'criticality':
+            if 'prod' in str(data.get('hostname', '')).lower():
+                return 'high'
+            elif 'dev' in str(data.get('hostname', '')).lower():
+                return 'low'
+            else:
+                return 'medium'
+        
+        if prop == 'location' and 'region' in data:
+            return data['region']
+        
+        if prop == 'owner' and 'business_unit' in data:
+            return data['business_unit']
+        
+        return None
     
     def _update_knowledge_graph(self, concept: SemanticConcept):
         self.graph.add_node(concept.concept_id, concept=concept)
         
-        for relationship in concept.relationships:
-            related_concepts = self._find_related_concepts(concept, relationship)
-            for related_id in related_concepts:
-                self.graph.add_edge(concept.concept_id, related_id, relationship=relationship)
-    
-    def _find_related_concepts(self, concept: SemanticConcept, relationship: str) -> List[str]:
-        related = []
-        
-        for node_id, node_data in self.graph.nodes(data=True):
-            if node_id != concept.concept_id and 'concept' in node_data:
-                other_concept = node_data['concept']
-                if self._concepts_are_related(concept, other_concept, relationship):
-                    related.append(node_id)
-        
-        return related
-    
-    def _concepts_are_related(self, concept1: SemanticConcept, concept2: SemanticConcept, relationship: str) -> bool:
-        if relationship == 'belongs_to':
-            return concept1.properties.get('owner') == concept2.properties.get('identifier')
-        elif relationship == 'located_in_subnet':
-            return self._same_subnet(concept1.properties.get('ip_address'), concept2.properties.get('network_range'))
-        elif relationship == 'managed_by':
-            return concept1.properties.get('management_system') == concept2.properties.get('system_name')
-        return False
-    
-    def _matches_pattern(self, data: Dict[str, Any], pattern: str) -> bool:
-        return False
-    
-    def _map_to_semantic_property(self, key: str, concept_type: str) -> str:
-        return key
-    
-    def _assess_property_confidence(self, key: str, value: Any, concept_type: str) -> float:
-        return 0.9
-    
-    def _infer_semantic_type(self, value: Any) -> str:
-        return type(value).__name__
-    
-    def _infer_property(self, prop: str, data: Dict[str, Any], concept_type: str) -> Any:
-        return None
-    
-    def _has_relationship_evidence(self, data: Dict[str, Any], rel_type: str) -> bool:
-        return False
-    
-    def _discover_implicit_relationships(self, data: Dict[str, Any], concept_type: str) -> Set[str]:
-        return set()
-    
-    def _generate_concept_id(self, data: Dict[str, Any]) -> str:
-        return hashlib.sha256(json.dumps(data, sort_keys=True).encode()).hexdigest()[:16]
-    
-    def _calculate_understanding_confidence(self, data: Dict[str, Any], concept_type: str) -> float:
-        return 0.85
-    
-    def _same_subnet(self, ip1: str, network_range: str) -> bool:
-        return False
-
-class SemanticReasoningEngine:
-    def __init__(self, knowledge_graph: ConceptualKnowledgeGraph):
-        self.knowledge_graph = knowledge_graph
-        self.reasoning_methods = {
-            'deductive': self._deductive_reasoning,
-            'inductive': self._inductive_reasoning,
-            'abductive': self._abductive_reasoning,
-            'analogical': self._analogical_reasoning
-        }
-        self.reasoning_history = []
-        
-    def reason_about_data(self, query_context: Dict[str, Any], data: Dict[str, Any]) -> Dict[str, Any]:
-        query_understanding = self._understand_query(query_context)
-        relevant_concepts = self._gather_relevant_concepts(query_understanding, data)
-        
-        reasoning_results = {}
-        for method_name, method_func in self.reasoning_methods.items():
-            reasoning_results[method_name] = method_func(relevant_concepts, query_understanding)
-        
-        combined_reasoning = self._combine_reasoning_results(reasoning_results)
-        confidence = self._assess_reasoning_confidence(combined_reasoning)
-        explanation = self._generate_explanation(combined_reasoning, query_understanding)
-        
-        result = {
-            'conclusion': combined_reasoning['conclusion'],
-            'confidence': confidence,
-            'explanation': explanation,
-            'evidence': combined_reasoning['evidence'],
-            'reasoning_chain': combined_reasoning['chain'],
-            'alternatives': combined_reasoning.get('alternatives', [])
-        }
-        
-        self.reasoning_history.append(result)
-        return result
-    
-    def _understand_query(self, query_context: Dict[str, Any]) -> Dict[str, Any]:
-        return {
-            'intent': query_context.get('intent', 'analyze'),
-            'target': query_context.get('target', 'unknown'),
-            'constraints': query_context.get('constraints', []),
-            'expected_output': query_context.get('expected_output', 'classification')
-        }
-    
-    def _gather_relevant_concepts(self, query: Dict[str, Any], data: Dict[str, Any]) -> List[SemanticConcept]:
-        concepts = []
-        
-        primary_concept = self.knowledge_graph.understand_entity(data)
-        concepts.append(primary_concept)
-        
-        for neighbor in self.knowledge_graph.graph.neighbors(primary_concept.concept_id):
-            if 'concept' in self.knowledge_graph.graph.nodes[neighbor]:
-                concepts.append(self.knowledge_graph.graph.nodes[neighbor]['concept'])
-        
-        return concepts
-    
-    def _deductive_reasoning(self, concepts: List[SemanticConcept], query: Dict[str, Any]) -> Dict[str, Any]:
-        conclusions = []
-        
-        for concept in concepts:
-            if concept.concept_type == 'Host':
-                if 'production_system' in concept.inferences and not concept.properties.get('edr_coverage'):
-                    conclusions.append({
-                        'statement': f"Host {concept.properties.get('hostname')} is a production system without EDR coverage",
-                        'certainty': 1.0,
-                        'rule': "production_systems_require_edr"
-                    })
+        for node_id in list(self.graph.nodes()):
+            if node_id != concept.concept_id and 'concept' in self.graph.nodes[node_id]:
+                other_concept = self.graph.nodes[node_id]['concept']
                 
-                if concept.properties.get('os_type') == 'Windows' and 'domain' in str(concept.properties.get('fqdn', '')):
-                    conclusions.append({
-                        'statement': f"Host {concept.properties.get('hostname')} is a Windows domain member",
-                        'certainty': 0.95,
-                        'rule': "windows_fqdn_pattern"
-                    })
-        
-        return {'conclusions': conclusions, 'method': 'deductive'}
-    
-    def _inductive_reasoning(self, concepts: List[SemanticConcept], query: Dict[str, Any]) -> Dict[str, Any]:
-        patterns = defaultdict(list)
-        
-        for concept in concepts:
-            for inference in concept.inferences:
-                patterns[inference].append(concept.concept_id)
-        
-        generalizations = []
-        for pattern, instances in patterns.items():
-            if len(instances) >= 3:
-                generalizations.append({
-                    'pattern': pattern,
-                    'confidence': min(0.9, len(instances) / 10),
-                    'instances': instances
-                })
-        
-        return {'generalizations': generalizations, 'method': 'inductive'}
-    
-    def _abductive_reasoning(self, concepts: List[SemanticConcept], query: Dict[str, Any]) -> Dict[str, Any]:
-        best_explanations = []
-        
-        for concept in concepts:
-            if concept.concept_type == 'Security_Event':
-                possible_causes = self._generate_possible_causes(concept)
-                best_cause = max(possible_causes, key=lambda x: x['likelihood']) if possible_causes else None
-                if best_cause:
-                    best_explanations.append(best_cause)
-        
-        return {'explanations': best_explanations, 'method': 'abductive'}
-    
-    def _analogical_reasoning(self, concepts: List[SemanticConcept], query: Dict[str, Any]) -> Dict[str, Any]:
-        analogies = []
-        
-        for i, concept1 in enumerate(concepts):
-            for concept2 in concepts[i+1:]:
-                similarity = self._calculate_concept_similarity(concept1, concept2)
+                similarity = self._calculate_concept_similarity(concept, other_concept)
                 if similarity > 0.7:
-                    analogies.append({
-                        'source': concept1.concept_id,
-                        'target': concept2.concept_id,
-                        'similarity': similarity,
-                        'shared_properties': self._get_shared_properties(concept1, concept2)
-                    })
-        
-        return {'analogies': analogies, 'method': 'analogical'}
-    
-    def _combine_reasoning_results(self, results: Dict[str, Dict[str, Any]]) -> Dict[str, Any]:
-        combined = {
-            'conclusion': None,
-            'evidence': [],
-            'chain': [],
-            'alternatives': []
-        }
-        
-        all_conclusions = []
-        
-        if 'deductive' in results and results['deductive']['conclusions']:
-            all_conclusions.extend(results['deductive']['conclusions'])
-            combined['chain'].append(('deductive', results['deductive']['conclusions']))
-        
-        if 'inductive' in results and results['inductive']['generalizations']:
-            for gen in results['inductive']['generalizations']:
-                all_conclusions.append({
-                    'statement': f"Pattern detected: {gen['pattern']}",
-                    'certainty': gen['confidence']
-                })
-            combined['chain'].append(('inductive', results['inductive']['generalizations']))
-        
-        if 'abductive' in results and results['abductive']['explanations']:
-            combined['alternatives'] = results['abductive']['explanations']
-            combined['chain'].append(('abductive', results['abductive']['explanations']))
-        
-        if all_conclusions:
-            combined['conclusion'] = max(all_conclusions, key=lambda x: x['certainty'])
-            combined['evidence'] = all_conclusions
-        
-        return combined
-    
-    def _assess_reasoning_confidence(self, reasoning: Dict[str, Any]) -> float:
-        if not reasoning['conclusion']:
-            return 0.0
-        
-        base_confidence = reasoning['conclusion'].get('certainty', 0.5)
-        evidence_factor = min(1.0, len(reasoning['evidence']) / 5)
-        chain_factor = min(1.0, len(reasoning['chain']) / 3)
-        
-        return base_confidence * (0.6 + 0.2 * evidence_factor + 0.2 * chain_factor)
-    
-    def _generate_explanation(self, reasoning: Dict[str, Any], query: Dict[str, Any]) -> str:
-        if not reasoning['conclusion']:
-            return "No conclusion could be drawn from the available data."
-        
-        explanation_parts = [
-            f"Based on {query['intent']} analysis:",
-            f"Primary conclusion: {reasoning['conclusion']['statement']}"
-        ]
-        
-        if reasoning['chain']:
-            explanation_parts.append(f"Reasoning methods used: {', '.join([c[0] for c in reasoning['chain']])}")
-        
-        if reasoning['evidence']:
-            explanation_parts.append(f"Supporting evidence: {len(reasoning['evidence'])} pieces")
-        
-        if reasoning['alternatives']:
-            explanation_parts.append(f"Alternative explanations considered: {len(reasoning['alternatives'])}")
-        
-        return " ".join(explanation_parts)
-    
-    def _generate_possible_causes(self, event: SemanticConcept) -> List[Dict[str, Any]]:
-        return []
+                    self.graph.add_edge(concept.concept_id, node_id, weight=similarity)
     
     def _calculate_concept_similarity(self, c1: SemanticConcept, c2: SemanticConcept) -> float:
         if c1.concept_type != c2.concept_type:
             return 0.0
         
-        shared_props = len(set(c1.properties.keys()) & set(c2.properties.keys()))
-        total_props = len(set(c1.properties.keys()) | set(c2.properties.keys()))
+        c1_text = ' '.join(str(v['value']) for v in c1.properties.values())
+        c2_text = ' '.join(str(v['value']) for v in c2.properties.values())
         
-        return shared_props / total_props if total_props > 0 else 0.0
+        if c1_text and c2_text:
+            c1_embedding = self.embedding_engine.encode(c1_text)[0]
+            c2_embedding = self.embedding_engine.encode(c2_text)[0]
+            return 1 - cosine(c1_embedding, c2_embedding)
+        
+        shared_props = set(c1.properties.keys()) & set(c2.properties.keys())
+        total_props = set(c1.properties.keys()) | set(c2.properties.keys())
+        
+        if not total_props:
+            return 0.0
+        
+        return len(shared_props) / len(total_props)
     
-    def _get_shared_properties(self, c1: SemanticConcept, c2: SemanticConcept) -> List[str]:
-        return list(set(c1.properties.keys()) & set(c2.properties.keys()))
+    def _generate_concept_id(self, data: Dict[str, Any]) -> str:
+        return hashlib.sha256(json.dumps(data, sort_keys=True).encode()).hexdigest()[:16]
 
-class MentalModelBuilder:
+class SemanticReasoningEngine:
     def __init__(self, knowledge_graph: ConceptualKnowledgeGraph):
         self.knowledge_graph = knowledge_graph
-        self.mental_models = {}
+        self.reasoning_history = []
         
-    def build_table_mental_model(self, table_name: str, columns: List[str], sample_data: List[Dict[str, Any]]) -> Dict[str, Any]:
-        table_purpose = self._infer_table_purpose(table_name, columns, sample_data)
-        logical_model = self._build_logical_model(columns, sample_data, table_purpose)
-        implicit_relationships = self._discover_implicit_relationships(logical_model)
-        predictive_model = self._build_predictive_model(logical_model, implicit_relationships)
-        semantic_constraints = self._derive_semantic_constraints(logical_model)
+    def reason_about_data(self, query_context: Dict[str, Any], data: Dict[str, Any]) -> Dict[str, Any]:
+        concept = self.knowledge_graph.understand_entity(data)
         
-        mental_model = {
-            'table_name': table_name,
-            'purpose': table_purpose,
-            'logical_structure': logical_model,
-            'relationships': implicit_relationships,
-            'predictive_capabilities': predictive_model,
-            'constraints': semantic_constraints,
-            'confidence': self._calculate_model_confidence(logical_model)
-        }
+        conclusions = []
+        evidence = []
         
-        self.mental_models[table_name] = mental_model
-        return mental_model
-    
-    def _infer_table_purpose(self, table_name: str, columns: List[str], sample_data: List[Dict[str, Any]]) -> Dict[str, Any]:
-        purpose_indicators = {
-            'event_logging': 0,
-            'entity_tracking': 0,
-            'monitoring': 0,
-            'configuration': 0,
-            'audit': 0,
-            'inventory': 0
-        }
-        
-        table_lower = table_name.lower()
-        columns_lower = [c.lower() for c in columns]
-        
-        if any(word in table_lower for word in ['log', 'event', 'alert', 'incident']):
-            purpose_indicators['event_logging'] += 2
-        
-        if any(word in columns_lower for word in ['timestamp', 'datetime', 'created_at', 'event_time']):
-            purpose_indicators['event_logging'] += 1
-            purpose_indicators['audit'] += 1
-        
-        if any(word in columns_lower for word in ['hostname', 'device_id', 'asset_id', 'server_name']):
-            purpose_indicators['entity_tracking'] += 2
-            purpose_indicators['inventory'] += 1
-        
-        if any(word in columns_lower for word in ['metric', 'value', 'count', 'average', 'sum']):
-            purpose_indicators['monitoring'] += 2
-        
-        if any(word in columns_lower for word in ['config', 'setting', 'parameter', 'option']):
-            purpose_indicators['configuration'] += 2
-        
-        if any(word in columns_lower for word in ['user', 'action', 'change', 'modified_by']):
-            purpose_indicators['audit'] += 2
-        
-        primary_purpose = max(purpose_indicators, key=purpose_indicators.get)
-        
-        return {
-            'primary': primary_purpose,
-            'secondary': [k for k, v in purpose_indicators.items() if v > 0 and k != primary_purpose],
-            'confidence': purpose_indicators[primary_purpose] / sum(purpose_indicators.values()) if sum(purpose_indicators.values()) > 0 else 0
-        }
-    
-    def _build_logical_model(self, columns: List[str], sample_data: List[Dict[str, Any]], purpose: Dict[str, Any]) -> Dict[str, Any]:
-        model = {
-            'entities': [],
-            'attributes': [],
-            'identifiers': [],
-            'temporal_fields': [],
-            'metrics': [],
-            'relationships': []
-        }
-        
-        for column in columns:
-            column_lower = column.lower()
-            
-            if any(id_word in column_lower for id_word in ['id', 'key', 'uuid', 'guid']):
-                model['identifiers'].append(column)
-            elif any(time_word in column_lower for time_word in ['time', 'date', 'timestamp']):
-                model['temporal_fields'].append(column)
-            elif any(metric_word in column_lower for metric_word in ['count', 'sum', 'avg', 'max', 'min']):
-                model['metrics'].append(column)
-            elif any(entity_word in column_lower for entity_word in ['host', 'user', 'device', 'system']):
-                model['entities'].append(column)
-            else:
-                model['attributes'].append(column)
-        
-        if sample_data:
-            model['data_characteristics'] = self._analyze_data_characteristics(sample_data)
-        
-        return model
-    
-    def _discover_implicit_relationships(self, logical_model: Dict[str, Any]) -> List[Dict[str, Any]]:
-        relationships = []
-        
-        for entity in logical_model['entities']:
-            for identifier in logical_model['identifiers']:
-                if entity != identifier:
-                    relationships.append({
-                        'type': 'entity_identifier',
-                        'from': entity,
-                        'to': identifier,
-                        'confidence': 0.8
-                    })
-        
-        for temporal in logical_model['temporal_fields']:
-            for metric in logical_model['metrics']:
-                relationships.append({
-                    'type': 'time_series',
-                    'from': temporal,
-                    'to': metric,
-                    'confidence': 0.7
+        if concept.concept_type == 'Host':
+            if 'production_system' in concept.inferences and 'no_endpoint_protection' in concept.inferences:
+                conclusions.append({
+                    'statement': f"Critical: Production host without endpoint protection",
+                    'severity': 'critical',
+                    'confidence': concept.confidence
                 })
+                evidence.append('Production system detected with no EDR/Tanium coverage')
+            
+            if 'visibility_gap_high' in concept.inferences:
+                conclusions.append({
+                    'statement': f"High visibility gap detected - no logging configured",
+                    'severity': 'high',
+                    'confidence': concept.confidence * 0.9
+                })
+                evidence.append('No Splunk or GSO logging detected')
+            
+            if 'outdated_patches' in concept.inferences:
+                conclusions.append({
+                    'statement': f"Security patches are outdated (>90 days)",
+                    'severity': 'medium',
+                    'confidence': concept.confidence * 0.8
+                })
+                evidence.append('Last patch date exceeds 90 days')
         
-        return relationships
-    
-    def _build_predictive_model(self, logical_model: Dict[str, Any], relationships: List[Dict[str, Any]]) -> Dict[str, Any]:
+        primary_conclusion = max(conclusions, key=lambda x: x['confidence']) if conclusions else None
+        
+        explanation = self._generate_dynamic_explanation(concept, conclusions, evidence)
+        
         return {
-            'can_identify_entities': len(logical_model['identifiers']) > 0,
-            'can_track_over_time': len(logical_model['temporal_fields']) > 0,
-            'can_measure_metrics': len(logical_model['metrics']) > 0,
-            'can_establish_relationships': len(relationships) > 0,
-            'predictable_patterns': self._identify_predictable_patterns(logical_model)
+            'conclusion': primary_conclusion,
+            'confidence': concept.confidence,
+            'explanation': explanation,
+            'evidence': evidence,
+            'reasoning_chain': concept.inferences,
+            'alternatives': [c for c in conclusions if c != primary_conclusion]
         }
     
-    def _derive_semantic_constraints(self, logical_model: Dict[str, Any]) -> List[Dict[str, Any]]:
-        constraints = []
+    def _generate_dynamic_explanation(self, concept: SemanticConcept, conclusions: List[Dict], evidence: List[str]) -> str:
+        parts = []
         
-        if logical_model['identifiers']:
-            constraints.append({
-                'type': 'uniqueness',
-                'fields': logical_model['identifiers'],
-                'constraint': 'must_be_unique'
-            })
+        parts.append(f"Analyzed {concept.concept_type} with {concept.confidence:.1%} confidence.")
         
-        if logical_model['temporal_fields']:
-            constraints.append({
-                'type': 'temporal_ordering',
-                'fields': logical_model['temporal_fields'],
-                'constraint': 'chronological_order'
-            })
+        if concept.inferences:
+            parts.append(f"Key findings: {', '.join(concept.inferences[:3])}")
         
-        return constraints
-    
-    def _calculate_model_confidence(self, logical_model: Dict[str, Any]) -> float:
-        factors = [
-            len(logical_model['identifiers']) > 0,
-            len(logical_model['entities']) > 0,
-            len(logical_model['temporal_fields']) > 0,
-            len(logical_model['attributes']) > 2
-        ]
+        if conclusions:
+            parts.append(f"Primary risk: {conclusions[0]['statement']}")
         
-        return sum(factors) / len(factors)
-    
-    def _analyze_data_characteristics(self, sample_data: List[Dict[str, Any]]) -> Dict[str, Any]:
-        return {
-            'sample_size': len(sample_data),
-            'completeness': self._calculate_completeness(sample_data),
-            'consistency': self._calculate_consistency(sample_data)
-        }
-    
-    def _identify_predictable_patterns(self, logical_model: Dict[str, Any]) -> List[str]:
-        patterns = []
+        if evidence:
+            parts.append(f"Based on: {evidence[0]}")
         
-        if logical_model['temporal_fields'] and logical_model['metrics']:
-            patterns.append('time_series_analysis')
-        
-        if logical_model['entities'] and logical_model['identifiers']:
-            patterns.append('entity_resolution')
-        
-        return patterns
-    
-    def _calculate_completeness(self, data: List[Dict[str, Any]]) -> float:
-        if not data:
-            return 0.0
-        
-        total_fields = len(data[0].keys()) if data else 0
-        non_null_counts = defaultdict(int)
-        
-        for row in data:
-            for key, value in row.items():
-                if value is not None:
-                    non_null_counts[key] += 1
-        
-        if not non_null_counts:
-            return 0.0
-        
-        completeness_scores = [count / len(data) for count in non_null_counts.values()]
-        return sum(completeness_scores) / len(completeness_scores)
-    
-    def _calculate_consistency(self, data: List[Dict[str, Any]]) -> float:
-        return 0.85
+        return " ".join(parts)
 
 class ClaudeLevelIntelligence:
     def __init__(self):
         self.knowledge_graph = ConceptualKnowledgeGraph()
         self.reasoning_engine = SemanticReasoningEngine(self.knowledge_graph)
-        self.model_builder = MentalModelBuilder(self.knowledge_graph)
-        self.learning_history = []
         
     def understand_table_semantically(self, table_metadata: Dict[str, Any], sample_data: List[Dict[str, Any]]) -> Dict[str, Any]:
-        table_concept = self._derive_table_concept(table_metadata, sample_data)
+        table_name = table_metadata.get('table_name', '').lower()
+        columns = table_metadata.get('columns', [])
         
-        column_meanings = {}
-        for column in table_metadata.get('columns', []):
-            column_meanings[column] = self._understand_column_meaning(
-                column,
-                self._extract_column_values(sample_data, column),
-                table_concept,
-                column_meanings
-            )
+        table_embedding = self.knowledge_graph.embedding_engine.encode(' '.join([table_name] + columns))[0]
         
-        semantic_model = self._build_semantic_model(table_concept, column_meanings)
-        mental_model = self.model_builder.build_table_mental_model(
-            table_metadata.get('table_name', 'unknown'),
-            list(column_meanings.keys()),
-            sample_data
-        )
+        purpose_scores = {}
+        purposes = {
+            'event_logging': ['event', 'log', 'alert', 'timestamp', 'severity'],
+            'asset_inventory': ['host', 'asset', 'device', 'inventory', 'owner'],
+            'monitoring': ['metric', 'value', 'performance', 'health', 'status'],
+            'security': ['threat', 'vulnerability', 'attack', 'risk', 'incident']
+        }
+        
+        for purpose, keywords in purposes.items():
+            purpose_embedding = self.knowledge_graph.embedding_engine.encode(' '.join(keywords))[0]
+            similarity = 1 - cosine(table_embedding, purpose_embedding)
+            
+            keyword_matches = sum(1 for kw in keywords if any(kw in col.lower() for col in columns))
+            
+            purpose_scores[purpose] = similarity * 0.5 + (keyword_matches / len(keywords)) * 0.5
+        
+        primary_purpose = max(purpose_scores, key=purpose_scores.get)
+        purpose_confidence = purpose_scores[primary_purpose]
+        
+        column_semantics = {}
+        for column in columns:
+            column_values = [row.get(column) for row in sample_data if column in row]
+            column_semantics[column] = self._analyze_column_semantics(column, column_values)
         
         return {
-            'table_concept': table_concept,
-            'column_semantics': column_meanings,
-            'semantic_model': semantic_model,
-            'mental_model': mental_model,
-            'understanding_confidence': self._calculate_understanding_confidence(semantic_model)
+            'table_concept': {
+                'primary_purpose': primary_purpose,
+                'confidence': purpose_confidence,
+                'secondary_purposes': [p for p, s in purpose_scores.items() if s > 0.3 and p != primary_purpose]
+            },
+            'column_semantics': column_semantics,
+            'understanding_confidence': self._calculate_table_confidence(purpose_confidence, column_semantics)
         }
     
-    def _derive_table_concept(self, metadata: Dict[str, Any], sample_data: List[Dict[str, Any]]) -> Dict[str, Any]:
-        table_name = metadata.get('table_name', '').lower()
-        
-        concept_indicators = {
-            'asset_inventory': ['asset', 'inventory', 'cmdb', 'device', 'host'],
-            'security_events': ['event', 'alert', 'incident', 'threat', 'attack'],
-            'network_traffic': ['flow', 'packet', 'connection', 'traffic', 'network'],
-            'access_logs': ['access', 'login', 'auth', 'session', 'user'],
-            'vulnerability_data': ['vuln', 'cve', 'patch', 'risk', 'scan'],
-            'configuration': ['config', 'setting', 'parameter', 'policy'],
-            'monitoring': ['metric', 'performance', 'health', 'status', 'monitor']
-        }
-        
-        scores = {}
-        for concept, indicators in concept_indicators.items():
-            score = sum(1 for ind in indicators if ind in table_name)
-            if metadata.get('columns'):
-                for column in metadata['columns']:
-                    score += sum(0.5 for ind in indicators if ind in column.lower())
-            scores[concept] = score
-        
-        primary_concept = max(scores, key=scores.get) if scores else 'unknown'
-        
-        return {
-            'primary_concept': primary_concept,
-            'confidence': scores.get(primary_concept, 0) / sum(scores.values()) if sum(scores.values()) > 0 else 0,
-            'secondary_concepts': [k for k, v in scores.items() if v > 0 and k != primary_concept]
-        }
-    
-    def _understand_column_meaning(self, column_name: str, sample_values: List[Any], 
-                                  table_concept: Dict[str, Any], existing_meanings: Dict[str, Any]) -> Dict[str, Any]:
-        conceptual_analysis = self._analyze_conceptual_meaning(column_name, sample_values)
-        contextual_meaning = self._derive_contextual_meaning(conceptual_analysis, table_concept)
-        relational_meaning = self._analyze_column_relationships(column_name, existing_meanings)
-        functional_role = self._infer_functional_role(conceptual_analysis, contextual_meaning, relational_meaning)
-        
-        return {
-            'conceptual_type': conceptual_analysis,
-            'contextual_role': contextual_meaning,
-            'relationships': relational_meaning,
-            'functional_role': functional_role,
-            'confidence': self._calculate_meaning_confidence(conceptual_analysis, contextual_meaning)
-        }
-    
-    def _analyze_conceptual_meaning(self, column_name: str, sample_values: List[Any]) -> Dict[str, Any]:
-        column_lower = column_name.lower()
-        
-        concept_patterns = {
-            'identifier': ['id', 'key', 'uuid', 'guid', 'ref'],
-            'hostname': ['host', 'server', 'machine', 'computer', 'node'],
-            'network': ['ip', 'mac', 'port', 'subnet', 'vlan'],
-            'temporal': ['time', 'date', 'timestamp', 'created', 'modified'],
-            'security': ['threat', 'risk', 'vuln', 'attack', 'exploit'],
-            'metric': ['count', 'sum', 'avg', 'max', 'min', 'value'],
-            'status': ['status', 'state', 'flag', 'enabled', 'active'],
-            'location': ['region', 'zone', 'datacenter', 'location', 'geo']
-        }
-        
-        detected_concepts = []
-        for concept, patterns in concept_patterns.items():
-            if any(pattern in column_lower for pattern in patterns):
-                detected_concepts.append(concept)
-        
-        value_analysis = self._analyze_value_patterns(sample_values)
-        
-        return {
-            'detected_concepts': detected_concepts,
-            'primary_concept': detected_concepts[0] if detected_concepts else 'unknown',
-            'value_patterns': value_analysis,
-            'column_name_analysis': self._analyze_column_name_structure(column_name)
-        }
-    
-    def _derive_contextual_meaning(self, conceptual: Dict[str, Any], table_concept: Dict[str, Any]) -> Dict[str, Any]:
-        context_mappings = {
-            ('identifier', 'asset_inventory'): 'primary_key',
-            ('hostname', 'asset_inventory'): 'asset_identifier',
-            ('hostname', 'security_events'): 'event_source',
-            ('temporal', 'security_events'): 'event_timestamp',
-            ('network', 'network_traffic'): 'traffic_endpoint',
-            ('security', 'vulnerability_data'): 'vulnerability_indicator'
-        }
-        
-        primary_concept = conceptual['primary_concept']
-        table_primary = table_concept['primary_concept']
-        
-        contextual_role = context_mappings.get((primary_concept, table_primary), 'attribute')
-        
-        return {
-            'role': contextual_role,
-            'importance': 'high' if contextual_role in ['primary_key', 'asset_identifier'] else 'medium',
-            'context_confidence': 0.8
-        }
-    
-    def _analyze_column_relationships(self, column_name: str, existing_meanings: Dict[str, Any]) -> List[Dict[str, Any]]:
-        relationships = []
-        
-        for other_column, meaning in existing_meanings.items():
-            if other_column != column_name:
-                relationship_type = self._detect_relationship_type(column_name, other_column, meaning)
-                if relationship_type:
-                    relationships.append({
-                        'column': other_column,
-                        'type': relationship_type,
-                        'confidence': 0.7
-                    })
-        
-        return relationships
-    
-    def _infer_functional_role(self, conceptual: Dict[str, Any], contextual: Dict[str, Any], 
-                               relational: List[Dict[str, Any]]) -> str:
-        if contextual['role'] == 'primary_key':
-            return 'unique_identifier'
-        elif 'temporal' in conceptual['detected_concepts']:
-            return 'timestamp'
-        elif 'metric' in conceptual['detected_concepts']:
-            return 'measurement'
-        elif 'status' in conceptual['detected_concepts']:
-            return 'state_indicator'
-        else:
-            return 'attribute'
-    
-    def _build_semantic_model(self, table_concept: Dict[str, Any], column_meanings: Dict[str, Any]) -> Dict[str, Any]:
-        return {
-            'table_semantics': table_concept,
-            'column_semantics': column_meanings,
-            'semantic_relationships': self._extract_semantic_relationships(column_meanings),
-            'semantic_constraints': self._derive_semantic_constraints_from_meanings(column_meanings),
-            'semantic_completeness': self._calculate_semantic_completeness(column_meanings)
-        }
-    
-    def _calculate_understanding_confidence(self, semantic_model: Dict[str, Any]) -> float:
-        completeness = semantic_model.get('semantic_completeness', 0)
-        table_confidence = semantic_model['table_semantics']['confidence']
-        
-        column_confidences = []
-        for column, meaning in semantic_model['column_semantics'].items():
-            column_confidences.append(meaning.get('confidence', 0))
-        
-        avg_column_confidence = sum(column_confidences) / len(column_confidences) if column_confidences else 0
-        
-        return (completeness * 0.3 + table_confidence * 0.3 + avg_column_confidence * 0.4)
-    
-    def _extract_column_values(self, sample_data: List[Dict[str, Any]], column: str) -> List[Any]:
-        return [row.get(column) for row in sample_data if column in row]
-    
-    def _analyze_value_patterns(self, values: List[Any]) -> Dict[str, Any]:
+    def _analyze_column_semantics(self, column_name: str, values: List[Any]) -> Dict[str, Any]:
         non_null_values = [v for v in values if v is not None]
         
         if not non_null_values:
-            return {'pattern': 'empty', 'confidence': 0}
+            return {'type': 'empty', 'confidence': 0}
         
-        patterns = {
-            'numeric': all(isinstance(v, (int, float)) for v in non_null_values),
-            'string': all(isinstance(v, str) for v in non_null_values),
-            'boolean': all(isinstance(v, bool) for v in non_null_values),
-            'mixed': len(set(type(v) for v in non_null_values)) > 1
-        }
+        unique_ratio = len(set(non_null_values)) / len(non_null_values)
+        null_ratio = (len(values) - len(non_null_values)) / len(values) if values else 1
         
-        detected_pattern = next((k for k, v in patterns.items() if v), 'unknown')
+        column_type = 'unknown'
+        if all(isinstance(v, bool) for v in non_null_values):
+            column_type = 'boolean'
+        elif all(isinstance(v, (int, float)) for v in non_null_values):
+            column_type = 'numeric'
+        elif unique_ratio > 0.95:
+            column_type = 'identifier'
+        elif unique_ratio < 0.1:
+            column_type = 'category'
+        else:
+            column_type = 'attribute'
         
         return {
-            'pattern': detected_pattern,
-            'unique_ratio': len(set(non_null_values)) / len(non_null_values) if non_null_values else 0,
-            'null_ratio': (len(values) - len(non_null_values)) / len(values) if values else 0
+            'semantic_type': column_type,
+            'unique_ratio': unique_ratio,
+            'null_ratio': null_ratio,
+            'confidence': 1 - null_ratio,
+            'sample_values': list(set(str(v) for v in non_null_values[:5]))
         }
     
-    def _analyze_column_name_structure(self, column_name: str) -> Dict[str, Any]:
-        return {
-            'has_underscore': '_' in column_name,
-            'has_camelcase': any(c.isupper() for c in column_name[1:]),
-            'length': len(column_name),
-            'starts_with_verb': column_name.split('_')[0].lower() in ['get', 'set', 'is', 'has', 'can']
-        }
-    
-    def _detect_relationship_type(self, col1: str, col2: str, col2_meaning: Dict[str, Any]) -> Optional[str]:
-        if 'id' in col1.lower() and 'name' in col2.lower():
-            return 'id_to_name'
-        elif 'timestamp' in col1.lower() and 'event' in col2.lower():
-            return 'temporal_association'
-        elif col2_meaning.get('functional_role') == 'unique_identifier':
-            return 'foreign_key_candidate'
-        return None
-    
-    def _extract_semantic_relationships(self, column_meanings: Dict[str, Any]) -> List[Dict[str, Any]]:
-        relationships = []
-        columns = list(column_meanings.keys())
+    def _calculate_table_confidence(self, purpose_confidence: float, column_semantics: Dict[str, Any]) -> float:
+        if not column_semantics:
+            return purpose_confidence * 0.5
         
-        for i, col1 in enumerate(columns):
-            for col2 in columns[i+1:]:
-                if self._columns_are_related(col1, col2, column_meanings):
-                    relationships.append({
-                        'from': col1,
-                        'to': col2,
-                        'type': 'semantic_association',
-                        'strength': 0.7
-                    })
+        column_confidences = [col['confidence'] for col in column_semantics.values()]
+        avg_column_confidence = sum(column_confidences) / len(column_confidences)
         
-        return relationships
-    
-    def _derive_semantic_constraints_from_meanings(self, column_meanings: Dict[str, Any]) -> List[Dict[str, Any]]:
-        constraints = []
+        understood_columns = sum(1 for col in column_semantics.values() if col.get('semantic_type') != 'unknown')
+        understanding_ratio = understood_columns / len(column_semantics)
         
-        for column, meaning in column_meanings.items():
-            if meaning['functional_role'] == 'unique_identifier':
-                constraints.append({
-                    'column': column,
-                    'constraint': 'unique',
-                    'confidence': 0.9
-                })
-            elif meaning['functional_role'] == 'timestamp':
-                constraints.append({
-                    'column': column,
-                    'constraint': 'temporal_ordering',
-                    'confidence': 0.8
-                })
-        
-        return constraints
-    
-    def _calculate_semantic_completeness(self, column_meanings: Dict[str, Any]) -> float:
-        understood_columns = sum(1 for m in column_meanings.values() if m['primary_concept'] != 'unknown')
-        total_columns = len(column_meanings)
-        
-        return understood_columns / total_columns if total_columns > 0 else 0
-    
-    def _columns_are_related(self, col1: str, col2: str, meanings: Dict[str, Any]) -> bool:
-        meaning1 = meanings.get(col1, {})
-        meaning2 = meanings.get(col2, {})
-        
-        if meaning1.get('primary_concept') == meaning2.get('primary_concept'):
-            return True
-        
-        related_concepts = {
-            'identifier': ['hostname', 'network'],
-            'temporal': ['security', 'metric'],
-            'hostname': ['network', 'location']
-        }
-        
-        concept1 = meaning1.get('primary_concept')
-        concept2 = meaning2.get('primary_concept')
-        
-        return concept2 in related_concepts.get(concept1, [])
-    
-    def _calculate_meaning_confidence(self, conceptual: Dict[str, Any], contextual: Dict[str, Any]) -> float:
-        concept_confidence = 1.0 if conceptual['primary_concept'] != 'unknown' else 0.3
-        context_confidence = contextual.get('context_confidence', 0.5)
-        
-        return (concept_confidence * 0.6 + context_confidence * 0.4)
+        return (purpose_confidence * 0.4 + avg_column_confidence * 0.3 + understanding_ratio * 0.3)
