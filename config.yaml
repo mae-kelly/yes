@@ -1,186 +1,258 @@
+# Host Discovery Configuration
+# This config focuses on finding ALL hosts across ALL BigQuery tables
+
+# BigQuery Projects to scan (replace with your actual project IDs)
 project_ids:
-  - chronicle-fisv
-  - fisv-security
-  - fisv-logs
-  - fisv-data
-  - fisv-compliance
-  - fisv-infrastructure
-  - fisv-cloud
-  - fisv-network
+  - your-first-project-id
+  - your-second-project-id
 
-output_dir: visibility_output
+# Output directory for results
+output_dir: host_discovery_output
 
+# Discovery settings optimized for comprehensive scanning
 discovery_settings:
-  max_sample_size: 10000
-  sample_ratio: 0.1
-  min_confidence: 0.7
-  batch_size: 5000
-  max_workers: 32
-  max_tables_per_project: 1000
+  # Maximum number of rows to sample per table (increased for better coverage)
+  max_sample_size: 100000
+  
+  # Percentage of table to sample (20% should catch most hosts)
+  sample_ratio: 0.2
+  
+  # Minimum confidence for column classification
+  min_confidence: 0.6
+  
+  # Batch size for processing
+  batch_size: 10000
+  
+  # Number of parallel workers (adjust based on your system)
+  max_workers: 16
+  
+  # Maximum tables to process per project (set to high number for complete scan)
+  max_tables_per_project: 10000
+  
+  # Maximum rows per query
   max_rows_per_query: 100000
 
-coverage_thresholds:
-  cmdb_target: 0.95
-  edr_target: 0.90
-  tanium_target: 0.85
-  dlp_target: 0.80
-  splunk_target: 0.95
-  gso_target: 0.95
-  chronicle_target: 0.85
-  crowdstrike_target: 0.90
-
-infrastructure_types:
-  - on_premise
-  - cloud
-  - saas
-  - api
-
-regions:
-  - na
-  - latam
-  - europe
-  - apac
-
-system_classifications:
-  - web_server
-  - windows_server
-  - linux_server
-  - nix
-  - mainframe
-  - database
-  - network_appliance
-
-business_units:
-  - fig
-  - bank_solutions
-  - credit_union_solutions
-  - wealth_management
-  - investment_banking
-  - retail_banking
-  - commercial_banking
-  - treasury
-  - risk_management
-  - compliance
-  - payments
-  - cards
-  - lending
-  - mortgage
-  - capital_markets
-
-log_role_mappings:
-  network:
-    log_types:
-      - firewall_traffic
-      - ids_ips
-      - ndr
-      - proxy
-      - dns
-      - waf
-    visibility_factors:
-      - url_fqdn_coverage
-      - cmdb_visibility
-      - network_zones
-      - ipam_public_ip
-      - geolocation
-      - vpc
-      
-  endpoint:
-    log_types:
-      - os_logs
-      - edr
-      - dlp
-      - fim
-      - winEvt
-      - linux_syslog
-    visibility_factors:
-      - cmdb_visibility
-      - crowdstrike_coverage
-      - log_ingest_volume
-      
-  cloud:
-    log_types:
-      - cloud_event
-      - cloud_load_balancer
-      - cloud_config
-      - theom
-      - wiz
-      - cloud_security
-    visibility_factors:
-      - vpc
-      - ipam_public_ip
-      - url_fqdn_coverage
-      - crowdstrike_coverage
-      
-  application:
-    log_types:
-      - web_logs
-      - api_gateway
-      - http_access
-    visibility_factors:
-      - url_fqdn_coverage
-      - control_coverage
-      - domain
-      
-  identity:
-    log_types:
-      - authentication_attempts
-      - privilege_escalation
-      - identity_operations
-    visibility_factors:
-      - domain
-      - internal
-      - external
-      - controls
-
-visibility_weights:
-  cmdb_visibility: 0.25
-  edr_coverage: 0.15
-  tanium_coverage: 0.10
-  dlp_coverage: 0.10
-  splunk_logging: 0.15
-  gso_logging: 0.10
-  crowdstrike_coverage: 0.10
-  chronicle_coverage: 0.05
-
-risk_factors:
-  no_edr: high
-  no_logging: critical
-  no_cmdb: medium
-  low_visibility: high
-  no_dlp: medium
+# Target columns we're looking for
+# The system will automatically find variations of these column names
+target_columns:
+  host:
+    - host
+    - hostname  
+    - host_name
+    - computer_name
+    - server_name
+    - machine_name
+    - device_name
+    - node_name
+    - system_name
+    - endpoint_name
   
-compliance_requirements:
-  logging_standard: GSO and Splunk
-  endpoint_protection: EDR or Tanium
-  data_protection: DLP Agent
-  asset_management: CMDB
+  infrastructure_type:
+    - infrastructure_type
+    - infra_type
+    - platform_type
+    - deployment_type
+    - hosting_type
+    - env_type
+    - environment_type
   
-ml_settings:
-  enable_neural_classification: true
-  confidence_threshold: 0.7
-  use_transformer_embeddings: true
-  model_type: sentence-transformers/all-MiniLM-L6-v2
+  region:
+    - region
+    - geographic_region
+    - geo_region
+    - location_region
+    - aws_region
+    - azure_region
+    - gcp_region
+    - cloud_region
   
-database_settings:
-  type: duckdb
-  path: ao1_visibility.duckdb
-  enable_compression: true
-  enable_indexes: true
+  country:
+    - country
+    - country_code
+    - nation
+    - geographic_country
   
-reporting:
-  generate_executive_report: true
-  generate_csv_export: true
-  generate_json_results: true
-  generate_coverage_heatmap: true
+  data_center:
+    - data_center
+    - datacenter
+    - dc
+    - facility
+    - site
+    - location
   
+  cloud_region:
+    - cloud_region
+    - aws_region
+    - azure_region
+    - gcp_region
+    - cloud_zone
+    - availability_zone
+  
+  business_unit:
+    - business_unit
+    - bu
+    - org_unit
+    - organization
+    - division
+    - department
+    - cost_center
+  
+  cio:
+    - cio
+    - chief_information_officer
+    - it_org
+    - it_organization
+    - it_division
+  
+  apm:
+    - apm
+    - application_performance_monitoring
+    - app_monitoring
+    - performance_monitoring
+  
+  app_class:
+    - app_class
+    - application_class
+    - application_type
+    - app_type
+    - application_category
+  
+  system_classification:
+    - system_classification
+    - sys_class
+    - system_type
+    - server_type
+    - os_type
+    - operating_system
+  
+  edr_coverage:
+    - edr_coverage
+    - edr
+    - endpoint_detection
+    - crowdstrike
+    - carbon_black
+    - sentinel_one
+    - endpoint_protection
+  
+  tanium_coverage:
+    - tanium_coverage
+    - tanium
+    - endpoint_platform
+    - tanium_agent
+  
+  dlp_agent_coverage:
+    - dlp_agent_coverage
+    - dlp_coverage
+    - dlp
+    - data_loss_prevention
+    - forcepoint
+    - symantec_dlp
+    - dlp_agent
+  
+  logging_in_splunk:
+    - logging_in_splunk
+    - splunk_logging
+    - splunk
+    - spl_
+    - universal_forwarder
+    - splunk_agent
+  
+  logging_in_gso:
+    - logging_in_gso
+    - gso_logging
+    - gso
+    - global_security_operations
+    - security_logging
+  
+  domain:
+    - domain
+    - dns_domain
+    - fqdn_domain
+    - ad_domain
+    - network_domain
+    - windows_domain
+
+# Performance settings
 performance:
-  memory_limit_gb: 16
-  cpu_cores: 8
-  enable_parallel_processing: true
-  cache_enabled: true
+  # Memory limit in GB
+  memory_limit_gb: 8
   
-monitoring:
-  log_level: INFO
+  # CPU cores to use
+  cpu_cores: 4
+  
+  # Enable parallel processing
+  enable_parallel_processing: true
+  
+  # Enable caching for repeated queries
+  cache_enabled: true
+
+# Logging configuration  
+logging:
+  level: INFO
   enable_metrics: true
-  enable_tracing: false
-  metrics_interval_seconds: 60
+  enable_progress_bars: true
+
+# Output formats to generate
+output_formats:
+  # Generate CSV export of all hosts
+  csv_export: true
+  
+  # Generate Excel workbook with multiple sheets
+  excel_export: true
+  
+  # Generate JSON results
+  json_results: true
+  
+  # Generate markdown reports
+  markdown_reports: true
+  
+  # Generate executive summary
+  executive_summary: true
+
+# Data quality settings
+data_quality:
+  # Minimum hostname length
+  min_hostname_length: 2
+  
+  # Maximum hostname length  
+  max_hostname_length: 253
+  
+  # Skip obviously invalid hostnames
+  skip_invalid_hostnames: true
+  
+  # Merge strategy for conflicting data
+  conflict_resolution: "most_sources"  # Options: "most_sources", "newest", "manual"
+
+# Hostname validation rules
+hostname_validation:
+  # Invalid hostname patterns to skip
+  skip_patterns:
+    - "null"
+    - "none" 
+    - "unknown"
+    - "n/a"
+    - "test"
+    - "localhost"
+    - "127.0.0.1"
+    - "undefined"
+    - "sample"
+  
+  # Require at least one letter in hostname
+  require_letter: true
+  
+  # Skip IP addresses as hostnames
+  skip_ip_addresses: false
+
+# Advanced settings
+advanced:
+  # Use machine learning for column classification
+  use_ml_classification: true
+  
+  # Enable intelligent sampling (focus on tables with more host diversity)
+  intelligent_sampling: true
+  
+  # Enable data deduplication across tables
+  enable_deduplication: true
+  
+  # Timeout per table query (seconds)
+  query_timeout: 300
