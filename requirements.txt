@@ -1,15 +1,58 @@
+# Core Dependencies
 google-cloud-bigquery>=3.11.0
 duckdb>=0.9.0
-torch>=2.0.0
-transformers>=4.30.0
-sentence-transformers>=2.2.0
 numpy>=1.24.0
 pandas>=2.0.0
 pyyaml>=6.0
 aiofiles>=23.0.0
 tqdm>=4.65.0
-scikit-learn>=1.3.0
+python-dotenv>=1.0.0
+
+# Primary ML Dependencies (will try these first)
+torch>=2.0.0
+transformers>=4.30.0
+sentence-transformers>=2.2.0
+
+# Fallback ML Libraries (if Hugging Face fails)
+scikit-learn>=1.3.0  # For TF-IDF + SVD fallback
+gensim>=4.3.0  # For Word2Vec fallback
+spacy>=3.5.0  # Alternative NLP library
+nltk>=3.8  # Natural Language Toolkit fallback
+
+# SSL and Corporate Environment Fixes
+certifi>=2023.0.0
+truststore>=0.8.0  # Use system certificates
+urllib3>=1.26.0
+requests>=2.31.0
+pyOpenSSL>=23.0.0
+
+# Windows-specific SSL support
+wincertstore>=0.2.1 ; platform_system=='Windows'
+
+# Visualization and Reporting
 matplotlib>=3.7.0
 seaborn>=0.12.0
 plotly>=5.14.0
-python-dotenv>=1.0.0
+
+# Optional Performance Libraries
+numba>=0.57.0  # For numerical optimization
+joblib>=1.3.0  # For parallel processing
+
+# Caching and Offline Support
+diskcache>=5.6.0  # For caching embeddings
+pyarrow>=12.0.0  # For efficient data storage
+
+# Corporate Proxy Support
+PySocks>=1.7.0
+httpx>=0.24.0  # Alternative HTTP client with better proxy support
+
+# Alternative Model Downloads
+wget>=3.2  # For manual model downloads
+gitpython>=3.1.0  # For cloning model repos
+
+# Development and Debugging
+ipython>=8.0.0
+jupyter>=1.0.0
+pytest>=7.0.0
+black>=23.0.0
+flake8>=6.0.0
