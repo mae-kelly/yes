@@ -165,7 +165,7 @@ class DynamicEmbeddingEngine:
             embeddings.append(embedding)
         return np.array(embeddings)
 
-from genius_confidence_system import GeniusConfidenceSystem
+from true_intelligence_confidence import TrueIntelligenceConfidence
 
 class ConceptualKnowledgeGraph:
     def __init__(self):
@@ -174,7 +174,7 @@ class ConceptualKnowledgeGraph:
         self.reasoning_chains = []
         self.inference_cache = {}
         self.embedding_engine = DynamicEmbeddingEngine()
-        self.confidence_system = GeniusConfidenceSystem()
+        self.confidence_system = TrueIntelligenceConfidence()
         
     def _initialize_security_ontology(self):
         ontology = {
@@ -213,7 +213,7 @@ class ConceptualKnowledgeGraph:
         entity_text = ' '.join(str(v) for v in entity_data.values() if v)
         embeddings = self.embedding_engine.encode(entity_text)[0] if entity_text else None
         
-        confidence, confidence_details = self.confidence_system.calculate_genius_confidence(
+        confidence, confidence_details = self.confidence_system.calculate_confidence(
             entity_data, concept_type, properties, inferences, embeddings
         )
         
@@ -223,7 +223,7 @@ class ConceptualKnowledgeGraph:
             properties=properties,
             relationships=relationships,
             confidence=confidence,
-            evidence=[{'data': entity_data, 'source': 'direct_observation', 'details': confidence_details}],
+            evidence=[{'data': entity_data, 'source': 'direct_observation', 'analysis': confidence_details}],
             inferences=inferences
         )
         
