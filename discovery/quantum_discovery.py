@@ -1,6 +1,5 @@
 import asyncio
 import logging
-from google.cloud import bigquery
 from typing import Dict, List, Any, Optional, Set, Tuple
 from datetime import datetime
 from collections import defaultdict
@@ -8,7 +7,13 @@ import numpy as np
 import re
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import hashlib
+import os
+import sys
 
+# Add gcp module to path
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from gcp.client import BigQueryClientManager
 from core.quantum_types import QuantumAsset, LogMapping, DiscoveryMetrics
 from ai.neural_engine import HyperIntelligence
 
@@ -23,16 +28,35 @@ class QuantumDiscoveryEngine:
         self.metrics = DiscoveryMetrics()
         self.processed_tables: Set[str] = set()
         
+        # Use BigQueryClientManager for each project
+        self.client_managers = {}
         self.clients = {}
+        
         for project_id in project_ids:
-            self.clients[project_id] = bigquery.Client(project=project_id)
+            try:
+                # Create client manager for each project
+                manager = BigQueryClientManager(project_id)
+                self.client_managers[project_id] = manager
+                
+                # Get the actual client from the manager
+                with manager.get_client() as client:
+                    self.clients[project_id] = client
+                    logger.info(f"✅ Connected to project: {project_id}")
+                    
+            except Exception as e:
+                logger.error(f"❌ Failed to connect to project {project_id}: {e}")
+                logger.error(f"Skipping project {project_id}")
+                continue
+        
+        if not self.clients:
+            raise RuntimeError("Failed to connect to any BigQuery projects. Please check authentication.")
         
         self.sampling_config = {
-            'max_sample_size': 10000,
-            'sample_ratio': 0.1,
-            'min_confidence': 0.7,
-            'batch_size': 5000,
-            'max_workers': 32
+            'max_sample_size': config.get('discovery_settings', {}).get('max_sample_size', 10000),
+            'sample_ratio': config.get('discovery_settings', {}).get('sample_ratio', 0.1),
+            'min_confidence': config.get('discovery_settings', {}).get('min_confidence', 0.7),
+            'batch_size': config.get('discovery_settings', {}).get('batch_size', 5000),
+            'max_workers': config.get('discovery_settings', {}).get('max_workers', 32)
         }
         
         self.coverage_patterns = {
@@ -45,12 +69,12 @@ class QuantumDiscoveryEngine:
         }
     
     async def discover_all_assets(self) -> Dict[str, QuantumAsset]:
-        logger.info(f"Starting quantum discovery across {len(self.project_ids)} projects")
+        logger.info(f"Starting quantum discovery across {len(self.clients)} connected projects")
         
         with ThreadPoolExecutor(max_workers=self.sampling_config['max_workers']) as executor:
             futures = []
             
-            for project_id in self.project_ids:
+            for project_id in self.clients.keys():
                 future = executor.submit(self._discover_project_assets, project_id)
                 futures.append(future)
             
@@ -69,82 +93,105 @@ class QuantumDiscoveryEngine:
     
     def _discover_project_assets(self, project_id: str) -> Dict[str, QuantumAsset]:
         project_assets = {}
-        client = self.clients[project_id]
         
-        datasets = list(client.list_datasets(project=project_id))
+        # Get client through manager
+        manager = self.client_managers.get(project_id)
+        if not manager:
+            logger.error(f"No client manager for project {project_id}")
+            return project_assets
         
-        for dataset in datasets:
-            tables = list(client.list_tables(dataset))
-            
-            for table_ref in tables:
-                table_path = f"{project_id}.{dataset.dataset_id}.{table_ref.table_id}"
+        try:
+            with manager.get_client() as client:
+                # List datasets
+                datasets = list(client.list_datasets(project=project_id))
+                logger.info(f"Found {len(datasets)} datasets in project {project_id}")
                 
-                if table_path in self.processed_tables:
-                    continue
-                
-                try:
-                    table_assets = self._process_table(client, table_path)
+                for dataset in datasets:
+                    try:
+                        tables = list(client.list_tables(dataset))
+                        logger.info(f"Found {len(tables)} tables in dataset {dataset.dataset_id}")
+                        
+                        for table_ref in tables:
+                            table_path = f"{project_id}.{dataset.dataset_id}.{table_ref.table_id}"
+                            
+                            if table_path in self.processed_tables:
+                                continue
+                            
+                            try:
+                                table_assets = self._process_table(client, table_path)
+                                
+                                for asset_id, asset in table_assets.items():
+                                    if asset_id in project_assets:
+                                        project_assets[asset_id] = project_assets[asset_id].merge_with(asset)
+                                    else:
+                                        project_assets[asset_id] = asset
+                                
+                                self.processed_tables.add(table_path)
+                                
+                            except Exception as e:
+                                logger.warning(f"Table processing failed for {table_path}: {e}")
                     
-                    for asset_id, asset in table_assets.items():
-                        if asset_id in project_assets:
-                            project_assets[asset_id] = project_assets[asset_id].merge_with(asset)
-                        else:
-                            project_assets[asset_id] = asset
-                    
-                    self.processed_tables.add(table_path)
-                    
-                except Exception as e:
-                    logger.warning(f"Table processing failed for {table_path}: {e}")
+                    except Exception as e:
+                        logger.error(f"Failed to process dataset {dataset.dataset_id}: {e}")
+                        continue
         
+        except Exception as e:
+            logger.error(f"Failed to discover assets in project {project_id}: {e}")
+        
+        logger.info(f"Discovered {len(project_assets)} assets in project {project_id}")
         return project_assets
     
-    def _process_table(self, client: bigquery.Client, table_path: str) -> Dict[str, QuantumAsset]:
+    def _process_table(self, client, table_path: str) -> Dict[str, QuantumAsset]:
         table_assets = {}
         
-        table = client.get_table(table_path)
-        if table.num_rows == 0:
-            return table_assets
-        
-        columns = [field.name for field in table.schema]
-        column_classifications = self._classify_columns(columns, table_path)
-        
-        if 'hostname' not in column_classifications:
-            return table_assets
-        
-        hostname_col = column_classifications['hostname']
-        
-        sample_size = min(self.sampling_config['max_sample_size'], 
-                         int(table.num_rows * self.sampling_config['sample_ratio']))
-        
-        query = f"""
-        SELECT *
-        FROM `{table_path}`
-        WHERE {hostname_col} IS NOT NULL
-        AND RAND() < {self.sampling_config['sample_ratio']}
-        LIMIT {sample_size}
-        """
-        
-        query_job = client.query(query)
-        results = query_job.result()
-        
-        log_type_info = self.intelligence.identify_log_type(table_path, columns)
-        
-        for row in results:
-            hostname = getattr(row, hostname_col, None)
-            if not hostname or not self._is_valid_hostname(str(hostname)):
-                continue
+        try:
+            table = client.get_table(table_path)
+            if table.num_rows == 0:
+                return table_assets
             
-            asset = self._create_asset_from_row(row, column_classifications, table_path, log_type_info)
-            asset_id = asset.get_unique_id()
+            columns = [field.name for field in table.schema]
+            column_classifications = self._classify_columns(columns, table_path, client)
             
-            if asset_id in table_assets:
-                table_assets[asset_id] = table_assets[asset_id].merge_with(asset)
-            else:
-                table_assets[asset_id] = asset
+            if 'hostname' not in column_classifications:
+                return table_assets
+            
+            hostname_col = column_classifications['hostname']
+            
+            sample_size = min(self.sampling_config['max_sample_size'], 
+                             int(table.num_rows * self.sampling_config['sample_ratio']))
+            
+            query = f"""
+            SELECT *
+            FROM `{table_path}`
+            WHERE {hostname_col} IS NOT NULL
+            AND RAND() < {self.sampling_config['sample_ratio']}
+            LIMIT {sample_size}
+            """
+            
+            query_job = client.query(query)
+            results = query_job.result()
+            
+            log_type_info = self.intelligence.identify_log_type(table_path, columns)
+            
+            for row in results:
+                hostname = getattr(row, hostname_col, None)
+                if not hostname or not self._is_valid_hostname(str(hostname)):
+                    continue
+                
+                asset = self._create_asset_from_row(row, column_classifications, table_path, log_type_info)
+                asset_id = asset.get_unique_id()
+                
+                if asset_id in table_assets:
+                    table_assets[asset_id] = table_assets[asset_id].merge_with(asset)
+                else:
+                    table_assets[asset_id] = asset
+        
+        except Exception as e:
+            logger.error(f"Error processing table {table_path}: {e}")
         
         return table_assets
     
-    def _classify_columns(self, columns: List[str], table_path: str) -> Dict[str, str]:
+    def _classify_columns(self, columns: List[str], table_path: str, client) -> Dict[str, str]:
         classifications = {}
         
         sample_query = f"""
@@ -154,7 +201,6 @@ class QuantumDiscoveryEngine:
         """
         
         try:
-            client = self._get_client_for_table(table_path)
             query_job = client.query(sample_query)
             sample_rows = list(query_job.result())
             
@@ -166,7 +212,9 @@ class QuantumDiscoveryEngine:
                     
                     if confidence >= self.sampling_config['min_confidence']:
                         classifications[field_type] = column
-        except:
+        except Exception as e:
+            logger.warning(f"Failed to classify columns for {table_path}: {e}")
+            # Fallback to basic pattern matching
             for column in columns:
                 column_lower = column.lower()
                 if 'hostname' in column_lower or 'host_name' in column_lower:
@@ -254,10 +302,6 @@ class QuantumDiscoveryEngine:
         hostname_pattern = r'^[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?)*$'
         
         return bool(re.match(hostname_pattern, hostname, re.IGNORECASE))
-    
-    def _get_client_for_table(self, table_path: str) -> bigquery.Client:
-        project_id = table_path.split('.')[0]
-        return self.clients.get(project_id, list(self.clients.values())[0])
     
     def _merge_project_assets(self, project_assets: Dict[str, QuantumAsset]):
         for asset_id, asset in project_assets.items():
@@ -349,3 +393,12 @@ class QuantumDiscoveryEngine:
                 'compliance': len(self.metrics.compliance_issues)
             }
         }
+    
+    def test_authentication(self) -> Dict[str, bool]:
+        """Test authentication for all projects"""
+        auth_status = {}
+        
+        for project_id, manager in self.client_managers.items():
+            auth_status[project_id] = manager.test_connection()
+        
+        return auth_status
