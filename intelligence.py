@@ -165,6 +165,8 @@ class DynamicEmbeddingEngine:
             embeddings.append(embedding)
         return np.array(embeddings)
 
+from genius_confidence_system import GeniusConfidenceSystem
+
 class ConceptualKnowledgeGraph:
     def __init__(self):
         self.graph = nx.DiGraph()
@@ -172,6 +174,7 @@ class ConceptualKnowledgeGraph:
         self.reasoning_chains = []
         self.inference_cache = {}
         self.embedding_engine = DynamicEmbeddingEngine()
+        self.confidence_system = GeniusConfidenceSystem()
         
     def _initialize_security_ontology(self):
         ontology = {
@@ -206,7 +209,13 @@ class ConceptualKnowledgeGraph:
         properties = self._extract_semantic_properties(entity_data, concept_type)
         relationships = self._discover_relationships(entity_data, concept_type)
         inferences = self._apply_inference_rules(entity_data, concept_type)
-        confidence = self._calculate_actual_confidence(entity_data, concept_type, properties, inferences)
+        
+        entity_text = ' '.join(str(v) for v in entity_data.values() if v)
+        embeddings = self.embedding_engine.encode(entity_text)[0] if entity_text else None
+        
+        confidence, confidence_details = self.confidence_system.calculate_genius_confidence(
+            entity_data, concept_type, properties, inferences, embeddings
+        )
         
         concept = SemanticConcept(
             concept_id=self._generate_concept_id(entity_data),
@@ -214,7 +223,7 @@ class ConceptualKnowledgeGraph:
             properties=properties,
             relationships=relationships,
             confidence=confidence,
-            evidence=[{'data': entity_data, 'source': 'direct_observation'}],
+            evidence=[{'data': entity_data, 'source': 'direct_observation', 'details': confidence_details}],
             inferences=inferences
         )
         

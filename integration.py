@@ -1,163 +1,121 @@
 from smart_claude_intelligence import ClaudeLevelIntelligence
 import json
 
-def test_dynamic_understanding():
+def test_genius_confidence():
     intelligence = ClaudeLevelIntelligence()
     
-    print("MODEL INFO:")
-    print(f"Encoding method: {intelligence.knowledge_graph.embedding_engine.encoding_method}")
-    print(f"Encoder type: {type(intelligence.knowledge_graph.embedding_engine.encoder)}")
-    print("-" * 50)
+    print("GENIUS CONFIDENCE DEMONSTRATION")
+    print("=" * 60)
     
-    test_host = {
+    perfect_host = {
         'hostname': 'prod-web-server-01',
         'ip_address': '10.100.50.25',
         'os_type': 'Windows',
         'os_version': 'Server 2019',
         'domain': 'corp.company.com',
         'business_unit': 'Finance',
-        'environment': 'Production',
-        'edr_coverage': False,
+        'environment': 'production',
+        'edr_coverage': True,
+        'tanium_coverage': True,
         'splunk_logging': True,
-        'last_patch_date': '2024-01-15',
+        'gso_logging': True,
+        'last_patch_date': '2024-11-15',
         'criticality': 'high',
-        'owner': 'john.smith@company.com'
+        'owner': 'john.smith@company.com',
+        'region': 'us-east-1',
+        'datacenter': 'DC01',
+        'cmdb_visibility': True,
+        'asset_tag': 'AST-2024-1234',
+        'serial_number': 'SN123456789',
+        'department': 'IT Operations'
     }
     
-    concept = intelligence.knowledge_graph.understand_entity(test_host)
+    concept = intelligence.knowledge_graph.understand_entity(perfect_host)
     
-    print("\nENTITY ANALYSIS:")
-    print(f"Type detected: {concept.concept_type}")
-    print(f"Confidence (calculated): {concept.confidence:.2%}")
-    print(f"Inferences found: {concept.inferences}")
+    print("\nPERFECT HOST ANALYSIS:")
+    print(f"Confidence: {concept.confidence:.2%}")
+    print(f"Type: {concept.concept_type}")
+    print(f"Inferences: {concept.inferences}")
     
-    print("\nPROPERTY CONFIDENCES:")
-    for prop, details in concept.properties.items():
-        print(f"  {prop}: {details['confidence']:.2%} (type: {details['semantic_type']})")
+    if concept.evidence and 'details' in concept.evidence[0]:
+        details = concept.evidence[0]['details']
+        print("\nCONFIDENCE BREAKDOWN:")
+        for component, data in details.items():
+            if isinstance(data, dict) and 'score' in data:
+                print(f"  {component}: {data['score']:.2%}")
     
-    query_context = {
-        'intent': 'security_assessment',
-        'target': 'host',
-        'expected_output': 'risk_analysis'
+    problematic_host = {
+        'hostname': 'prod-db-critical-01',
+        'ip_address': '10.0.1.50',
+        'environment': 'production',
+        'criticality': 'critical',
+        'edr_coverage': False,
+        'tanium_coverage': False,
+        'splunk_logging': False,
+        'gso_logging': False,
+        'last_patch_date': '2023-01-01',
+        'os_type': 'Windows',
+        'domain': 'corp.internal.com'
     }
     
-    reasoning = intelligence.reasoning_engine.reason_about_data(query_context, test_host)
+    concept2 = intelligence.knowledge_graph.understand_entity(problematic_host)
     
-    print("\nREASONING RESULTS:")
-    if reasoning['conclusion']:
-        print(f"Conclusion: {reasoning['conclusion']['statement']}")
-        print(f"Severity: {reasoning['conclusion']['severity']}")
-        print(f"Confidence: {reasoning['conclusion']['confidence']:.2%}")
-    print(f"Explanation: {reasoning['explanation']}")
+    print("\n" + "-" * 60)
+    print("\nPROBLEMATIC HOST ANALYSIS:")
+    print(f"Confidence: {concept2.confidence:.2%}")
+    print(f"Type: {concept2.concept_type}")
+    print(f"Inferences: {concept2.inferences}")
     
-    print("\nEVIDENCE:")
-    for evidence in reasoning['evidence']:
-        print(f"  - {evidence}")
+    if concept2.evidence and 'details' in concept2.evidence[0]:
+        details = concept2.evidence[0]['details']
+        print("\nCONFIDENCE BREAKDOWN:")
+        for component, data in details.items():
+            if isinstance(data, dict) and 'score' in data:
+                print(f"  {component}: {data['score']:.2%}")
     
-    print("\nREASONING CHAIN:")
-    for inference in reasoning['reasoning_chain']:
-        print(f"  - {inference}")
-
-def test_table_understanding():
-    intelligence = ClaudeLevelIntelligence()
-    
-    table_metadata = {
-        'table_name': 'security_event_logs',
-        'columns': ['event_id', 'timestamp', 'source_host', 'destination_host', 
-                   'event_type', 'severity', 'user_id', 'action_taken', 'outcome']
+    minimal_host = {
+        'hostname': 'test-dev-99',
+        'ip_address': '192.168.1.100'
     }
     
-    sample_data = [
-        {
-            'event_id': 'EVT-2024-001',
-            'timestamp': '2024-01-20 14:30:00',
-            'source_host': 'workstation-042',
-            'destination_host': 'file-server-01',
-            'event_type': 'authentication_failure',
-            'severity': 'high',
-            'user_id': 'admin_user',
-            'action_taken': 'blocked',
-            'outcome': 'prevented'
-        },
-        {
-            'event_id': 'EVT-2024-002',
-            'timestamp': '2024-01-20 14:31:00',
-            'source_host': 'workstation-042',
-            'destination_host': 'file-server-01',
-            'event_type': 'brute_force_attempt',
-            'severity': 'critical',
-            'user_id': 'admin_user',
-            'action_taken': 'alert_sent',
-            'outcome': 'investigating'
-        }
-    ]
+    concept3 = intelligence.knowledge_graph.understand_entity(minimal_host)
     
-    understanding = intelligence.understand_table_semantically(table_metadata, sample_data)
+    print("\n" + "-" * 60)
+    print("\nMINIMAL HOST ANALYSIS:")
+    print(f"Confidence: {concept3.confidence:.2%}")
+    print(f"Type: {concept3.concept_type}")
+    print(f"Inferences: {concept3.inferences}")
     
-    print("\n" + "=" * 50)
-    print("TABLE UNDERSTANDING:")
-    print(f"Primary purpose: {understanding['table_concept']['primary_purpose']}")
-    print(f"Purpose confidence: {understanding['table_concept']['confidence']:.2%}")
-    print(f"Overall understanding: {understanding['understanding_confidence']:.2%}")
-    
-    print("\nCOLUMN ANALYSIS:")
-    for column, semantics in understanding['column_semantics'].items():
-        print(f"  {column}:")
-        print(f"    Type: {semantics['semantic_type']}")
-        print(f"    Confidence: {semantics['confidence']:.2%}")
-        print(f"    Unique ratio: {semantics['unique_ratio']:.2%}")
-
-def test_multiple_hosts():
-    intelligence = ClaudeLevelIntelligence()
-    
-    hosts = [
-        {
-            'hostname': 'prod-db-01',
-            'criticality': 'high',
-            'edr_coverage': True,
-            'splunk_logging': True,
-            'environment': 'production'
-        },
-        {
-            'hostname': 'dev-test-05',
-            'criticality': 'low',
-            'edr_coverage': False,
-            'splunk_logging': False,
-            'environment': 'development'
-        },
-        {
-            'hostname': 'prod-web-03',
-            'criticality': 'high',
-            'edr_coverage': False,
-            'splunk_logging': True,
-            'environment': 'production',
-            'last_patch_date': '2023-10-01'
-        }
-    ]
-    
-    print("\n" + "=" * 50)
-    print("BATCH ANALYSIS:")
-    
-    for host in hosts:
-        concept = intelligence.knowledge_graph.understand_entity(host)
-        reasoning = intelligence.reasoning_engine.reason_about_data(
-            {'intent': 'risk_assessment'}, host
-        )
-        
-        print(f"\n{host['hostname']}:")
-        print(f"  Confidence: {concept.confidence:.2%}")
-        print(f"  Issues: {[inf for inf in concept.inferences if 'gap' in inf or 'no_' in inf]}")
-        if reasoning['conclusion']:
-            print(f"  Risk: {reasoning['conclusion']['statement']}")
-
-if __name__ == "__main__":
-    print("=" * 60)
-    print("SMART CLAUDE INTELLIGENCE TEST")
-    print("=" * 60)
-    
-    test_dynamic_understanding()
-    test_table_understanding()
-    test_multiple_hosts()
+    reasoning = intelligence.reasoning_engine.reason_about_data(
+        {'intent': 'assessment'}, perfect_host
+    )
     
     print("\n" + "=" * 60)
-    print("TEST COMPLETE")
+    print("REASONING CONFIDENCE:")
+    print(f"Overall: {reasoning['confidence']:.2%}")
+    print(f"Explanation: {reasoning['explanation']}")
+
+def test_confidence_evolution():
+    intelligence = ClaudeLevelIntelligence()
+    
+    print("\n" + "=" * 60)
+    print("CONFIDENCE EVOLUTION TEST")
+    print("=" * 60)
+    
+    hosts = [
+        {'hostname': 'srv-01'},
+        {'hostname': 'srv-01', 'ip_address': '10.0.0.1'},
+        {'hostname': 'srv-01', 'ip_address': '10.0.0.1', 'os_type': 'Linux'},
+        {'hostname': 'srv-01', 'ip_address': '10.0.0.1', 'os_type': 'Linux', 'environment': 'production'},
+        {'hostname': 'srv-01', 'ip_address': '10.0.0.1', 'os_type': 'Linux', 'environment': 'production', 'edr_coverage': True},
+        {'hostname': 'srv-01', 'ip_address': '10.0.0.1', 'os_type': 'Linux', 'environment': 'production', 'edr_coverage': True, 'splunk_logging': True}
+    ]
+    
+    print("\nAdding fields progressively:")
+    for i, host in enumerate(hosts):
+        concept = intelligence.knowledge_graph.understand_entity(host)
+        print(f"  Step {i+1} ({len(host)} fields): {concept.confidence:.2%}")
+
+if __name__ == "__main__":
+    test_genius_confidence()
+    test_confidence_evolution()
