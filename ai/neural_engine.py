@@ -853,16 +853,21 @@ class SuperIntelligentClassificationSystem:
         for item in data:
             item_features = []
             
+            # Character entropy
             char_counts = Counter(item)
-            char_probs = np.array(list(char_counts.values())) / len(item)
-            item_features.append(entropy(char_probs))
+            if char_counts:
+                char_probs = np.array(list(char_counts.values())) / len(item)
+                item_features.append(entropy(char_probs))
+            else:
+                item_features.append(0)
             
+            # Byte statistics
             byte_values = [ord(c) for c in item]
             if byte_values:
                 item_features.append(np.mean(byte_values))
                 item_features.append(np.std(byte_values))
-                item_features.append(kurtosis(byte_values))
-                item_features.append(skew(byte_values))
+                item_features.append(kurtosis(byte_values) if len(byte_values) > 3 else 0)
+                item_features.append(skew(byte_values) if len(byte_values) > 2 else 0)
             else:
                 item_features.extend([0, 0, 0, 0])
             
@@ -885,9 +890,10 @@ class SuperIntelligentClassificationSystem:
                 for i in range(len(words)-1):
                     word_graph[(words[i], words[i+1])] += 1
                 
+                graph_values = list(word_graph.values())
                 item_features.append(len(word_graph))
-                item_features.append(max(word_graph.values()) if word_graph else 0)
-                item_features.append(np.mean(list(word_graph.values())) if word_graph else 0)
+                item_features.append(max(graph_values) if graph_values else 0)
+                item_features.append(np.mean(graph_values) if graph_values else 0)
             else:
                 item_features.extend([0, 0, 0])
             
@@ -1143,11 +1149,19 @@ class HyperIntelligence:
         lengths = [len(str(v)) for v in sample_values]
         unique_ratio = len(set(sample_values)) / len(sample_values)
         
+        # Convert Counter values to list for entropy calculation
+        value_counts = Counter(sample_values)
+        if len(value_counts) > 1:
+            counts_array = np.array(list(value_counts.values()))
+            value_entropy = entropy(counts_array)
+        else:
+            value_entropy = 0
+        
         stats = {
             'mean_length': np.mean(lengths),
             'std_length': np.std(lengths),
             'unique_ratio': unique_ratio,
-            'entropy': entropy(Counter(sample_values).values()) if len(set(sample_values)) > 1 else 0,
+            'entropy': value_entropy,
             'kurtosis': kurtosis(lengths) if len(lengths) > 3 else 0,
             'skew': skew(lengths) if len(lengths) > 2 else 0
         }
@@ -1250,6 +1264,7 @@ class HyperIntelligence:
         
         scores = []
         
+        # Anomaly detection scores
         try:
             iso_score = self.statistical_models['anomaly_detector'].decision_function(features)
             scores.append(1 - (iso_score + 1) / 2)
@@ -1262,20 +1277,25 @@ class HyperIntelligence:
         except:
             pass
         
+        # Statistical anomaly measures
         str_values = [str(v) for v in values]
         unique_ratio = len(set(str_values)) / len(str_values)
         scores.append(1 - unique_ratio)
         
+        # Length variation
         lengths = [len(v) for v in str_values]
         if len(lengths) > 1:
             cv = np.std(lengths) / (np.mean(lengths) + 1e-8)
             scores.append(min(1.0, cv))
         
+        # Character entropy
         char_entropy = []
         for value in str_values[:100]:
-            char_counts = Counter(value)
-            char_probs = np.array(list(char_counts.values())) / len(value)
-            char_entropy.append(entropy(char_probs))
+            if value:  # Check if value is not empty
+                char_counts = Counter(value)
+                counts_array = np.array(list(char_counts.values()))
+                char_probs = counts_array / len(value)
+                char_entropy.append(entropy(char_probs))
         
         if char_entropy:
             mean_entropy = np.mean(char_entropy)
