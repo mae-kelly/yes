@@ -458,17 +458,30 @@ class QuantumSemanticSpace:
         
         indices = {}
         
+        # Annoy index with angular distance (similar to cosine)
         indices['annoy'] = annoy.AnnoyIndex(self.dim, 'angular')
         for i, vec in enumerate(vectors):
             indices['annoy'].add_item(i, vec)
         indices['annoy'].build(50)
         
+        # HNSW index with cosine similarity
         indices['hnsw'] = hnswlib.Index(space='cosine', dim=self.dim)
         indices['hnsw'].init_index(max_elements=len(vectors) * 2, ef_construction=400, M=32)
         indices['hnsw'].add_items(vectors, np.arange(len(vectors)))
         
-        indices['sklearn'] = NearestNeighbors(n_neighbors=10, metric='cosine', algorithm='ball_tree')
+        # Sklearn NearestNeighbors with different algorithms
+        # Valid metrics for ball_tree: euclidean, manhattan, chebyshev, minkowski, etc.
+        # Valid metrics for kd_tree: euclidean, manhattan, chebyshev, minkowski
+        # Valid metrics for brute: any, including cosine
+        indices['sklearn'] = NearestNeighbors(n_neighbors=10, metric='euclidean', algorithm='ball_tree')
         indices['sklearn'].fit(vectors)
+        
+        # Additional indices with different algorithms and metrics
+        indices['sklearn_kd'] = NearestNeighbors(n_neighbors=10, metric='minkowski', algorithm='kd_tree')
+        indices['sklearn_kd'].fit(vectors)
+        
+        indices['sklearn_brute'] = NearestNeighbors(n_neighbors=10, metric='cosine', algorithm='brute')
+        indices['sklearn_brute'].fit(vectors)
         
         indices['terms'] = terms
         indices['vectors'] = vectors
