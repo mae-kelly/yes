@@ -1,4 +1,55 @@
-import torch
+def find_nearest_semantic_vectors(self, query_vector, k=5):
+        if not hasattr(self, 'semantic_index'):
+            return []
+        
+        query_vector = query_vector.astype('float32')
+        if len(query_vector.shape) == 1:
+            query_vector = query_vector.reshape(1, -1)
+        
+        results = []
+        
+        # Try Annoy first
+        try:
+            if hasattr(self, 'semantic_index'):
+                indices = self.semantic_index.get_nns_by_vector(query_vector[0], k)
+                for idx in indices:
+                    results.append(self.semantic_keys[idx])
+                if results:
+                    return results
+        except:
+            pass
+        
+        # Try HNSW
+        try:
+            if hasattr(self, 'hnsw_index'):
+                labels, distances = self.hnsw_index.knn_query(query_vector, k=k)
+                for idx in labels[0]:
+                    results.append(self.semantic_keys[idx])
+                if results:
+                    return results
+        except:
+            pass
+        
+        # Try sklearn
+        try:
+            if hasattr(self, 'sklearn_index'):
+                distances, indices = self.sklearn_index.kneighbors(query_vector, n_neighbors=k)
+                for idx in indices[0]:
+                    results.append(self.semantic_keys[idx])
+                if results:
+                    return results
+        except:
+            pass
+        
+        # Fallback to cosine similarity
+        if self.semantic_vectors:
+            all_vectors = np.array(list(self.semantic_vectors.values()))
+            similarities = cosine_similarity(query_vector, all_vectors)[0]
+            top_k_indices = np.argsort(similarities)[-k:][::-1]
+            for idx in top_k_indices:
+                results.append(self.semantic_keys[idx])
+        
+        return resultsimport torch
 import torch.nn as nn
 import torch.nn.functional as F
 import numpy as np
@@ -26,9 +77,20 @@ from sklearn.neural_network import MLPClassifier
 from sklearn.preprocessing import StandardScaler
 from sklearn.pipeline import Pipeline
 from sklearn.metrics.pairwise import cosine_similarity
-import faiss
 import annoy
 import hnswlib
+from sklearn.neighbors import NearestNeighbors
+from sklearn.metrics.pairwise import cosine_similarity
+try:
+    import nmslib
+    NMSLIB_AVAILABLE = True
+except ImportError:
+    NMSLIB_AVAILABLE = False
+try:
+    import pynndescent
+    PYNNDESCENT_AVAILABLE = True
+except ImportError:
+    PYNNDESCENT_AVAILABLE = False
 
 logger = logging.getLogger(__name__)
 warnings.filterwarnings('ignore')
@@ -194,8 +256,36 @@ class HybridEmbeddingModel:
         
         if len(self.semantic_vectors) > 0:
             vectors = np.array(list(self.semantic_vectors.values())).astype('float32')
-            self.semantic_index = faiss.IndexFlatL2(self.dim)
-            self.semantic_index.add(vectors)
+            self.semantic_keys = list(self.semantic_vectors.keys())
+            
+            # Use Annoy instead of FAISS
+            self.semantic_index = annoy.AnnoyIndex(self.dim, 'angular')
+            for i, vec in enumerate(vectors):
+                self.semantic_index.add_item(i, vec)
+            self.semantic_index.build(10)  # 10 trees
+            
+            # Alternative: Use HNSW
+            self.hnsw_index = hnswlib.Index(space='cosine', dim=self.dim)
+            self.hnsw_index.init_index(max_elements=len(vectors), ef_construction=200, M=16)
+            self.hnsw_index.add_items(vectors, np.arange(len(vectors)))
+            
+            # Alternative: Use sklearn NearestNeighbors
+            self.sklearn_index = NearestNeighbors(n_neighbors=5, metric='cosine', algorithm='ball_tree')
+            self.sklearn_index.fit(vectors)
+            
+            # Alternative: Use NMSLIB if available
+            if NMSLIB_AVAILABLE:
+                self.nmslib_index = nmslib.init(method='hnsw', space='cosinesimil')
+                self.nmslib_index.addDataPointBatch(vectors)
+                self.nmslib_index.createIndex({'post': 2}, print_progress=False)
+            else:
+                self.nmslib_index = None
+            
+            # Alternative: Use PyNNDescent if available
+            if PYNNDESCENT_AVAILABLE:
+                self.pynndescent_index = pynndescent.NNDescent(vectors, metric='cosine')
+            else:
+                self.pynndescent_index = None
     
     def encode(self, texts, convert_to_tensor=False):
         if isinstance(texts, str):
@@ -223,6 +313,14 @@ class HybridEmbeddingModel:
                 pass
             
             semantic_boost = np.zeros(self.dim)
+            
+            # Find nearest semantic vectors
+            nearest_terms = self.find_nearest_semantic_vectors(base_embedding[:self.dim], k=3)
+            for term in nearest_terms:
+                if term in self.semantic_vectors:
+                    semantic_boost += self.semantic_vectors[term] * 0.2
+            
+            # Also check direct term matches
             for term, vec in self.semantic_vectors.items():
                 if term in text_lower:
                     semantic_boost += vec * 0.3
