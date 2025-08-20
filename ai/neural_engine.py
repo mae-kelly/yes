@@ -450,30 +450,389 @@ class HyperIntelligence:
     
     def classify_column(self, column_name: str, sample_values: List[str]) -> Tuple[str, float, Dict[str, Any]]:
         text = f"{column_name} {' '.join(sample_values[:10])}"
-        embeddings = self.encode_text(text)
         
-        with torch.no_grad():
-            logits, confidence = self.neural_net(embeddings)
-            probs = F.softmax(logits, dim=-1)
-            max_prob, pred_idx = torch.max(probs, dim=-1)
+        try:
+            embeddings = self.encode_text(text)
+            
+            # Ensure embeddings match neural network input dimension
+            if embeddings.shape[-1] != self.neural_net.input_dim:
+                from ai.embedding_adapter import EmbeddingAdapter
+                adapter = EmbeddingAdapter()
+                embeddings = adapter.adapt_dimensions(embeddings, self.neural_net.input_dim)
+            
+            with torch.no_grad():
+                logits, confidence = self.neural_net(embeddings)
+                probs = F.softmax(logits, dim=-1)
+                max_prob, pred_idx = torch.max(probs, dim=-1)
+            
+            field_types = list(self.field_mappings.keys()) + ['unknown']
+            predicted_type = field_types[pred_idx.item()] if pred_idx.item() < len(field_types) else 'unknown'
+            
+            pattern_score = self._calculate_pattern_score(column_name, sample_values, predicted_type)
+            semantic_score = self._calculate_semantic_score(text, predicted_type)
+            
+            final_confidence = (max_prob.item() * 0.5 + pattern_score * 0.3 + semantic_score * 0.2)
+            
+            metadata = {
+                'ml_confidence': max_prob.item(),
+                'pattern_score': pattern_score,
+                'semantic_score': semantic_score,
+                'neural_confidence': confidence.item(),
+                'method': f'quantum_neural_classification_{TRANSFORMER_BACKEND}'
+            }
+            
+            return predicted_type, final_confidence, metadata
+            
+        except Exception as e:
+            logger.warning(f"Neural classification failed: {e}, using pattern matching")
+            # Fallback to pure pattern matching
+            return self._pattern_based_classification(column_name, sample_values)
+    
+    def _pattern_based_classification(self, column_name: str, sample_values: List[str]) -> Tuple[str, float, Dict[str, Any]]:
+        """Fallback pattern-based classification when neural network fails"""
+        column_lower = column_name.lower()
         
-        field_types = list(self.field_mappings.keys()) + ['unknown']
-        predicted_type = field_types[pred_idx.item()] if pred_idx.item() < len(field_types) else 'unknown'
+        # Check each field type
+        best_match = ('unknown', 0.0)
         
-        pattern_score = self._calculate_pattern_score(column_name, sample_values, predicted_type)
-        semantic_score = self._calculate_semantic_score(text, predicted_type)
+        for field_type, patterns in self.field_mappings.items():
+            score = 0.0
+            
+            # Check column name
+            for pattern in patterns:
+                if pattern in column_lower:
+                    score = 1.0
+                    break
+            
+            # Check sample values for specific types
+            if field_type == 'hostname' and score < 1.0:
+                hostname_pattern = r'^[a-zA-Z][a-zA-Z0-9\-]{1,62}[a-zA-Z0-9]
+    
+    def _calculate_pattern_score(self, column_name: str, samples: List[str], field_type: str) -> float:
+        if field_type not in self.field_mappings:
+            return 0.0
         
-        final_confidence = (max_prob.item() * 0.5 + pattern_score * 0.3 + semantic_score * 0.2)
+        patterns = self.field_mappings[field_type]
+        column_lower = column_name.lower()
         
-        metadata = {
-            'ml_confidence': max_prob.item(),
-            'pattern_score': pattern_score,
-            'semantic_score': semantic_score,
-            'neural_confidence': confidence.item(),
-            'method': f'quantum_neural_classification_{TRANSFORMER_BACKEND}'
+        name_score = max([1.0 if p in column_lower else 0.0 for p in patterns], default=0.0)
+        
+        if field_type == 'hostname':
+            hostname_pattern = r'^[a-zA-Z][a-zA-Z0-9\-]{1,62}[a-zA-Z0-9]$'
+            valid_samples = sum(1 for s in samples if re.match(hostname_pattern, s))
+            content_score = valid_samples / len(samples) if samples else 0.0
+        elif field_type == 'ip_address':
+            ip_pattern = r'^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$'
+            valid_samples = sum(1 for s in samples if re.match(ip_pattern, s))
+            content_score = valid_samples / len(samples) if samples else 0.0
+        elif field_type == 'mac_address':
+            mac_pattern = r'^([0-9A-Fa-f]{2}[:-]){5}[0-9A-Fa-f]{2}$'
+            valid_samples = sum(1 for s in samples if re.match(mac_pattern, s))
+            content_score = valid_samples / len(samples) if samples else 0.0
+        else:
+            content_score = 0.5
+        
+        return (name_score * 0.6 + content_score * 0.4)
+    
+    def _calculate_semantic_score(self, text: str, field_type: str) -> float:
+        if field_type == 'infrastructure_type':
+            for infra_type, keywords in self.infrastructure_types.items():
+                if any(kw in text.lower() for kw in keywords):
+                    return 0.9
+        elif field_type == 'system_classification':
+            for sys_class, keywords in self.system_classifications.items():
+                if any(kw in text.lower() for kw in keywords):
+                    return 0.9
+        elif field_type == 'region':
+            for region, keywords in self.regional_mappings.items():
+                if any(kw in text.lower() for kw in keywords):
+                    return 0.9
+        return 0.5
+    
+    def identify_log_type(self, table_name: str, columns: List[str]) -> Dict[str, Any]:
+        table_lower = table_name.lower()
+        columns_lower = [c.lower() for c in columns]
+        all_text = f"{table_lower} {' '.join(columns_lower)}"
+        
+        scores = {}
+        for log_role, config in self.log_type_patterns.items():
+            pattern_score = sum(1 for p in config['patterns'] if p in all_text) / len(config['patterns'])
+            field_score = sum(1 for f in config['fields'] if any(f in c for c in columns_lower)) / max(len(config['fields']), 1)
+            scores[log_role] = (pattern_score * 0.6 + field_score * 0.4)
+        
+        best_role = max(scores, key=scores.get)
+        confidence = scores[best_role]
+        
+        return {
+            'role': best_role,
+            'confidence': confidence,
+            'log_types': self.log_type_patterns[best_role]['patterns'],
+            'visibility_factors': self.log_type_patterns[best_role]['visibility'],
+            'scores': scores
         }
+    
+    def classify_infrastructure(self, text: str) -> str:
+        text_lower = text.lower()
+        for infra_type, keywords in self.infrastructure_types.items():
+            if any(kw in text_lower for kw in keywords):
+                return infra_type
+        return 'on_premise'
+    
+    def classify_system(self, text: str) -> str:
+        text_lower = text.lower()
+        for sys_class, keywords in self.system_classifications.items():
+            if any(kw in text_lower for kw in keywords):
+                return sys_class
+        return 'unknown'
+    
+    def map_region(self, text: str) -> str:
+        text_lower = text.lower()
+        for region, keywords in self.regional_mappings.items():
+            if any(kw in text_lower for kw in keywords):
+                return region
+        return 'unknown'
+    
+    def calculate_anomaly_score(self, values: List[Any]) -> float:
+        if not values:
+            return 0.0
         
-        return predicted_type, final_confidence, metadata
+        str_values = [str(v) for v in values]
+        unique_ratio = len(set(str_values)) / len(str_values)
+        
+        lengths = [len(v) for v in str_values]
+        if lengths:
+            mean_len = np.mean(lengths)
+            std_len = np.std(lengths)
+            cv = std_len / mean_len if mean_len > 0 else 0
+        else:
+            cv = 0
+        
+        anomaly_score = (1 - unique_ratio) * 0.5 + min(cv, 1.0) * 0.5
+        return anomaly_score
+                valid_samples = sum(1 for s in sample_values if re.match(hostname_pattern, s))
+                if valid_samples > len(sample_values) * 0.5:
+                    score = 0.8
+            
+            elif field_type == 'ip_address' and score < 1.0:
+                ip_pattern = r'^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}
+    
+    def _calculate_pattern_score(self, column_name: str, samples: List[str], field_type: str) -> float:
+        if field_type not in self.field_mappings:
+            return 0.0
+        
+        patterns = self.field_mappings[field_type]
+        column_lower = column_name.lower()
+        
+        name_score = max([1.0 if p in column_lower else 0.0 for p in patterns], default=0.0)
+        
+        if field_type == 'hostname':
+            hostname_pattern = r'^[a-zA-Z][a-zA-Z0-9\-]{1,62}[a-zA-Z0-9]$'
+            valid_samples = sum(1 for s in samples if re.match(hostname_pattern, s))
+            content_score = valid_samples / len(samples) if samples else 0.0
+        elif field_type == 'ip_address':
+            ip_pattern = r'^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$'
+            valid_samples = sum(1 for s in samples if re.match(ip_pattern, s))
+            content_score = valid_samples / len(samples) if samples else 0.0
+        elif field_type == 'mac_address':
+            mac_pattern = r'^([0-9A-Fa-f]{2}[:-]){5}[0-9A-Fa-f]{2}$'
+            valid_samples = sum(1 for s in samples if re.match(mac_pattern, s))
+            content_score = valid_samples / len(samples) if samples else 0.0
+        else:
+            content_score = 0.5
+        
+        return (name_score * 0.6 + content_score * 0.4)
+    
+    def _calculate_semantic_score(self, text: str, field_type: str) -> float:
+        if field_type == 'infrastructure_type':
+            for infra_type, keywords in self.infrastructure_types.items():
+                if any(kw in text.lower() for kw in keywords):
+                    return 0.9
+        elif field_type == 'system_classification':
+            for sys_class, keywords in self.system_classifications.items():
+                if any(kw in text.lower() for kw in keywords):
+                    return 0.9
+        elif field_type == 'region':
+            for region, keywords in self.regional_mappings.items():
+                if any(kw in text.lower() for kw in keywords):
+                    return 0.9
+        return 0.5
+    
+    def identify_log_type(self, table_name: str, columns: List[str]) -> Dict[str, Any]:
+        table_lower = table_name.lower()
+        columns_lower = [c.lower() for c in columns]
+        all_text = f"{table_lower} {' '.join(columns_lower)}"
+        
+        scores = {}
+        for log_role, config in self.log_type_patterns.items():
+            pattern_score = sum(1 for p in config['patterns'] if p in all_text) / len(config['patterns'])
+            field_score = sum(1 for f in config['fields'] if any(f in c for c in columns_lower)) / max(len(config['fields']), 1)
+            scores[log_role] = (pattern_score * 0.6 + field_score * 0.4)
+        
+        best_role = max(scores, key=scores.get)
+        confidence = scores[best_role]
+        
+        return {
+            'role': best_role,
+            'confidence': confidence,
+            'log_types': self.log_type_patterns[best_role]['patterns'],
+            'visibility_factors': self.log_type_patterns[best_role]['visibility'],
+            'scores': scores
+        }
+    
+    def classify_infrastructure(self, text: str) -> str:
+        text_lower = text.lower()
+        for infra_type, keywords in self.infrastructure_types.items():
+            if any(kw in text_lower for kw in keywords):
+                return infra_type
+        return 'on_premise'
+    
+    def classify_system(self, text: str) -> str:
+        text_lower = text.lower()
+        for sys_class, keywords in self.system_classifications.items():
+            if any(kw in text_lower for kw in keywords):
+                return sys_class
+        return 'unknown'
+    
+    def map_region(self, text: str) -> str:
+        text_lower = text.lower()
+        for region, keywords in self.regional_mappings.items():
+            if any(kw in text_lower for kw in keywords):
+                return region
+        return 'unknown'
+    
+    def calculate_anomaly_score(self, values: List[Any]) -> float:
+        if not values:
+            return 0.0
+        
+        str_values = [str(v) for v in values]
+        unique_ratio = len(set(str_values)) / len(str_values)
+        
+        lengths = [len(v) for v in str_values]
+        if lengths:
+            mean_len = np.mean(lengths)
+            std_len = np.std(lengths)
+            cv = std_len / mean_len if mean_len > 0 else 0
+        else:
+            cv = 0
+        
+        anomaly_score = (1 - unique_ratio) * 0.5 + min(cv, 1.0) * 0.5
+        return anomaly_score
+                valid_samples = sum(1 for s in sample_values if re.match(ip_pattern, s))
+                if valid_samples > len(sample_values) * 0.5:
+                    score = 0.9
+            
+            elif field_type == 'mac_address' and score < 1.0:
+                mac_pattern = r'^([0-9A-Fa-f]{2}[:-]){5}[0-9A-Fa-f]{2}
+    
+    def _calculate_pattern_score(self, column_name: str, samples: List[str], field_type: str) -> float:
+        if field_type not in self.field_mappings:
+            return 0.0
+        
+        patterns = self.field_mappings[field_type]
+        column_lower = column_name.lower()
+        
+        name_score = max([1.0 if p in column_lower else 0.0 for p in patterns], default=0.0)
+        
+        if field_type == 'hostname':
+            hostname_pattern = r'^[a-zA-Z][a-zA-Z0-9\-]{1,62}[a-zA-Z0-9]$'
+            valid_samples = sum(1 for s in samples if re.match(hostname_pattern, s))
+            content_score = valid_samples / len(samples) if samples else 0.0
+        elif field_type == 'ip_address':
+            ip_pattern = r'^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$'
+            valid_samples = sum(1 for s in samples if re.match(ip_pattern, s))
+            content_score = valid_samples / len(samples) if samples else 0.0
+        elif field_type == 'mac_address':
+            mac_pattern = r'^([0-9A-Fa-f]{2}[:-]){5}[0-9A-Fa-f]{2}$'
+            valid_samples = sum(1 for s in samples if re.match(mac_pattern, s))
+            content_score = valid_samples / len(samples) if samples else 0.0
+        else:
+            content_score = 0.5
+        
+        return (name_score * 0.6 + content_score * 0.4)
+    
+    def _calculate_semantic_score(self, text: str, field_type: str) -> float:
+        if field_type == 'infrastructure_type':
+            for infra_type, keywords in self.infrastructure_types.items():
+                if any(kw in text.lower() for kw in keywords):
+                    return 0.9
+        elif field_type == 'system_classification':
+            for sys_class, keywords in self.system_classifications.items():
+                if any(kw in text.lower() for kw in keywords):
+                    return 0.9
+        elif field_type == 'region':
+            for region, keywords in self.regional_mappings.items():
+                if any(kw in text.lower() for kw in keywords):
+                    return 0.9
+        return 0.5
+    
+    def identify_log_type(self, table_name: str, columns: List[str]) -> Dict[str, Any]:
+        table_lower = table_name.lower()
+        columns_lower = [c.lower() for c in columns]
+        all_text = f"{table_lower} {' '.join(columns_lower)}"
+        
+        scores = {}
+        for log_role, config in self.log_type_patterns.items():
+            pattern_score = sum(1 for p in config['patterns'] if p in all_text) / len(config['patterns'])
+            field_score = sum(1 for f in config['fields'] if any(f in c for c in columns_lower)) / max(len(config['fields']), 1)
+            scores[log_role] = (pattern_score * 0.6 + field_score * 0.4)
+        
+        best_role = max(scores, key=scores.get)
+        confidence = scores[best_role]
+        
+        return {
+            'role': best_role,
+            'confidence': confidence,
+            'log_types': self.log_type_patterns[best_role]['patterns'],
+            'visibility_factors': self.log_type_patterns[best_role]['visibility'],
+            'scores': scores
+        }
+    
+    def classify_infrastructure(self, text: str) -> str:
+        text_lower = text.lower()
+        for infra_type, keywords in self.infrastructure_types.items():
+            if any(kw in text_lower for kw in keywords):
+                return infra_type
+        return 'on_premise'
+    
+    def classify_system(self, text: str) -> str:
+        text_lower = text.lower()
+        for sys_class, keywords in self.system_classifications.items():
+            if any(kw in text_lower for kw in keywords):
+                return sys_class
+        return 'unknown'
+    
+    def map_region(self, text: str) -> str:
+        text_lower = text.lower()
+        for region, keywords in self.regional_mappings.items():
+            if any(kw in text_lower for kw in keywords):
+                return region
+        return 'unknown'
+    
+    def calculate_anomaly_score(self, values: List[Any]) -> float:
+        if not values:
+            return 0.0
+        
+        str_values = [str(v) for v in values]
+        unique_ratio = len(set(str_values)) / len(str_values)
+        
+        lengths = [len(v) for v in str_values]
+        if lengths:
+            mean_len = np.mean(lengths)
+            std_len = np.std(lengths)
+            cv = std_len / mean_len if mean_len > 0 else 0
+        else:
+            cv = 0
+        
+        anomaly_score = (1 - unique_ratio) * 0.5 + min(cv, 1.0) * 0.5
+        return anomaly_score
+                valid_samples = sum(1 for s in sample_values if re.match(mac_pattern, s))
+                if valid_samples > len(sample_values) * 0.5:
+                    score = 0.9
+            
+            if score > best_match[1]:
+                best_match = (field_type, score)
+        
+        return best_match[0], best_match[1], {'method': 'pattern_matching', 'pattern_score': best_match[1]}
     
     def _calculate_pattern_score(self, column_name: str, samples: List[str], field_type: str) -> float:
         if field_type not in self.field_mappings:
