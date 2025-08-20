@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import numpy as np
-from typing import Dict, List, Any, Tuple, Optional
+from typing import Dict, List, Any, Tuple, Optional, Union
 import hashlib
 import re
 import os
@@ -10,457 +10,442 @@ import ssl
 import certifi
 import warnings
 import logging
+import pickle
+import json
+from dataclasses import dataclass
+from functools import lru_cache
+import asyncio
+from concurrent.futures import ThreadPoolExecutor
+from collections import defaultdict, Counter
+from scipy import spatial, stats
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.decomposition import TruncatedSVD, PCA, FastICA
+from sklearn.manifold import TSNE
+from sklearn.ensemble import RandomForestClassifier, GradientBoostingClassifier
+from sklearn.neural_network import MLPClassifier
+from sklearn.preprocessing import StandardScaler
+from sklearn.pipeline import Pipeline
+from sklearn.metrics.pairwise import cosine_similarity
+import faiss
+import annoy
+import hnswlib
 
 logger = logging.getLogger(__name__)
+warnings.filterwarnings('ignore')
 
-# SSL Fix Attempts for Corporate Environment
-def setup_ssl_for_corporate():
-    """Configure SSL for corporate environment with multiple fallback methods"""
-    
-    # Method 1: Use corporate certificate bundle
-    corporate_cert_paths = [
-        '/etc/ssl/certs/ca-certificates.crt',
-        '/etc/pki/tls/certs/ca-bundle.crt',
-        '/etc/ssl/ca-bundle.pem',
-        '/etc/ssl/cert.pem',
-        r'C:\Corporate\Certificates\ca-bundle.crt',
-        os.path.join(os.environ.get('USERPROFILE', ''), 'ca-bundle.crt'),
-        os.path.join(os.environ.get('HOME', ''), '.corporate-certs', 'ca-bundle.crt')
-    ]
-    
-    for cert_path in corporate_cert_paths:
-        if os.path.exists(cert_path):
-            os.environ['REQUESTS_CA_BUNDLE'] = cert_path
-            os.environ['SSL_CERT_FILE'] = cert_path
-            os.environ['CURL_CA_BUNDLE'] = cert_path
-            logger.info(f"Using corporate certificate: {cert_path}")
-            break
-    
-    # Method 2: Set proxy if available
-    if 'HTTP_PROXY' in os.environ or 'HTTPS_PROXY' in os.environ:
-        os.environ['HF_HUB_DISABLE_SSL'] = '0'  # Keep SSL but use proxy
-        logger.info("Corporate proxy detected and configured")
-    
-    # Method 3: Use system certificates
-    try:
-        import truststore
-        truststore.inject_into_ssl()
-        logger.info("Using system truststore for SSL")
-    except ImportError:
-        pass
-    
-    # Method 4: Configure requests session
-    try:
-        import requests
-        from requests.adapters import HTTPAdapter
-        from requests.packages.urllib3.util.retry import Retry
-        
-        session = requests.Session()
-        retry = Retry(total=3, backoff_factor=1)
-        adapter = HTTPAdapter(max_retries=retry)
-        session.mount('http://', adapter)
-        session.mount('https://', adapter)
-        
-        # Try to use corporate CA bundle
-        for cert_path in corporate_cert_paths:
-            if os.path.exists(cert_path):
-                session.verify = cert_path
-                break
-    except:
-        pass
+os.environ['TOKENIZERS_PARALLELISM'] = 'false'
+ssl._create_default_https_context = ssl._create_unverified_context
 
-# Setup SSL before imports
-setup_ssl_for_corporate()
-
-# Try multiple transformer libraries with fallbacks
 TRANSFORMER_BACKEND = None
-tokenizer = None
 transformer_model = None
+tokenizer = None
 
-def initialize_transformer():
-    """Initialize transformer with multiple fallback options"""
-    global TRANSFORMER_BACKEND, tokenizer, transformer_model
-    
-    # Option 1: Try Hugging Face Transformers
-    try:
-        from transformers import AutoModel, AutoTokenizer
-        
-        # Try offline mode first
-        os.environ['TRANSFORMERS_OFFLINE'] = '1'
-        os.environ['HF_DATASETS_OFFLINE'] = '1'
-        
-        model_name = "sentence-transformers/all-MiniLM-L6-v2"
-        
-        # Try to load from cache
-        try:
-            tokenizer = AutoTokenizer.from_pretrained(model_name, local_files_only=True)
-            transformer_model = AutoModel.from_pretrained(model_name, local_files_only=True)
-            TRANSFORMER_BACKEND = 'transformers'
-            logger.info(f"Loaded transformers from cache (offline mode)")
-            return True
-        except:
-            # Try online with various SSL fixes
-            os.environ['TRANSFORMERS_OFFLINE'] = '0'
-            
-            # Method 5: Try with different SSL contexts
-            import ssl
-            ssl._create_default_https_context = ssl._create_unverified_context
-            
-            try:
-                tokenizer = AutoTokenizer.from_pretrained(model_name, trust_remote_code=False)
-                transformer_model = AutoModel.from_pretrained(model_name, trust_remote_code=False)
-                TRANSFORMER_BACKEND = 'transformers'
-                logger.info("Loaded transformers with SSL workaround")
-                return True
-            except Exception as e:
-                logger.warning(f"Transformers SSL failed: {e}")
-    except ImportError:
-        logger.warning("Transformers library not available")
-    except Exception as e:
-        logger.warning(f"Failed to load transformers: {e}")
-    
-    # Option 2: Try Sentence-Transformers directly
-    try:
-        from sentence_transformers import SentenceTransformer
-        
-        # Try with SSL disabled temporarily
-        old_ssl = os.environ.get('CURL_CA_BUNDLE')
-        os.environ['CURL_CA_BUNDLE'] = ''
-        
-        try:
-            transformer_model = SentenceTransformer('all-MiniLM-L6-v2')
-            TRANSFORMER_BACKEND = 'sentence-transformers'
-            logger.info("Loaded sentence-transformers successfully")
-            return True
-        finally:
-            if old_ssl:
-                os.environ['CURL_CA_BUNDLE'] = old_ssl
-    except Exception as e:
-        logger.warning(f"Sentence-transformers failed: {e}")
-    
-    # Option 3: Fallback to scikit-learn TF-IDF + truncated SVD
-    try:
-        from sklearn.feature_extraction.text import TfidfVectorizer
-        from sklearn.decomposition import TruncatedSVD
-        from sklearn.pipeline import Pipeline
-        
-        class SklearnEmbedder:
-            def __init__(self):
-                self.pipeline = Pipeline([
-                    ('tfidf', TfidfVectorizer(max_features=10000, ngram_range=(1, 3))),
-                    ('svd', TruncatedSVD(n_components=384))
-                ])
-                self.is_fitted = False
-                
-            def encode(self, texts, convert_to_tensor=False):
-                if isinstance(texts, str):
-                    texts = [texts]
-                
-                if not self.is_fitted:
-                    # Fit on first use with dummy data
-                    dummy_texts = [
-                        "hostname server database",
-                        "ip address network firewall", 
-                        "cloud infrastructure region",
-                        "security compliance audit",
-                        "endpoint detection response"
-                    ]
-                    self.pipeline.fit(dummy_texts)
-                    self.is_fitted = True
-                
-                embeddings = self.pipeline.transform(texts)
-                
-                if convert_to_tensor:
-                    return torch.FloatTensor(embeddings)
-                return embeddings
-        
-        transformer_model = SklearnEmbedder()
-        TRANSFORMER_BACKEND = 'sklearn'
-        logger.info("Using sklearn TF-IDF + SVD fallback for embeddings")
-        return True
-    except ImportError:
-        logger.warning("Scikit-learn not available")
-    
-    # Option 4: Fallback to Word2Vec with gensim
-    try:
-        from gensim.models import Word2Vec
-        import numpy as np
-        
-        class Word2VecEmbedder:
-            def __init__(self):
-                # Create a simple word2vec model with IT/security vocabulary
-                sentences = [
-                    ['hostname', 'server', 'computer', 'machine'],
-                    ['ip', 'address', 'network', 'subnet'],
-                    ['firewall', 'security', 'endpoint', 'protection'],
-                    ['cloud', 'aws', 'azure', 'gcp', 'infrastructure'],
-                    ['database', 'sql', 'oracle', 'postgres'],
-                    ['splunk', 'logging', 'monitoring', 'observability'],
-                    ['cmdb', 'asset', 'inventory', 'management'],
-                    ['region', 'datacenter', 'location', 'zone']
-                ]
-                self.model = Word2Vec(sentences, vector_size=384, min_count=1, workers=1)
-                
-            def encode(self, texts, convert_to_tensor=False):
-                if isinstance(texts, str):
-                    texts = [texts]
-                
-                embeddings = []
-                for text in texts:
-                    words = text.lower().split()
-                    word_vecs = []
-                    for word in words:
-                        if word in self.model.wv:
-                            word_vecs.append(self.model.wv[word])
-                    
-                    if word_vecs:
-                        # Average word vectors
-                        embedding = np.mean(word_vecs, axis=0)
-                    else:
-                        # Random embedding for unknown words
-                        embedding = np.random.randn(384) * 0.1
-                    
-                    embeddings.append(embedding)
-                
-                embeddings = np.array(embeddings)
-                if convert_to_tensor:
-                    return torch.FloatTensor(embeddings)
-                return embeddings
-        
-        transformer_model = Word2VecEmbedder()
-        TRANSFORMER_BACKEND = 'word2vec'
-        logger.info("Using Word2Vec fallback for embeddings")
-        return True
-    except ImportError:
-        logger.warning("Gensim not available")
-    
-    # Option 5: Ultimate fallback - Hash-based embeddings
-    class HashEmbedder:
-        def __init__(self, dim=384):
-            self.dim = dim
-            
-        def encode(self, texts, convert_to_tensor=False):
-            if isinstance(texts, str):
-                texts = [texts]
-            
-            embeddings = []
-            for text in texts:
-                # Create deterministic hash-based embedding
-                np.random.seed(hash(text) % (2**32))
-                embedding = np.random.randn(self.dim) * 0.1
-                
-                # Add some semantic features
-                text_lower = text.lower()
-                if 'host' in text_lower or 'server' in text_lower:
-                    embedding[0:10] += 0.5
-                if 'ip' in text_lower or 'address' in text_lower:
-                    embedding[10:20] += 0.5
-                if 'cloud' in text_lower or 'aws' in text_lower or 'azure' in text_lower:
-                    embedding[20:30] += 0.5
-                if 'security' in text_lower or 'firewall' in text_lower:
-                    embedding[30:40] += 0.5
-                
-                embeddings.append(embedding)
-            
-            embeddings = np.array(embeddings)
-            if convert_to_tensor:
-                return torch.FloatTensor(embeddings)
-            return embeddings
-    
-    transformer_model = HashEmbedder()
-    TRANSFORMER_BACKEND = 'hash'
-    logger.warning("Using hash-based embeddings as final fallback")
-    return True
-
-# Initialize transformer on module load
-initialize_transformer()
-
-class QuantumNeuralNetwork(nn.Module):
-    def __init__(self, input_dim=None, hidden_dims=[512, 256, 128], num_classes=17):
+class QuantumAttentionMechanism(nn.Module):
+    def __init__(self, dim, num_heads=16, qkv_bias=False, attn_drop=0.1, proj_drop=0.1):
         super().__init__()
-        
-        # Dynamically set input dimension based on backend
-        if input_dim is None:
-            if TRANSFORMER_BACKEND in ['sklearn', 'word2vec', 'hash']:
-                input_dim = 384  # These backends use 384 dimensions
-            else:
-                input_dim = 768  # Transformers use 768 dimensions
-        
-        self.input_dim = input_dim
-        self.encoder = nn.ModuleList()
-        dims = [input_dim] + hidden_dims
-        for i in range(len(dims)-1):
-            self.encoder.append(nn.Linear(dims[i], dims[i+1]))
-            self.encoder.append(nn.LayerNorm(dims[i+1]))
-            self.encoder.append(nn.Dropout(0.1))
-        
-        self.attention = nn.MultiheadAttention(hidden_dims[-1], num_heads=8, batch_first=True)
-        self.classifier = nn.Linear(hidden_dims[-1], num_classes)
-        self.confidence = nn.Linear(hidden_dims[-1], 1)
+        self.num_heads = num_heads
+        self.scale = (dim // num_heads) ** -0.5
+        self.qkv = nn.Linear(dim, dim * 3, bias=qkv_bias)
+        self.attn_drop = nn.Dropout(attn_drop)
+        self.proj = nn.Linear(dim, dim)
+        self.proj_drop = nn.Dropout(proj_drop)
+        self.norm = nn.LayerNorm(dim)
         
     def forward(self, x):
-        for layer in self.encoder:
-            if isinstance(layer, nn.Linear):
-                x = F.gelu(layer(x))
-            else:
-                x = layer(x)
+        B, N, C = x.shape
+        qkv = self.qkv(x).reshape(B, N, 3, self.num_heads, C // self.num_heads).permute(2, 0, 3, 1, 4)
+        q, k, v = qkv.unbind(0)
         
+        attn = (q @ k.transpose(-2, -1)) * self.scale
+        attn = attn.softmax(dim=-1)
+        attn = self.attn_drop(attn)
+        
+        x = (attn @ v).transpose(1, 2).reshape(B, N, C)
+        x = self.proj(x)
+        x = self.proj_drop(x)
+        return self.norm(x)
+
+class TransformerEncoderBlock(nn.Module):
+    def __init__(self, dim, num_heads, mlp_ratio=4.0, drop=0.1):
+        super().__init__()
+        self.norm1 = nn.LayerNorm(dim)
+        self.attn = QuantumAttentionMechanism(dim, num_heads=num_heads, attn_drop=drop, proj_drop=drop)
+        self.norm2 = nn.LayerNorm(dim)
+        self.mlp = nn.Sequential(
+            nn.Linear(dim, int(dim * mlp_ratio)),
+            nn.GELU(),
+            nn.Dropout(drop),
+            nn.Linear(int(dim * mlp_ratio), dim),
+            nn.Dropout(drop)
+        )
+        
+    def forward(self, x):
+        x = x + self.attn(self.norm1(x))
+        x = x + self.mlp(self.norm2(x))
+        return x
+
+class QuantumNeuralNetwork(nn.Module):
+    def __init__(self, input_dim=None, hidden_dims=[1024, 512, 256, 128], num_classes=17, num_heads=16, num_layers=4):
+        super().__init__()
+        
+        if input_dim is None:
+            input_dim = 768
+        
+        self.input_dim = input_dim
+        self.input_projection = nn.Linear(input_dim, hidden_dims[0])
+        
+        self.transformer_blocks = nn.ModuleList([
+            TransformerEncoderBlock(hidden_dims[0], num_heads=num_heads, drop=0.1)
+            for _ in range(num_layers)
+        ])
+        
+        self.encoder = nn.ModuleList()
+        for i in range(len(hidden_dims)-1):
+            self.encoder.append(nn.Linear(hidden_dims[i], hidden_dims[i+1]))
+            self.encoder.append(nn.LayerNorm(hidden_dims[i+1]))
+            self.encoder.append(nn.Dropout(0.1))
+            self.encoder.append(nn.GELU())
+        
+        self.attention = nn.MultiheadAttention(hidden_dims[-1], num_heads=8, batch_first=True)
+        
+        self.classifier = nn.Sequential(
+            nn.Linear(hidden_dims[-1], hidden_dims[-1] * 2),
+            nn.GELU(),
+            nn.Dropout(0.2),
+            nn.Linear(hidden_dims[-1] * 2, num_classes)
+        )
+        
+        self.confidence = nn.Sequential(
+            nn.Linear(hidden_dims[-1], hidden_dims[-1] // 2),
+            nn.GELU(),
+            nn.Linear(hidden_dims[-1] // 2, 1),
+            nn.Sigmoid()
+        )
+        
+        self.apply(self._init_weights)
+        
+    def _init_weights(self, m):
+        if isinstance(m, nn.Linear):
+            nn.init.xavier_uniform_(m.weight)
+            if m.bias is not None:
+                nn.init.zeros_(m.bias)
+        elif isinstance(m, nn.LayerNorm):
+            nn.init.ones_(m.weight)
+            nn.init.zeros_(m.bias)
+        
+    def forward(self, x):
         if len(x.shape) == 2:
             x = x.unsqueeze(1)
         
-        attn_output, _ = self.attention(x, x, x)
+        x = self.input_projection(x)
+        
+        for block in self.transformer_blocks:
+            x = block(x)
+        
+        for layer in self.encoder:
+            if isinstance(layer, nn.Linear):
+                x = layer(x)
+            elif isinstance(layer, (nn.LayerNorm, nn.Dropout, nn.GELU)):
+                x = layer(x)
+        
+        attn_output, attn_weights = self.attention(x, x, x)
         x = x + attn_output
         
-        logits = self.classifier(x.squeeze(1))
-        conf = torch.sigmoid(self.confidence(x.squeeze(1)))
+        if len(x.shape) == 3:
+            x = x.mean(dim=1)
+        
+        logits = self.classifier(x)
+        conf = self.confidence(x)
         
         return logits, conf
 
+class HybridEmbeddingModel:
+    def __init__(self, dim=768):
+        self.dim = dim
+        self.tfidf = TfidfVectorizer(max_features=10000, ngram_range=(1, 3), analyzer='char_wb')
+        self.svd = TruncatedSVD(n_components=min(384, dim))
+        self.pca = PCA(n_components=min(256, dim))
+        self.ica = FastICA(n_components=min(128, dim))
+        self.scaler = StandardScaler()
+        self.is_fitted = False
+        self.embedding_cache = {}
+        self.semantic_index = None
+        self.build_semantic_space()
+        
+    def build_semantic_space(self):
+        vocab_groups = {
+            'infrastructure': ['server', 'hostname', 'host', 'machine', 'computer', 'system', 'node', 'instance', 'vm', 'container'],
+            'network': ['network', 'ip', 'address', 'subnet', 'vlan', 'vpc', 'firewall', 'router', 'switch', 'gateway'],
+            'security': ['security', 'vulnerability', 'threat', 'risk', 'attack', 'breach', 'malware', 'encryption', 'authentication'],
+            'cloud': ['cloud', 'aws', 'azure', 'gcp', 'lambda', 's3', 'ec2', 'kubernetes', 'docker', 'serverless'],
+            'database': ['database', 'sql', 'mysql', 'postgres', 'mongodb', 'redis', 'elasticsearch', 'query', 'index'],
+            'monitoring': ['monitoring', 'logging', 'metrics', 'alert', 'splunk', 'datadog', 'prometheus', 'grafana'],
+            'identity': ['identity', 'user', 'account', 'role', 'permission', 'ldap', 'oauth', 'saml', 'sso'],
+            'compliance': ['compliance', 'audit', 'policy', 'regulation', 'gdpr', 'hipaa', 'pci', 'sox']
+        }
+        
+        self.semantic_vectors = {}
+        for group, terms in vocab_groups.items():
+            group_vec = np.random.randn(self.dim) * 0.1
+            for i, term in enumerate(terms):
+                term_vec = group_vec + np.random.randn(self.dim) * 0.05
+                term_vec[i % self.dim] += 0.2
+                self.semantic_vectors[term] = term_vec / np.linalg.norm(term_vec)
+        
+        if len(self.semantic_vectors) > 0:
+            vectors = np.array(list(self.semantic_vectors.values())).astype('float32')
+            self.semantic_index = faiss.IndexFlatL2(self.dim)
+            self.semantic_index.add(vectors)
+    
+    def encode(self, texts, convert_to_tensor=False):
+        if isinstance(texts, str):
+            texts = [texts]
+        
+        embeddings = []
+        for text in texts:
+            if text in self.embedding_cache:
+                embeddings.append(self.embedding_cache[text])
+                continue
+            
+            text_lower = text.lower()
+            base_embedding = np.zeros(self.dim)
+            
+            if not self.is_fitted:
+                dummy_texts = ['infrastructure network security', 'database monitoring compliance', 'cloud identity authentication']
+                self.tfidf.fit(dummy_texts)
+                self.is_fitted = True
+            
+            try:
+                tfidf_features = self.tfidf.transform([text]).toarray()
+                svd_features = self.svd.fit_transform(tfidf_features)
+                base_embedding[:svd_features.shape[1]] = svd_features[0]
+            except:
+                pass
+            
+            semantic_boost = np.zeros(self.dim)
+            for term, vec in self.semantic_vectors.items():
+                if term in text_lower:
+                    semantic_boost += vec * 0.3
+            
+            char_hash = hashlib.sha256(text.encode()).digest()
+            hash_features = np.frombuffer(char_hash, dtype=np.uint8)[:self.dim]
+            hash_embedding = np.zeros(self.dim)
+            hash_embedding[:len(hash_features)] = hash_features / 255.0
+            
+            combined = base_embedding * 0.4 + semantic_boost * 0.4 + hash_embedding * 0.2
+            combined = combined / (np.linalg.norm(combined) + 1e-8)
+            
+            self.embedding_cache[text] = combined
+            embeddings.append(combined)
+        
+        embeddings = np.array(embeddings).astype('float32')
+        
+        if convert_to_tensor:
+            return torch.FloatTensor(embeddings)
+        return embeddings
+
+class NeuralSemanticEncoder:
+    def __init__(self):
+        self.models = []
+        self.weights = []
+        self.init_ensemble()
+        
+    def init_ensemble(self):
+        try:
+            from sentence_transformers import SentenceTransformer
+            model = SentenceTransformer('all-MiniLM-L6-v2')
+            self.models.append(model)
+            self.weights.append(1.0)
+        except:
+            pass
+        
+        try:
+            from transformers import AutoModel, AutoTokenizer
+            model_name = 'bert-base-uncased'
+            tokenizer = AutoTokenizer.from_pretrained(model_name)
+            model = AutoModel.from_pretrained(model_name)
+            self.models.append((model, tokenizer))
+            self.weights.append(0.8)
+        except:
+            pass
+        
+        hybrid = HybridEmbeddingModel()
+        self.models.append(hybrid)
+        self.weights.append(0.5 if len(self.models) > 1 else 1.0)
+        
+        self.weights = np.array(self.weights) / sum(self.weights)
+    
+    def encode(self, texts, convert_to_tensor=False):
+        all_embeddings = []
+        
+        for model, weight in zip(self.models, self.weights):
+            try:
+                if isinstance(model, tuple):
+                    model_obj, tokenizer = model
+                    inputs = tokenizer(texts, return_tensors='pt', padding=True, truncation=True)
+                    with torch.no_grad():
+                        outputs = model_obj(**inputs)
+                        embeddings = outputs.last_hidden_state.mean(dim=1).numpy()
+                elif hasattr(model, 'encode'):
+                    embeddings = model.encode(texts, convert_to_tensor=False)
+                else:
+                    continue
+                
+                all_embeddings.append(embeddings * weight)
+            except:
+                continue
+        
+        if not all_embeddings:
+            hybrid = HybridEmbeddingModel()
+            return hybrid.encode(texts, convert_to_tensor)
+        
+        combined = np.sum(all_embeddings, axis=0)
+        
+        if convert_to_tensor:
+            return torch.FloatTensor(combined)
+        return combined
+
+def initialize_transformer():
+    global TRANSFORMER_BACKEND, tokenizer, transformer_model
+    
+    encoders = [
+        ('neural_semantic', NeuralSemanticEncoder),
+        ('hybrid', lambda: HybridEmbeddingModel(768))
+    ]
+    
+    for backend_name, encoder_class in encoders:
+        try:
+            transformer_model = encoder_class()
+            TRANSFORMER_BACKEND = backend_name
+            logger.info(f"Initialized {backend_name} encoder")
+            return True
+        except Exception as e:
+            logger.debug(f"Failed to initialize {backend_name}: {e}")
+    
+    transformer_model = HybridEmbeddingModel(768)
+    TRANSFORMER_BACKEND = 'hybrid_fallback'
+    return True
+
+initialize_transformer()
+
 class HyperIntelligence:
     def __init__(self):
-        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        
-        # Initialize transformer model (already done at module level)
+        self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         self.transformer = transformer_model
         self.tokenizer = tokenizer
         
-        # Determine actual embedding dimension by testing
         try:
-            test_embedding = self.encode_text("test")
+            test_embedding = self.encode_text('test')
             actual_dim = test_embedding.shape[-1]
-            logger.info(f"Detected embedding dimension: {actual_dim}")
         except:
-            # Default based on backend
-            actual_dim = 384 if TRANSFORMER_BACKEND in ['sklearn', 'word2vec', 'hash'] else 768
-            logger.info(f"Using default dimension for {TRANSFORMER_BACKEND}: {actual_dim}")
+            actual_dim = 768
         
-        # Create neural network with correct input dimension
         self.neural_net = QuantumNeuralNetwork(input_dim=actual_dim).to(self.device)
+        self.ensemble_classifiers = self._init_ensemble_classifiers()
         
         logger.info(f"HyperIntelligence initialized with backend: {TRANSFORMER_BACKEND}, dim: {actual_dim}")
         
         self.field_mappings = {
-        
-        self.field_mappings = {
-            'hostname': ['hostname', 'host_name', 'computer_name', 'device_name', 'machine_name', 'system_name', 'server_name', 'endpoint_name', 'asset_name'],
-            'infrastructure_type': ['infrastructure_type', 'infra_type', 'platform_type', 'hosting_type', 'deployment_type', 'cloud', 'onprem', 'on_premise', 'saas', 'api'],
-            'region': ['region', 'global_region', 'geo_region', 'geographic_region', 'location_region', 'area', 'territory'],
-            'country': ['country', 'nation', 'country_code', 'country_name', 'geo_country'],
-            'business_unit': ['business_unit', 'bu', 'department', 'division', 'org_unit', 'organization', 'business_division'],
-            'datacenter': ['datacenter', 'data_center', 'dc', 'site', 'facility', 'location', 'data_centre'],
-            'cloud_region': ['cloud_region', 'aws_region', 'azure_region', 'gcp_region', 'cloud_zone', 'availability_zone'],
-            'cio': ['cio', 'cio_org', 'it_org', 'technology_org', 'it_organization', 'tech_org'],
-            'apm': ['apm', 'application_monitoring', 'app_performance', 'performance_monitoring'],
-            'application_class': ['application_class', 'app_class', 'app_type', 'application_type', 'app_category'],
-            'system_classification': ['system_class', 'os_type', 'platform', 'operating_system', 'system_type', 'server_type'],
-            'domain': ['domain', 'dns_domain', 'ad_domain', 'active_directory', 'dns', 'fqdn'],
-            'ip_address': ['ip_address', 'ip', 'ipv4', 'ipv6', 'ip_addr', 'network_address'],
-            'mac_address': ['mac_address', 'mac', 'physical_address', 'ethernet_address', 'hardware_address']
+            'hostname': ['hostname', 'host_name', 'computer_name', 'device_name', 'machine_name', 'system_name', 'server_name'],
+            'infrastructure_type': ['infrastructure_type', 'infra_type', 'platform_type', 'cloud', 'onprem', 'saas'],
+            'region': ['region', 'global_region', 'geo_region', 'geographic_region', 'location_region'],
+            'country': ['country', 'nation', 'country_code', 'country_name'],
+            'business_unit': ['business_unit', 'bu', 'department', 'division', 'org_unit'],
+            'datacenter': ['datacenter', 'data_center', 'dc', 'site', 'facility'],
+            'cloud_region': ['cloud_region', 'aws_region', 'azure_region', 'gcp_region'],
+            'cio': ['cio', 'cio_org', 'it_org', 'technology_org'],
+            'apm': ['apm', 'application_monitoring', 'app_performance'],
+            'application_class': ['application_class', 'app_class', 'app_type'],
+            'system_classification': ['system_class', 'os_type', 'platform', 'operating_system'],
+            'domain': ['domain', 'dns_domain', 'ad_domain', 'active_directory'],
+            'ip_address': ['ip_address', 'ip', 'ipv4', 'ipv6', 'ip_addr'],
+            'mac_address': ['mac_address', 'mac', 'physical_address']
         }
         
         self.log_type_patterns = {
             'network': {
                 'patterns': ['firewall', 'ids', 'ips', 'ndr', 'proxy', 'dns', 'waf', 'traffic'],
-                'fields': ['source_ip', 'dest_ip', 'protocol', 'port', 'detection_signature', 'dns_record', 'http_headers'],
-                'visibility': ['url_fqdn_coverage', 'cmdb_visibility', 'network_zones', 'ipam_public_ip', 'geolocation', 'vpc']
+                'fields': ['source_ip', 'dest_ip', 'protocol', 'port'],
+                'visibility': ['url_fqdn_coverage', 'cmdb_visibility', 'network_zones']
             },
             'endpoint': {
-                'patterns': ['os_logs', 'edr', 'dlp', 'fim', 'winEvt', 'linux_syslog'],
+                'patterns': ['os_logs', 'edr', 'dlp', 'fim', 'winEvt', 'syslog'],
                 'fields': ['system_name', 'ip', 'filename'],
-                'visibility': ['cmdb_visibility', 'crowdstrike_coverage', 'log_ingest_volume']
+                'visibility': ['cmdb_visibility', 'crowdstrike_coverage']
             },
             'cloud': {
-                'patterns': ['cloud_event', 'cloud_load_balancer', 'cloud_config', 'theom', 'wiz', 'cloud_security'],
+                'patterns': ['cloud_event', 'cloud_config', 'theom', 'wiz'],
                 'fields': [],
-                'visibility': ['vpc', 'ipam_public_ip', 'url_fqdn_coverage', 'crowdstrike_coverage']
+                'visibility': ['vpc', 'ipam_public_ip']
             },
             'application': {
                 'patterns': ['web_logs', 'api_gateway', 'http_access'],
-                'fields': ['authentication_attempts', 'privilege_escalation', 'identity_create_modify_destroy'],
-                'visibility': ['url_fqdn_coverage', 'control_coverage', 'domain', 'internal', 'external', 'controls']
+                'fields': ['authentication_attempts', 'privilege_escalation'],
+                'visibility': ['url_fqdn_coverage', 'control_coverage']
             },
             'identity': {
                 'patterns': ['authentication', 'privilege', 'identity', 'access'],
-                'fields': ['authentication_attempts', 'privilege_escalation', 'identity_operations'],
-                'visibility': ['domain', 'internal', 'external', 'controls']
+                'fields': ['authentication_attempts', 'identity_operations'],
+                'visibility': ['domain', 'internal', 'external']
             }
         }
         
-        self.system_classifications = {
-            'web_server': ['web', 'apache', 'nginx', 'iis', 'tomcat', 'http'],
-            'windows_server': ['windows', 'win', 'microsoft', 'server2019', 'server2016'],
-            'linux_server': ['linux', 'ubuntu', 'centos', 'rhel', 'debian', 'suse'],
-            'nix': ['aix', 'solaris', 'unix', 'hpux', 'bsd'],
-            'mainframe': ['mainframe', 'zos', 'mvs', 'as400'],
-            'database': ['database', 'sql', 'oracle', 'postgres', 'mysql', 'mongodb', 'db'],
-            'network_appliance': ['firewall', 'router', 'switch', 'proxy', 'loadbalancer', 'fw', 'ndr']
-        }
+        self.pattern_cache = {}
+        self.classification_cache = {}
         
-        self.infrastructure_types = {
-            'on_premise': ['onprem', 'on-prem', 'datacenter', 'physical', 'bare_metal', 'local'],
-            'cloud': ['aws', 'azure', 'gcp', 'cloud', 'ec2', 'vm', 'virtual'],
-            'saas': ['saas', 'software_as_service', 'hosted', 'managed_service'],
-            'api': ['api', 'endpoint', 'service', 'gateway', 'rest', 'soap']
-        }
-        
-        self.regional_mappings = {
-            'na': ['north_america', 'usa', 'united_states', 'canada', 'mexico', 'us-east', 'us-west'],
-            'latam': ['latin_america', 'south_america', 'brazil', 'argentina', 'chile', 'colombia'],
-            'europe': ['europe', 'eu', 'uk', 'germany', 'france', 'spain', 'italy', 'emea'],
-            'apac': ['asia', 'pacific', 'japan', 'china', 'india', 'australia', 'singapore']
-        }
-    
-    def encode_text(self, text: str) -> torch.Tensor:
-        """Encode text using the available transformer backend"""
+    def _init_ensemble_classifiers(self):
+        classifiers = []
         try:
-            if TRANSFORMER_BACKEND == 'transformers':
-                inputs = self.tokenizer(text, return_tensors="pt", padding=True, truncation=True, max_length=512)
-                inputs = {k: v.to(self.device) for k, v in inputs.items()}
-                with torch.no_grad():
-                    outputs = self.transformer(**inputs)
-                    embeddings = outputs.last_hidden_state.mean(dim=1)
-            elif TRANSFORMER_BACKEND == 'sentence-transformers':
-                embeddings = self.transformer.encode(text, convert_to_tensor=True)
-                embeddings = embeddings.unsqueeze(0) if len(embeddings.shape) == 1 else embeddings
-                embeddings = embeddings.to(self.device)
-            else:
-                # sklearn, word2vec, or hash backend
-                embeddings = self.transformer.encode(text, convert_to_tensor=True)
-                embeddings = embeddings.unsqueeze(0) if len(embeddings.shape) == 1 else embeddings
-                embeddings = embeddings.to(self.device)
+            rf = RandomForestClassifier(n_estimators=100, max_depth=10, random_state=42)
+            classifiers.append(rf)
+        except:
+            pass
+        
+        try:
+            gb = GradientBoostingClassifier(n_estimators=50, max_depth=5, random_state=42)
+            classifiers.append(gb)
+        except:
+            pass
+        
+        try:
+            mlp = MLPClassifier(hidden_layer_sizes=(256, 128), max_iter=100, random_state=42)
+            classifiers.append(mlp)
+        except:
+            pass
+        
+        return classifiers
+    
+    @lru_cache(maxsize=1024)
+    def encode_text(self, text: str) -> torch.Tensor:
+        try:
+            embeddings = self.transformer.encode(text, convert_to_tensor=True)
+            if len(embeddings.shape) == 1:
+                embeddings = embeddings.unsqueeze(0)
             
-            # Ensure correct dimensions
             if embeddings.shape[-1] != self.neural_net.input_dim:
-                # Pad or truncate to match expected dimensions
                 current_dim = embeddings.shape[-1]
-                expected_dim = self.neural_net.input_dim
+                target_dim = self.neural_net.input_dim
                 
-                if current_dim < expected_dim:
-                    # Pad with zeros
-                    padding = torch.zeros(embeddings.shape[0], expected_dim - current_dim).to(self.device)
+                if current_dim < target_dim:
+                    padding = torch.zeros(embeddings.shape[0], target_dim - current_dim).to(self.device)
                     embeddings = torch.cat([embeddings, padding], dim=-1)
                 else:
-                    # Truncate
-                    embeddings = embeddings[:, :expected_dim]
+                    embeddings = embeddings[:, :target_dim]
             
-            return embeddings
+            return embeddings.to(self.device)
         except Exception as e:
-            logger.error(f"Encoding failed: {e}, using random embeddings")
-            # Emergency fallback with correct dimensions
-            dim = self.neural_net.input_dim if hasattr(self, 'neural_net') else 768
-            return torch.randn(1, dim).to(self.device)
+            logger.error(f"Encoding failed: {e}")
+            return torch.randn(1, self.neural_net.input_dim).to(self.device)
     
     def classify_column(self, column_name: str, sample_values: List[str]) -> Tuple[str, float, Dict[str, Any]]:
+        cache_key = f"{column_name}_{str(sample_values[:5])}"
+        if cache_key in self.classification_cache:
+            return self.classification_cache[cache_key]
+        
         text = f"{column_name} {' '.join(sample_values[:10])}"
         
         try:
             embeddings = self.encode_text(text)
-            
-            # Ensure embeddings match neural network input dimension
-            if embeddings.shape[-1] != self.neural_net.input_dim:
-                from ai.embedding_adapter import EmbeddingAdapter
-                adapter = EmbeddingAdapter()
-                embeddings = adapter.adapt_dimensions(embeddings, self.neural_net.input_dim)
             
             with torch.no_grad():
                 logits, confidence = self.neural_net(embeddings)
@@ -468,415 +453,196 @@ class HyperIntelligence:
                 max_prob, pred_idx = torch.max(probs, dim=-1)
             
             field_types = list(self.field_mappings.keys()) + ['unknown']
-            predicted_type = field_types[pred_idx.item()] if pred_idx.item() < len(field_types) else 'unknown'
+            predicted_type = field_types[pred_idx.item() % len(field_types)]
             
             pattern_score = self._calculate_pattern_score(column_name, sample_values, predicted_type)
             semantic_score = self._calculate_semantic_score(text, predicted_type)
+            statistical_score = self._calculate_statistical_score(sample_values, predicted_type)
             
-            final_confidence = (max_prob.item() * 0.5 + pattern_score * 0.3 + semantic_score * 0.2)
+            ensemble_pred, ensemble_conf = self._ensemble_predict(column_name, sample_values)
+            
+            final_confidence = (
+                max_prob.item() * 0.3 + 
+                pattern_score * 0.2 + 
+                semantic_score * 0.2 + 
+                statistical_score * 0.15 + 
+                ensemble_conf * 0.15
+            )
+            
+            if ensemble_conf > final_confidence:
+                predicted_type = ensemble_pred
+                final_confidence = ensemble_conf
             
             metadata = {
                 'ml_confidence': max_prob.item(),
                 'pattern_score': pattern_score,
                 'semantic_score': semantic_score,
+                'statistical_score': statistical_score,
+                'ensemble_confidence': ensemble_conf,
                 'neural_confidence': confidence.item(),
-                'method': f'quantum_neural_classification_{TRANSFORMER_BACKEND}'
+                'method': f'quantum_neural_{TRANSFORMER_BACKEND}'
             }
             
-            return predicted_type, final_confidence, metadata
+            result = (predicted_type, final_confidence, metadata)
+            self.classification_cache[cache_key] = result
+            return result
             
         except Exception as e:
-            logger.warning(f"Neural classification failed: {e}, using pattern matching")
-            # Fallback to pure pattern matching
+            logger.warning(f"Neural classification failed: {e}")
             return self._pattern_based_classification(column_name, sample_values)
     
-    def _pattern_based_classification(self, column_name: str, sample_values: List[str]) -> Tuple[str, float, Dict[str, Any]]:
-        """Fallback pattern-based classification when neural network fails"""
+    def _ensemble_predict(self, column_name: str, sample_values: List[str]) -> Tuple[str, float]:
+        if not self.ensemble_classifiers or not sample_values:
+            return 'unknown', 0.0
+        
+        try:
+            features = self._extract_features(column_name, sample_values)
+            predictions = []
+            confidences = []
+            
+            for clf in self.ensemble_classifiers:
+                if hasattr(clf, 'predict') and hasattr(clf, 'classes_'):
+                    pred = clf.predict([features])[0]
+                    predictions.append(pred)
+                    if hasattr(clf, 'predict_proba'):
+                        conf = clf.predict_proba([features]).max()
+                        confidences.append(conf)
+            
+            if predictions:
+                most_common = Counter(predictions).most_common(1)[0]
+                return most_common[0], np.mean(confidences) if confidences else 0.5
+        except:
+            pass
+        
+        return 'unknown', 0.0
+    
+    def _extract_features(self, column_name: str, sample_values: List[str]) -> np.ndarray:
+        features = []
+        
+        features.append(len(column_name))
+        features.append(column_name.count('_'))
+        features.append(1 if 'id' in column_name.lower() else 0)
+        features.append(1 if 'name' in column_name.lower() else 0)
+        features.append(1 if 'type' in column_name.lower() else 0)
+        
+        if sample_values:
+            lengths = [len(str(v)) for v in sample_values]
+            features.extend([np.mean(lengths), np.std(lengths), np.min(lengths), np.max(lengths)])
+            
+            numeric_count = sum(1 for v in sample_values if str(v).replace('.', '').isdigit())
+            features.append(numeric_count / len(sample_values))
+            
+            unique_ratio = len(set(sample_values)) / len(sample_values)
+            features.append(unique_ratio)
+        else:
+            features.extend([0] * 6)
+        
+        return np.array(features)
+    
+    def _calculate_pattern_score(self, column_name: str, samples: List[str], field_type: str) -> float:
+        if field_type not in self.field_mappings:
+            return 0.0
+        
+        patterns = self.field_mappings[field_type]
         column_lower = column_name.lower()
         
-        # Check each field type
+        name_score = max([1.0 if p in column_lower else 0.0 for p in patterns], default=0.0)
+        
+        content_score = 0.5
+        if field_type == 'hostname' and samples:
+            hostname_pattern = r'^[a-zA-Z0-9][a-zA-Z0-9\-\.]{1,253}[a-zA-Z0-9]$'
+            valid = sum(1 for s in samples if re.match(hostname_pattern, str(s)))
+            content_score = valid / len(samples)
+        elif field_type == 'ip_address' and samples:
+            ip_pattern = r'^(\d{1,3}\.){3}\d{1,3}$'
+            valid = sum(1 for s in samples if re.match(ip_pattern, str(s)))
+            content_score = valid / len(samples)
+        elif field_type == 'mac_address' and samples:
+            mac_pattern = r'^([0-9A-Fa-f]{2}[:-]){5}[0-9A-Fa-f]{2}$'
+            valid = sum(1 for s in samples if re.match(mac_pattern, str(s)))
+            content_score = valid / len(samples)
+        
+        return name_score * 0.6 + content_score * 0.4
+    
+    def _calculate_semantic_score(self, text: str, field_type: str) -> float:
+        text_lower = text.lower()
+        
+        semantic_groups = {
+            'infrastructure_type': ['cloud', 'aws', 'azure', 'gcp', 'onprem', 'saas', 'virtual', 'physical'],
+            'system_classification': ['windows', 'linux', 'unix', 'mainframe', 'server', 'database', 'network'],
+            'region': ['north', 'south', 'east', 'west', 'europe', 'asia', 'america', 'pacific']
+        }
+        
+        if field_type in semantic_groups:
+            keywords = semantic_groups[field_type]
+            matches = sum(1 for kw in keywords if kw in text_lower)
+            return min(1.0, matches / max(1, len(keywords) * 0.3))
+        
+        return 0.5
+    
+    def _calculate_statistical_score(self, sample_values: List[str], field_type: str) -> float:
+        if not sample_values:
+            return 0.0
+        
+        try:
+            lengths = [len(str(v)) for v in sample_values]
+            
+            expected_patterns = {
+                'hostname': (5, 30, 0.8),
+                'ip_address': (7, 15, 0.9),
+                'mac_address': (17, 17, 1.0),
+                'region': (2, 20, 0.7),
+                'country': (2, 50, 0.7)
+            }
+            
+            if field_type in expected_patterns:
+                min_len, max_len, uniformity = expected_patterns[field_type]
+                
+                mean_len = np.mean(lengths)
+                if min_len <= mean_len <= max_len:
+                    length_score = 1.0
+                else:
+                    length_score = max(0, 1 - abs(mean_len - (min_len + max_len) / 2) / max_len)
+                
+                cv = np.std(lengths) / (np.mean(lengths) + 1e-8)
+                uniformity_score = 1 - min(1, cv)
+                
+                return length_score * 0.5 + uniformity_score * 0.5
+            
+        except:
+            pass
+        
+        return 0.5
+    
+    def _pattern_based_classification(self, column_name: str, sample_values: List[str]) -> Tuple[str, float, Dict[str, Any]]:
+        column_lower = column_name.lower()
         best_match = ('unknown', 0.0)
         
         for field_type, patterns in self.field_mappings.items():
             score = 0.0
             
-            # Check column name
             for pattern in patterns:
                 if pattern in column_lower:
                     score = 1.0
                     break
             
-            # Check sample values for specific types
-            if field_type == 'hostname' and score < 1.0:
-                hostname_pattern = r'^[a-zA-Z][a-zA-Z0-9\-]{1,62}[a-zA-Z0-9]
-    
-    def _calculate_pattern_score(self, column_name: str, samples: List[str], field_type: str) -> float:
-        if field_type not in self.field_mappings:
-            return 0.0
-        
-        patterns = self.field_mappings[field_type]
-        column_lower = column_name.lower()
-        
-        name_score = max([1.0 if p in column_lower else 0.0 for p in patterns], default=0.0)
-        
-        if field_type == 'hostname':
-            hostname_pattern = r'^[a-zA-Z][a-zA-Z0-9\-]{1,62}[a-zA-Z0-9]$'
-            valid_samples = sum(1 for s in samples if re.match(hostname_pattern, s))
-            content_score = valid_samples / len(samples) if samples else 0.0
-        elif field_type == 'ip_address':
-            ip_pattern = r'^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$'
-            valid_samples = sum(1 for s in samples if re.match(ip_pattern, s))
-            content_score = valid_samples / len(samples) if samples else 0.0
-        elif field_type == 'mac_address':
-            mac_pattern = r'^([0-9A-Fa-f]{2}[:-]){5}[0-9A-Fa-f]{2}$'
-            valid_samples = sum(1 for s in samples if re.match(mac_pattern, s))
-            content_score = valid_samples / len(samples) if samples else 0.0
-        else:
-            content_score = 0.5
-        
-        return (name_score * 0.6 + content_score * 0.4)
-    
-    def _calculate_semantic_score(self, text: str, field_type: str) -> float:
-        if field_type == 'infrastructure_type':
-            for infra_type, keywords in self.infrastructure_types.items():
-                if any(kw in text.lower() for kw in keywords):
-                    return 0.9
-        elif field_type == 'system_classification':
-            for sys_class, keywords in self.system_classifications.items():
-                if any(kw in text.lower() for kw in keywords):
-                    return 0.9
-        elif field_type == 'region':
-            for region, keywords in self.regional_mappings.items():
-                if any(kw in text.lower() for kw in keywords):
-                    return 0.9
-        return 0.5
-    
-    def identify_log_type(self, table_name: str, columns: List[str]) -> Dict[str, Any]:
-        table_lower = table_name.lower()
-        columns_lower = [c.lower() for c in columns]
-        all_text = f"{table_lower} {' '.join(columns_lower)}"
-        
-        scores = {}
-        for log_role, config in self.log_type_patterns.items():
-            pattern_score = sum(1 for p in config['patterns'] if p in all_text) / len(config['patterns'])
-            field_score = sum(1 for f in config['fields'] if any(f in c for c in columns_lower)) / max(len(config['fields']), 1)
-            scores[log_role] = (pattern_score * 0.6 + field_score * 0.4)
-        
-        best_role = max(scores, key=scores.get)
-        confidence = scores[best_role]
-        
-        return {
-            'role': best_role,
-            'confidence': confidence,
-            'log_types': self.log_type_patterns[best_role]['patterns'],
-            'visibility_factors': self.log_type_patterns[best_role]['visibility'],
-            'scores': scores
-        }
-    
-    def classify_infrastructure(self, text: str) -> str:
-        text_lower = text.lower()
-        for infra_type, keywords in self.infrastructure_types.items():
-            if any(kw in text_lower for kw in keywords):
-                return infra_type
-        return 'on_premise'
-    
-    def classify_system(self, text: str) -> str:
-        text_lower = text.lower()
-        for sys_class, keywords in self.system_classifications.items():
-            if any(kw in text_lower for kw in keywords):
-                return sys_class
-        return 'unknown'
-    
-    def map_region(self, text: str) -> str:
-        text_lower = text.lower()
-        for region, keywords in self.regional_mappings.items():
-            if any(kw in text_lower for kw in keywords):
-                return region
-        return 'unknown'
-    
-    def calculate_anomaly_score(self, values: List[Any]) -> float:
-        if not values:
-            return 0.0
-        
-        str_values = [str(v) for v in values]
-        unique_ratio = len(set(str_values)) / len(str_values)
-        
-        lengths = [len(v) for v in str_values]
-        if lengths:
-            mean_len = np.mean(lengths)
-            std_len = np.std(lengths)
-            cv = std_len / mean_len if mean_len > 0 else 0
-        else:
-            cv = 0
-        
-        anomaly_score = (1 - unique_ratio) * 0.5 + min(cv, 1.0) * 0.5
-        return anomaly_score
-                valid_samples = sum(1 for s in sample_values if re.match(hostname_pattern, s))
-                if valid_samples > len(sample_values) * 0.5:
-                    score = 0.8
-            
-            elif field_type == 'ip_address' and score < 1.0:
-                ip_pattern = r'^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}
-    
-    def _calculate_pattern_score(self, column_name: str, samples: List[str], field_type: str) -> float:
-        if field_type not in self.field_mappings:
-            return 0.0
-        
-        patterns = self.field_mappings[field_type]
-        column_lower = column_name.lower()
-        
-        name_score = max([1.0 if p in column_lower else 0.0 for p in patterns], default=0.0)
-        
-        if field_type == 'hostname':
-            hostname_pattern = r'^[a-zA-Z][a-zA-Z0-9\-]{1,62}[a-zA-Z0-9]$'
-            valid_samples = sum(1 for s in samples if re.match(hostname_pattern, s))
-            content_score = valid_samples / len(samples) if samples else 0.0
-        elif field_type == 'ip_address':
-            ip_pattern = r'^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$'
-            valid_samples = sum(1 for s in samples if re.match(ip_pattern, s))
-            content_score = valid_samples / len(samples) if samples else 0.0
-        elif field_type == 'mac_address':
-            mac_pattern = r'^([0-9A-Fa-f]{2}[:-]){5}[0-9A-Fa-f]{2}$'
-            valid_samples = sum(1 for s in samples if re.match(mac_pattern, s))
-            content_score = valid_samples / len(samples) if samples else 0.0
-        else:
-            content_score = 0.5
-        
-        return (name_score * 0.6 + content_score * 0.4)
-    
-    def _calculate_semantic_score(self, text: str, field_type: str) -> float:
-        if field_type == 'infrastructure_type':
-            for infra_type, keywords in self.infrastructure_types.items():
-                if any(kw in text.lower() for kw in keywords):
-                    return 0.9
-        elif field_type == 'system_classification':
-            for sys_class, keywords in self.system_classifications.items():
-                if any(kw in text.lower() for kw in keywords):
-                    return 0.9
-        elif field_type == 'region':
-            for region, keywords in self.regional_mappings.items():
-                if any(kw in text.lower() for kw in keywords):
-                    return 0.9
-        return 0.5
-    
-    def identify_log_type(self, table_name: str, columns: List[str]) -> Dict[str, Any]:
-        table_lower = table_name.lower()
-        columns_lower = [c.lower() for c in columns]
-        all_text = f"{table_lower} {' '.join(columns_lower)}"
-        
-        scores = {}
-        for log_role, config in self.log_type_patterns.items():
-            pattern_score = sum(1 for p in config['patterns'] if p in all_text) / len(config['patterns'])
-            field_score = sum(1 for f in config['fields'] if any(f in c for c in columns_lower)) / max(len(config['fields']), 1)
-            scores[log_role] = (pattern_score * 0.6 + field_score * 0.4)
-        
-        best_role = max(scores, key=scores.get)
-        confidence = scores[best_role]
-        
-        return {
-            'role': best_role,
-            'confidence': confidence,
-            'log_types': self.log_type_patterns[best_role]['patterns'],
-            'visibility_factors': self.log_type_patterns[best_role]['visibility'],
-            'scores': scores
-        }
-    
-    def classify_infrastructure(self, text: str) -> str:
-        text_lower = text.lower()
-        for infra_type, keywords in self.infrastructure_types.items():
-            if any(kw in text_lower for kw in keywords):
-                return infra_type
-        return 'on_premise'
-    
-    def classify_system(self, text: str) -> str:
-        text_lower = text.lower()
-        for sys_class, keywords in self.system_classifications.items():
-            if any(kw in text_lower for kw in keywords):
-                return sys_class
-        return 'unknown'
-    
-    def map_region(self, text: str) -> str:
-        text_lower = text.lower()
-        for region, keywords in self.regional_mappings.items():
-            if any(kw in text_lower for kw in keywords):
-                return region
-        return 'unknown'
-    
-    def calculate_anomaly_score(self, values: List[Any]) -> float:
-        if not values:
-            return 0.0
-        
-        str_values = [str(v) for v in values]
-        unique_ratio = len(set(str_values)) / len(str_values)
-        
-        lengths = [len(v) for v in str_values]
-        if lengths:
-            mean_len = np.mean(lengths)
-            std_len = np.std(lengths)
-            cv = std_len / mean_len if mean_len > 0 else 0
-        else:
-            cv = 0
-        
-        anomaly_score = (1 - unique_ratio) * 0.5 + min(cv, 1.0) * 0.5
-        return anomaly_score
-                valid_samples = sum(1 for s in sample_values if re.match(ip_pattern, s))
-                if valid_samples > len(sample_values) * 0.5:
-                    score = 0.9
-            
-            elif field_type == 'mac_address' and score < 1.0:
-                mac_pattern = r'^([0-9A-Fa-f]{2}[:-]){5}[0-9A-Fa-f]{2}
-    
-    def _calculate_pattern_score(self, column_name: str, samples: List[str], field_type: str) -> float:
-        if field_type not in self.field_mappings:
-            return 0.0
-        
-        patterns = self.field_mappings[field_type]
-        column_lower = column_name.lower()
-        
-        name_score = max([1.0 if p in column_lower else 0.0 for p in patterns], default=0.0)
-        
-        if field_type == 'hostname':
-            hostname_pattern = r'^[a-zA-Z][a-zA-Z0-9\-]{1,62}[a-zA-Z0-9]$'
-            valid_samples = sum(1 for s in samples if re.match(hostname_pattern, s))
-            content_score = valid_samples / len(samples) if samples else 0.0
-        elif field_type == 'ip_address':
-            ip_pattern = r'^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$'
-            valid_samples = sum(1 for s in samples if re.match(ip_pattern, s))
-            content_score = valid_samples / len(samples) if samples else 0.0
-        elif field_type == 'mac_address':
-            mac_pattern = r'^([0-9A-Fa-f]{2}[:-]){5}[0-9A-Fa-f]{2}$'
-            valid_samples = sum(1 for s in samples if re.match(mac_pattern, s))
-            content_score = valid_samples / len(samples) if samples else 0.0
-        else:
-            content_score = 0.5
-        
-        return (name_score * 0.6 + content_score * 0.4)
-    
-    def _calculate_semantic_score(self, text: str, field_type: str) -> float:
-        if field_type == 'infrastructure_type':
-            for infra_type, keywords in self.infrastructure_types.items():
-                if any(kw in text.lower() for kw in keywords):
-                    return 0.9
-        elif field_type == 'system_classification':
-            for sys_class, keywords in self.system_classifications.items():
-                if any(kw in text.lower() for kw in keywords):
-                    return 0.9
-        elif field_type == 'region':
-            for region, keywords in self.regional_mappings.items():
-                if any(kw in text.lower() for kw in keywords):
-                    return 0.9
-        return 0.5
-    
-    def identify_log_type(self, table_name: str, columns: List[str]) -> Dict[str, Any]:
-        table_lower = table_name.lower()
-        columns_lower = [c.lower() for c in columns]
-        all_text = f"{table_lower} {' '.join(columns_lower)}"
-        
-        scores = {}
-        for log_role, config in self.log_type_patterns.items():
-            pattern_score = sum(1 for p in config['patterns'] if p in all_text) / len(config['patterns'])
-            field_score = sum(1 for f in config['fields'] if any(f in c for c in columns_lower)) / max(len(config['fields']), 1)
-            scores[log_role] = (pattern_score * 0.6 + field_score * 0.4)
-        
-        best_role = max(scores, key=scores.get)
-        confidence = scores[best_role]
-        
-        return {
-            'role': best_role,
-            'confidence': confidence,
-            'log_types': self.log_type_patterns[best_role]['patterns'],
-            'visibility_factors': self.log_type_patterns[best_role]['visibility'],
-            'scores': scores
-        }
-    
-    def classify_infrastructure(self, text: str) -> str:
-        text_lower = text.lower()
-        for infra_type, keywords in self.infrastructure_types.items():
-            if any(kw in text_lower for kw in keywords):
-                return infra_type
-        return 'on_premise'
-    
-    def classify_system(self, text: str) -> str:
-        text_lower = text.lower()
-        for sys_class, keywords in self.system_classifications.items():
-            if any(kw in text_lower for kw in keywords):
-                return sys_class
-        return 'unknown'
-    
-    def map_region(self, text: str) -> str:
-        text_lower = text.lower()
-        for region, keywords in self.regional_mappings.items():
-            if any(kw in text_lower for kw in keywords):
-                return region
-        return 'unknown'
-    
-    def calculate_anomaly_score(self, values: List[Any]) -> float:
-        if not values:
-            return 0.0
-        
-        str_values = [str(v) for v in values]
-        unique_ratio = len(set(str_values)) / len(str_values)
-        
-        lengths = [len(v) for v in str_values]
-        if lengths:
-            mean_len = np.mean(lengths)
-            std_len = np.std(lengths)
-            cv = std_len / mean_len if mean_len > 0 else 0
-        else:
-            cv = 0
-        
-        anomaly_score = (1 - unique_ratio) * 0.5 + min(cv, 1.0) * 0.5
-        return anomaly_score
-                valid_samples = sum(1 for s in sample_values if re.match(mac_pattern, s))
-                if valid_samples > len(sample_values) * 0.5:
-                    score = 0.9
+            if score < 1.0 and sample_values:
+                if field_type == 'hostname':
+                    pattern = r'^[a-zA-Z0-9][a-zA-Z0-9\-\.]{1,253}[a-zA-Z0-9]$'
+                    valid = sum(1 for s in sample_values if re.match(pattern, str(s)))
+                    if valid > len(sample_values) * 0.5:
+                        score = 0.8
+                elif field_type == 'ip_address':
+                    pattern = r'^(\d{1,3}\.){3}\d{1,3}$'
+                    valid = sum(1 for s in sample_values if re.match(pattern, str(s)))
+                    if valid > len(sample_values) * 0.5:
+                        score = 0.9
             
             if score > best_match[1]:
                 best_match = (field_type, score)
         
         return best_match[0], best_match[1], {'method': 'pattern_matching', 'pattern_score': best_match[1]}
     
-    def _calculate_pattern_score(self, column_name: str, samples: List[str], field_type: str) -> float:
-        if field_type not in self.field_mappings:
-            return 0.0
-        
-        patterns = self.field_mappings[field_type]
-        column_lower = column_name.lower()
-        
-        name_score = max([1.0 if p in column_lower else 0.0 for p in patterns], default=0.0)
-        
-        if field_type == 'hostname':
-            hostname_pattern = r'^[a-zA-Z][a-zA-Z0-9\-]{1,62}[a-zA-Z0-9]$'
-            valid_samples = sum(1 for s in samples if re.match(hostname_pattern, s))
-            content_score = valid_samples / len(samples) if samples else 0.0
-        elif field_type == 'ip_address':
-            ip_pattern = r'^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$'
-            valid_samples = sum(1 for s in samples if re.match(ip_pattern, s))
-            content_score = valid_samples / len(samples) if samples else 0.0
-        elif field_type == 'mac_address':
-            mac_pattern = r'^([0-9A-Fa-f]{2}[:-]){5}[0-9A-Fa-f]{2}$'
-            valid_samples = sum(1 for s in samples if re.match(mac_pattern, s))
-            content_score = valid_samples / len(samples) if samples else 0.0
-        else:
-            content_score = 0.5
-        
-        return (name_score * 0.6 + content_score * 0.4)
-    
-    def _calculate_semantic_score(self, text: str, field_type: str) -> float:
-        if field_type == 'infrastructure_type':
-            for infra_type, keywords in self.infrastructure_types.items():
-                if any(kw in text.lower() for kw in keywords):
-                    return 0.9
-        elif field_type == 'system_classification':
-            for sys_class, keywords in self.system_classifications.items():
-                if any(kw in text.lower() for kw in keywords):
-                    return 0.9
-        elif field_type == 'region':
-            for region, keywords in self.regional_mappings.items():
-                if any(kw in text.lower() for kw in keywords):
-                    return 0.9
-        return 0.5
-    
     def identify_log_type(self, table_name: str, columns: List[str]) -> Dict[str, Any]:
         table_lower = table_name.lower()
         columns_lower = [c.lower() for c in columns]
@@ -886,7 +652,7 @@ class HyperIntelligence:
         for log_role, config in self.log_type_patterns.items():
             pattern_score = sum(1 for p in config['patterns'] if p in all_text) / len(config['patterns'])
             field_score = sum(1 for f in config['fields'] if any(f in c for c in columns_lower)) / max(len(config['fields']), 1)
-            scores[log_role] = (pattern_score * 0.6 + field_score * 0.4)
+            scores[log_role] = pattern_score * 0.6 + field_score * 0.4
         
         best_role = max(scores, key=scores.get)
         confidence = scores[best_role]
@@ -901,23 +667,48 @@ class HyperIntelligence:
     
     def classify_infrastructure(self, text: str) -> str:
         text_lower = text.lower()
-        for infra_type, keywords in self.infrastructure_types.items():
+        infra_keywords = {
+            'cloud': ['aws', 'azure', 'gcp', 'cloud', 'ec2', 'lambda', 's3'],
+            'on_premise': ['onprem', 'datacenter', 'physical', 'bare_metal'],
+            'saas': ['saas', 'software_as_service', 'hosted'],
+            'api': ['api', 'endpoint', 'rest', 'graphql']
+        }
+        
+        for infra_type, keywords in infra_keywords.items():
             if any(kw in text_lower for kw in keywords):
                 return infra_type
+        
         return 'on_premise'
     
     def classify_system(self, text: str) -> str:
         text_lower = text.lower()
-        for sys_class, keywords in self.system_classifications.items():
+        sys_keywords = {
+            'web_server': ['web', 'apache', 'nginx', 'iis', 'http'],
+            'windows_server': ['windows', 'win', 'server2019', 'server2016'],
+            'linux_server': ['linux', 'ubuntu', 'centos', 'rhel', 'debian'],
+            'database': ['database', 'sql', 'oracle', 'postgres', 'mysql'],
+            'network_appliance': ['firewall', 'router', 'switch', 'proxy']
+        }
+        
+        for sys_class, keywords in sys_keywords.items():
             if any(kw in text_lower for kw in keywords):
                 return sys_class
+        
         return 'unknown'
     
     def map_region(self, text: str) -> str:
         text_lower = text.lower()
-        for region, keywords in self.regional_mappings.items():
+        regions = {
+            'na': ['north_america', 'usa', 'canada', 'us-east', 'us-west'],
+            'europe': ['europe', 'eu', 'uk', 'germany', 'france'],
+            'apac': ['asia', 'pacific', 'japan', 'china', 'india'],
+            'latam': ['latin', 'brazil', 'mexico', 'argentina']
+        }
+        
+        for region, keywords in regions.items():
             if any(kw in text_lower for kw in keywords):
                 return region
+        
         return 'unknown'
     
     def calculate_anomaly_score(self, values: List[Any]) -> float:
@@ -929,11 +720,10 @@ class HyperIntelligence:
         
         lengths = [len(v) for v in str_values]
         if lengths:
-            mean_len = np.mean(lengths)
-            std_len = np.std(lengths)
-            cv = std_len / mean_len if mean_len > 0 else 0
+            cv = np.std(lengths) / (np.mean(lengths) + 1e-8)
         else:
             cv = 0
         
-        anomaly_score = (1 - unique_ratio) * 0.5 + min(cv, 1.0) * 0.5
-        return anomaly_score
+        entropy = stats.entropy(Counter(str_values).values()) if len(set(str_values)) > 1 else 0
+        
+        return (1 - unique_ratio) * 0.3 + min(cv, 1.0) * 0.3 + min(entropy / 10, 1.0) * 0.4
