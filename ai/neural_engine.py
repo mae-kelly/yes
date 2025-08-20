@@ -96,7 +96,7 @@ def initialize_transformer():
             tokenizer = AutoTokenizer.from_pretrained(model_name, local_files_only=True)
             transformer_model = AutoModel.from_pretrained(model_name, local_files_only=True)
             TRANSFORMER_BACKEND = 'transformers'
-            logger.info("Loaded transformers from cache (offline mode)")
+            logger.info(f"Loaded transformers from cache (offline mode)")
             return True
         except:
             # Try online with various SSL fixes
@@ -338,6 +338,8 @@ class HyperIntelligence:
         self.neural_net = QuantumNeuralNetwork(input_dim=actual_dim).to(self.device)
         
         logger.info(f"HyperIntelligence initialized with backend: {TRANSFORMER_BACKEND}, dim: {actual_dim}")
+        
+        self.field_mappings = {
         
         self.field_mappings = {
             'hostname': ['hostname', 'host_name', 'computer_name', 'device_name', 'machine_name', 'system_name', 'server_name', 'endpoint_name', 'asset_name'],
