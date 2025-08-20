@@ -276,13 +276,17 @@ def initialize_transformer():
 initialize_transformer()
 
 class QuantumNeuralNetwork(nn.Module):
-    def __init__(self, input_dim=768, hidden_dims=[512, 256, 128], num_classes=17):
+    def __init__(self, input_dim=None, hidden_dims=[512, 256, 128], num_classes=17):
         super().__init__()
         
-        # Adjust input dimension based on backend
-        if TRANSFORMER_BACKEND == 'sklearn' or TRANSFORMER_BACKEND == 'word2vec' or TRANSFORMER_BACKEND == 'hash':
-            input_dim = 384  # These backends use 384 dimensions
+        # Dynamically set input dimension based on backend
+        if input_dim is None:
+            if TRANSFORMER_BACKEND in ['sklearn', 'word2vec', 'hash']:
+                input_dim = 384  # These backends use 384 dimensions
+            else:
+                input_dim = 768  # Transformers use 768 dimensions
         
+        self.input_dim = input_dim
         self.encoder = nn.ModuleList()
         dims = [input_dim] + hidden_dims
         for i in range(len(dims)-1):
@@ -320,14 +324,20 @@ class HyperIntelligence:
         self.transformer = transformer_model
         self.tokenizer = tokenizer
         
-        # Adjust neural network input size based on backend
-        input_dim = 768
-        if TRANSFORMER_BACKEND in ['sklearn', 'word2vec', 'hash']:
-            input_dim = 384
+        # Determine actual embedding dimension by testing
+        try:
+            test_embedding = self.encode_text("test")
+            actual_dim = test_embedding.shape[-1]
+            logger.info(f"Detected embedding dimension: {actual_dim}")
+        except:
+            # Default based on backend
+            actual_dim = 384 if TRANSFORMER_BACKEND in ['sklearn', 'word2vec', 'hash'] else 768
+            logger.info(f"Using default dimension for {TRANSFORMER_BACKEND}: {actual_dim}")
         
-        self.neural_net = QuantumNeuralNetwork(input_dim=input_dim).to(self.device)
+        # Create neural network with correct input dimension
+        self.neural_net = QuantumNeuralNetwork(input_dim=actual_dim).to(self.device)
         
-        logger.info(f"HyperIntelligence initialized with backend: {TRANSFORMER_BACKEND}")
+        logger.info(f"HyperIntelligence initialized with backend: {TRANSFORMER_BACKEND}, dim: {actual_dim}")
         
         self.field_mappings = {
             'hostname': ['hostname', 'host_name', 'computer_name', 'device_name', 'machine_name', 'system_name', 'server_name', 'endpoint_name', 'asset_name'],
@@ -417,11 +427,25 @@ class HyperIntelligence:
                 embeddings = embeddings.unsqueeze(0) if len(embeddings.shape) == 1 else embeddings
                 embeddings = embeddings.to(self.device)
             
+            # Ensure correct dimensions
+            if embeddings.shape[-1] != self.neural_net.input_dim:
+                # Pad or truncate to match expected dimensions
+                current_dim = embeddings.shape[-1]
+                expected_dim = self.neural_net.input_dim
+                
+                if current_dim < expected_dim:
+                    # Pad with zeros
+                    padding = torch.zeros(embeddings.shape[0], expected_dim - current_dim).to(self.device)
+                    embeddings = torch.cat([embeddings, padding], dim=-1)
+                else:
+                    # Truncate
+                    embeddings = embeddings[:, :expected_dim]
+            
             return embeddings
         except Exception as e:
             logger.error(f"Encoding failed: {e}, using random embeddings")
-            # Emergency fallback
-            dim = 768 if TRANSFORMER_BACKEND == 'transformers' else 384
+            # Emergency fallback with correct dimensions
+            dim = self.neural_net.input_dim if hasattr(self, 'neural_net') else 768
             return torch.randn(1, dim).to(self.device)
     
     def classify_column(self, column_name: str, sample_values: List[str]) -> Tuple[str, float, Dict[str, Any]]:
