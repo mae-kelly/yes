@@ -10,7 +10,6 @@ import re
 from collections import defaultdict, Counter
 from dataclasses import dataclass, field
 import networkx as nx
-from scipy.spatial.distance import cosine
 import json
 from pathlib import Path
 import pickle
@@ -222,10 +221,23 @@ class ConceptualKnowledgeGraph:
         self._update_knowledge_graph(concept)
         return concept
     
+    def _safe_cosine_similarity(self, vec1, vec2):
+        vec1_norm = np.linalg.norm(vec1)
+        vec2_norm = np.linalg.norm(vec2)
+        
+        if vec1_norm == 0 or vec2_norm == 0:
+            return 0.0
+        
+        dot_product = np.dot(vec1, vec2)
+        similarity = dot_product / (vec1_norm * vec2_norm)
+        return float(np.clip(similarity, -1.0, 1.0))
+    
     def _classify_entity_type(self, entity_data: Dict[str, Any]) -> str:
         scores = {}
         
         entity_text = ' '.join(str(v) for v in entity_data.values() if v)
+        if not entity_text.strip():
+            entity_text = "unknown_entity"
         entity_embedding = self.embedding_engine.encode(entity_text)[0]
         
         for concept_type, definition in self.concepts.items():
@@ -234,7 +246,7 @@ class ConceptualKnowledgeGraph:
             concept_text = ' '.join(definition.get('identifiers', []) + definition.get('properties', []))
             if concept_text:
                 concept_embedding = self.embedding_engine.encode(concept_text)[0]
-                similarity = 1 - cosine(entity_embedding, concept_embedding)
+                similarity = self._safe_cosine_similarity(entity_embedding, concept_embedding)
                 score += similarity * 10
             
             if 'identifiers' in definition:
@@ -312,7 +324,7 @@ class ConceptualKnowledgeGraph:
         
         key_embedding = self.embedding_engine.encode(key)[0]
         concept_embedding = self.embedding_engine.encode(concept_type)[0]
-        similarity = 1 - cosine(key_embedding, concept_embedding)
+        similarity = self._safe_cosine_similarity(key_embedding, concept_embedding)
         confidence = confidence * 0.7 + similarity * 0.3
         
         return min(1.0, max(0.0, confidence))
@@ -327,7 +339,7 @@ class ConceptualKnowledgeGraph:
             for key, value in entity_data.items():
                 if value:
                     key_embedding = self.embedding_engine.encode(key)[0]
-                    similarity = 1 - cosine(rel_embedding, key_embedding)
+                    similarity = self._safe_cosine_similarity(rel_embedding, key_embedding)
                     
                     if similarity > 0.6:
                         relationships.add(rel_type)
@@ -475,10 +487,10 @@ class ConceptualKnowledgeGraph:
         c1_text = ' '.join(str(v['value']) for v in c1.properties.values())
         c2_text = ' '.join(str(v['value']) for v in c2.properties.values())
         
-        if c1_text and c2_text:
+        if c1_text.strip() and c2_text.strip():
             c1_embedding = self.embedding_engine.encode(c1_text)[0]
             c2_embedding = self.embedding_engine.encode(c2_text)[0]
-            return 1 - cosine(c1_embedding, c2_embedding)
+            return self._safe_cosine_similarity(c1_embedding, c2_embedding)
         
         shared_props = set(c1.properties.keys()) & set(c2.properties.keys())
         total_props = set(c1.properties.keys()) | set(c2.properties.keys())
@@ -565,7 +577,10 @@ class ClaudeLevelIntelligence:
         table_name = table_metadata.get('table_name', '').lower()
         columns = table_metadata.get('columns', [])
         
-        table_embedding = self.knowledge_graph.embedding_engine.encode(' '.join([table_name] + columns))[0]
+        table_text = ' '.join([table_name] + columns)
+        if not table_text.strip():
+            table_text = "unknown_table"
+        table_embedding = self.knowledge_graph.embedding_engine.encode(table_text)[0]
         
         purpose_scores = {}
         purposes = {
@@ -577,7 +592,7 @@ class ClaudeLevelIntelligence:
         
         for purpose, keywords in purposes.items():
             purpose_embedding = self.knowledge_graph.embedding_engine.encode(' '.join(keywords))[0]
-            similarity = 1 - cosine(table_embedding, purpose_embedding)
+            similarity = self.knowledge_graph._safe_cosine_similarity(table_embedding, purpose_embedding)
             
             keyword_matches = sum(1 for kw in keywords if any(kw in col.lower() for col in columns))
             
