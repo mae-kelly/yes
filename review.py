@@ -145,6 +145,51 @@ class SpecificTableReviewer:
             json.dump(self.labeled_columns, f, indent=2, default=str)
         logger.info(f"💾 Saved labeled data to {self.labeled_data_path}")
     
+    def test_table_access(self):
+        """Test access to all target tables"""
+        print("\n" + "="*60)
+        print("TESTING TABLE ACCESS")
+        print("="*60)
+        
+        for table_path, table_info in self.target_tables.items():
+            project_id = table_path.split('.')[0]
+            manager = self.client_managers.get(project_id)
+            
+            print(f"\n📋 Testing: {table_info['description']}")
+            print(f"   Path: {table_path}")
+            
+            if not manager:
+                print(f"   ❌ No client manager for project {project_id}")
+                continue
+            
+            try:
+                with manager.get_client() as client:
+                    # Test if table exists and get basic info
+                    table = client.get_table(table_path)
+                    print(f"   ✅ Table exists")
+                    print(f"   📊 Reported rows: {table.num_rows:,}" if table.num_rows else "   📊 Reported rows: Unknown")
+                    print(f"   📏 Columns: {len(table.schema)}")
+                    print(f"   🏷️ Table type: {table.table_type}")
+                    
+                    # Test a simple query
+                    try:
+                        query = f"SELECT COUNT(*) as row_count FROM `{table_path}`"
+                        query_job = client.query(query)
+                        result = list(query_job.result(timeout=30))
+                        actual_rows = result[0].row_count if result else 0
+                        print(f"   🔢 Actual row count: {actual_rows:,}")
+                        
+                        if actual_rows > 0:
+                            print(f"   ✅ Table has data and is accessible")
+                        else:
+                            print(f"   ⚠️ Table is empty or inaccessible")
+                        
+                    except Exception as e:
+                        print(f"   ❌ Query test failed: {e}")
+                        
+            except Exception as e:
+                print(f"   ❌ Table access failed: {e}")
+    
     def review_all_target_tables(self):
         """Review all target tables interactively"""
         print("\n" + "="*80)
@@ -218,9 +263,15 @@ class SpecificTableReviewer:
                 # Get table metadata
                 table = client.get_table(table_path)
                 
-                if table.num_rows == 0:
-                    print("  (Empty table, skipping)")
-                    return True
+                print(f"  📋 Table info:")
+                print(f"    Rows: {table.num_rows:,}" if table.num_rows else "    Rows: Unknown")
+                print(f"    Size: {table.num_bytes:,} bytes" if table.num_bytes else "    Size: Unknown")
+                print(f"    Created: {table.created}" if table.created else "    Created: Unknown")
+                print(f"    Modified: {table.modified}" if table.modified else "    Modified: Unknown")
+                
+                # Don't skip based on num_rows being 0, as it might be inaccurate for views
+                if table.num_rows is not None and table.num_rows == 0:
+                    print("  ⚠️ Table reports 0 rows, but this might be a view - continuing anyway...")
                 
                 columns = [field.name for field in table.schema]
                 print(f"  📊 {len(columns)} columns, {table.num_rows:,} rows")
@@ -243,7 +294,14 @@ class SpecificTableReviewer:
                 }
                 
                 # Get sample data
+                print("  🔍 Attempting to get sample data...")
                 sample_data = self._get_sample_data(client, table_path, columns)
+                
+                if not sample_data:
+                    print("  ⚠️ Could not retrieve sample data, but proceeding with column review")
+                    print("    You can still label columns based on names and schema information")
+                else:
+                    print(f"  ✅ Retrieved {len(sample_data)} sample rows for analysis")
                 
                 # Review each column
                 table_labels = {}
@@ -273,8 +331,13 @@ class SpecificTableReviewer:
                             else:
                                 print(f"      {i}. (null)")
                                 sample_values.append(None)
+                        
+                        # If no values shown, try to show any non-null values
+                        if not any(sample_values):
+                            print("      (All sample values are null for this column)")
                     else:
-                        print("    (No sample data available)")
+                        print("    ⚠️ No sample data available - table might be empty or access restricted")
+                        print("    You can still label this column based on its name and schema info")
                         sample_values = []
                     
                     # Get user decision
@@ -352,37 +415,110 @@ class SpecificTableReviewer:
             return False
     
     def _get_sample_data(self, client, table_path: str, columns: List[str]) -> List[Dict[str, Any]]:
-        """Get sample data from the table"""
+        """Get sample data from the table using multiple fallback strategies"""
+        sample_data = []
+        
+        # Strategy 1: Simple LIMIT query (most reliable)
         try:
-            # Build safe column names
-            safe_columns = [f"`{col}`" for col in columns]
+            safe_columns = [f"`{col}`" for col in columns[:20]]  # Limit columns to avoid timeout
             
             query = f"""
             SELECT {', '.join(safe_columns)}
             FROM `{table_path}`
-            WHERE RAND() < 0.01  -- Sample 1% of data
             LIMIT 10
             """
             
+            logger.debug(f"Trying simple LIMIT query for {table_path}")
             query_job = client.query(query)
-            results = list(query_job.result(timeout=60))
+            results = list(query_job.result(timeout=30))
             
-            sample_data = []
+            for row in results:
+                row_dict = {}
+                for col in columns[:20]:
+                    try:
+                        value = getattr(row, col, None)
+                        # Convert complex types to strings
+                        if value is not None:
+                            if isinstance(value, (dict, list)):
+                                row_dict[col] = str(value)[:200]
+                            else:
+                                row_dict[col] = str(value)[:200]
+                        else:
+                            row_dict[col] = None
+                    except Exception as e:
+                        logger.debug(f"Error getting column {col}: {e}")
+                        row_dict[col] = None
+                sample_data.append(row_dict)
+            
+            if sample_data:
+                logger.info(f"✅ Got {len(sample_data)} sample rows using simple LIMIT")
+                return sample_data
+                
+        except Exception as e:
+            logger.warning(f"Simple LIMIT query failed for {table_path}: {e}")
+        
+        # Strategy 2: Try with TABLESAMPLE if simple query fails
+        try:
+            safe_columns = [f"`{col}`" for col in columns[:15]]
+            
+            query = f"""
+            SELECT {', '.join(safe_columns)}
+            FROM `{table_path}` TABLESAMPLE SYSTEM (1 PERCENT)
+            LIMIT 5
+            """
+            
+            logger.debug(f"Trying TABLESAMPLE query for {table_path}")
+            query_job = client.query(query)
+            results = list(query_job.result(timeout=30))
+            
+            for row in results:
+                row_dict = {}
+                for col in columns[:15]:
+                    try:
+                        value = getattr(row, col, None)
+                        row_dict[col] = str(value)[:200] if value is not None else None
+                    except:
+                        row_dict[col] = None
+                sample_data.append(row_dict)
+            
+            if sample_data:
+                logger.info(f"✅ Got {len(sample_data)} sample rows using TABLESAMPLE")
+                return sample_data
+                
+        except Exception as e:
+            logger.warning(f"TABLESAMPLE query failed for {table_path}: {e}")
+        
+        # Strategy 3: Try with SELECT * and very small limit
+        try:
+            query = f"""
+            SELECT *
+            FROM `{table_path}`
+            LIMIT 3
+            """
+            
+            logger.debug(f"Trying SELECT * query for {table_path}")
+            query_job = client.query(query)
+            results = list(query_job.result(timeout=20))
+            
             for row in results:
                 row_dict = {}
                 for col in columns:
                     try:
                         value = getattr(row, col, None)
-                        row_dict[col] = value
+                        row_dict[col] = str(value)[:100] if value is not None else None
                     except:
                         row_dict[col] = None
                 sample_data.append(row_dict)
             
-            return sample_data
-            
+            if sample_data:
+                logger.info(f"✅ Got {len(sample_data)} sample rows using SELECT *")
+                return sample_data
+                
         except Exception as e:
-            logger.debug(f"Failed to get sample data for {table_path}: {e}")
-            return []
+            logger.warning(f"SELECT * query failed for {table_path}: {e}")
+        
+        logger.error(f"❌ All sampling strategies failed for {table_path}")
+        return []
     
     def _show_column_types(self):
         """Display column types"""
@@ -474,6 +610,12 @@ def main():
     """Main entry point"""
     reviewer = SpecificTableReviewer()
     
+    print("\nSpecific Table Reviewer - High-Value Security & Infrastructure Tables")
+    
+    # Test table access first
+    print("\nTesting access to target tables...")
+    reviewer.test_table_access()
+    
     print("\nThis will review specific high-value tables for column labeling.")
     print("You can press Ctrl+C at any time to pause and save progress.")
     
@@ -486,6 +628,12 @@ def main():
         if resume != 'y':
             print("Starting fresh review.")
             reviewer.labeled_columns = reviewer._load_labeled_data()
+    
+    # Ask if user wants to proceed after seeing test results
+    proceed = input("\nProceed with the review? (y/n): ").lower().strip()
+    if proceed != 'y':
+        print("Review cancelled.")
+        return
     
     # Start the review process
     reviewer.review_all_target_tables()
