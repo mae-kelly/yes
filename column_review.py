@@ -187,10 +187,11 @@ class ColumnReviewer:
             return
         
         print("\n" + "="*80)
-        print("COLUMN REVIEW SYSTEM")
+        print("HOSTNAME COLUMN REVIEW SYSTEM")
         print("="*80)
-        print("Review each labeled column and decide whether to keep or remove it.")
-        print("\nFor each column, you can:")
+        print("Review ONLY hostname columns and decide whether to keep or remove them.")
+        print("All other column types will be automatically kept.")
+        print("\nFor each HOSTNAME column, you can:")
         print("  1 = KEEP   (include in final dataset)")
         print("  2 = REMOVE (exclude from final dataset)")
         print("  q = QUIT   (save progress and exit)")
@@ -212,30 +213,41 @@ class ColumnReviewer:
         """Show an overview of what will be reviewed"""
         columns_data = self.original_data.get('columns', {})
         
-        # Count by column type
+        # Count hostname columns only
+        hostname_columns = 0
+        total_all_columns = 0
         type_counts = defaultdict(int)
-        total_columns = 0
         
         for table_path, table_labels in columns_data.items():
             for column_name, column_type in table_labels.items():
-                if column_type != 'skip':  # Don't review skipped columns
+                if column_type != 'skip':
                     type_counts[column_type] += 1
-                    total_columns += 1
+                    total_all_columns += 1
+                    if column_type == 'host':
+                        hostname_columns += 1
         
-        print("REVIEW OVERVIEW")
+        print("HOSTNAME COLUMN REVIEW OVERVIEW")
         print("-" * 50)
-        print(f"Total columns to review: {total_columns}")
+        print(f"🎯 HOSTNAME COLUMNS TO REVIEW: {hostname_columns}")
+        print(f"Total columns in dataset: {total_all_columns}")
         print(f"Tables with labels: {len(columns_data)}")
-        print("\nColumns by type:")
         
+        if hostname_columns == 0:
+            print("\n❌ No hostname columns found to review!")
+            return False
+        
+        print(f"\nOther column types in dataset (for reference):")
         for col_type, count in sorted(type_counts.items(), key=lambda x: x[1], reverse=True):
-            display_name = self.column_types.get(col_type, col_type)
-            print(f"  {display_name:25} {count:6} columns")
+            if col_type != 'host':  # Don't show host count again
+                display_name = self.column_types.get(col_type, col_type)
+                print(f"  {display_name:25} {count:6} columns (not being reviewed)")
         
         print("-" * 50)
+        print("📝 NOTE: Only reviewing HOSTNAME columns (type='host')")
+        print("   All other column types will be automatically kept as-is.")
         
         # Ask if they want to proceed
-        proceed = input("\nProceed with review? (y/n): ").lower().strip()
+        proceed = input(f"\nProceed with reviewing {hostname_columns} hostname columns? (y/n): ").lower().strip()
         if proceed != 'y':
             print("Review cancelled.")
             return False
@@ -243,41 +255,41 @@ class ColumnReviewer:
         return True
     
     def _review_by_column_type(self):
-        """Review columns organized by type"""
+        """Review hostname columns only"""
         columns_data = self.original_data.get('columns', {})
         
-        # Organize columns by type
-        columns_by_type = defaultdict(list)
+        # Find only hostname columns
+        hostname_columns = []
         
         for table_path, table_labels in columns_data.items():
             for column_name, column_type in table_labels.items():
-                if column_type != 'skip':  # Skip the 'skip' columns
-                    columns_by_type[column_type].append({
+                if column_type == 'host':  # Only review hostname columns
+                    hostname_columns.append({
                         'table': table_path,
                         'column': column_name,
                         'type': column_type
                     })
         
-        # Review each type
-        for column_type in sorted(columns_by_type.keys()):
-            columns_list = columns_by_type[column_type]
-            display_name = self.column_types.get(column_type, column_type)
+        if not hostname_columns:
+            print("❌ No hostname columns found to review!")
+            return
+        
+        print(f"\n" + "="*60)
+        print(f"REVIEWING: HOSTNAME COLUMNS ONLY")
+        print("="*60)
+        print(f"Found {len(hostname_columns)} hostname columns to review")
+        print("All other column types will be automatically kept as-is.")
+        
+        # Review each hostname column
+        for i, column_info in enumerate(hostname_columns, 1):
+            decision = self._review_single_column(column_info, i, len(hostname_columns))
             
-            print(f"\n" + "="*60)
-            print(f"REVIEWING: {display_name.upper()}")
-            print("="*60)
-            print(f"Found {len(columns_list)} columns of this type")
-            
-            # Review each column in this type
-            for i, column_info in enumerate(columns_list, 1):
-                decision = self._review_single_column(column_info, i, len(columns_list))
-                
-                if decision == 'quit':
-                    print("\nQuitting review. Progress saved.")
-                    return
-                elif decision == 'skip_type':
-                    print(f"\nSkipping remaining {display_name} columns.")
-                    break
+            if decision == 'quit':
+                print("\nQuitting review. Progress saved.")
+                return
+        
+        # Automatically copy all non-hostname columns to the reviewed data
+        self._copy_non_hostname_columns(columns_data)
     
     def _review_single_column(self, column_info: Dict[str, Any], index: int, total: int) -> str:
         """Review a single column and get user decision"""
@@ -293,7 +305,7 @@ class ColumnReviewer:
         self._show_sample_data(table_path, column_name)
         
         while True:
-            choice = input("\nDecision (1=keep, 2=remove, i=info, s=skip, q=quit, t=skip type): ").lower().strip()
+            choice = input("\nDecision (1=keep, 2=remove, i=info, s=skip, q=quit): ").lower().strip()
             
             if choice == '1':
                 # Keep this column
@@ -326,17 +338,39 @@ class ColumnReviewer:
                 # Quit the review
                 return 'quit'
             
-            elif choice == 't':
-                # Skip remaining columns of this type
-                return 'skip_type'
-            
             else:
-                print("  Invalid choice. Please enter 1, 2, i, s, q, or t")
+                print("  Invalid choice. Please enter 1, 2, i, s, or q")
         
         self.reviewed_data['review_statistics']['total_reviewed'] += 1
         return 'continue'
     
-    def _show_sample_data(self, table_path: str, column_name: str):
+        # Automatically copy all non-hostname columns to the reviewed data
+        self._copy_non_hostname_columns(columns_data)
+    
+    def _copy_non_hostname_columns(self, columns_data: Dict[str, Dict[str, str]]):
+        """Automatically copy all non-hostname columns to the reviewed dataset"""
+        copied_count = 0
+        
+        print(f"\n📋 Automatically copying all non-hostname columns...")
+        
+        for table_path, table_labels in columns_data.items():
+            for column_name, column_type in table_labels.items():
+                if column_type != 'host' and column_type != 'skip':
+                    # Automatically keep all non-hostname columns
+                    if table_path not in self.reviewed_data['columns']:
+                        self.reviewed_data['columns'][table_path] = {}
+                    
+                    self.reviewed_data['columns'][table_path][column_name] = column_type
+                    copied_count += 1
+                    
+                    # Update statistics
+                    self.reviewed_data['review_statistics']['kept'] += 1
+                    self.reviewed_data['review_statistics']['by_column_type'][column_type]['kept'] += 1
+        
+        print(f"✅ Automatically kept {copied_count} non-hostname columns")
+        print("   (These were not reviewed since you only wanted to review hostnames)")
+    
+    def _show_sample_data(self, table_path: str, column_name: str)::
         """Show sample data for this column"""
         # Try to find sample data in the original labeling history
         labeling_history = self.original_data.get('labeling_history', [])
@@ -517,6 +551,8 @@ class ColumnReviewer:
         print(f"\n📁 Results saved:")
         print(f"  Reviewed data: {self.output_file}")
         print(f"  Rejected data: {self.rejected_file}")
+        print("\n📝 NOTE: Only hostname columns were reviewed.")
+        print("   All other column types were automatically kept.")
         print("="*60)
     
     def _save_results(self):
