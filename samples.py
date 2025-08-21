@@ -35,7 +35,7 @@ def extract_samples_for_file(json_file_path, column_type):
     with open(json_file_path, 'r') as f:
         data = json.load(f)
     
-    # The structure is {"columns": {"table_path": "column_name", ...}}
+    # The structure is {"columns": [{"table": "...", "column": "...", ...}, ...]}
     if not isinstance(data, dict):
         logger.error(f"Root is not a dict, it's: {type(data)}")
         return
@@ -44,30 +44,36 @@ def extract_samples_for_file(json_file_path, column_type):
         logger.error(f"No 'columns' key. Keys are: {list(data.keys())}")
         return
     
-    columns_mapping = data['columns']
+    columns_list = data['columns']
     
-    if not isinstance(columns_mapping, dict):
-        logger.error(f"'columns' is not a dict, it's: {type(columns_mapping)}")
+    if not isinstance(columns_list, list):
+        logger.error(f"'columns' is not a list, it's: {type(columns_list)}")
         return
     
-    logger.info(f"Found {len(columns_mapping)} table-column mappings")
+    logger.info(f"Found {len(columns_list)} column entries")
     
-    # Group tables by column name (reverse the mapping)
+    # Group columns by unique column name
     from collections import defaultdict
     column_to_tables = defaultdict(list)
     
-    for table_path, column_name in columns_mapping.items():
-        if column_name and column_name != 'skip':
-            column_to_tables[column_name].append(table_path)
+    for column_entry in columns_list:
+        if isinstance(column_entry, dict):
+            table_path = column_entry.get('table', '')
+            column_name = column_entry.get('column', '')
+            
+            if table_path and column_name:
+                column_to_tables[column_name].append(table_path)
     
     logger.info(f"Unique column names: {list(column_to_tables.keys())}")
     
     # Get unique projects
     projects = set()
-    for table_path in columns_mapping.keys():
-        if '.' in table_path:
-            project = table_path.split('.')[0]
-            projects.add(project)
+    for column_entry in columns_list:
+        if isinstance(column_entry, dict):
+            table_path = column_entry.get('table', '')
+            if '.' in table_path:
+                project = table_path.split('.')[0]
+                projects.add(project)
     
     logger.info(f"Projects needed: {projects}")
     
@@ -86,7 +92,7 @@ def extract_samples_for_file(json_file_path, column_type):
         logger.error("No successful BigQuery connections")
         return
     
-    # Collect samples for each column
+    # Collect samples for each unique column name
     output_data = {
         'column_type': column_type,
         'timestamp': datetime.now().isoformat(),
@@ -144,7 +150,8 @@ def extract_samples_for_file(json_file_path, column_type):
             'total_tables': len(table_list),
             'tables_sampled': tables_sampled,
             'sample_count': len(all_samples),
-            'samples': all_samples[:50]  # Limit to 50 samples
+            'samples': all_samples[:50],  # Limit to 50 samples
+            'table_examples': table_list[:5]  # Include a few example table paths
         }
     
     return output_data
@@ -205,8 +212,14 @@ def main():
                         f.write(f"Column: {col_name}\n")
                         f.write(f"Tables: {col_data['total_tables']}\n")
                         f.write(f"Samples collected: {col_data['sample_count']}\n")
-                        f.write("Sample values:\n")
                         
+                        # Show example tables
+                        if 'table_examples' in col_data and col_data['table_examples']:
+                            f.write("Example tables:\n")
+                            for table in col_data['table_examples'][:3]:
+                                f.write(f"  - {table}\n")
+                        
+                        f.write("Sample values:\n")
                         for i, sample in enumerate(col_data['samples'][:10], 1):
                             display = sample[:80] + "..." if len(sample) > 80 else sample
                             f.write(f"  {i}. {display}\n")
