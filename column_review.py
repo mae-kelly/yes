@@ -10,6 +10,11 @@ from pathlib import Path
 from datetime import datetime
 from typing import Dict, List, Any
 from collections import defaultdict, Counter
+import sys
+import os
+
+# Add the project path to find gcp.client
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
@@ -22,6 +27,10 @@ class ColumnReviewer:
         
         # Load the original data
         self.original_data = self._load_original_data()
+        
+        # Initialize BigQuery clients for fetching sample data
+        self.client_managers = {}
+        self._initialize_bigquery_clients()
         
         # Initialize reviewed data structure
         self.reviewed_data = {
@@ -75,7 +84,85 @@ class ColumnReviewer:
             'skip': 'Skip (ignored)'
         }
     
-    def _load_original_data(self) -> Dict[str, Any]:
+    def _initialize_bigquery_clients(self):
+        """Initialize BigQuery clients for all projects in the labeled data"""
+        try:
+            from gcp.client import BigQueryClientManager
+        except ImportError:
+            logger.warning("BigQuery client not available. Sample data will be limited to cached patterns.")
+            return
+        
+        # Extract project IDs from the labeled data
+        columns_data = self.original_data.get('columns', {})
+        project_ids = set()
+        
+        for table_path in columns_data.keys():
+            parts = table_path.split('.')
+            if len(parts) >= 1:
+                project_ids.add(parts[0])
+        
+        # Initialize clients for each project
+        for project_id in project_ids:
+            try:
+                manager = BigQueryClientManager(project_id)
+                if manager.test_connection():
+                    self.client_managers[project_id] = manager
+                    logger.info(f"✅ Connected to project: {project_id}")
+                else:
+                    logger.warning(f"⚠️ Failed to connect to project: {project_id}")
+            except Exception as e:
+                logger.warning(f"❌ Could not connect to {project_id}: {e}")
+        
+        if self.client_managers:
+            logger.info(f"Initialized BigQuery clients for {len(self.client_managers)} projects")
+        else:
+            logger.warning("No BigQuery connections available. Sample data will be limited.")
+    
+    def _fetch_sample_values(self, table_path: str, column_name: str, limit: int = 10) -> List[Any]:
+        """Fetch sample values from BigQuery for the specified column"""
+        if not self.client_managers:
+            return []
+        
+        # Extract project ID from table path
+        parts = table_path.split('.')
+        if len(parts) < 3:
+            return []
+        
+        project_id = parts[0]
+        manager = self.client_managers.get(project_id)
+        
+        if not manager:
+            return []
+        
+        try:
+            with manager.get_client() as client:
+                # Build safe query with proper column name escaping
+                safe_column = f"`{column_name}`"
+                
+                query = f"""
+                SELECT DISTINCT {safe_column} as sample_value
+                FROM `{table_path}`
+                WHERE {safe_column} IS NOT NULL
+                AND {safe_column} != ''
+                AND {safe_column} != 'null'
+                AND {safe_column} != 'NULL'
+                LIMIT {limit}
+                """
+                
+                query_job = client.query(query)
+                results = query_job.result(timeout=30)
+                
+                samples = []
+                for row in results:
+                    value = row.sample_value
+                    if value is not None:
+                        samples.append(value)
+                
+                return samples
+                
+        except Exception as e:
+            logger.debug(f"Failed to fetch samples for {table_path}.{column_name}: {e}")
+            return []
         """Load the original manual_labeled_columns.json file"""
         if not self.input_file.exists():
             logger.error(f"Input file {self.input_file} not found!")
@@ -258,16 +345,51 @@ class ColumnReviewer:
                 print(f"  Table rows: {entry.get('rows', 'unknown')}")
                 break
         
-        # Try to find pattern examples
-        patterns = self.original_data.get('patterns', {})
-        for pattern_type, pattern_list in patterns.items():
-            if pattern_type == column_name or any(p.get('column') == column_name for p in pattern_list if isinstance(p, dict)):
-                print(f"  Found in patterns: {pattern_type}")
-                if pattern_list and isinstance(pattern_list[0], dict):
-                    sample = pattern_list[0].get('sample')
-                    if sample:
-                        print(f"  Sample value: {sample}")
-                break
+        # Get 10 sample values by querying BigQuery
+        samples = self._fetch_sample_values(table_path, column_name, limit=10)
+        
+        if samples:
+            print(f"  Sample values (showing {len(samples)} live samples):")
+            for i, sample in enumerate(samples, 1):
+                # Truncate very long values
+                display_value = str(sample)[:100] + "..." if len(str(sample)) > 100 else str(sample)
+                print(f"    {i:2}. {display_value}")
+        else:
+            # Fallback to pattern examples if we can't get live samples
+            print("  (Could not fetch live samples)")
+            patterns = self.original_data.get('patterns', {})
+            for pattern_type, pattern_list in patterns.items():
+                if pattern_type == column_name or any(p.get('column') == column_name for p in pattern_list if isinstance(p, dict)):
+                    print(f"  Found in patterns: {pattern_type}")
+                    if pattern_list and isinstance(pattern_list[0], dict):
+                        sample = pattern_list[0].get('sample')
+                        if sample:
+                            print(f"  Sample value: {sample}")
+                    break
+            
+            # Try to show cached samples from other columns with same name
+            self._show_cached_samples(column_name)
+    
+    def _show_cached_samples(self, column_name: str):
+        """Show cached samples from other tables with the same column name"""
+        columns_data = self.original_data.get('columns', {})
+        found_samples = []
+        
+        # Look for this column name in other tables and try to get samples
+        for other_table, other_labels in columns_data.items():
+            if column_name in other_labels and len(found_samples) < 10:
+                # Try to get a few samples from this table
+                table_samples = self._fetch_sample_values(other_table, column_name, limit=3)
+                found_samples.extend(table_samples)
+                
+                if len(found_samples) >= 10:
+                    break
+        
+        if found_samples:
+            print(f"  Sample values from other tables with '{column_name}':")
+            for i, sample in enumerate(found_samples[:10], 1):
+                display_value = str(sample)[:100] + "..." if len(str(sample)) > 100 else str(sample)
+                print(f"    {i:2}. {display_value}")
     
     def _show_detailed_info(self, table_path: str, column_name: str, column_type: str):
         """Show detailed information about a column"""
@@ -284,6 +406,14 @@ class ColumnReviewer:
             print(f"Project: {parts[0]}")
             print(f"Dataset: {parts[1]}")
             print(f"Table Name: {parts[2]}")
+        
+        # Get extended sample data for detailed view
+        extended_samples = self._fetch_sample_values(table_path, column_name, limit=20)
+        if extended_samples:
+            print(f"\nExtended samples ({len(extended_samples)} values):")
+            for i, sample in enumerate(extended_samples, 1):
+                display_value = str(sample)[:150] + "..." if len(str(sample)) > 150 else str(sample)
+                print(f"  {i:2}. {display_value}")
         
         # Look for this column in other tables
         columns_data = self.original_data.get('columns', {})
@@ -307,7 +437,7 @@ class ColumnReviewer:
             if entry.get('table') == table_path:
                 timestamp = entry.get('timestamp')
                 if timestamp:
-                    print(f"Labeled on: {timestamp}")
+                    print(f"\nLabeled on: {timestamp}")
                 break
         
         print("─" * 50)
