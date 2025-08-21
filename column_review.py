@@ -118,6 +118,21 @@ class ColumnReviewer:
         else:
             logger.warning("No BigQuery connections available. Sample data will be limited.")
     
+    def _load_original_data(self) -> Dict[str, Any]:
+        """Load the original manual_labeled_columns.json file"""
+        if not self.input_file.exists():
+            logger.error(f"Input file {self.input_file} not found!")
+            return {}
+        
+        try:
+            with open(self.input_file, 'r') as f:
+                data = json.load(f)
+                logger.info(f"Loaded original data from {self.input_file}")
+                return data
+        except Exception as e:
+            logger.error(f"Failed to load {self.input_file}: {e}")
+            return {}
+    
     def _fetch_sample_values(self, table_path: str, column_name: str, limit: int = 10) -> List[Any]:
         """Fetch sample values from BigQuery for the specified column"""
         if not self.client_managers:
