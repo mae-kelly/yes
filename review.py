@@ -1,4 +1,25 @@
-#!/usr/bin/env python3
+def _show_column_types(self):
+        """Display column types"""
+        print("\n    📋 Column Types Reference:")
+        print("    " + "="*60)
+        
+        categories = {
+            "Identity & Location": [(1, 'host'), (17, 'domain')],
+            "Infrastructure": [(2, 'infrastructure_type'), (11, 'system_classification')],
+            "Geography": [(3, 'region'), (4, 'country'), (5, 'data_center'), (6, 'cloud_region')],
+            "Organization": [(7, 'business_unit'), (8, 'cio'), (10, 'app_class')],
+            "Security Tools": [(12, 'edr_coverage'), (13, 'tanium_coverage'), (14, 'dlp_agent_coverage')],
+            "Logging": [(15, 'logging_in_splunk'), (16, 'logging_in_gso')],
+            "Monitoring": [(9, 'apm')],
+            "Other": [(18, 'skip')]
+        }
+        
+        for category, items in categories.items():
+            print(f"\n    {category}:")
+            for num, col_type in items:
+                print(f"      {num:2}. {col_type}")
+        
+        print("    " + "="*60)#!/usr/bin/env python3
 """
 Script to review specific high-value tables and their columns
 Allows users to decide (1=yes, 2=no) whether to include each column in the labeled dataset
@@ -332,36 +353,61 @@ class SpecificTableReviewer:
                         if field.mode:
                             print(f"    Mode: {field.mode}")
                     
-                    # Show sample values
+                    # Analyze column for hints even without good sample data
+                    column_hints = self._analyze_column_hints(column, field, sample_data)
+                    
+                    # Show column analysis
+                    print(f"    🔍 Column Analysis:")
+                    if field:
+                        print(f"      Type: {field.field_type}")
+                        if field.mode:
+                            print(f"      Mode: {field.mode}")
+                        if field.description:
+                            print(f"      Description: {field.description}")
+                    
+                    # Show intelligent suggestions
+                    suggestions = column_hints.get('suggestions', [])
+                    if suggestions:
+                        print(f"    💡 Suggested labels:")
+                        for i, (label_num, label_name, reason) in enumerate(suggestions[:3], 1):
+                            print(f"      {label_num}. {label_name} - {reason}")
+                    
+                    # Show sample values with better handling
                     if sample_data:
                         print("    📋 Sample values:")
                         sample_values = []
-                        sample_count = 0
+                        actual_values = 0
                         
-                        for i, row in enumerate(sample_data[:8], 1):
+                        for i, row in enumerate(sample_data[:5], 1):
                             value = row.get(column)
-                            if value is not None and value != "<not sampled>" and not str(value).startswith("<error"):
+                            if value is not None and value != "<not sampled>":
                                 value_str = str(value)[:100]
-                                print(f"      {i}. {value_str}")
+                                
+                                # Check if value looks encrypted/hashed
+                                if self._looks_encrypted_or_hashed(value_str):
+                                    print(f"      {i}. {value_str[:20]}... (appears encrypted/hashed)")
+                                elif len(value_str) == 0:
+                                    print(f"      {i}. (empty string)")
+                                else:
+                                    print(f"      {i}. {value_str}")
+                                    actual_values += 1
                                 sample_values.append(value_str)
-                                sample_count += 1
-                            elif value == "<not sampled>":
-                                print(f"      {i}. <not sampled>")
                             else:
                                 print(f"      {i}. (null)")
                                 sample_values.append(None)
                         
-                        # If no actual values shown, note it
-                        if sample_count == 0:
-                            print("      ⚠️ No actual values available for this column")
+                        if actual_values == 0:
+                            print("      ⚠️ All values appear to be null, empty, or encrypted")
                     else:
                         print("    ⚠️ No sample data available")
-                        print("    💡 This could be due to:")
-                        print("       - Insufficient query permissions")
-                        print("       - Table is actually empty") 
-                        print("       - Complex data types causing query issues")
-                        print("    📝 You can still label based on column name and schema info")
                         sample_values = []
+                    
+                    print(f"    📋 Base your decision on:")
+                    print(f"      • Column name: '{column}'")
+                    print(f"      • Data type: {field.field_type if field else 'unknown'}")
+                    print(f"      • Table context: {table_info['description']}")
+                    if suggestions:
+                        print(f"      • AI suggestions above")
                     
                     # Get user decision
                     while True:
@@ -371,7 +417,9 @@ class SpecificTableReviewer:
                             print("      18: Skip this column") 
                             print("      0: Show column types reference")
                             print("      s: Skip this entire table")
-                            print("      i: Show more info about this column")
+                            print("      i: Show detailed column info")
+                            if suggestions:
+                                print("      auto: Use first AI suggestion")
                             
                             choice = input(f"\n    🏷️ Label for '{column}': ").strip()
                             
@@ -385,21 +433,45 @@ class SpecificTableReviewer:
                             
                             if choice.lower() == 'i':
                                 # Show additional column info
-                                print(f"\n    📋 Additional Info for '{column}':")
+                                print(f"\n    📋 Detailed Info for '{column}':")
+                                print(f"      Column Name: {column}")
                                 if field:
-                                    print(f"      Field Type: {field.field_type}")
+                                    print(f"      Data Type: {field.field_type}")
                                     print(f"      Mode: {field.mode}")
                                     if field.description:
                                         print(f"      Description: {field.description}")
                                     if hasattr(field, 'fields') and field.fields:
                                         print(f"      Nested fields: {[f.name for f in field.fields]}")
                                 
-                                # Show position in table
+                                # Show context
+                                print(f"      Table: {table_info['description']} ({table_info['category']})")
                                 print(f"      Position: Column {col_idx} of {len(columns)}")
-                                print(f"      Table: {table_info['description']}")
+                                
+                                # Show name analysis
+                                print(f"\n      🔍 Name Analysis:")
+                                name_parts = column.lower().replace('_', ' ').split()
+                                print(f"      Word parts: {name_parts}")
+                                
+                                # Show similar columns from other tables
+                                similar_cols = self._find_similar_columns(column)
+                                if similar_cols:
+                                    print(f"\n      🔗 Similar columns in other tables:")
+                                    for sim_col, sim_table, sim_label in similar_cols[:3]:
+                                        print(f"        '{sim_col}' in {sim_table} → labeled as '{sim_label}'")
+                                
                                 continue
                             
-                            choice_num = int(choice)
+                            if choice.lower() == 'auto':
+                                # Auto-label based on suggestions
+                                if suggestions:
+                                    auto_choice = suggestions[0][0]  # Take first suggestion
+                                    choice_num = auto_choice
+                                    print(f"    🤖 Auto-selected: {suggestions[0][1]} (suggestion #{auto_choice})")
+                                else:
+                                    print("    ❌ No auto-suggestions available")
+                                    continue
+                            else:
+                                choice_num = int(choice)
                             
                             if choice_num in self.column_types:
                                 label = self.column_types[choice_num]
@@ -425,12 +497,25 @@ class SpecificTableReviewer:
                                 self.statistics['total_columns_reviewed'] += 1
                                 break
                             else:
-                                print("    ❌ Invalid choice. Please enter 1-18, 0, 's', or 'i'")
+                                print("    ❌ Invalid choice. Please enter 1-18, 0, 's', 'i', or 'auto'")
                         
                         except ValueError:
-                            print("    ❌ Please enter a valid number, 's', or 'i'")
-                        except KeyboardInterrupt:
-                            raise
+                            print("    ❌ Please enter a valid number, 's', 'i', or 'auto'")
+    def _find_similar_columns(self, column_name: str) -> List[Tuple[str, str, str]]:
+        """Find similar columns that have already been labeled"""
+        similar = []
+        column_lower = column_name.lower()
+        
+        for table_path, table_labels in self.labeled_columns.get('columns', {}).items():
+            for col_name, label in table_labels.items():
+                if col_name.lower() == column_lower:
+                    # Exact match
+                    similar.append((col_name, table_path, label))
+                elif any(word in col_name.lower() for word in column_lower.split('_')):
+                    # Partial word match
+                    similar.append((col_name, table_path, label))
+        
+        return similar[:5]  # Return top 5 matches
                 
                 # Store table labels
                 self.labeled_columns['columns'][table_path] = table_labels
@@ -558,14 +643,692 @@ class SpecificTableReviewer:
         print(f"    ⚠️ Cannot access table data - proceeding with schema-only review")
         return []
     
-    def _show_column_types(self):
-        """Display column types"""
-        print("\n    Column Types:")
-        for num, col_type in self.column_types.items():
-            if num % 6 == 1:
-                print()
-            print(f"    {num:2}. {col_type:20}", end="  ")
-        print()
+    def _looks_encrypted_or_hashed(self, value: str) -> bool:
+        """Check if a value looks encrypted, hashed, or obfuscated"""
+        if not value or len(value) < 10:
+            return False
+        
+        # Common hash/encryption patterns
+        patterns = [
+            r'^[a-f0-9]{32}
+    
+    def _print_final_statistics(self):
+        """Print final statistics"""
+        total_time = (datetime.now() - self.statistics['start_time']).total_seconds()
+        
+        print("\n" + "="*80)
+        print("SPECIFIC TABLE REVIEW COMPLETE")
+        print("="*80)
+        print(f"Total time: {total_time/60:.1f} minutes")
+        print(f"Tables processed: {self.statistics['total_tables_processed']}")
+        print(f"Tables completed: {len(self.statistics['tables_completed'])}")
+        print(f"Tables failed: {len(self.statistics['tables_failed'])}")
+        print(f"Columns reviewed: {self.statistics['total_columns_reviewed']}")
+        print(f"Columns labeled: {self.statistics['columns_labeled']}")
+        print(f"Columns skipped: {self.statistics['columns_skipped']}")
+        
+        if self.statistics['total_columns_reviewed'] > 0:
+            label_rate = (self.statistics['columns_labeled'] / self.statistics['total_columns_reviewed']) * 100
+            print(f"Labeling rate: {label_rate:.1f}%")
+        
+        print("\nTables completed:")
+        for table in self.statistics['tables_completed']:
+            table_info = self.target_tables.get(table, {})
+            print(f"  ✓ {table_info.get('description', table)}")
+        
+        if self.statistics['tables_failed']:
+            print("\nTables failed:")
+            for table in self.statistics['tables_failed']:
+                table_info = self.target_tables.get(table, {})
+                print(f"  ✗ {table_info.get('description', table)}")
+        
+        print("\nColumn type distribution:")
+        type_counts = defaultdict(int)
+        for table_labels in self.labeled_columns['columns'].values():
+            for label in table_labels.values():
+                if label != 'skip':
+                    type_counts[label] += 1
+        
+        for col_type, count in sorted(type_counts.items(), key=lambda x: x[1], reverse=True):
+            print(f"  {col_type:30} {count:6}")
+        
+        # Update final statistics in data
+        self.labeled_columns['statistics'] = {
+            'total_tables_processed': self.statistics['total_tables_processed'],
+            'total_columns_reviewed': self.statistics['total_columns_reviewed'],
+            'columns_labeled': self.statistics['columns_labeled'],
+            'columns_skipped': self.statistics['columns_skipped'],
+            'processing_time_minutes': total_time/60,
+            'tables_completed': self.statistics['tables_completed'],
+            'tables_failed': self.statistics['tables_failed'],
+            'type_distribution': dict(type_counts),
+            'completion_timestamp': datetime.now().isoformat()
+        }
+    
+    def show_current_progress(self):
+        """Show current progress"""
+        print("\n" + "="*60)
+        print("CURRENT PROGRESS")
+        print("n" + "="*60)
+        
+        completed_tables = len(self.labeled_columns.get('columns', {}))
+        total_tables = len(self.target_tables)
+        
+        print(f"Tables completed: {completed_tables}/{total_tables}")
+        
+        for table_path, table_info in self.target_tables.items():
+            status = "✓ Completed" if table_path in self.labeled_columns.get('columns', {}) else "⏳ Pending"
+            print(f"  {status} {table_info['description']}")
+        
+        if completed_tables > 0:
+            total_columns = sum(len(labels) for labels in self.labeled_columns['columns'].values())
+            labeled_columns = sum(1 for labels in self.labeled_columns['columns'].values() 
+                                for label in labels.values() if label != 'skip')
+            
+            print(f"\nColumns reviewed: {total_columns}")
+            print(f"Columns labeled: {labeled_columns}")
+            print(f"Columns skipped: {total_columns - labeled_columns}")
+
+def main():
+    """Main entry point"""
+    reviewer = SpecificTableReviewer()
+    
+    print("\nSpecific Table Reviewer - High-Value Security & Infrastructure Tables")
+    
+    # Test table access first
+    print("\nTesting access to target tables...")
+    reviewer.test_table_access()
+    
+    print("\nThis will review specific high-value tables for column labeling.")
+    print("You can press Ctrl+C at any time to pause and save progress.")
+    
+    # Check current progress
+    if reviewer.labeled_columns.get('columns'):
+        print("\nFound existing progress:")
+        reviewer.show_current_progress()
+        
+        resume = input("\nContinue from where you left off? (y/n): ").lower().strip()
+        if resume != 'y':
+            print("Starting fresh review.")
+            reviewer.labeled_columns = reviewer._load_labeled_data()
+    
+    # Ask if user wants to proceed after seeing test results
+    proceed = input("\nProceed with the review? (y/n): ").lower().strip()
+    if proceed != 'y':
+        print("Review cancelled.")
+        return
+    
+    # Start the review process
+    reviewer.review_all_target_tables()
+    
+    print(f"\n✅ Review complete!")
+    print(f"📁 Results saved to: {reviewer.labeled_data_path}")
+
+if __name__ == "__main__":
+    main(),  # MD5
+            r'^[a-f0-9]{40}
+    
+    def _print_final_statistics(self):
+        """Print final statistics"""
+        total_time = (datetime.now() - self.statistics['start_time']).total_seconds()
+        
+        print("\n" + "="*80)
+        print("SPECIFIC TABLE REVIEW COMPLETE")
+        print("="*80)
+        print(f"Total time: {total_time/60:.1f} minutes")
+        print(f"Tables processed: {self.statistics['total_tables_processed']}")
+        print(f"Tables completed: {len(self.statistics['tables_completed'])}")
+        print(f"Tables failed: {len(self.statistics['tables_failed'])}")
+        print(f"Columns reviewed: {self.statistics['total_columns_reviewed']}")
+        print(f"Columns labeled: {self.statistics['columns_labeled']}")
+        print(f"Columns skipped: {self.statistics['columns_skipped']}")
+        
+        if self.statistics['total_columns_reviewed'] > 0:
+            label_rate = (self.statistics['columns_labeled'] / self.statistics['total_columns_reviewed']) * 100
+            print(f"Labeling rate: {label_rate:.1f}%")
+        
+        print("\nTables completed:")
+        for table in self.statistics['tables_completed']:
+            table_info = self.target_tables.get(table, {})
+            print(f"  ✓ {table_info.get('description', table)}")
+        
+        if self.statistics['tables_failed']:
+            print("\nTables failed:")
+            for table in self.statistics['tables_failed']:
+                table_info = self.target_tables.get(table, {})
+                print(f"  ✗ {table_info.get('description', table)}")
+        
+        print("\nColumn type distribution:")
+        type_counts = defaultdict(int)
+        for table_labels in self.labeled_columns['columns'].values():
+            for label in table_labels.values():
+                if label != 'skip':
+                    type_counts[label] += 1
+        
+        for col_type, count in sorted(type_counts.items(), key=lambda x: x[1], reverse=True):
+            print(f"  {col_type:30} {count:6}")
+        
+        # Update final statistics in data
+        self.labeled_columns['statistics'] = {
+            'total_tables_processed': self.statistics['total_tables_processed'],
+            'total_columns_reviewed': self.statistics['total_columns_reviewed'],
+            'columns_labeled': self.statistics['columns_labeled'],
+            'columns_skipped': self.statistics['columns_skipped'],
+            'processing_time_minutes': total_time/60,
+            'tables_completed': self.statistics['tables_completed'],
+            'tables_failed': self.statistics['tables_failed'],
+            'type_distribution': dict(type_counts),
+            'completion_timestamp': datetime.now().isoformat()
+        }
+    
+    def show_current_progress(self):
+        """Show current progress"""
+        print("\n" + "="*60)
+        print("CURRENT PROGRESS")
+        print("n" + "="*60)
+        
+        completed_tables = len(self.labeled_columns.get('columns', {}))
+        total_tables = len(self.target_tables)
+        
+        print(f"Tables completed: {completed_tables}/{total_tables}")
+        
+        for table_path, table_info in self.target_tables.items():
+            status = "✓ Completed" if table_path in self.labeled_columns.get('columns', {}) else "⏳ Pending"
+            print(f"  {status} {table_info['description']}")
+        
+        if completed_tables > 0:
+            total_columns = sum(len(labels) for labels in self.labeled_columns['columns'].values())
+            labeled_columns = sum(1 for labels in self.labeled_columns['columns'].values() 
+                                for label in labels.values() if label != 'skip')
+            
+            print(f"\nColumns reviewed: {total_columns}")
+            print(f"Columns labeled: {labeled_columns}")
+            print(f"Columns skipped: {total_columns - labeled_columns}")
+
+def main():
+    """Main entry point"""
+    reviewer = SpecificTableReviewer()
+    
+    print("\nSpecific Table Reviewer - High-Value Security & Infrastructure Tables")
+    
+    # Test table access first
+    print("\nTesting access to target tables...")
+    reviewer.test_table_access()
+    
+    print("\nThis will review specific high-value tables for column labeling.")
+    print("You can press Ctrl+C at any time to pause and save progress.")
+    
+    # Check current progress
+    if reviewer.labeled_columns.get('columns'):
+        print("\nFound existing progress:")
+        reviewer.show_current_progress()
+        
+        resume = input("\nContinue from where you left off? (y/n): ").lower().strip()
+        if resume != 'y':
+            print("Starting fresh review.")
+            reviewer.labeled_columns = reviewer._load_labeled_data()
+    
+    # Ask if user wants to proceed after seeing test results
+    proceed = input("\nProceed with the review? (y/n): ").lower().strip()
+    if proceed != 'y':
+        print("Review cancelled.")
+        return
+    
+    # Start the review process
+    reviewer.review_all_target_tables()
+    
+    print(f"\n✅ Review complete!")
+    print(f"📁 Results saved to: {reviewer.labeled_data_path}")
+
+if __name__ == "__main__":
+    main(),  # SHA1
+            r'^[a-f0-9]{64}
+    
+    def _print_final_statistics(self):
+        """Print final statistics"""
+        total_time = (datetime.now() - self.statistics['start_time']).total_seconds()
+        
+        print("\n" + "="*80)
+        print("SPECIFIC TABLE REVIEW COMPLETE")
+        print("="*80)
+        print(f"Total time: {total_time/60:.1f} minutes")
+        print(f"Tables processed: {self.statistics['total_tables_processed']}")
+        print(f"Tables completed: {len(self.statistics['tables_completed'])}")
+        print(f"Tables failed: {len(self.statistics['tables_failed'])}")
+        print(f"Columns reviewed: {self.statistics['total_columns_reviewed']}")
+        print(f"Columns labeled: {self.statistics['columns_labeled']}")
+        print(f"Columns skipped: {self.statistics['columns_skipped']}")
+        
+        if self.statistics['total_columns_reviewed'] > 0:
+            label_rate = (self.statistics['columns_labeled'] / self.statistics['total_columns_reviewed']) * 100
+            print(f"Labeling rate: {label_rate:.1f}%")
+        
+        print("\nTables completed:")
+        for table in self.statistics['tables_completed']:
+            table_info = self.target_tables.get(table, {})
+            print(f"  ✓ {table_info.get('description', table)}")
+        
+        if self.statistics['tables_failed']:
+            print("\nTables failed:")
+            for table in self.statistics['tables_failed']:
+                table_info = self.target_tables.get(table, {})
+                print(f"  ✗ {table_info.get('description', table)}")
+        
+        print("\nColumn type distribution:")
+        type_counts = defaultdict(int)
+        for table_labels in self.labeled_columns['columns'].values():
+            for label in table_labels.values():
+                if label != 'skip':
+                    type_counts[label] += 1
+        
+        for col_type, count in sorted(type_counts.items(), key=lambda x: x[1], reverse=True):
+            print(f"  {col_type:30} {count:6}")
+        
+        # Update final statistics in data
+        self.labeled_columns['statistics'] = {
+            'total_tables_processed': self.statistics['total_tables_processed'],
+            'total_columns_reviewed': self.statistics['total_columns_reviewed'],
+            'columns_labeled': self.statistics['columns_labeled'],
+            'columns_skipped': self.statistics['columns_skipped'],
+            'processing_time_minutes': total_time/60,
+            'tables_completed': self.statistics['tables_completed'],
+            'tables_failed': self.statistics['tables_failed'],
+            'type_distribution': dict(type_counts),
+            'completion_timestamp': datetime.now().isoformat()
+        }
+    
+    def show_current_progress(self):
+        """Show current progress"""
+        print("\n" + "="*60)
+        print("CURRENT PROGRESS")
+        print("n" + "="*60)
+        
+        completed_tables = len(self.labeled_columns.get('columns', {}))
+        total_tables = len(self.target_tables)
+        
+        print(f"Tables completed: {completed_tables}/{total_tables}")
+        
+        for table_path, table_info in self.target_tables.items():
+            status = "✓ Completed" if table_path in self.labeled_columns.get('columns', {}) else "⏳ Pending"
+            print(f"  {status} {table_info['description']}")
+        
+        if completed_tables > 0:
+            total_columns = sum(len(labels) for labels in self.labeled_columns['columns'].values())
+            labeled_columns = sum(1 for labels in self.labeled_columns['columns'].values() 
+                                for label in labels.values() if label != 'skip')
+            
+            print(f"\nColumns reviewed: {total_columns}")
+            print(f"Columns labeled: {labeled_columns}")
+            print(f"Columns skipped: {total_columns - labeled_columns}")
+
+def main():
+    """Main entry point"""
+    reviewer = SpecificTableReviewer()
+    
+    print("\nSpecific Table Reviewer - High-Value Security & Infrastructure Tables")
+    
+    # Test table access first
+    print("\nTesting access to target tables...")
+    reviewer.test_table_access()
+    
+    print("\nThis will review specific high-value tables for column labeling.")
+    print("You can press Ctrl+C at any time to pause and save progress.")
+    
+    # Check current progress
+    if reviewer.labeled_columns.get('columns'):
+        print("\nFound existing progress:")
+        reviewer.show_current_progress()
+        
+        resume = input("\nContinue from where you left off? (y/n): ").lower().strip()
+        if resume != 'y':
+            print("Starting fresh review.")
+            reviewer.labeled_columns = reviewer._load_labeled_data()
+    
+    # Ask if user wants to proceed after seeing test results
+    proceed = input("\nProceed with the review? (y/n): ").lower().strip()
+    if proceed != 'y':
+        print("Review cancelled.")
+        return
+    
+    # Start the review process
+    reviewer.review_all_target_tables()
+    
+    print(f"\n✅ Review complete!")
+    print(f"📁 Results saved to: {reviewer.labeled_data_path}")
+
+if __name__ == "__main__":
+    main(),  # SHA256
+            r'^[A-Za-z0-9+/]{20,}={0,2}
+    
+    def _print_final_statistics(self):
+        """Print final statistics"""
+        total_time = (datetime.now() - self.statistics['start_time']).total_seconds()
+        
+        print("\n" + "="*80)
+        print("SPECIFIC TABLE REVIEW COMPLETE")
+        print("="*80)
+        print(f"Total time: {total_time/60:.1f} minutes")
+        print(f"Tables processed: {self.statistics['total_tables_processed']}")
+        print(f"Tables completed: {len(self.statistics['tables_completed'])}")
+        print(f"Tables failed: {len(self.statistics['tables_failed'])}")
+        print(f"Columns reviewed: {self.statistics['total_columns_reviewed']}")
+        print(f"Columns labeled: {self.statistics['columns_labeled']}")
+        print(f"Columns skipped: {self.statistics['columns_skipped']}")
+        
+        if self.statistics['total_columns_reviewed'] > 0:
+            label_rate = (self.statistics['columns_labeled'] / self.statistics['total_columns_reviewed']) * 100
+            print(f"Labeling rate: {label_rate:.1f}%")
+        
+        print("\nTables completed:")
+        for table in self.statistics['tables_completed']:
+            table_info = self.target_tables.get(table, {})
+            print(f"  ✓ {table_info.get('description', table)}")
+        
+        if self.statistics['tables_failed']:
+            print("\nTables failed:")
+            for table in self.statistics['tables_failed']:
+                table_info = self.target_tables.get(table, {})
+                print(f"  ✗ {table_info.get('description', table)}")
+        
+        print("\nColumn type distribution:")
+        type_counts = defaultdict(int)
+        for table_labels in self.labeled_columns['columns'].values():
+            for label in table_labels.values():
+                if label != 'skip':
+                    type_counts[label] += 1
+        
+        for col_type, count in sorted(type_counts.items(), key=lambda x: x[1], reverse=True):
+            print(f"  {col_type:30} {count:6}")
+        
+        # Update final statistics in data
+        self.labeled_columns['statistics'] = {
+            'total_tables_processed': self.statistics['total_tables_processed'],
+            'total_columns_reviewed': self.statistics['total_columns_reviewed'],
+            'columns_labeled': self.statistics['columns_labeled'],
+            'columns_skipped': self.statistics['columns_skipped'],
+            'processing_time_minutes': total_time/60,
+            'tables_completed': self.statistics['tables_completed'],
+            'tables_failed': self.statistics['tables_failed'],
+            'type_distribution': dict(type_counts),
+            'completion_timestamp': datetime.now().isoformat()
+        }
+    
+    def show_current_progress(self):
+        """Show current progress"""
+        print("\n" + "="*60)
+        print("CURRENT PROGRESS")
+        print("n" + "="*60)
+        
+        completed_tables = len(self.labeled_columns.get('columns', {}))
+        total_tables = len(self.target_tables)
+        
+        print(f"Tables completed: {completed_tables}/{total_tables}")
+        
+        for table_path, table_info in self.target_tables.items():
+            status = "✓ Completed" if table_path in self.labeled_columns.get('columns', {}) else "⏳ Pending"
+            print(f"  {status} {table_info['description']}")
+        
+        if completed_tables > 0:
+            total_columns = sum(len(labels) for labels in self.labeled_columns['columns'].values())
+            labeled_columns = sum(1 for labels in self.labeled_columns['columns'].values() 
+                                for label in labels.values() if label != 'skip')
+            
+            print(f"\nColumns reviewed: {total_columns}")
+            print(f"Columns labeled: {labeled_columns}")
+            print(f"Columns skipped: {total_columns - labeled_columns}")
+
+def main():
+    """Main entry point"""
+    reviewer = SpecificTableReviewer()
+    
+    print("\nSpecific Table Reviewer - High-Value Security & Infrastructure Tables")
+    
+    # Test table access first
+    print("\nTesting access to target tables...")
+    reviewer.test_table_access()
+    
+    print("\nThis will review specific high-value tables for column labeling.")
+    print("You can press Ctrl+C at any time to pause and save progress.")
+    
+    # Check current progress
+    if reviewer.labeled_columns.get('columns'):
+        print("\nFound existing progress:")
+        reviewer.show_current_progress()
+        
+        resume = input("\nContinue from where you left off? (y/n): ").lower().strip()
+        if resume != 'y':
+            print("Starting fresh review.")
+            reviewer.labeled_columns = reviewer._load_labeled_data()
+    
+    # Ask if user wants to proceed after seeing test results
+    proceed = input("\nProceed with the review? (y/n): ").lower().strip()
+    if proceed != 'y':
+        print("Review cancelled.")
+        return
+    
+    # Start the review process
+    reviewer.review_all_target_tables()
+    
+    print(f"\n✅ Review complete!")
+    print(f"📁 Results saved to: {reviewer.labeled_data_path}")
+
+if __name__ == "__main__":
+    main(),  # Base64
+            r'^[A-Za-z0-9\-_]{20,}
+    
+    def _print_final_statistics(self):
+        """Print final statistics"""
+        total_time = (datetime.now() - self.statistics['start_time']).total_seconds()
+        
+        print("\n" + "="*80)
+        print("SPECIFIC TABLE REVIEW COMPLETE")
+        print("="*80)
+        print(f"Total time: {total_time/60:.1f} minutes")
+        print(f"Tables processed: {self.statistics['total_tables_processed']}")
+        print(f"Tables completed: {len(self.statistics['tables_completed'])}")
+        print(f"Tables failed: {len(self.statistics['tables_failed'])}")
+        print(f"Columns reviewed: {self.statistics['total_columns_reviewed']}")
+        print(f"Columns labeled: {self.statistics['columns_labeled']}")
+        print(f"Columns skipped: {self.statistics['columns_skipped']}")
+        
+        if self.statistics['total_columns_reviewed'] > 0:
+            label_rate = (self.statistics['columns_labeled'] / self.statistics['total_columns_reviewed']) * 100
+            print(f"Labeling rate: {label_rate:.1f}%")
+        
+        print("\nTables completed:")
+        for table in self.statistics['tables_completed']:
+            table_info = self.target_tables.get(table, {})
+            print(f"  ✓ {table_info.get('description', table)}")
+        
+        if self.statistics['tables_failed']:
+            print("\nTables failed:")
+            for table in self.statistics['tables_failed']:
+                table_info = self.target_tables.get(table, {})
+                print(f"  ✗ {table_info.get('description', table)}")
+        
+        print("\nColumn type distribution:")
+        type_counts = defaultdict(int)
+        for table_labels in self.labeled_columns['columns'].values():
+            for label in table_labels.values():
+                if label != 'skip':
+                    type_counts[label] += 1
+        
+        for col_type, count in sorted(type_counts.items(), key=lambda x: x[1], reverse=True):
+            print(f"  {col_type:30} {count:6}")
+        
+        # Update final statistics in data
+        self.labeled_columns['statistics'] = {
+            'total_tables_processed': self.statistics['total_tables_processed'],
+            'total_columns_reviewed': self.statistics['total_columns_reviewed'],
+            'columns_labeled': self.statistics['columns_labeled'],
+            'columns_skipped': self.statistics['columns_skipped'],
+            'processing_time_minutes': total_time/60,
+            'tables_completed': self.statistics['tables_completed'],
+            'tables_failed': self.statistics['tables_failed'],
+            'type_distribution': dict(type_counts),
+            'completion_timestamp': datetime.now().isoformat()
+        }
+    
+    def show_current_progress(self):
+        """Show current progress"""
+        print("\n" + "="*60)
+        print("CURRENT PROGRESS")
+        print("n" + "="*60)
+        
+        completed_tables = len(self.labeled_columns.get('columns', {}))
+        total_tables = len(self.target_tables)
+        
+        print(f"Tables completed: {completed_tables}/{total_tables}")
+        
+        for table_path, table_info in self.target_tables.items():
+            status = "✓ Completed" if table_path in self.labeled_columns.get('columns', {}) else "⏳ Pending"
+            print(f"  {status} {table_info['description']}")
+        
+        if completed_tables > 0:
+            total_columns = sum(len(labels) for labels in self.labeled_columns['columns'].values())
+            labeled_columns = sum(1 for labels in self.labeled_columns['columns'].values() 
+                                for label in labels.values() if label != 'skip')
+            
+            print(f"\nColumns reviewed: {total_columns}")
+            print(f"Columns labeled: {labeled_columns}")
+            print(f"Columns skipped: {total_columns - labeled_columns}")
+
+def main():
+    """Main entry point"""
+    reviewer = SpecificTableReviewer()
+    
+    print("\nSpecific Table Reviewer - High-Value Security & Infrastructure Tables")
+    
+    # Test table access first
+    print("\nTesting access to target tables...")
+    reviewer.test_table_access()
+    
+    print("\nThis will review specific high-value tables for column labeling.")
+    print("You can press Ctrl+C at any time to pause and save progress.")
+    
+    # Check current progress
+    if reviewer.labeled_columns.get('columns'):
+        print("\nFound existing progress:")
+        reviewer.show_current_progress()
+        
+        resume = input("\nContinue from where you left off? (y/n): ").lower().strip()
+        if resume != 'y':
+            print("Starting fresh review.")
+            reviewer.labeled_columns = reviewer._load_labeled_data()
+    
+    # Ask if user wants to proceed after seeing test results
+    proceed = input("\nProceed with the review? (y/n): ").lower().strip()
+    if proceed != 'y':
+        print("Review cancelled.")
+        return
+    
+    # Start the review process
+    reviewer.review_all_target_tables()
+    
+    print(f"\n✅ Review complete!")
+    print(f"📁 Results saved to: {reviewer.labeled_data_path}")
+
+if __name__ == "__main__":
+    main(),  # URL-safe base64 or tokens
+        ]
+        
+        for pattern in patterns:
+            if re.match(pattern, value):
+                return True
+        
+        # Check for high entropy (random-looking strings)
+        unique_chars = len(set(value.lower()))
+        if len(value) > 20 and unique_chars > len(value) * 0.6:
+            return True
+        
+        return False
+    
+    def _analyze_column_hints(self, column_name: str, field, sample_data: List[Dict]) -> Dict[str, Any]:
+        """Analyze column to provide intelligent labeling suggestions"""
+        suggestions = []
+        column_lower = column_name.lower()
+        
+        # Host/hostname patterns
+        if any(term in column_lower for term in ['host', 'computer', 'machine', 'device', 'endpoint', 'system', 'server', 'node']):
+            suggestions.append((1, 'host', f"Column name contains host-related terms"))
+        
+        # Infrastructure patterns
+        if any(term in column_lower for term in ['infra', 'platform', 'deploy', 'env', 'environment']):
+            suggestions.append((2, 'infrastructure_type', f"Column name suggests infrastructure classification"))
+        
+        # Geographic patterns
+        if any(term in column_lower for term in ['region', 'location', 'geo', 'zone', 'area']):
+            suggestions.append((3, 'region', f"Column name suggests geographic location"))
+        
+        if any(term in column_lower for term in ['country', 'nation', 'ctry']):
+            suggestions.append((4, 'country', f"Column name suggests country"))
+        
+        # Datacenter patterns
+        if any(term in column_lower for term in ['datacenter', 'data_center', 'dc', 'facility', 'site']):
+            suggestions.append((5, 'data_center', f"Column name suggests datacenter"))
+        
+        # Cloud patterns
+        if any(term in column_lower for term in ['cloud', 'aws', 'azure', 'gcp', 'availability']):
+            suggestions.append((6, 'cloud_region', f"Column name suggests cloud infrastructure"))
+        
+        # Business patterns
+        if any(term in column_lower for term in ['business', 'bu', 'org', 'department', 'div', 'unit']):
+            suggestions.append((7, 'business_unit', f"Column name suggests organizational unit"))
+        
+        # Technical ownership patterns
+        if any(term in column_lower for term in ['cio', 'it_org', 'tech']):
+            suggestions.append((8, 'cio', f"Column name suggests IT organization"))
+        
+        # Monitoring patterns
+        if any(term in column_lower for term in ['apm', 'monitor', 'performance', 'health']):
+            suggestions.append((9, 'apm', f"Column name suggests monitoring/APM"))
+        
+        # Application patterns
+        if any(term in column_lower for term in ['app', 'application', 'service', 'class']):
+            suggestions.append((10, 'app_class', f"Column name suggests application classification"))
+        
+        # System classification patterns
+        if any(term in column_lower for term in ['system', 'sys', 'os', 'operating', 'classification']):
+            suggestions.append((11, 'system_classification', f"Column name suggests system type"))
+        
+        # Security tool patterns
+        if any(term in column_lower for term in ['edr', 'endpoint', 'crowdstrike', 'falcon', 'security']):
+            suggestions.append((12, 'edr_coverage', f"Column name suggests EDR/endpoint security"))
+        
+        if any(term in column_lower for term in ['tanium', 'endpoint_platform', 'management']):
+            suggestions.append((13, 'tanium_coverage', f"Column name suggests Tanium coverage"))
+        
+        if any(term in column_lower for term in ['dlp', 'data_loss', 'protection', 'leak']):
+            suggestions.append((14, 'dlp_agent_coverage', f"Column name suggests DLP coverage"))
+        
+        if any(term in column_lower for term in ['splunk', 'log', 'logging', 'spl']):
+            suggestions.append((15, 'logging_in_splunk', f"Column name suggests Splunk logging"))
+        
+        if any(term in column_lower for term in ['gso', 'global_security', 'siem']):
+            suggestions.append((16, 'logging_in_gso', f"Column name suggests GSO logging"))
+        
+        # Domain patterns
+        if any(term in column_lower for term in ['domain', 'dns', 'fqdn', 'ad']):
+            suggestions.append((17, 'domain', f"Column name suggests domain/DNS"))
+        
+        # Analyze data type
+        data_type_hints = []
+        if field:
+            if field.field_type == 'BOOLEAN':
+                if any(term in column_lower for term in ['coverage', 'enabled', 'active', 'installed']):
+                    data_type_hints.append("Boolean type suggests coverage/status field")
+            elif field.field_type == 'STRING':
+                data_type_hints.append("String type - could be name, identifier, or classification")
+            elif field.field_type == 'INTEGER':
+                data_type_hints.append("Integer type - could be count, ID, or numeric classification")
+            elif field.field_type == 'TIMESTAMP':
+                data_type_hints.append("Timestamp type - likely not a core entity attribute")
+        
+        return {
+            'suggestions': suggestions[:3],  # Top 3 suggestions
+            'data_type_hints': data_type_hints,
+            'confidence': 'high' if suggestions else 'low'
+        }
     
     def _print_final_statistics(self):
         """Print final statistics"""
