@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """
-Script to review and filter manually labeled columns from manual_labeled_columns.json
-Allows users to keep (1) or remove (2) each labeled column entry.
+Script to review and filter ONLY hostname columns from manual_labeled_columns.json
+Allows users to keep (1) or remove (2) each labeled hostname column entry.
 Shows 10 sample values for each column to aid in decision making.
+All other column types are automatically kept without review.
 """
 
 import json
@@ -20,11 +21,11 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-class ColumnReviewer:
+class HostColumnReviewer:
     def __init__(self, input_file: str = 'manual_labeled_columns.json'):
         self.input_file = Path(input_file)
         self.output_file = Path('reviewed_labeled_columns.json')
-        self.rejected_file = Path('rejected_columns.json')
+        self.rejected_file = Path('rejected_hostname_columns.json')
         
         # Load the original data first
         self.original_data = self._load_original_data()
@@ -38,7 +39,8 @@ class ColumnReviewer:
             'review_metadata': {
                 'review_timestamp': datetime.now().isoformat(),
                 'original_file': str(self.input_file),
-                'reviewer_version': '1.0.0'
+                'reviewer_version': '1.0.0',
+                'review_scope': 'hostname_columns_only'
             },
             'columns': {},
             'patterns': defaultdict(list),
@@ -46,19 +48,22 @@ class ColumnReviewer:
             'statistics': {},
             'review_statistics': {
                 'total_reviewed': 0,
-                'kept': 0,
-                'removed': 0,
-                'by_column_type': defaultdict(lambda: {'kept': 0, 'removed': 0})
+                'hostname_columns_reviewed': 0,
+                'hostname_columns_kept': 0,
+                'hostname_columns_removed': 0,
+                'other_columns_auto_kept': 0,
+                'by_column_type': defaultdict(lambda: {'kept': 0, 'removed': 0, 'auto_kept': 0})
             }
         }
         
-        # Track rejected items
+        # Track rejected hostname columns only
         self.rejected_data = {
             'rejection_metadata': {
                 'rejection_timestamp': datetime.now().isoformat(),
-                'original_file': str(self.input_file)
+                'original_file': str(self.input_file),
+                'rejection_scope': 'hostname_columns_only'
             },
-            'rejected_columns': {},
+            'rejected_hostname_columns': {},
             'rejection_reasons': defaultdict(list),
             'rejection_statistics': defaultdict(int)
         }
@@ -181,7 +186,7 @@ class ColumnReviewer:
             return []
     
     def start_review_process(self):
-        """Start the interactive review process"""
+        """Start the interactive review process for hostname columns only"""
         if not self.original_data:
             logger.error("No data to review!")
             return
@@ -203,8 +208,8 @@ class ColumnReviewer:
         if not self._show_review_overview():
             return
         
-        # Review by column type
-        self._review_by_column_type()
+        # Review hostname columns only
+        self._review_hostname_columns()
         
         # Final summary and save
         self._finalize_review()
@@ -240,7 +245,7 @@ class ColumnReviewer:
         for col_type, count in sorted(type_counts.items(), key=lambda x: x[1], reverse=True):
             if col_type != 'host':  # Don't show host count again
                 display_name = self.column_types.get(col_type, col_type)
-                print(f"  {display_name:25} {count:6} columns (not being reviewed)")
+                print(f"  {display_name:25} {count:6} columns (will be auto-kept)")
         
         print("-" * 50)
         print("📝 NOTE: Only reviewing HOSTNAME columns (type='host')")
@@ -254,7 +259,7 @@ class ColumnReviewer:
         
         return True
     
-    def _review_by_column_type(self):
+    def _review_hostname_columns(self):
         """Review hostname columns only"""
         columns_data = self.original_data.get('columns', {})
         
@@ -282,7 +287,7 @@ class ColumnReviewer:
         
         # Review each hostname column
         for i, column_info in enumerate(hostname_columns, 1):
-            decision = self._review_single_column(column_info, i, len(hostname_columns))
+            decision = self._review_single_hostname_column(column_info, i, len(hostname_columns))
             
             if decision == 'quit':
                 print("\nQuitting review. Progress saved.")
@@ -291,13 +296,13 @@ class ColumnReviewer:
         # Automatically copy all non-hostname columns to the reviewed data
         self._copy_non_hostname_columns(columns_data)
     
-    def _review_single_column(self, column_info: Dict[str, Any], index: int, total: int) -> str:
-        """Review a single column and get user decision"""
+    def _review_single_hostname_column(self, column_info: Dict[str, Any], index: int, total: int) -> str:
+        """Review a single hostname column and get user decision"""
         table_path = column_info['table']
         column_name = column_info['column']
         column_type = column_info['type']
         
-        print(f"\n[{index}/{total}] Column: '{column_name}'")
+        print(f"\n[{index}/{total}] HOSTNAME Column: '{column_name}'")
         print(f"Table: {table_path}")
         print(f"Type: {self.column_types.get(column_type, column_type)}")
         
@@ -308,18 +313,18 @@ class ColumnReviewer:
             choice = input("\nDecision (1=keep, 2=remove, i=info, s=skip, q=quit): ").lower().strip()
             
             if choice == '1':
-                # Keep this column
-                self._keep_column(table_path, column_name, column_type)
-                self.reviewed_data['review_statistics']['kept'] += 1
+                # Keep this hostname column
+                self._keep_hostname_column(table_path, column_name, column_type)
+                self.reviewed_data['review_statistics']['hostname_columns_kept'] += 1
                 self.reviewed_data['review_statistics']['by_column_type'][column_type]['kept'] += 1
                 print("  ✅ KEPT")
                 break
             
             elif choice == '2':
-                # Remove this column
+                # Remove this hostname column
                 reason = input("  Reason for removal (optional): ").strip()
-                self._remove_column(table_path, column_name, column_type, reason)
-                self.reviewed_data['review_statistics']['removed'] += 1
+                self._remove_hostname_column(table_path, column_name, column_type, reason)
+                self.reviewed_data['review_statistics']['hostname_columns_removed'] += 1
                 self.reviewed_data['review_statistics']['by_column_type'][column_type]['removed'] += 1
                 print("  ❌ REMOVED")
                 break
@@ -341,11 +346,8 @@ class ColumnReviewer:
             else:
                 print("  Invalid choice. Please enter 1, 2, i, s, or q")
         
-        self.reviewed_data['review_statistics']['total_reviewed'] += 1
+        self.reviewed_data['review_statistics']['hostname_columns_reviewed'] += 1
         return 'continue'
-    
-        # Automatically copy all non-hostname columns to the reviewed data
-        self._copy_non_hostname_columns(columns_data)
     
     def _copy_non_hostname_columns(self, columns_data: Dict[str, Dict[str, str]]):
         """Automatically copy all non-hostname columns to the reviewed dataset"""
@@ -364,27 +366,27 @@ class ColumnReviewer:
                     copied_count += 1
                     
                     # Update statistics
-                    self.reviewed_data['review_statistics']['kept'] += 1
-                    self.reviewed_data['review_statistics']['by_column_type'][column_type]['kept'] += 1
+                    self.reviewed_data['review_statistics']['other_columns_auto_kept'] += 1
+                    self.reviewed_data['review_statistics']['by_column_type'][column_type]['auto_kept'] += 1
         
         print(f"✅ Automatically kept {copied_count} non-hostname columns")
         print("   (These were not reviewed since you only wanted to review hostnames)")
     
-    def _show_sample_data(self, table_path: str, column_name: str)::
+    def _show_sample_data(self, table_path: str, column_name: str):
         """Show sample data for this column"""
         # Try to find sample data in the original labeling history
         labeling_history = self.original_data.get('labeling_history', [])
         
         for entry in labeling_history:
             if entry.get('table') == table_path:
-                print(f"  Table rows: {entry.get('rows', 'unknown')}")
+                print(f"  Table rows: {entry.get('rows', 'unknown'):,}")
                 break
         
         # Get 10 sample values by querying BigQuery
         samples = self._fetch_sample_values(table_path, column_name, limit=10)
         
         if samples:
-            print(f"  Sample values (showing {len(samples)} live samples):")
+            print(f"  Sample hostname values (showing {len(samples)} live samples):")
             for i, sample in enumerate(samples, 1):
                 # Truncate very long values
                 display_value = str(sample)[:100] + "..." if len(str(sample)) > 100 else str(sample)
@@ -392,27 +394,18 @@ class ColumnReviewer:
         else:
             # Fallback to pattern examples if we can't get live samples
             print("  (Could not fetch live samples)")
-            patterns = self.original_data.get('patterns', {})
-            for pattern_type, pattern_list in patterns.items():
-                if pattern_type == column_name or any(p.get('column') == column_name for p in pattern_list if isinstance(p, dict)):
-                    print(f"  Found in patterns: {pattern_type}")
-                    if pattern_list and isinstance(pattern_list[0], dict):
-                        sample = pattern_list[0].get('sample')
-                        if sample:
-                            print(f"  Sample value: {sample}")
-                    break
             
             # Try to show cached samples from other columns with same name
-            self._show_cached_samples(column_name)
+            self._show_cached_hostname_samples(column_name)
     
-    def _show_cached_samples(self, column_name: str):
-        """Show cached samples from other tables with the same column name"""
+    def _show_cached_hostname_samples(self, column_name: str):
+        """Show cached hostname samples from other tables with the same column name"""
         columns_data = self.original_data.get('columns', {})
         found_samples = []
         
         # Look for this column name in other tables and try to get samples
         for other_table, other_labels in columns_data.items():
-            if column_name in other_labels and len(found_samples) < 10:
+            if column_name in other_labels and other_labels[column_name] == 'host' and len(found_samples) < 10:
                 # Try to get a few samples from this table
                 table_samples = self._fetch_sample_values(other_table, column_name, limit=3)
                 found_samples.extend(table_samples)
@@ -421,15 +414,15 @@ class ColumnReviewer:
                     break
         
         if found_samples:
-            print(f"  Sample values from other tables with '{column_name}':")
+            print(f"  Sample hostname values from other tables with '{column_name}':")
             for i, sample in enumerate(found_samples[:10], 1):
                 display_value = str(sample)[:100] + "..." if len(str(sample)) > 100 else str(sample)
                 print(f"    {i:2}. {display_value}")
     
     def _show_detailed_info(self, table_path: str, column_name: str, column_type: str):
-        """Show detailed information about a column"""
+        """Show detailed information about a hostname column"""
         print("\n" + "─" * 50)
-        print("DETAILED INFORMATION")
+        print("DETAILED HOSTNAME COLUMN INFORMATION")
         print("─" * 50)
         print(f"Table: {table_path}")
         print(f"Column: {column_name}")
@@ -445,22 +438,22 @@ class ColumnReviewer:
         # Get extended sample data for detailed view
         extended_samples = self._fetch_sample_values(table_path, column_name, limit=20)
         if extended_samples:
-            print(f"\nExtended samples ({len(extended_samples)} values):")
+            print(f"\nExtended hostname samples ({len(extended_samples)} values):")
             for i, sample in enumerate(extended_samples, 1):
                 display_value = str(sample)[:150] + "..." if len(str(sample)) > 150 else str(sample)
                 print(f"  {i:2}. {display_value}")
         
-        # Look for this column in other tables
+        # Look for this hostname column in other tables
         columns_data = self.original_data.get('columns', {})
         similar_columns = []
         
         for other_table, other_labels in columns_data.items():
             for other_column, other_type in other_labels.items():
-                if other_column == column_name and other_table != table_path:
+                if other_column == column_name and other_table != table_path and other_type == 'host':
                     similar_columns.append((other_table, other_type))
         
         if similar_columns:
-            print(f"\nSame column name found in {len(similar_columns)} other tables:")
+            print(f"\nSame hostname column found in {len(similar_columns)} other tables:")
             for other_table, other_type in similar_columns[:5]:  # Show first 5
                 print(f"  {other_table} → {other_type}")
             if len(similar_columns) > 5:
@@ -477,8 +470,8 @@ class ColumnReviewer:
         
         print("─" * 50)
     
-    def _keep_column(self, table_path: str, column_name: str, column_type: str):
-        """Keep a column in the reviewed dataset"""
+    def _keep_hostname_column(self, table_path: str, column_name: str, column_type: str):
+        """Keep a hostname column in the reviewed dataset"""
         if table_path not in self.reviewed_data['columns']:
             self.reviewed_data['columns'][table_path] = {}
         
@@ -492,11 +485,11 @@ class ColumnReviewer:
                 if isinstance(p, dict) and p.get('column') == column_name
             ])
     
-    def _remove_column(self, table_path: str, column_name: str, column_type: str, reason: str = ""):
-        """Remove a column and track the rejection"""
+    def _remove_hostname_column(self, table_path: str, column_name: str, column_type: str, reason: str = ""):
+        """Remove a hostname column and track the rejection"""
         column_key = f"{table_path}#{column_name}"
         
-        self.rejected_data['rejected_columns'][column_key] = {
+        self.rejected_data['rejected_hostname_columns'][column_key] = {
             'table': table_path,
             'column': column_name,
             'type': column_type,
@@ -525,32 +518,47 @@ class ColumnReviewer:
         ]
         
         # Update statistics
-        total_reviewed = self.reviewed_data['review_statistics']['total_reviewed']
-        kept = self.reviewed_data['review_statistics']['kept']
-        removed = self.reviewed_data['review_statistics']['removed']
+        hostname_reviewed = self.reviewed_data['review_statistics']['hostname_columns_reviewed']
+        hostname_kept = self.reviewed_data['review_statistics']['hostname_columns_kept']
+        hostname_removed = self.reviewed_data['review_statistics']['hostname_columns_removed']
+        other_kept = self.reviewed_data['review_statistics']['other_columns_auto_kept']
+        
+        total_reviewed = hostname_reviewed
+        total_kept = hostname_kept + other_kept
         
         print(f"\n" + "="*60)
-        print("REVIEW COMPLETE")
+        print("HOSTNAME COLUMN REVIEW COMPLETE")
         print("="*60)
-        print(f"Total reviewed: {total_reviewed}")
-        print(f"Kept: {kept} ({kept/total_reviewed*100:.1f}%)" if total_reviewed > 0 else "Kept: 0")
-        print(f"Removed: {removed} ({removed/total_reviewed*100:.1f}%)" if total_reviewed > 0 else "Removed: 0")
+        print(f"Hostname columns reviewed: {hostname_reviewed}")
+        print(f"Hostname columns kept: {hostname_kept}")
+        print(f"Hostname columns removed: {hostname_removed}")
+        print(f"Other columns auto-kept: {other_kept}")
+        print(f"Total columns in final dataset: {total_kept}")
+        
+        if hostname_reviewed > 0:
+            hostname_keep_rate = (hostname_kept / hostname_reviewed) * 100
+            print(f"Hostname keep rate: {hostname_keep_rate:.1f}%")
         
         print(f"\nBy column type:")
         for col_type, stats in self.reviewed_data['review_statistics']['by_column_type'].items():
             type_kept = stats['kept']
             type_removed = stats['removed']
-            type_total = type_kept + type_removed
+            type_auto_kept = stats['auto_kept']
+            type_total = type_kept + type_removed + type_auto_kept
+            
             if type_total > 0:
                 display_name = self.column_types.get(col_type, col_type)
-                print(f"  {display_name:25} Kept: {type_kept:3} Removed: {type_removed:3} ({type_kept/type_total*100:.1f}% kept)")
+                if col_type == 'host':
+                    print(f"  {display_name:25} Reviewed: {type_kept + type_removed:3} Kept: {type_kept:3} Removed: {type_removed:3}")
+                else:
+                    print(f"  {display_name:25} Auto-kept: {type_auto_kept:3} (not reviewed)")
         
         # Save files
         self._save_results()
         
         print(f"\n📁 Results saved:")
         print(f"  Reviewed data: {self.output_file}")
-        print(f"  Rejected data: {self.rejected_file}")
+        print(f"  Rejected hostnames: {self.rejected_file}")
         print("\n📝 NOTE: Only hostname columns were reviewed.")
         print("   All other column types were automatically kept.")
         print("="*60)
@@ -566,7 +574,7 @@ class ColumnReviewer:
             json.dump(self.rejected_data, f, indent=2, default=str)
         
         logger.info(f"Saved reviewed data to {self.output_file}")
-        logger.info(f"Saved rejected data to {self.rejected_file}")
+        logger.info(f"Saved rejected hostname columns to {self.rejected_file}")
     
     def resume_review(self):
         """Resume a previous review session"""
@@ -587,21 +595,22 @@ class ColumnReviewer:
     
     def show_statistics(self):
         """Show current review statistics"""
-        if not self.reviewed_data['review_statistics']['total_reviewed']:
-            print("No review progress yet.")
+        stats = self.reviewed_data['review_statistics']
+        if not stats['hostname_columns_reviewed']:
+            print("No hostname review progress yet.")
             return
         
-        stats = self.reviewed_data['review_statistics']
-        print(f"\nCurrent Review Progress:")
-        print(f"Total reviewed: {stats['total_reviewed']}")
-        print(f"Kept: {stats['kept']}")
-        print(f"Removed: {stats['removed']}")
+        print(f"\nCurrent Hostname Review Progress:")
+        print(f"Hostname columns reviewed: {stats['hostname_columns_reviewed']}")
+        print(f"Hostname columns kept: {stats['hostname_columns_kept']}")
+        print(f"Hostname columns removed: {stats['hostname_columns_removed']}")
+        print(f"Other columns auto-kept: {stats['other_columns_auto_kept']}")
 
 def main():
     """Main entry point"""
     import argparse
     
-    parser = argparse.ArgumentParser(description='Review and filter manually labeled columns')
+    parser = argparse.ArgumentParser(description='Review and filter hostname columns only')
     parser.add_argument(
         '--input',
         default='manual_labeled_columns.json',
@@ -620,7 +629,7 @@ def main():
     
     args = parser.parse_args()
     
-    reviewer = ColumnReviewer(input_file=args.input)
+    reviewer = HostColumnReviewer(input_file=args.input)
     
     if args.stats:
         reviewer.show_statistics()
