@@ -2,6 +2,7 @@
 """
 Script to review and filter manually labeled columns from manual_labeled_columns.json
 Allows users to keep (1) or remove (2) each labeled column entry.
+Shows 10 sample values for each column to aid in decision making.
 """
 
 import json
@@ -25,7 +26,7 @@ class ColumnReviewer:
         self.output_file = Path('reviewed_labeled_columns.json')
         self.rejected_file = Path('rejected_columns.json')
         
-        # Load the original data
+        # Load the original data first
         self.original_data = self._load_original_data()
         
         # Initialize BigQuery clients for fetching sample data
@@ -84,6 +85,21 @@ class ColumnReviewer:
             'skip': 'Skip (ignored)'
         }
     
+    def _load_original_data(self) -> Dict[str, Any]:
+        """Load the original manual_labeled_columns.json file"""
+        if not self.input_file.exists():
+            logger.error(f"Input file {self.input_file} not found!")
+            return {}
+        
+        try:
+            with open(self.input_file, 'r') as f:
+                data = json.load(f)
+                logger.info(f"Loaded original data from {self.input_file}")
+                return data
+        except Exception as e:
+            logger.error(f"Failed to load {self.input_file}: {e}")
+            return {}
+    
     def _initialize_bigquery_clients(self):
         """Initialize BigQuery clients for all projects in the labeled data"""
         try:
@@ -117,21 +133,6 @@ class ColumnReviewer:
             logger.info(f"Initialized BigQuery clients for {len(self.client_managers)} projects")
         else:
             logger.warning("No BigQuery connections available. Sample data will be limited.")
-    
-    def _load_original_data(self) -> Dict[str, Any]:
-        """Load the original manual_labeled_columns.json file"""
-        if not self.input_file.exists():
-            logger.error(f"Input file {self.input_file} not found!")
-            return {}
-        
-        try:
-            with open(self.input_file, 'r') as f:
-                data = json.load(f)
-                logger.info(f"Loaded original data from {self.input_file}")
-                return data
-        except Exception as e:
-            logger.error(f"Failed to load {self.input_file}: {e}")
-            return {}
     
     def _fetch_sample_values(self, table_path: str, column_name: str, limit: int = 10) -> List[Any]:
         """Fetch sample values from BigQuery for the specified column"""
@@ -178,19 +179,6 @@ class ColumnReviewer:
         except Exception as e:
             logger.debug(f"Failed to fetch samples for {table_path}.{column_name}: {e}")
             return []
-        """Load the original manual_labeled_columns.json file"""
-        if not self.input_file.exists():
-            logger.error(f"Input file {self.input_file} not found!")
-            return {}
-        
-        try:
-            with open(self.input_file, 'r') as f:
-                data = json.load(f)
-                logger.info(f"Loaded original data from {self.input_file}")
-                return data
-        except Exception as e:
-            logger.error(f"Failed to load {self.input_file}: {e}")
-            return {}
     
     def start_review_process(self):
         """Start the interactive review process"""
@@ -211,7 +199,8 @@ class ColumnReviewer:
         print("="*80 + "\n")
         
         # Get overview of what we're reviewing
-        self._show_review_overview()
+        if not self._show_review_overview():
+            return
         
         # Review by column type
         self._review_by_column_type()
@@ -296,14 +285,11 @@ class ColumnReviewer:
         column_name = column_info['column']
         column_type = column_info['type']
         
-        # Create a unique key for this column
-        column_key = f"{table_path}#{column_name}"
-        
         print(f"\n[{index}/{total}] Column: '{column_name}'")
         print(f"Table: {table_path}")
         print(f"Type: {self.column_types.get(column_type, column_type)}")
         
-        # Try to get sample data if available
+        # Show sample data for this column
         self._show_sample_data(table_path, column_name)
         
         while True:
@@ -351,7 +337,7 @@ class ColumnReviewer:
         return 'continue'
     
     def _show_sample_data(self, table_path: str, column_name: str):
-        """Show sample data for this column if available"""
+        """Show sample data for this column"""
         # Try to find sample data in the original labeling history
         labeling_history = self.original_data.get('labeling_history', [])
         
@@ -513,8 +499,8 @@ class ColumnReviewer:
         print("REVIEW COMPLETE")
         print("="*60)
         print(f"Total reviewed: {total_reviewed}")
-        print(f"Kept: {kept} ({kept/total_reviewed*100:.1f}%)")
-        print(f"Removed: {removed} ({removed/total_reviewed*100:.1f}%)")
+        print(f"Kept: {kept} ({kept/total_reviewed*100:.1f}%)" if total_reviewed > 0 else "Kept: 0")
+        print(f"Removed: {removed} ({removed/total_reviewed*100:.1f}%)" if total_reviewed > 0 else "Removed: 0")
         
         print(f"\nBy column type:")
         for col_type, stats in self.reviewed_data['review_statistics']['by_column_type'].items():
