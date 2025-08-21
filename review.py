@@ -174,18 +174,32 @@ class SpecificTableReviewer:
                     # Test a simple query
                     try:
                         query = f"SELECT COUNT(*) as row_count FROM `{table_path}`"
+                        print(f"   🔍 Testing query: {query}")
                         query_job = client.query(query)
                         result = list(query_job.result(timeout=30))
                         actual_rows = result[0].row_count if result else 0
                         print(f"   🔢 Actual row count: {actual_rows:,}")
                         
                         if actual_rows > 0:
-                            print(f"   ✅ Table has data and is accessible")
+                            print(f"   ✅ Table has data and is queryable")
                         else:
-                            print(f"   ⚠️ Table is empty or inaccessible")
+                            print(f"   ⚠️ Table is empty")
                         
                     except Exception as e:
-                        print(f"   ❌ Query test failed: {e}")
+                        print(f"   ❌ Query test failed: {str(e)}")
+                        print(f"   📋 Error type: {type(e).__name__}")
+                        
+                        # Check if it's a permission error
+                        if "403" in str(e) or "permission" in str(e).lower() or "access" in str(e).lower():
+                            print(f"   🔒 This appears to be a permissions issue")
+                            print(f"   💡 You may need BigQuery Data Viewer role or table-specific access")
+                        elif "not found" in str(e).lower():
+                            print(f"   🔍 Table path might be incorrect or table doesn't exist")
+                        else:
+                            print(f"   🤔 Unexpected error - continuing anyway")
+                        
+                        # Try to proceed with schema-only review
+                        print(f"   🎯 Will attempt schema-only review (no sample data)")
                         
             except Exception as e:
                 print(f"   ❌ Table access failed: {e}")
@@ -320,36 +334,46 @@ class SpecificTableReviewer:
                     
                     # Show sample values
                     if sample_data:
-                        print("    Sample values:")
+                        print("    📋 Sample values:")
                         sample_values = []
+                        sample_count = 0
+                        
                         for i, row in enumerate(sample_data[:8], 1):
                             value = row.get(column)
-                            if value is not None:
+                            if value is not None and value != "<not sampled>" and not str(value).startswith("<error"):
                                 value_str = str(value)[:100]
                                 print(f"      {i}. {value_str}")
                                 sample_values.append(value_str)
+                                sample_count += 1
+                            elif value == "<not sampled>":
+                                print(f"      {i}. <not sampled>")
                             else:
                                 print(f"      {i}. (null)")
                                 sample_values.append(None)
                         
-                        # If no values shown, try to show any non-null values
-                        if not any(sample_values):
-                            print("      (All sample values are null for this column)")
+                        # If no actual values shown, note it
+                        if sample_count == 0:
+                            print("      ⚠️ No actual values available for this column")
                     else:
-                        print("    ⚠️ No sample data available - table might be empty or access restricted")
-                        print("    You can still label this column based on its name and schema info")
+                        print("    ⚠️ No sample data available")
+                        print("    💡 This could be due to:")
+                        print("       - Insufficient query permissions")
+                        print("       - Table is actually empty") 
+                        print("       - Complex data types causing query issues")
+                        print("    📝 You can still label based on column name and schema info")
                         sample_values = []
                     
                     # Get user decision
                     while True:
                         try:
-                            print("\n    Options:")
-                            print("      1-17: Label with specific type")
-                            print("      18: Skip this column")
-                            print("      0: Show column types again")
-                            print("      s: Skip this table")
+                            print("\n    📋 Labeling Options:")
+                            print("      1-17: Label with specific column type")
+                            print("      18: Skip this column") 
+                            print("      0: Show column types reference")
+                            print("      s: Skip this entire table")
+                            print("      i: Show more info about this column")
                             
-                            choice = input(f"\n    Decision for '{column}': ").strip()
+                            choice = input(f"\n    🏷️ Label for '{column}': ").strip()
                             
                             if choice == '0':
                                 self._show_column_types()
@@ -359,6 +383,22 @@ class SpecificTableReviewer:
                                 print("    ⏭️ Skipping entire table")
                                 return False
                             
+                            if choice.lower() == 'i':
+                                # Show additional column info
+                                print(f"\n    📋 Additional Info for '{column}':")
+                                if field:
+                                    print(f"      Field Type: {field.field_type}")
+                                    print(f"      Mode: {field.mode}")
+                                    if field.description:
+                                        print(f"      Description: {field.description}")
+                                    if hasattr(field, 'fields') and field.fields:
+                                        print(f"      Nested fields: {[f.name for f in field.fields]}")
+                                
+                                # Show position in table
+                                print(f"      Position: Column {col_idx} of {len(columns)}")
+                                print(f"      Table: {table_info['description']}")
+                                continue
+                            
                             choice_num = int(choice)
                             
                             if choice_num in self.column_types:
@@ -366,27 +406,29 @@ class SpecificTableReviewer:
                                 table_labels[column] = label
                                 
                                 if label != 'skip':
-                                    print(f"    ✓ Labeled as: {label}")
+                                    print(f"    ✅ Labeled as: {label}")
                                     self.statistics['columns_labeled'] += 1
                                     
                                     # Store pattern information
                                     self.labeled_columns['patterns'][label].append({
                                         'column': column,
                                         'table': table_path,
-                                        'samples': sample_values[:5],
-                                        'table_category': table_info['category']
+                                        'samples': sample_values[:5] if 'sample_values' in locals() else [],
+                                        'table_category': table_info['category'],
+                                        'field_type': field.field_type if field else 'unknown',
+                                        'has_sample_data': bool(sample_data)
                                     })
                                 else:
-                                    print("    ✓ Skipped")
+                                    print("    ⏭️ Skipped")
                                     self.statistics['columns_skipped'] += 1
                                 
                                 self.statistics['total_columns_reviewed'] += 1
                                 break
                             else:
-                                print("    Invalid choice. Please enter 1-18, 0, or 's'")
+                                print("    ❌ Invalid choice. Please enter 1-18, 0, 's', or 'i'")
                         
                         except ValueError:
-                            print("    Please enter a valid number or 's'")
+                            print("    ❌ Please enter a valid number, 's', or 'i'")
                         except KeyboardInterrupt:
                             raise
                 
@@ -420,21 +462,26 @@ class SpecificTableReviewer:
         
         # Strategy 1: Simple LIMIT query (most reliable)
         try:
-            safe_columns = [f"`{col}`" for col in columns[:20]]  # Limit columns to avoid timeout
+            # Limit to first 10 columns to avoid complex types
+            safe_columns = []
+            for col in columns[:10]:
+                safe_columns.append(f"`{col}`")
             
             query = f"""
             SELECT {', '.join(safe_columns)}
             FROM `{table_path}`
-            LIMIT 10
+            LIMIT 5
             """
             
-            logger.debug(f"Trying simple LIMIT query for {table_path}")
+            logger.info(f"🔍 Trying simple LIMIT query for {table_path}")
+            print(f"    🔍 Query: {query}")
+            
             query_job = client.query(query)
-            results = list(query_job.result(timeout=30))
+            results = list(query_job.result(timeout=45))
             
             for row in results:
                 row_dict = {}
-                for col in columns[:20]:
+                for col in columns[:10]:
                     try:
                         value = getattr(row, col, None)
                         # Convert complex types to strings
@@ -447,7 +494,7 @@ class SpecificTableReviewer:
                             row_dict[col] = None
                     except Exception as e:
                         logger.debug(f"Error getting column {col}: {e}")
-                        row_dict[col] = None
+                        row_dict[col] = f"<error: {type(e).__name__}>"
                 sample_data.append(row_dict)
             
             if sample_data:
@@ -455,69 +502,60 @@ class SpecificTableReviewer:
                 return sample_data
                 
         except Exception as e:
-            logger.warning(f"Simple LIMIT query failed for {table_path}: {e}")
+            error_msg = str(e)
+            logger.warning(f"Simple LIMIT query failed for {table_path}: {error_msg}")
+            print(f"    ❌ Simple query failed: {error_msg}")
+            
+            # Check for specific error types
+            if "403" in error_msg or "permission" in error_msg.lower():
+                print(f"    🔒 Permission denied - you may not have query access to this table")
+                return []
+            elif "timeout" in error_msg.lower():
+                print(f"    ⏰ Query timeout - table might be very large")
+            elif "not found" in error_msg.lower():
+                print(f"    🔍 Table not found - check table path")
+                return []
         
-        # Strategy 2: Try with TABLESAMPLE if simple query fails
+        # Strategy 2: Try selecting just one column
         try:
-            safe_columns = [f"`{col}`" for col in columns[:15]]
-            
-            query = f"""
-            SELECT {', '.join(safe_columns)}
-            FROM `{table_path}` TABLESAMPLE SYSTEM (1 PERCENT)
-            LIMIT 5
-            """
-            
-            logger.debug(f"Trying TABLESAMPLE query for {table_path}")
-            query_job = client.query(query)
-            results = list(query_job.result(timeout=30))
-            
-            for row in results:
-                row_dict = {}
-                for col in columns[:15]:
-                    try:
-                        value = getattr(row, col, None)
-                        row_dict[col] = str(value)[:200] if value is not None else None
-                    except:
-                        row_dict[col] = None
-                sample_data.append(row_dict)
-            
-            if sample_data:
-                logger.info(f"✅ Got {len(sample_data)} sample rows using TABLESAMPLE")
-                return sample_data
+            if columns:
+                first_col = columns[0]
+                query = f"""
+                SELECT `{first_col}`
+                FROM `{table_path}`
+                LIMIT 3
+                """
                 
-        except Exception as e:
-            logger.warning(f"TABLESAMPLE query failed for {table_path}: {e}")
-        
-        # Strategy 3: Try with SELECT * and very small limit
-        try:
-            query = f"""
-            SELECT *
-            FROM `{table_path}`
-            LIMIT 3
-            """
-            
-            logger.debug(f"Trying SELECT * query for {table_path}")
-            query_job = client.query(query)
-            results = list(query_job.result(timeout=20))
-            
-            for row in results:
-                row_dict = {}
-                for col in columns:
-                    try:
-                        value = getattr(row, col, None)
-                        row_dict[col] = str(value)[:100] if value is not None else None
-                    except:
-                        row_dict[col] = None
-                sample_data.append(row_dict)
-            
-            if sample_data:
-                logger.info(f"✅ Got {len(sample_data)} sample rows using SELECT *")
-                return sample_data
+                logger.info(f"🔍 Trying single column query for {table_path}")
+                print(f"    🔍 Trying single column: {first_col}")
                 
+                query_job = client.query(query)
+                results = list(query_job.result(timeout=30))
+                
+                for row in results:
+                    row_dict = {}
+                    try:
+                        value = getattr(row, first_col, None)
+                        row_dict[first_col] = str(value)[:200] if value is not None else None
+                        # Fill other columns with placeholder
+                        for col in columns[1:]:
+                            row_dict[col] = "<not sampled>"
+                    except:
+                        row_dict[first_col] = "<error>"
+                    sample_data.append(row_dict)
+                
+                if sample_data:
+                    logger.info(f"✅ Got {len(sample_data)} sample rows using single column")
+                    print(f"    ✅ Single column sampling worked")
+                    return sample_data
+                    
         except Exception as e:
-            logger.warning(f"SELECT * query failed for {table_path}: {e}")
+            logger.warning(f"Single column query failed for {table_path}: {e}")
+            print(f"    ❌ Single column query also failed: {e}")
         
+        # Strategy 3: Return empty but don't fail
         logger.error(f"❌ All sampling strategies failed for {table_path}")
+        print(f"    ⚠️ Cannot access table data - proceeding with schema-only review")
         return []
     
     def _show_column_types(self):
