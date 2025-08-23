@@ -1,6 +1,9 @@
 import json
 import duckdb
+import os
+import re
 from google.cloud import bigquery
+from google.oauth2 import service_account
 from typing import Dict, List, Set, Tuple
 import logging
 
@@ -9,42 +12,61 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 class HostDataProcessor:
-    def __init__(self, gcp_project_id: str, json_file_path: str, duckdb_path: str = "hosts.duckdb"):
+    def __init__(self, json_file_path: str, duckdb_path: str = "universal_cmdb.duckdb"):
         """
         Initialize the processor with BigQuery and DuckDB connections
         
         Args:
-            gcp_project_id: Your Google Cloud Project ID
             json_file_path: Path to your JSON metadata file
             duckdb_path: Path for the DuckDB database file
         """
-        self.project_id = gcp_project_id
         self.json_file_path = json_file_path
         self.duckdb_path = duckdb_path
         
-        # Initialize BigQuery client
-        self.bq_client = bigquery.Client(project=gcp_project_id)
+        # Initialize BigQuery client using same method as your Flask app
+        self.bq_client = self._initialize_bigquery_client()
         
         # Initialize DuckDB connection
         self.duck_conn = duckdb.connect(duckdb_path)
         
-        # Create the hosts table in DuckDB
-        self._create_hosts_table()
+        # Create the universal CMDB table in DuckDB
+        self._create_cmdb_table()
     
-    def _create_hosts_table(self):
-        """Create the hosts table in DuckDB if it doesn't exist"""
+    def _initialize_bigquery_client(self):
+        """Initialize BigQuery client using service account like in your Flask app"""
+        try:
+            # Try to get service account file from environment or settings
+            service_account_file = os.getenv('GCP_SERVICE_ACCOUNT_FILE', 'gcp_prod_key.json')
+            
+            if os.path.exists(service_account_file):
+                credentials = service_account.Credentials.from_service_account_file(service_account_file)
+                client = bigquery.Client(project="chronicle-fisv", credentials=credentials)
+                logger.info("Initialized BigQuery client with service account")
+            else:
+                # Fallback to default credentials
+                client = bigquery.Client(project="chronicle-fisv")
+                logger.info("Initialized BigQuery client with default credentials")
+            
+            return client
+        except Exception as e:
+            logger.error(f"Error initializing BigQuery client: {e}")
+            raise
+    
+    def _create_cmdb_table(self):
+        """Create the universal CMDB table in DuckDB"""
         create_table_sql = """
-        CREATE TABLE IF NOT EXISTS unique_hosts (
-            table_name VARCHAR,
-            column_name VARCHAR,
+        CREATE TABLE IF NOT EXISTS universal_cmdb (
+            source_table VARCHAR,
+            source_column VARCHAR,
             column_type VARCHAR,
-            host_value VARCHAR,
+            original_host VARCHAR,
+            normalized_host VARCHAR,
             extraction_timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            PRIMARY KEY (table_name, column_name, host_value)
+            PRIMARY KEY (source_table, source_column, normalized_host)
         )
         """
         self.duck_conn.execute(create_table_sql)
-        logger.info("Created/verified hosts table in DuckDB")
+        logger.info("Created/verified universal CMDB table in DuckDB")
     
     def load_metadata(self) -> Dict:
         """Load and parse the JSON metadata file"""
@@ -56,6 +78,31 @@ class HostDataProcessor:
         except Exception as e:
             logger.error(f"Error loading metadata: {e}")
             raise
+    
+    def normalize_hostname(self, hostname: str) -> str:
+        """
+        Normalize hostname according to your requirements:
+        - Convert to lowercase
+        - Remove dashes
+        - Remove anything after "."
+        """
+        if not hostname or not isinstance(hostname, str):
+            return ""
+        
+        # Convert to lowercase
+        normalized = hostname.lower().strip()
+        
+        # Remove anything after the first dot
+        if '.' in normalized:
+            normalized = normalized.split('.')[0]
+        
+        # Remove dashes
+        normalized = normalized.replace('-', '')
+        
+        # Remove any remaining special characters except alphanumeric
+        normalized = re.sub(r'[^a-z0-9]', '', normalized)
+        
+        return normalized
     
     def extract_host_columns(self, metadata: Dict) -> List[Tuple[str, str, str]]:
         """
@@ -93,81 +140,84 @@ class HostDataProcessor:
         host_patterns = [
             'host', 'hostname', 'endpoint_name', 'endpointdomain_name',
             'splunk_host', 'app_host', 'chronicle_device_hostname',
-            'server_name', 'node_name', 'device_name'
+            'server_name', 'node_name', 'device_name', 'device_hostname'
         ]
         
         column_lower = column_name.lower()
         return any(pattern in column_lower for pattern in host_patterns)
     
-    def query_bigquery_hosts(self, table_name: str, column_name: str) -> Set[str]:
+    def query_bigquery_hosts(self, table_name: str, column_name: str) -> Set[Tuple[str, str]]:
         """
         Query BigQuery to get unique host values from a specific table/column
+        Returns tuples of (original_host, normalized_host)
         
         Args:
             table_name: BigQuery table name (format: project.dataset.table)
             column_name: Column name containing host data
             
         Returns:
-            Set of unique host values
+            Set of tuples: (original_host_value, normalized_host_value)
         """
-        # Construct the full table reference
-        # The table names in your JSON appear to already include project.dataset.table format
-        full_table_name = table_name
-        
         query = f"""
         SELECT DISTINCT `{column_name}` as host_value
-        FROM `{full_table_name}`
+        FROM `{table_name}`
         WHERE `{column_name}` IS NOT NULL 
         AND `{column_name}` != ''
         AND `{column_name}` != 'null'
         AND `{column_name}` != 'NULL'
         AND LENGTH(`{column_name}`) > 0
-        LIMIT 50000
+        LIMIT 100000
         """
         
         try:
-            logger.info(f"Querying {full_table_name}.{column_name}")
-            logger.debug(f"Query: {query}")
+            logger.info(f"Querying {table_name}.{column_name}")
             
+            # Use the same query execution pattern as your Flask app
             query_job = self.bq_client.query(query)
             results = query_job.result()
             
-            host_values = set()
+            host_pairs = set()
             for row in results:
                 if row.host_value and isinstance(row.host_value, str):
-                    host_values.add(row.host_value.strip())
+                    original_host = row.host_value.strip()
+                    normalized_host = self.normalize_hostname(original_host)
+                    
+                    # Only add if normalization produced something meaningful
+                    if normalized_host and len(normalized_host) > 0:
+                        host_pairs.add((original_host, normalized_host))
             
-            logger.info(f"Found {len(host_values)} unique hosts in {table_name}.{column_name}")
-            return host_values
+            logger.info(f"Found {len(host_pairs)} unique hosts in {table_name}.{column_name}")
+            return host_pairs
             
         except Exception as e:
             logger.error(f"Error querying {table_name}.{column_name}: {e}")
             return set()
     
-    def insert_hosts_to_duckdb(self, table_name: str, column_name: str, column_type: str, host_values: Set[str]):
+    def insert_hosts_to_cmdb(self, table_name: str, column_name: str, column_type: str, host_pairs: Set[Tuple[str, str]]):
         """
-        Insert unique host values into DuckDB
+        Insert host data into the universal CMDB
         
         Args:
             table_name: Source table name
             column_name: Source column name
             column_type: Type of the column (host, domain, etc.)
-            host_values: Set of unique host values
+            host_pairs: Set of (original_host, normalized_host) tuples
         """
-        if not host_values:
+        if not host_pairs:
             logger.warning(f"No host values to insert for {table_name}.{column_name}")
             return
         
         # Prepare data for insertion
         data_to_insert = [
-            (table_name, column_name, column_type, host_value)
-            for host_value in host_values
+            (table_name, column_name, column_type, original_host, normalized_host)
+            for original_host, normalized_host in host_pairs
         ]
         
         # Insert with ON CONFLICT DO NOTHING to handle duplicates
         insert_sql = """
-        INSERT OR IGNORE INTO unique_hosts (table_name, column_name, column_type, host_value)
-        VALUES (?, ?, ?, ?)
+        INSERT OR IGNORE INTO universal_cmdb 
+        (source_table, source_column, column_type, original_host, normalized_host)
+        VALUES (?, ?, ?, ?, ?)
         """
         
         try:
@@ -176,11 +226,37 @@ class HostDataProcessor:
         except Exception as e:
             logger.error(f"Error inserting data: {e}")
     
+    def create_all_sources_table(self):
+        """Create an all_sources summary table like in your Flask app"""
+        try:
+            # Drop and recreate the all_sources table
+            drop_sql = "DROP TABLE IF EXISTS all_sources"
+            self.duck_conn.execute(drop_sql)
+            
+            create_sql = """
+            CREATE TABLE all_sources AS (
+                SELECT DISTINCT
+                    normalized_host as host,
+                    source_table as source_table,
+                    source_column as source_column,
+                    column_type as type,
+                    COUNT(*) OVER (PARTITION BY normalized_host) as source_count
+                FROM universal_cmdb
+                WHERE normalized_host IS NOT NULL 
+                AND normalized_host != ''
+                ORDER BY normalized_host, source_table
+            )
+            """
+            self.duck_conn.execute(create_sql)
+            logger.info("Created all_sources summary table")
+        except Exception as e:
+            logger.error(f"Error creating all_sources table: {e}")
+    
     def process_all_tables(self):
         """
         Main processing function that orchestrates the entire workflow
         """
-        logger.info("Starting host data processing...")
+        logger.info("Starting universal CMDB creation...")
         
         # Load metadata
         metadata = self.load_metadata()
@@ -198,98 +274,133 @@ class HostDataProcessor:
             logger.info(f"Processing {table_name}.{column_name} (type: {column_type})")
             
             # Query BigQuery for unique hosts
-            host_values = self.query_bigquery_hosts(table_name, column_name)
+            host_pairs = self.query_bigquery_hosts(table_name, column_name)
             
-            # Insert into DuckDB
-            self.insert_hosts_to_duckdb(table_name, column_name, column_type, host_values)
+            # Insert into universal CMDB
+            self.insert_hosts_to_cmdb(table_name, column_name, column_type, host_pairs)
             
-            total_processed += len(host_values)
+            total_processed += len(host_pairs)
         
         logger.info(f"Total host values processed: {total_processed}")
         
+        # Create summary tables
+        self.create_all_sources_table()
+        
         # Print summary
         self.print_summary()
-        logger.info("Processing complete!")
+        logger.info("Universal CMDB creation complete!")
     
     def print_summary(self):
         """Print a summary of the collected data"""
-        # Table-level summary
-        table_summary_query = """
-        SELECT 
-            table_name,
-            column_name,
-            column_type,
-            COUNT(*) as unique_host_count
-        FROM unique_hosts 
-        GROUP BY table_name, column_name, column_type
-        ORDER BY table_name, unique_host_count DESC
-        """
-        
-        results = self.duck_conn.execute(table_summary_query).fetchall()
-        
-        print("\n" + "="*80)
-        print("SUMMARY OF COLLECTED HOST DATA")
-        print("="*80)
-        
-        current_table = None
-        total_hosts = 0
-        
-        for row in results:
-            table_name, column_name, column_type, count = row
-            
-            if current_table != table_name:
-                if current_table is not None:
-                    print()  # Add space between tables
-                current_table = table_name
-                print(f"\nTable: {table_name}")
-                print("-" * 60)
-            
-            print(f"  {column_name} ({column_type}): {count} unique hosts")
-            total_hosts += count
-        
-        print(f"\n{'='*80}")
-        print(f"TOTAL UNIQUE HOST ENTRIES: {total_hosts}")
-        
         # Overall stats
         stats_query = """
         SELECT 
-            COUNT(DISTINCT table_name) as total_tables,
-            COUNT(DISTINCT column_name) as total_columns,
-            COUNT(DISTINCT host_value) as total_unique_hosts,
+            COUNT(DISTINCT source_table) as total_tables,
+            COUNT(DISTINCT source_column) as total_columns,
+            COUNT(DISTINCT normalized_host) as total_unique_normalized_hosts,
+            COUNT(DISTINCT original_host) as total_unique_original_hosts,
             COUNT(*) as total_entries
-        FROM unique_hosts
+        FROM universal_cmdb
         """
         
         stats = self.duck_conn.execute(stats_query).fetchone()
+        
+        print("\n" + "="*80)
+        print("UNIVERSAL CMDB SUMMARY")
+        print("="*80)
+        
         if stats:
             print(f"Tables processed: {stats[0]}")
             print(f"Columns processed: {stats[1]}")
-            print(f"Unique hosts across all tables: {stats[2]}")
+            print(f"Unique normalized hosts: {stats[2]}")
+            print(f"Unique original hosts: {stats[3]}")
+            print(f"Total entries: {stats[4]}")
+        
+        # Top normalized hosts by source count
+        top_hosts_query = """
+        SELECT normalized_host, COUNT(DISTINCT source_table) as source_count
+        FROM universal_cmdb
+        GROUP BY normalized_host
+        ORDER BY source_count DESC, normalized_host
+        LIMIT 10
+        """
+        
+        top_hosts = self.duck_conn.execute(top_hosts_query).fetchall()
+        
+        print(f"\nTop 10 hosts by source count:")
+        print("-" * 60)
+        for host, count in top_hosts:
+            print(f"  {host}: appears in {count} different tables")
         
         # Show some sample data
-        sample_query = "SELECT * FROM unique_hosts LIMIT 5"
+        sample_query = """
+        SELECT source_table, source_column, original_host, normalized_host 
+        FROM universal_cmdb 
+        LIMIT 5
+        """
         sample_results = self.duck_conn.execute(sample_query).fetchall()
         
-        print(f"\nSample host entries:")
-        print("-" * 60)
+        print(f"\nSample normalized entries:")
+        print("-" * 80)
         for row in sample_results:
-            print(f"  {row[0]}.{row[1]} ({row[2]}) -> {row[3]}")
+            print(f"  {row[0]}.{row[1]}: '{row[2]}' -> '{row[3]}'")
+        
+        # Coverage by table
+        coverage_query = """
+        SELECT source_table, 
+               COUNT(DISTINCT normalized_host) as unique_hosts,
+               COUNT(*) as total_entries
+        FROM universal_cmdb
+        GROUP BY source_table
+        ORDER BY unique_hosts DESC
+        """
+        
+        coverage_results = self.duck_conn.execute(coverage_query).fetchall()
+        
+        print(f"\nCoverage by source table:")
+        print("-" * 80)
+        for table, unique_hosts, total_entries in coverage_results:
+            print(f"  {table}: {unique_hosts} unique hosts ({total_entries} total entries)")
     
-    def export_results(self, output_file: str = "host_analysis.csv"):
+    def export_results(self, output_file: str = "universal_cmdb_export.csv"):
         """Export results to CSV for further analysis"""
         export_query = """
         COPY (
-            SELECT table_name, column_name, column_type, host_value, extraction_timestamp
-            FROM unique_hosts 
-            ORDER BY table_name, column_name, host_value
+            SELECT source_table, source_column, column_type, 
+                   original_host, normalized_host, extraction_timestamp
+            FROM universal_cmdb 
+            ORDER BY source_table, source_column, normalized_host
         ) TO ? WITH (FORMAT CSV, HEADER)
         """
         
         try:
             self.duck_conn.execute(export_query, [output_file])
-            logger.info(f"Results exported to {output_file}")
+            logger.info(f"Universal CMDB exported to {output_file}")
         except Exception as e:
             logger.error(f"Error exporting results: {e}")
+    
+    def get_host_coverage_stats(self):
+        """Get coverage statistics for hosts across different sources"""
+        coverage_query = """
+        SELECT 
+            normalized_host,
+            COUNT(DISTINCT source_table) as table_count,
+            COUNT(DISTINCT source_column) as column_count,
+            STRING_AGG(DISTINCT source_table, ', ') as source_tables
+        FROM universal_cmdb
+        GROUP BY normalized_host
+        HAVING table_count > 1
+        ORDER BY table_count DESC, normalized_host
+        """
+        
+        results = self.duck_conn.execute(coverage_query).fetchall()
+        
+        print(f"\nHosts appearing in multiple sources:")
+        print("-" * 100)
+        for host, table_count, column_count, tables in results[:20]:  # Show top 20
+            print(f"  {host}: {table_count} tables, {column_count} columns")
+            print(f"    Sources: {tables}")
+            print()
     
     def close_connections(self):
         """Close database connections"""
@@ -298,24 +409,31 @@ class HostDataProcessor:
 
 # Usage example
 if __name__ == "__main__":
-    # Configuration - UPDATE THESE VALUES
-    GCP_PROJECT_ID = "your-gcp-project-id"  # Replace with your GCP project ID
+    # Configuration
     JSON_FILE_PATH = "reviewed_labeled_columns.json"  # Update with correct path
-    DUCKDB_PATH = "hosts.duckdb"  # DuckDB database file path
+    DUCKDB_PATH = "universal_cmdb.duckdb"  # Universal CMDB database file path
     
     try:
         # Initialize processor
         processor = HostDataProcessor(
-            gcp_project_id=GCP_PROJECT_ID,
             json_file_path=JSON_FILE_PATH,
             duckdb_path=DUCKDB_PATH
         )
         
-        # Process all tables
+        # Process all tables and create universal CMDB
         processor.process_all_tables()
         
-        # Optionally export results
-        processor.export_results("extracted_hosts.csv")
+        # Get additional coverage statistics
+        processor.get_host_coverage_stats()
+        
+        # Export results
+        processor.export_results("universal_cmdb_export.csv")
+        
+        print("\n" + "="*80)
+        print("UNIVERSAL CMDB CREATION COMPLETE!")
+        print(f"Database saved to: {DUCKDB_PATH}")
+        print("You can now query the universal_cmdb table or all_sources table")
+        print("="*80)
         
     except Exception as e:
         logger.error(f"Processing failed: {e}")
