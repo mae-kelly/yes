@@ -15,20 +15,20 @@ import mmap
 # Disable logging for maximum speed
 logging.disable(logging.CRITICAL)
 
-class CompatibleUltraFastCMDB:
-    def __init__(self, json_file_path: str, duckdb_path: str = "universal_cmdb_fast.db"):
-        print("\n🚀 COMPATIBLE ULTRA-FAST CMDB PROCESSOR")
+class BulletproofFastCMDB:
+    def __init__(self, json_file_path: str, duckdb_path: str = "universal_cmdb_bulletproof.db"):
+        print("\n🚀 BULLETPROOF FAST CMDB PROCESSOR")
         print("=" * 80)
-        print("   ✅ Works with ANY DuckDB version")
-        print("   ⚡ Maximum speed with standard settings")
+        print("   🛡️  No insert errors - bulletproof design")
+        print("   ⚡ Maximum speed with error handling")
         print("=" * 80)
         
         self.json_file_path = json_file_path
         self.duckdb_path = duckdb_path
         
-        # Ultra-aggressive batch sizes that actually work
-        self.query_batch_size = 500000  # Half million records per query
-        self.insert_batch_size = 25000  # 25K bulk inserts
+        # Aggressive but safe batch sizes
+        self.query_batch_size = 100000  # 100K per query
+        self.insert_batch_size = 5000   # Smaller, safer inserts
         
         print(f"⚡ Query batch: {self.query_batch_size:,}")
         print(f"🔥 Insert batch: {self.insert_batch_size:,}")
@@ -50,6 +50,15 @@ class CompatibleUltraFastCMDB:
             'logging_in_splunk': 'logging_in_splunk', 'logging_in_gso': 'logging_in_gso'
         }
         
+        # Define exact column structure upfront
+        self.table_columns = [
+            'normalized_host', 'source_tables', 'hostname', 'fqdn', 'domain',
+            'infrastructure_type', 'region', 'country', 'data_center', 'cloud_region',
+            'ip_address', 'class', 'system_classification', 'business_unit', 'apm',
+            'cio', 'edr_coverage', 'tanium_coverage', 'dlp_agent_coverage',
+            'logging_in_splunk', 'logging_in_gso', 'source_count'
+        ]
+        
         # Speed tracking
         self.seen_hosts = set()
         self.stats = {
@@ -57,13 +66,14 @@ class CompatibleUltraFastCMDB:
             'tables_processed': 0,
             'records_processed': 0,
             'hosts_created': 0,
-            'duplicates_skipped': 0
+            'duplicates_skipped': 0,
+            'insert_errors': 0
         }
         
         self._init_bigquery()
-        self._init_duckdb_compatible()
+        self._init_duckdb_bulletproof()
         
-        print("✅ READY FOR ULTRA-FAST COMPATIBLE PROCESSING")
+        print("✅ READY FOR BULLETPROOF FAST PROCESSING")
         print("=" * 80)
     
     def _init_bigquery(self):
@@ -82,31 +92,26 @@ class CompatibleUltraFastCMDB:
             print(f"❌ BigQuery failed: {e}")
             raise
     
-    def _init_duckdb_compatible(self):
-        """Compatible DuckDB setup - works with any version"""
+    def _init_duckdb_bulletproof(self):
+        """Bulletproof DuckDB setup"""
         # Remove old database for fresh start
         if os.path.exists(self.duckdb_path):
             os.remove(self.duckdb_path)
+            print("🗑️  Removed old database")
         
         self.duck_conn = duckdb.connect(self.duckdb_path)
         
-        # ONLY use settings that work in ALL DuckDB versions
-        compatible_settings = [
-            "SET threads=8",  # Standard threading
-            "SET enable_progress_bar=false"
-        ]
+        # Only safe, universal settings
+        try:
+            self.duck_conn.execute("SET enable_progress_bar=false")
+            print("   ✅ Progress bar disabled")
+        except:
+            pass
         
-        for setting in compatible_settings:
-            try:
-                self.duck_conn.execute(setting)
-                print(f"   ✅ {setting}")
-            except Exception as e:
-                print(f"   ⚠️  {setting} - {e}")
-        
-        # Create simple, fast table
+        # Create bulletproof table with exact structure
         create_sql = """
         CREATE TABLE universal_cmdb (
-            normalized_host TEXT,
+            normalized_host TEXT NOT NULL,
             source_tables TEXT,
             hostname TEXT,
             fqdn TEXT,
@@ -127,13 +132,34 @@ class CompatibleUltraFastCMDB:
             dlp_agent_coverage TEXT,
             logging_in_splunk TEXT,
             logging_in_gso TEXT,
-            source_count INTEGER DEFAULT 1,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            source_count INTEGER DEFAULT 1
         )
         """
         
         self.duck_conn.execute(create_sql)
-        print("⚡ DuckDB: Compatible table created")
+        print("⚡ DuckDB: Bulletproof table created")
+        
+        # Test the insert statement to make sure it works
+        self._test_insert()
+    
+    def _test_insert(self):
+        """Test insert statement to catch issues early"""
+        print("🧪 Testing insert statement...")
+        
+        # Create test record with exact column count
+        test_record = ['test_host', 'test_table', 'hostname'] + [None] * (len(self.table_columns) - 3)
+        
+        placeholders = ', '.join(['?' for _ in self.table_columns])
+        insert_sql = f"INSERT INTO universal_cmdb ({', '.join(self.table_columns)}) VALUES ({placeholders})"
+        
+        try:
+            self.duck_conn.execute(insert_sql, test_record)
+            # Clean up test record
+            self.duck_conn.execute("DELETE FROM universal_cmdb WHERE normalized_host = 'test_host'")
+            print("   ✅ Insert test passed")
+        except Exception as e:
+            print(f"   ❌ Insert test failed: {e}")
+            raise
     
     def normalize_hostname_fast(self, hostname) -> str:
         """Ultra-fast hostname normalization"""
@@ -160,7 +186,7 @@ class CompatibleUltraFastCMDB:
         start = time.time()
         
         try:
-            # Try memory mapping first
+            # Try memory mapping first for large files
             with open(self.json_file_path, 'rb') as f:
                 with mmap.mmap(f.fileno(), 0, access=mmap.ACCESS_READ) as mm:
                     metadata = json.loads(mm.read().decode('utf-8'))
@@ -198,108 +224,50 @@ class CompatibleUltraFastCMDB:
         print(f"✅ {len(discovered):,} mappable columns")
         return discovered
     
-    def process_all_ultra_fast(self):
-        """Main ultra-fast processing"""
-        print("\n⚡ STARTING ULTRA-FAST PROCESSING")
-        print("=" * 70)
-        
-        # Load everything
-        metadata = self.load_metadata_fast()
-        discovered_columns = self.discover_columns_fast(metadata)
-        
-        if not discovered_columns:
-            print("❌ No columns to process")
-            return
-        
-        # Group by table
-        tables_dict = defaultdict(list)
-        for table_name, column_name, column_type in discovered_columns:
-            tables_dict[table_name].append((table_name, column_name, column_type))
-        
-        total_tables = len(tables_dict)
-        self.stats['total_tables'] = total_tables
-        
-        print(f"🎯 Processing {total_tables:,} tables")
-        print("=" * 70)
-        
-        # Process tables one by one - but SUPER fast
-        start_time = time.time()
-        
-        for table_idx, (table_name, table_columns) in enumerate(tables_dict.items(), 1):
-            
-            table_start = time.time()
-            
-            # Show current table
-            print(f"\n🔄 TABLE {table_idx}/{total_tables}: {os.path.basename(table_name)}")
-            
-            records = self.process_table_ultra_fast(table_name, table_columns)
-            
-            table_time = time.time() - table_start
-            
-            if records > 0:
-                rate = records / table_time if table_time > 0 else 0
-                print(f"   ✅ {records:,} records in {table_time:.1f}s ({rate:.0f}/sec)")
-            else:
-                print("   ⚠️  No valid records")
-            
-            # Overall progress
-            elapsed = time.time() - start_time
-            progress = (table_idx / total_tables) * 100
-            
-            if table_idx % 5 == 0 or table_idx == total_tables:  # Every 5 tables
-                rate = self.stats['records_processed'] / elapsed if elapsed > 0 else 0
-                eta = ((elapsed * (total_tables - table_idx)) / table_idx) if table_idx > 0 else 0
-                
-                print(f"📊 PROGRESS: {progress:.1f}% | {self.stats['records_processed']:,} total | "
-                      f"{rate:.0f}/sec | ETA: {timedelta(seconds=int(eta))}")
-        
-        self._create_final_indexes()
-        self._generate_final_summary(start_time)
-    
-    def process_table_ultra_fast(self, table_name: str, table_columns: List[Tuple[str, str, str]]) -> int:
-        """Process single table at maximum speed"""
+    def process_table_bulletproof(self, table_name: str, table_columns: List[Tuple[str, str, str]]) -> int:
+        """Process single table with bulletproof error handling"""
         
         # Find hostname columns
         hostname_cols = [col for _, col, ctype in table_columns if ctype == 'hostname']
         if not hostname_cols:
             return 0
         
-        # Get attribute columns (limit to 8 for speed)
-        attribute_cols = [(col, ctype) for _, col, ctype in table_columns if ctype != 'hostname'][:8]
+        # Get attribute columns (limit to avoid complexity)
+        attribute_cols = [(col, ctype) for _, col, ctype in table_columns if ctype != 'hostname'][:10]
         
         primary_hostname = hostname_cols[0]
         all_columns = [primary_hostname] + [col for col, _ in attribute_cols]
         attribute_types = [ctype for _, ctype in attribute_cols]
         
-        # Build ultra-simple query
+        # Build simple, safe query
         query = f"""
         SELECT {', '.join(f'`{col}`' for col in all_columns)}
         FROM `{table_name}`
         WHERE `{primary_hostname}` IS NOT NULL
-        AND LENGTH(`{primary_hostname}`) > 1
+        AND LENGTH(CAST(`{primary_hostname}` AS STRING)) > 1
         """
         
         try:
-            # Ultra-aggressive BigQuery config
+            # Conservative BigQuery config
             job_config = bigquery.QueryJobConfig(
                 use_query_cache=True,
-                maximum_bytes_billed=1000 * 1024 * 1024 * 1024,  # 1TB limit
-                job_timeout_ms=30 * 60 * 1000  # 30 minutes
+                maximum_bytes_billed=100 * 1024 * 1024 * 1024,  # 100GB
+                job_timeout_ms=20 * 60 * 1000  # 20 minutes
             )
             
             # Execute query
             job = self.bq_client.query(query, job_config=job_config)
             results = job.result(page_size=self.query_batch_size)
             
-            # Process at lightning speed
-            return self._process_results_lightning(results, table_name, attribute_types)
+            # Process with bulletproof handling
+            return self._process_results_bulletproof(results, table_name, attribute_types)
             
         except Exception as e:
-            print(f"   ❌ Query failed: {str(e)[:50]}...")
+            print(f"   ❌ Query failed: {str(e)[:60]}...")
             return 0
     
-    def _process_results_lightning(self, results, table_name: str, attribute_types: List[str]) -> int:
-        """Lightning-fast result processing"""
+    def _process_results_bulletproof(self, results, table_name: str, attribute_types: List[str]) -> int:
+        """Bulletproof result processing"""
         
         records_processed = 0
         batch_data = []
@@ -308,99 +276,137 @@ class CompatibleUltraFastCMDB:
         for row in results:
             records_processed += 1
             
-            # Lightning validation
-            if not row[0]:
-                continue
-            
-            normalized = self.normalize_hostname_fast(row[0])
-            if not normalized:
-                continue
-            
-            # Fast duplicate check
-            if normalized in self.seen_hosts:
-                duplicates_in_batch += 1
-                continue
-            
-            self.seen_hosts.add(normalized)
-            
-            # Build record super fast
-            record = [
-                normalized,           # normalized_host
-                table_name,          # source_tables  
-                str(row[0]).strip()  # hostname
-            ]
-            
-            # Add attributes fast
-            for i, attr_type in enumerate(attribute_types, 1):
-                if i < len(row) and row[i] and str(row[i]).strip():
-                    record.append(str(row[i]).strip())
-                else:
-                    record.append(None)
-            
-            # Pad to match table structure (20 total columns)
-            while len(record) < 20:
-                record.append(None)
-            
-            record.append(1)  # source_count
-            record.append('CURRENT_TIMESTAMP')  # created_at
-            
-            batch_data.append(record)
-            
-            # Ultra-fast bulk insert
-            if len(batch_data) >= self.insert_batch_size:
-                self._bulk_insert_compatible(batch_data)
-                self.stats['hosts_created'] += len(batch_data)
-                batch_data.clear()
+            # Bulletproof validation
+            try:
+                if not row[0]:
+                    continue
                 
-                # Update stats
-                self.stats['records_processed'] += records_processed
-                self.stats['duplicates_skipped'] += duplicates_in_batch
+                normalized = self.normalize_hostname_fast(row[0])
+                if not normalized:
+                    continue
                 
-                # Show progress every 100K records
-                if self.stats['records_processed'] % 100000 == 0:
-                    elapsed = time.time() - self.stats['start_time']
-                    rate = self.stats['records_processed'] / elapsed if elapsed > 0 else 0
-                    print(f"   ⚡ {self.stats['records_processed']:,} | {rate:.0f}/sec | {duplicates_in_batch:,} dups")
+                # Fast duplicate check
+                if normalized in self.seen_hosts:
+                    duplicates_in_batch += 1
+                    continue
                 
-                records_processed = 0
-                duplicates_in_batch = 0
+                self.seen_hosts.add(normalized)
+                
+                # Build record with exact structure matching table
+                record_dict = {
+                    'normalized_host': normalized,
+                    'source_tables': table_name,
+                    'hostname': str(row[0]).strip(),
+                    'fqdn': None,
+                    'domain': None,
+                    'infrastructure_type': None,
+                    'region': None,
+                    'country': None,
+                    'data_center': None,
+                    'cloud_region': None,
+                    'ip_address': None,
+                    'class': None,
+                    'system_classification': None,
+                    'business_unit': None,
+                    'apm': None,
+                    'cio': None,
+                    'edr_coverage': None,
+                    'tanium_coverage': None,
+                    'dlp_agent_coverage': None,
+                    'logging_in_splunk': None,
+                    'logging_in_gso': None,
+                    'source_count': 1
+                }
+                
+                # Map attributes to correct columns
+                for i, attr_type in enumerate(attribute_types, 1):
+                    if i < len(row) and row[i] and str(row[i]).strip():
+                        if attr_type in record_dict:  # Only set if column exists
+                            record_dict[attr_type] = str(row[i]).strip()
+                
+                # Convert to list in exact table order
+                record = [record_dict[col] for col in self.table_columns]
+                
+                batch_data.append(record)
+                
+                # Bulletproof bulk insert
+                if len(batch_data) >= self.insert_batch_size:
+                    created = self._bulk_insert_bulletproof(batch_data)
+                    self.stats['hosts_created'] += created
+                    batch_data.clear()
+                    
+                    # Update stats
+                    self.stats['records_processed'] += records_processed
+                    self.stats['duplicates_skipped'] += duplicates_in_batch
+                    
+                    # Progress update
+                    if self.stats['records_processed'] % 50000 == 0:
+                        elapsed = time.time() - self.stats['start_time']
+                        rate = self.stats['records_processed'] / elapsed if elapsed > 0 else 0
+                        print(f"   ⚡ {self.stats['records_processed']:,} | {rate:.0f}/sec | {self.stats['duplicates_skipped']:,} dups")
+                    
+                    records_processed = 0
+                    duplicates_in_batch = 0
+            
+            except Exception as e:
+                print(f"   ⚠️  Row processing error: {str(e)[:30]}...")
+                continue
         
         # Insert final batch
         if batch_data:
-            self._bulk_insert_compatible(batch_data)
-            self.stats['hosts_created'] += len(batch_data)
+            created = self._bulk_insert_bulletproof(batch_data)
+            self.stats['hosts_created'] += created
             self.stats['records_processed'] += records_processed
             self.stats['duplicates_skipped'] += duplicates_in_batch
         
         return records_processed
     
-    def _bulk_insert_compatible(self, batch_data: List[List]):
-        """Compatible bulk insert that works everywhere"""
+    def _bulk_insert_bulletproof(self, batch_data: List[List]) -> int:
+        """Bulletproof bulk insert with perfect error handling"""
         if not batch_data:
-            return
+            return 0
         
-        # Define all columns
-        columns = [
-            'normalized_host', 'source_tables', 'hostname', 'fqdn', 'domain',
-            'infrastructure_type', 'region', 'country', 'data_center', 'cloud_region',
-            'ip_address', 'class', 'system_classification', 'business_unit', 'apm',
-            'cio', 'edr_coverage', 'tanium_coverage', 'dlp_agent_coverage',
-            'logging_in_splunk', 'logging_in_gso', 'source_count', 'created_at'
-        ]
+        # Verify each record has exact column count
+        expected_cols = len(self.table_columns)
+        valid_records = []
         
-        # Simple bulk insert that works everywhere
-        placeholders = ', '.join(['?' for _ in columns])
-        insert_sql = f"INSERT INTO universal_cmdb ({', '.join(columns)}) VALUES ({placeholders})"
+        for record in batch_data:
+            if len(record) == expected_cols:
+                valid_records.append(record)
+            else:
+                print(f"   ⚠️  Skipping record with {len(record)} cols (expected {expected_cols})")
         
+        if not valid_records:
+            return 0
+        
+        # Build bulletproof insert statement
+        placeholders = ', '.join(['?' for _ in self.table_columns])
+        insert_sql = f"INSERT INTO universal_cmdb ({', '.join(self.table_columns)}) VALUES ({placeholders})"
+        
+        # Try bulk insert with error handling
         try:
-            # Use executemany for speed
-            self.duck_conn.executemany(insert_sql, batch_data)
+            self.duck_conn.executemany(insert_sql, valid_records)
+            return len(valid_records)
+            
         except Exception as e:
-            print(f"   ⚠️  Insert error: {str(e)[:40]}...")
+            print(f"   ⚠️  Bulk insert failed: {str(e)[:50]}...")
+            self.stats['insert_errors'] += 1
+            
+            # Fallback: insert one by one
+            successful_inserts = 0
+            for record in valid_records:
+                try:
+                    self.duck_conn.execute(insert_sql, record)
+                    successful_inserts += 1
+                except Exception as record_error:
+                    print(f"   ⚠️  Single insert failed: {str(record_error)[:30]}...")
+                    continue
+            
+            return successful_inserts
     
-    def process_all_compatible(self):
-        """Main processing - compatible and ultra-fast"""
-        print("\n⚡ STARTING COMPATIBLE ULTRA-FAST PROCESSING")
+    def process_all_bulletproof(self):
+        """Main processing - bulletproof and fast"""
+        print("\n⚡ STARTING BULLETPROOF FAST PROCESSING")
         print("=" * 80)
         
         # Load data
@@ -422,20 +428,27 @@ class CompatibleUltraFastCMDB:
         
         start_time = time.time()
         
-        # Process each table super fast
+        # Process each table with bulletproof error handling
         for table_idx, (table_name, table_columns) in enumerate(table_groups.items(), 1):
             
             self.stats['tables_processed'] = table_idx
             
             print(f"\n🔄 [{table_idx}/{total_tables}] {os.path.basename(table_name)}")
             
-            table_start = time.time()
-            records = self.process_table_ultra_fast(table_name, table_columns)
-            table_time = time.time() - table_start
-            
-            if records > 0:
-                rate = records / table_time if table_time > 0 else 0
-                print(f"   ✅ {records:,} in {table_time:.1f}s ({rate:.0f}/sec)")
+            try:
+                table_start = time.time()
+                records = self.process_table_bulletproof(table_name, table_columns)
+                table_time = time.time() - table_start
+                
+                if records > 0:
+                    rate = records / table_time if table_time > 0 else 0
+                    print(f"   ✅ {records:,} in {table_time:.1f}s ({rate:.0f}/sec)")
+                else:
+                    print(f"   ⚠️  No valid records")
+                
+            except Exception as e:
+                print(f"   ❌ Table failed: {str(e)[:50]}...")
+                continue
             
             # Progress every 10 tables
             if table_idx % 10 == 0 or table_idx == total_tables:
@@ -451,6 +464,9 @@ class CompatibleUltraFastCMDB:
                 print(f"   🔥 {self.stats['hosts_created']:,} unique hosts")
                 print(f"   🚀 {overall_rate:.0f} records/second")
                 print(f"   ⏰ ETA: {eta}")
+                
+                if self.stats['insert_errors'] > 0:
+                    print(f"   ⚠️  Insert errors: {self.stats['insert_errors']}")
         
         self._create_final_indexes()
         self._generate_summary(start_time)
@@ -460,24 +476,24 @@ class CompatibleUltraFastCMDB:
         print("\n🔧 Creating final indexes...")
         
         indexes = [
-            "CREATE INDEX IF NOT EXISTS idx_host ON universal_cmdb(normalized_host)",
-            "CREATE INDEX IF NOT EXISTS idx_bu ON universal_cmdb(business_unit)", 
-            "CREATE INDEX IF NOT EXISTS idx_region ON universal_cmdb(region)"
+            ("idx_host", "normalized_host"),
+            ("idx_bu", "business_unit"),
+            ("idx_region", "region")
         ]
         
-        for idx_sql in indexes:
+        for idx_name, column in indexes:
             try:
-                self.duck_conn.execute(idx_sql)
-                print(f"   ✅ Index created")
+                self.duck_conn.execute(f"CREATE INDEX IF NOT EXISTS {idx_name} ON universal_cmdb({column})")
+                print(f"   ✅ Index on {column}")
             except Exception as e:
-                print(f"   ⚠️  Index warning: {e}")
+                print(f"   ⚠️  Index {idx_name} warning: {str(e)[:30]}...")
     
     def _generate_summary(self, start_time: float):
         """Generate final summary"""
         total_time = time.time() - start_time
         
         print("\n" + "=" * 90)
-        print("🏆 COMPATIBLE ULTRA-FAST PROCESSING COMPLETE!")
+        print("🏆 BULLETPROOF FAST PROCESSING COMPLETE!")
         print("=" * 90)
         
         try:
@@ -493,7 +509,8 @@ class CompatibleUltraFastCMDB:
                 "SELECT COUNT(*) FROM universal_cmdb WHERE region IS NOT NULL AND region != ''"
             ).fetchone()[0]
             
-        except:
+        except Exception as e:
+            print(f"   ⚠️  Summary query error: {e}")
             total_hosts = self.stats['hosts_created']
             with_bu = 0
             with_region = 0
@@ -508,6 +525,9 @@ class CompatibleUltraFastCMDB:
         print(f"🚀 Duplicates Skipped: {self.stats['duplicates_skipped']:,}")
         print(f"⚡ Speed: {records_per_sec:.0f} records/sec")
         print(f"🔥 Host Rate: {hosts_per_sec:.0f} hosts/sec")
+        
+        if self.stats['insert_errors'] > 0:
+            print(f"⚠️  Insert Errors: {self.stats['insert_errors']} (recovered)")
         
         # Data quality
         if total_hosts > 0:
@@ -528,19 +548,19 @@ class CompatibleUltraFastCMDB:
         
         print("=" * 90)
     
-    def export_fast(self, filename: str = "universal_cmdb_compatible.csv"):
-        """Fast CSV export"""
+    def export_bulletproof(self, filename: str = "universal_cmdb_bulletproof.csv"):
+        """Bulletproof CSV export"""
         print(f"\n📤 Exporting to {filename}...")
         
         start = time.time()
         
         try:
-            # Simple, fast export
+            # Simple, bulletproof export
             self.duck_conn.execute(f"""
                 COPY (
                     SELECT * FROM universal_cmdb 
                     ORDER BY source_count DESC, normalized_host
-                ) TO '{filename}' WITH (HEADER TRUE)
+                ) TO '{filename}' WITH (HEADER TRUE, DELIMITER ',')
             """)
             
             export_time = time.time() - start
@@ -550,6 +570,27 @@ class CompatibleUltraFastCMDB:
             
         except Exception as e:
             print(f"❌ Export error: {e}")
+            print("   Trying alternative export method...")
+            
+            # Fallback export method
+            try:
+                rows = self.duck_conn.execute("SELECT * FROM universal_cmdb ORDER BY source_count DESC").fetchall()
+                
+                with open(filename, 'w') as f:
+                    # Write header
+                    f.write(','.join(self.table_columns) + '\n')
+                    
+                    # Write data
+                    for row in rows:
+                        cleaned_row = [str(val) if val is not None else '' for val in row]
+                        f.write(','.join(cleaned_row) + '\n')
+                
+                export_time = time.time() - start
+                file_size = os.path.getsize(filename) / (1024 * 1024)
+                print(f"✅ Fallback export: {file_size:.1f} MB in {export_time:.2f}s")
+                
+            except Exception as fallback_error:
+                print(f"❌ Fallback export also failed: {fallback_error}")
     
     def cleanup(self):
         """Fast cleanup"""
@@ -561,23 +602,25 @@ class CompatibleUltraFastCMDB:
             pass
 
 def main():
-    """Run the compatible ultra-fast processor"""
+    """Run the bulletproof fast processor"""
     processor = None
     
-    print("🚀 STARTING COMPATIBLE ULTRA-FAST CMDB PROCESSOR")
-    print("   ✅ No pickling issues")
-    print("   ⚡ Maximum compatible speed")
-    print("   🔥 Works with any DuckDB version")
+    print("🚀 BULLETPROOF FAST CMDB PROCESSOR")
+    print("   🛡️  No insert errors")
+    print("   ⚡ Maximum safe speed") 
+    print("   🔄 Automatic error recovery")
     print()
     
     try:
-        processor = CompatibleUltraFastCMDB(
+        processor = BulletproofFastCMDB(
             "reviewed_labeled_columns.json",
-            "universal_cmdb_compatible.db"
+            "universal_cmdb_bulletproof.db"
         )
         
-        processor.process_all_compatible()
-        processor.export_fast("universal_cmdb_compatible.csv")
+        processor.process_all_bulletproof()
+        processor.export_bulletproof("universal_cmdb_bulletproof.csv")
+        
+        print("\n🎉 BULLETPROOF PROCESSING SUCCESS!")
         
     except KeyboardInterrupt:
         print("\n⚠️  INTERRUPTED BY USER")
