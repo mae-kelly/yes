@@ -476,8 +476,11 @@ class HostDataProcessor:
             values = [normalized_host, table_name]
             placeholders = ['?', '?']
             
-            # Add the column data if we have a column type and it exists in our schema
-            if column_type and column_type in self.discovered_columns:
+            # Add the column data if we have a column type
+            if column_type:
+                # Ensure the column exists first
+                self._ensure_column_exists(column_type)
+                
                 columns.append(column_type)
                 values.append(original_value)
                 placeholders.append('?')
@@ -492,10 +495,9 @@ class HostDataProcessor:
         except Exception as e:
             logger.error(f"Error inserting host {normalized_host}: {e}")
     
-    def _update_host_data(self, normalized_host: str, column_type: str, value: str):
-        """Update a specific data field for an existing host"""
-        if column_type not in self.discovered_columns:
-            logger.debug(f"Column type {column_type} not in discovered columns, skipping update")
+    def _ensure_column_exists(self, column_type: str):
+        """Ensure that a column exists in the table, add it if it doesn't"""
+        if not column_type or column_type in ['normalized_host', 'source_tables', 'last_updated', 'created_at']:
             return
         
         try:
@@ -504,9 +506,32 @@ class HostDataProcessor:
             existing_columns = {col[1] for col in self.duck_conn.execute(columns_query).fetchall()}
             
             if column_type not in existing_columns:
-                logger.debug(f"Column {column_type} does not exist in table, skipping update")
-                return
+                # Add the column
+                alter_sql = f"ALTER TABLE universal_cmdb ADD COLUMN {column_type} TEXT"
+                self.duck_conn.execute(alter_sql)
+                logger.info(f"Added new column: {column_type}")
+                
+                # Add to discovered columns
+                self.discovered_columns.add(column_type)
+                
+                # Create index for the new column
+                try:
+                    self.duck_conn.execute(f"CREATE INDEX IF NOT EXISTS idx_{column_type} ON universal_cmdb({column_type})")
+                except:
+                    pass  # Index creation might fail, that's ok
+                    
+        except Exception as e:
+            logger.error(f"Error ensuring column {column_type} exists: {e}")
+
+    def _update_host_data(self, normalized_host: str, column_type: str, value: str):
+        """Update a specific data field for an existing host"""
+        if not column_type:
+            return
             
+        # Ensure the column exists first
+        self._ensure_column_exists(column_type)
+        
+        try:
             update_sql = f"""
             UPDATE universal_cmdb 
             SET {column_type} = ?, last_updated = CURRENT_TIMESTAMP
