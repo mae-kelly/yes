@@ -75,6 +75,7 @@ app.config['SESSION_REDIS'] = redis.StrictRedis(host='nexia.idc.com', port=6379,
 
 # OAuth setup for authentication
 auth = Auth(
+    app,
     authority=os.getenv("AUTHORITY"),
     client_id=os.getenv("CLIENT_ID"),
     client_credentials=os.getenv("CLIENT_SECRET"),
@@ -512,10 +513,14 @@ def clear_hostname_cache():
     """
     print("Clearing hostname inventory cache...")
     
-    # Clear any function caches
-    gatherAllHostnames.cache_clear = lambda: None
-    getHostnameStats.cache_clear = lambda: None
-    searchHostnames.cache_clear = lambda: None
+    # Clear any cached data by recreating relevant tables
+    try:
+        conn = duckdb.connect(os.path.join(file_path, "hostname_inventory.duckdb"))
+        conn.execute("DROP TABLE IF EXISTS master_hostnames")
+        conn.close()
+        print("Cleared hostname cache tables")
+    except Exception as e:
+        print(f"Error clearing cache: {e}")
 
 # ============================================================================
 # AUTHENTICATION (Same as Log Lens)
