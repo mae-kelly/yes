@@ -1,4 +1,3 @@
-
 import json
 import duckdb
 import os
@@ -315,7 +314,11 @@ class OptimizedHostDataProcessor:
         if not hostname or not isinstance(hostname, str) or hostname.strip() == "*Undefined":
             return None
         
-        normalized = hostname.lower().strip()
+        str_hostname = str(hostname).strip()
+        if str_hostname == "*Undefined":
+            return None
+            
+        normalized = str_hostname.lower().strip()
         
         if '.' in normalized:
             normalized = normalized.split('.')[0]
@@ -387,7 +390,7 @@ class OptimizedHostDataProcessor:
             all_matches.extend(table_matches)
             logger.info(f"    𖦹 {len(table_matches)} columns matched in this table")
         
-        logger.info(f"✧˚ Discovery complete: {len(all_matches)} total column matches")
+        logger.info(f"₊˚✩ Discovery complete: {len(all_matches)} total column matches")
         return all_matches
     
     def build_optimized_queries(self, matches: List[ColumnMatch]) -> Dict[str, Dict]:
@@ -429,7 +432,6 @@ class OptimizedHostDataProcessor:
             AND `{primary_hostname.column_name}` != ''
             AND `{primary_hostname.column_name}` != '*Undefined'
             AND LENGTH(`{primary_hostname.column_name}`) > 2
-            LIMIT 100000
             """
             
             optimized_queries[table_name] = {
@@ -482,7 +484,7 @@ class OptimizedHostDataProcessor:
             
             process_time = time.time() - start_time
             
-            logger.info(f"    ✧˚ Processed {len(records):,} valid records in {process_time:.2f}s")
+            logger.info(f"    ₊˚✩ Processed {len(records):,} valid records in {process_time:.2f}s")
             
             for attr_type, count in attribute_stats.items():
                 if count > 0:
@@ -528,7 +530,7 @@ class OptimizedHostDataProcessor:
                 elif result == 'conflict':
                     conflicts_detected += 1
         
-        logger.info(f"   ✧˚ Storage complete:")
+        logger.info(f"   ₊˚✩ Storage complete:")
         logger.info(f"      ♡ New records: {records_written:,}")
         logger.info(f"      𖦹 Updated records: {records_updated:,}")
         logger.info(f"      ₊˚⊹ Conflicts detected: {conflicts_detected:,}")
@@ -758,13 +760,13 @@ class OptimizedHostDataProcessor:
             FROM universal_cmdb
         """).fetchone()
         
-        logger.info(f"✧˚ Source coverage statistics:")
+        logger.info(f"₊˚✩ Source coverage statistics:")
         logger.info(f"    ♡ Average sources per host: {coverage_stats[0]:.1f}")
         logger.info(f"    𖦹 Maximum sources for one host: {coverage_stats[1]}")
         logger.info(f"    ⋆｡‧˚ Hosts with multiple sources: {coverage_stats[2]:,}")
         
-        logger.info(f"\n♡ Analysis Summary:")
-        logger.info(f"    ✧˚ Successfully populated {len(populated_columns)}/{len(data_columns)} column types")
+        logger.info(f"♡ Analysis Summary:")
+        logger.info(f"    ₊˚✩ Successfully populated {len(populated_columns)}/{len(data_columns)} column types")
         logger.info(f"    𖦹 Data quality: {(len(populated_columns)/len(data_columns)*100):.0f}% column coverage")
         logger.info(f"    ⋆｡‧˚ Conflicts requiring attention: {conflicts} hosts")
     
@@ -821,7 +823,7 @@ class OptimizedHostDataProcessor:
             self.export_comprehensive_data()
             
             total_time = time.time() - overall_start
-            logger.info(f"\n✧˚ COMPLETE SUCCESS!")
+            logger.info(f"\n₊˚✩ COMPLETE SUCCESS!")
             logger.info(f"⋆｡‧˚ Total processing time: {total_time:.1f} seconds")
             logger.info(f"♡ Database: {self.duckdb_path}")
             logger.info(f"𖦹 Export: universal_cmdb_export.csv")
