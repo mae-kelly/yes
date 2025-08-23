@@ -44,9 +44,17 @@ def extract_tables_simple(input_file='reviewed_labeled_columns.json', output_fil
         print(f"📋 {table_path} → {len(table_columns)} columns")
         clean_data[table_path] = table_columns
     
-    # Save the clean JSON
+    # Save the clean JSON with each table on one line
     with open(output_file, 'w') as f:
-        json.dump(clean_data, f, indent=2)
+        f.write('{\n')
+        table_items = list(clean_data.items())
+        for i, (table_path, table_columns) in enumerate(table_items):
+            # Write each table as a single line
+            line = f'  "{table_path}": {json.dumps(table_columns)}'
+            if i < len(table_items) - 1:
+                line += ','
+            f.write(line + '\n')
+        f.write('}\n')
     
     logger.info(f"💾 Saved clean table mappings to {output_file}")
     print(f"\n✅ Extraction complete!")
