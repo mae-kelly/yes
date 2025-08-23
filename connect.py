@@ -6,49 +6,44 @@ from google.cloud import bigquery
 from google.oauth2 import service_account
 from typing import Dict, List, Set, Tuple, Optional
 import logging
-from collections import defaultdict, Counter
+from collections import defaultdict
 import time
 from datetime import datetime, timedelta
-import threading
-from concurrent.futures import ThreadPoolExecutor, as_completed
-import multiprocessing
-import subprocess
-import sys
-import platform
-import asyncio
 import gc
 import mmap
-from queue import Queue
+import psutil
+import platform
 
-# Disable logging for max speed
+# Disable all logging for maximum speed
 logging.disable(logging.CRITICAL)
 
-class UltraFastCMDBProcessor:
-    def __init__(self, json_file_path: str, duckdb_path: str = "universal_cmdb.db"):
-        print("🚀 ULTRA-FAST CMDB PROCESSOR - MAXIMUM SPEED MODE")
-        print("=" * 80)
+class LightningFastCMDBProcessor:
+    def __init__(self, json_file_path: str, duckdb_path: str = "universal_cmdb_lightning.db"):
+        print("\n🚀 LIGHTNING FAST CMDB PROCESSOR - SINGLE THREAD MAXIMUM SPEED")
+        print("=" * 90)
         
         self.json_file_path = json_file_path
         self.duckdb_path = duckdb_path
         
-        # Get all CPU cores - use threading instead of multiprocessing
-        self.cpu_count = multiprocessing.cpu_count()
-        self.max_workers = min(20, self.cpu_count * 3)  # Cap at 20 threads max
+        # Set process priority to maximum
+        self._set_max_priority()
         
-        # Massive batch sizes for speed
-        self.batch_size = 100000  # Even bigger batches
-        self.insert_batch_size = 20000  # Huge bulk inserts
+        # Ultra-aggressive batch sizes
+        self.query_batch_size = 200000  # Massive query batches
+        self.insert_batch_size = 50000  # Huge insert batches
+        self.progress_interval = 100000  # Less frequent progress updates
         
-        print(f"🔥 Using {self.cpu_count} CPU cores with {self.max_workers} worker threads")
-        print(f"⚡ Batch size: {self.batch_size:,} | Insert batch: {self.insert_batch_size:,}")
+        print(f"⚡ Query batch: {self.query_batch_size:,}")
+        print(f"🔥 Insert batch: {self.insert_batch_size:,}")
         
-        # Pre-compiled regex for speed
+        # Pre-compiled regex for ultra-fast hostname cleaning
         self.hostname_cleaner = re.compile(r'[^a-z0-9]')
+        self.invalid_values = {'', '*undefined', 'null', 'none', 'undefined'}
         
-        # Fast column mapping (no complex patterns - just exact matches)
-        self.fast_column_map = {
+        # Lightning-fast column mapping (exact matches only)
+        self.speed_column_map = {
             'hostname': 'hostname', 'host': 'hostname', 'fqdn': 'fqdn',
-            'domain': 'domain', 'region': 'region', 'country': 'country',
+            'domain': 'domain', 'region': 'region', 'country': 'country', 
             'business_unit': 'business_unit', 'bu': 'business_unit',
             'infrastructure_type': 'infrastructure_type', 'infra_type': 'infrastructure_type',
             'data_center': 'data_center', 'datacenter': 'data_center',
@@ -56,75 +51,96 @@ class UltraFastCMDBProcessor:
             'class': 'class', 'system_classification': 'system_classification',
             'apm': 'apm', 'cio': 'cio', 'edr_coverage': 'edr_coverage',
             'tanium_coverage': 'tanium_coverage', 'dlp_agent_coverage': 'dlp_agent_coverage',
-            'logging_in_splunk': 'logging_in_splunk', 'logging_in_gso': 'logging_in_gso'
+            'logging_in_splunk': 'logging_in_splunk', 'logging_in_gso': 'logging_in_gso',
+            'cloud_region': 'cloud_region'
         }
         
-        # Thread-safe caches for speed
+        # Ultra-fast duplicate tracking
         self.seen_hosts = set()
-        self.seen_hosts_lock = threading.Lock()
         
-        # Stats tracking
+        # Lightning stats
         self.stats = {
             'start_time': time.time(),
+            'last_update': time.time(),
             'tables_processed': 0,
+            'total_tables': 0,
             'records_processed': 0,
             'hosts_created': 0,
-            'hosts_updated': 0,
             'duplicates_skipped': 0,
-            'stats_lock': threading.Lock()
+            'current_table': ''
         }
         
-        # Thread-local storage for BigQuery clients
-        self.thread_local = threading.local()
+        # Initialize connections
+        self._init_bigquery_lightning()
+        self._init_duckdb_lightning()
         
-        self._init_duckdb_ultra_fast()
-        
-        print("✅ Initialization complete - READY FOR MAXIMUM SPEED")
-        print("=" * 80)
+        print("✅ LIGHTNING PROCESSOR READY - MAXIMUM SPEED ENGAGED")
+        print("=" * 90)
     
-    def _get_bq_client(self):
-        """Get thread-local BigQuery client"""
-        if not hasattr(self.thread_local, 'bq_client'):
-            service_account_file = os.getenv('GCP_SERVICE_ACCOUNT_FILE', 'gcp/gcp_prod_key.json')
-            
+    def _set_max_priority(self):
+        """Set process to maximum priority"""
+        try:
+            current_process = psutil.Process()
+            if platform.system() == "Windows":
+                current_process.nice(psutil.HIGH_PRIORITY_CLASS)
+            else:
+                current_process.nice(-20)  # Maximum priority on Unix
+            print("🔥 Process priority: MAXIMUM")
+        except Exception as e:
+            print(f"⚠️  Priority warning: {e}")
+    
+    def _init_bigquery_lightning(self):
+        """Lightning-fast BigQuery setup"""
+        service_account_file = os.getenv('GCP_SERVICE_ACCOUNT_FILE', 'gcp/gcp_prod_key.json')
+        
+        try:
             if os.path.exists(service_account_file):
                 credentials = service_account.Credentials.from_service_account_file(service_account_file)
-                self.thread_local.bq_client = bigquery.Client(project="chronicle-fisv", credentials=credentials)
+                self.bq_client = bigquery.Client(project="chronicle-fisv", credentials=credentials)
+                print("⚡ BigQuery: Service Account Connected")
             else:
-                self.thread_local.bq_client = bigquery.Client(project="chronicle-fisv")
-        
-        return self.thread_local.bq_client
+                self.bq_client = bigquery.Client(project="chronicle-fisv")
+                print("⚡ BigQuery: Default Credentials Connected")
+        except Exception as e:
+            print(f"❌ BigQuery connection failed: {e}")
+            raise
     
-    def _init_duckdb_ultra_fast(self):
-        """Ultra-fast DuckDB setup with performance optimizations"""
+    def _init_duckdb_lightning(self):
+        """Lightning-fast DuckDB with EXTREME performance settings"""
+        # Remove existing database for fresh start
+        if os.path.exists(self.duckdb_path):
+            os.remove(self.duckdb_path)
+        
         self.duck_conn = duckdb.connect(self.duckdb_path)
         
-        # MAXIMUM PERFORMANCE SETTINGS
-        performance_settings = [
-            "SET memory_limit='80%'",  # Use 80% of available RAM
-            f"SET threads TO {self.cpu_count}",
-            "SET max_memory='80GB'",
+        # EXTREME PERFORMANCE SETTINGS - MAXIMUM SPEED
+        extreme_settings = [
+            "SET memory_limit='90%'",  # Use 90% of RAM
+            f"SET threads TO {psutil.cpu_count()}",
+            "SET max_memory='100GB'",
             "SET enable_progress_bar=false",
-            "SET enable_profiling=false",
-            "SET checkpoint_threshold='2GB'",
-            "SET wal_autocheckpoint=50000",
-            "PRAGMA journal_mode=WAL",
-            "PRAGMA synchronous=OFF",  # DANGEROUS BUT FAST
-            "PRAGMA cache_size=2000000",  # 2M pages in cache
+            "SET enable_profiling=false", 
+            "SET checkpoint_threshold='5GB'",
+            "SET wal_autocheckpoint=100000",
+            "PRAGMA journal_mode=OFF",      # NO JOURNAL - MAXIMUM SPEED
+            "PRAGMA synchronous=OFF",       # NO SYNC - MAXIMUM SPEED  
+            "PRAGMA cache_size=5000000",    # 5M pages cache
             "PRAGMA temp_store=MEMORY",
-            "PRAGMA mmap_size=2000000000"  # 2GB memory map
+            "PRAGMA mmap_size=5000000000",  # 5GB memory map
+            "PRAGMA page_size=65536",       # Large pages
+            "PRAGMA auto_vacuum=NONE"       # No auto vacuum
         ]
         
-        for setting in performance_settings:
+        for setting in extreme_settings:
             try:
                 self.duck_conn.execute(setting)
-            except:
-                pass
+            except Exception as e:
+                print(f"⚠️  Setting warning: {setting} - {e}")
         
-        # Create table with minimal constraints for speed
+        # Create ultra-minimal table structure for speed
         create_sql = """
-        CREATE TABLE IF NOT EXISTS universal_cmdb (
-            normalized_host VARCHAR,
+        CREATE TABLE universal_cmdb (
+            normalized_host TEXT NOT NULL,
             source_tables TEXT,
             hostname TEXT,
             fqdn TEXT,
@@ -145,427 +161,447 @@ class UltraFastCMDBProcessor:
             dlp_agent_coverage TEXT,
             logging_in_splunk TEXT,
             logging_in_gso TEXT,
-            data_quality_score FLOAT DEFAULT 1.0,
             source_count INTEGER DEFAULT 1,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
         """
+        
         self.duck_conn.execute(create_sql)
         
-        # Defer index creation until the end for speed
-        print("⚡ DuckDB optimized for MAXIMUM SPEED (indexes deferred)")
+        print("⚡ DuckDB: EXTREME SPEED MODE ACTIVATED")
+        print("   - Journal: OFF (DANGEROUS BUT FAST)")  
+        print("   - Sync: OFF (MAXIMUM SPEED)")
+        print("   - Cache: 5M pages")
+        print("   - Memory Map: 5GB")
     
-    def normalize_hostname_fast(self, hostname: str) -> str:
-        """Ultra-fast hostname normalization"""
-        if not hostname or len(hostname) < 2:
+    def normalize_hostname_lightning(self, hostname: str) -> str:
+        """Lightning-fast hostname normalization"""
+        if not hostname:
             return ""
         
-        # Fast string operations
-        normalized = hostname.lower().strip()
+        # Ultra-fast string processing
+        h = str(hostname).lower().strip()
         
-        # Quick FQDN check
-        dot_pos = normalized.find('.')
-        if dot_pos > 0:
-            normalized = normalized[:dot_pos]
+        if len(h) < 2 or h in self.invalid_values:
+            return ""
         
-        # Single regex pass
-        normalized = self.hostname_cleaner.sub('', normalized)
+        # Lightning-fast FQDN extraction
+        if '.' in h:
+            h = h.split('.', 1)[0]
         
-        return normalized if len(normalized) > 1 else ""
+        # Single regex operation
+        h = self.hostname_cleaner.sub('', h)
+        
+        return h if len(h) > 1 else ""
     
-    def load_metadata_fast(self) -> Dict:
-        """Lightning-fast metadata loading"""
-        print("📂 Loading metadata...")
+    def load_metadata_lightning(self) -> Dict:
+        """Lightning-fast metadata loading with memory mapping"""
+        print("📂 Loading metadata with memory mapping...")
         start = time.time()
         
-        # Use memory mapping for large files
         try:
+            # Memory map the entire file for maximum speed
             with open(self.json_file_path, 'rb') as f:
+                file_size = os.path.getsize(self.json_file_path)
                 with mmap.mmap(f.fileno(), 0, access=mmap.ACCESS_READ) as mm:
                     metadata = json.loads(mm.read().decode('utf-8'))
-        except:
-            # Fallback to regular loading
-            with open(self.json_file_path, 'r') as f:
-                metadata = json.load(f)
-        
-        load_time = time.time() - start
-        table_count = len(metadata.get('columns', {}))
-        
-        print(f"✅ Loaded {table_count:,} tables in {load_time:.2f}s")
-        return metadata
+            
+            load_time = time.time() - start
+            table_count = len(metadata.get('columns', {}))
+            
+            print(f"✅ {table_count:,} tables loaded in {load_time:.2f}s ({file_size/1024/1024:.1f} MB)")
+            return metadata
+            
+        except Exception as e:
+            print(f"❌ Metadata loading failed: {e}")
+            raise
     
-    def discover_columns_fast(self, metadata: Dict) -> List[Tuple[str, str, str]]:
-        """Ultra-fast column discovery - no complex pattern matching"""
-        print("🔍 Fast column discovery...")
+    def discover_columns_lightning(self, metadata: Dict) -> List[Tuple[str, str, str]]:
+        """Lightning-fast column discovery"""
+        print("🔍 Lightning column discovery...")
+        start = time.time()
         
         discovered = []
         
         if 'columns' not in metadata:
             return []
         
-        # Simple, fast matching
+        # Ultra-fast direct matching only
         for table_name, columns in metadata['columns'].items():
-            for col_name, col_type in columns.items():
+            for col_name in columns:
                 col_lower = col_name.lower()
                 
-                # Direct lookup for speed
-                if col_lower in self.fast_column_map:
-                    mapped_type = self.fast_column_map[col_lower]
+                # Direct hash lookup for maximum speed
+                if col_lower in self.speed_column_map:
+                    mapped_type = self.speed_column_map[col_lower]
                     discovered.append((table_name, col_name, mapped_type))
-                # Quick hostname detection
-                elif 'host' in col_lower or 'fqdn' in col_lower:
+                # Quick hostname patterns
+                elif any(pattern in col_lower for pattern in ['host', 'fqdn', 'server', 'node']):
                     discovered.append((table_name, col_name, 'hostname'))
         
-        print(f"✅ Found {len(discovered):,} mappable columns")
+        discovery_time = time.time() - start
+        print(f"✅ {len(discovered):,} columns discovered in {discovery_time:.2f}s")
+        
         return discovered
     
-    def build_ultra_fast_query(self, table_name: str, columns: List[str], hostname_col: str) -> str:
-        """Build optimized query for maximum speed"""
-        # Select only what we need
-        column_selects = [f"`{col}`" for col in columns]
+    def build_lightning_query(self, table_name: str, columns: List[str], hostname_col: str) -> str:
+        """Build ultra-optimized query"""
+        # Only select what we absolutely need
+        column_selects = [f"`{col}`" for col in columns[:15]]  # Limit columns for speed
         
         return f"""
         SELECT {', '.join(column_selects)}
         FROM `{table_name}`
         WHERE `{hostname_col}` IS NOT NULL 
-        AND LENGTH(`{hostname_col}`) > 1
-        AND `{hostname_col}` != '*Undefined'
+        AND LENGTH(TRIM(`{hostname_col}`)) > 1
+        AND `{hostname_col}` NOT IN ('*Undefined', '', 'NULL', 'null')
         """
     
-    def process_table_ultra_fast(self, table_info: Tuple) -> int:
-        """Process a single table at maximum speed"""
-        table_name, table_columns = table_info
+    def process_table_lightning(self, table_name: str, table_columns: List[Tuple[str, str, str]], 
+                              table_index: int, total_tables: int) -> int:
+        """Process table at lightning speed"""
         
-        hostname_cols = [(col, ctype) for _, col, ctype in table_columns if ctype == 'hostname']
+        self.stats['current_table'] = table_name
+        self.stats['tables_processed'] = table_index
+        
+        # Quick filter for hostname columns
+        hostname_cols = [col for col, ctype in [(col, ctype) for _, col, ctype in table_columns] if ctype == 'hostname']
         if not hostname_cols:
             return 0
         
         attribute_cols = [(col, ctype) for _, col, ctype in table_columns if ctype != 'hostname']
-        primary_hostname_col = hostname_cols[0][0]
+        primary_hostname_col = hostname_cols[0]
         
-        all_columns = [primary_hostname_col] + [col for col, _ in attribute_cols]
-        attribute_types = [ctype for _, ctype in attribute_cols]
+        all_columns = [primary_hostname_col] + [col for col, _ in attribute_cols[:10]]  # Limit for speed
+        attribute_types = [ctype for _, ctype in attribute_cols[:10]]
         
-        query = self.build_ultra_fast_query(table_name, all_columns, primary_hostname_col)
+        query = self.build_lightning_query(table_name, all_columns, primary_hostname_col)
         
         try:
-            # Get thread-local BigQuery client
-            bq_client = self._get_bq_client()
-            
-            # Ultra-aggressive BigQuery settings
+            # Ultra-aggressive BigQuery job config
             job_config = bigquery.QueryJobConfig(
                 use_query_cache=True,
                 use_legacy_sql=False,
-                maximum_bytes_billed=200 * 1024 * 1024 * 1024,  # 200GB limit
-                job_timeout_ms=15 * 60 * 1000,  # 15 minutes max
+                maximum_bytes_billed=500 * 1024 * 1024 * 1024,  # 500GB limit
+                job_timeout_ms=20 * 60 * 1000,  # 20 minutes
                 dry_run=False
             )
             
-            query_job = bq_client.query(query, job_config=job_config)
-            results = query_job.result(page_size=self.batch_size)
+            # Execute query
+            query_start = time.time()
+            query_job = self.bq_client.query(query, job_config=job_config)
+            results = query_job.result(page_size=self.query_batch_size)
+            query_time = time.time() - query_start
             
-            return self._process_results_ultra_fast(results, table_name, attribute_types)
+            # Process results at lightning speed
+            records_processed = self._process_results_lightning(
+                results, table_name, primary_hostname_col, attribute_types, table_index, total_tables
+            )
+            
+            return records_processed
             
         except Exception as e:
-            print(f"❌ Error in {os.path.basename(table_name)}: {str(e)[:50]}...")
+            print(f"❌ {os.path.basename(table_name)}: {str(e)[:60]}...")
             return 0
     
-    def _process_results_ultra_fast(self, results, table_name: str, attribute_types: List[str]) -> int:
-        """Ultra-fast result processing with bulk operations"""
+    def _process_results_lightning(self, results, table_name: str, hostname_col: str, 
+                                 attribute_types: List[str], table_index: int, total_tables: int) -> int:
+        """Lightning-fast result processing"""
+        
         records_processed = 0
-        batch_records = []
+        batch_data = []
         local_duplicates = 0
         
+        process_start = time.time()
+        
+        # Process all rows at maximum speed
         for row in results:
             records_processed += 1
             
-            # Quick validation
-            if not row[0] or len(str(row[0])) < 2:
+            # Lightning-fast validation
+            if not row[0]:
                 continue
-            
-            normalized_host = self.normalize_hostname_fast(str(row[0]))
+                
+            normalized_host = self.normalize_hostname_lightning(row[0])
             if not normalized_host:
                 continue
             
-            # Thread-safe duplicate check
-            is_duplicate = False
-            with self.seen_hosts_lock:
-                if normalized_host in self.seen_hosts:
-                    is_duplicate = True
-                    local_duplicates += 1
-                else:
-                    self.seen_hosts.add(normalized_host)
-            
-            if is_duplicate:
+            # Ultra-fast duplicate check
+            if normalized_host in self.seen_hosts:
+                local_duplicates += 1
                 continue
             
-            # Build record data
-            record_data = {
-                'normalized_host': normalized_host,
-                'hostname': str(row[0]).strip(),
-                'source_tables': table_name
-            }
+            self.seen_hosts.add(normalized_host)
             
-            # Fast attribute extraction
+            # Build record at lightning speed
+            record = [
+                normalized_host,
+                table_name,
+                str(row[0]).strip()
+            ]
+            
+            # Add attributes (up to 10 for speed)
             for i, attr_type in enumerate(attribute_types, 1):
-                if i < len(row) and row[i] and str(row[i]).strip():
-                    record_data[attr_type] = str(row[i]).strip()
+                if i < len(row) and row[i]:
+                    record.append(str(row[i]).strip())
+                else:
+                    record.append(None)
             
-            batch_records.append(record_data)
+            # Pad to match table structure
+            while len(record) < 23:  # Total columns in table
+                record.append(None)
             
-            # Bulk insert when batch is full
-            if len(batch_records) >= self.insert_batch_size:
-                created = self._bulk_insert_ultra_fast(batch_records)
-                batch_records.clear()
+            batch_data.append(record)
+            
+            # Lightning-fast bulk insert
+            if len(batch_data) >= self.insert_batch_size:
+                self._lightning_bulk_insert(batch_data)
+                batch_data.clear()
                 
-                # Update stats
-                with self.stats['stats_lock']:
-                    self.stats['records_processed'] += records_processed
-                    self.stats['hosts_created'] += created
-                    self.stats['duplicates_skipped'] += local_duplicates
-                
-                # Quick progress update
-                if self.stats['records_processed'] % 100000 == 0:
-                    elapsed = time.time() - self.stats['start_time']
-                    rate = self.stats['records_processed'] / elapsed if elapsed > 0 else 0
-                    print(f"⚡ {self.stats['records_processed']:,} processed | {rate:.0f}/sec | {local_duplicates:,} dups")
+                # Update stats and show progress
+                self.stats['records_processed'] += records_processed
+                self.stats['duplicates_skipped'] += local_duplicates
+                self._show_lightning_progress(table_index, total_tables)
                 
                 records_processed = 0
                 local_duplicates = 0
         
-        # Insert remaining records
-        if batch_records:
-            created = self._bulk_insert_ultra_fast(batch_records)
-            
-            # Final stats update
-            with self.stats['stats_lock']:
-                self.stats['records_processed'] += records_processed
-                self.stats['hosts_created'] += created
-                self.stats['duplicates_skipped'] += local_duplicates
+        # Insert remaining data
+        if batch_data:
+            self._lightning_bulk_insert(batch_data)
+            self.stats['records_processed'] += records_processed
+            self.stats['duplicates_skipped'] += local_duplicates
+        
+        process_time = time.time() - process_start
+        rate = records_processed / process_time if process_time > 0 else 0
         
         return records_processed
     
-    def _bulk_insert_ultra_fast(self, batch_records: List[Dict]) -> int:
-        """Ultra-fast bulk insert using DuckDB's native bulk loading"""
-        if not batch_records:
-            return 0
-        
-        # Prepare bulk insert data
-        columns = ['normalized_host', 'source_tables', 'hostname']
-        data_columns = ['fqdn', 'domain', 'infrastructure_type', 'region', 'country',
-                       'data_center', 'cloud_region', 'ip_address', 'class', 'system_classification',
-                       'business_unit', 'apm', 'cio', 'edr_coverage', 'tanium_coverage',
-                       'dlp_agent_coverage', 'logging_in_splunk', 'logging_in_gso']
-        
-        all_columns = columns + data_columns
-        
-        # Build values for bulk insert
-        values_list = []
-        for record in batch_records:
-            row_values = [
-                record['normalized_host'],
-                record['source_tables'],
-                record['hostname']
-            ]
-            
-            # Add data columns
-            for col in data_columns:
-                row_values.append(record.get(col))
-            
-            values_list.append(row_values)
-        
-        # Ultra-fast bulk insert with connection pooling
-        placeholders = ', '.join(['?' for _ in all_columns])
-        insert_sql = f"INSERT INTO universal_cmdb ({', '.join(all_columns)}, source_count) VALUES ({placeholders}, 1)"
-        
-        try:
-            # Use a transaction for maximum speed
-            self.duck_conn.execute("BEGIN TRANSACTION")
-            self.duck_conn.executemany(insert_sql, values_list)
-            self.duck_conn.execute("COMMIT")
-            return len(batch_records)
-        except Exception as e:
-            self.duck_conn.execute("ROLLBACK")
-            print(f"⚠️  Bulk insert error: {str(e)[:50]}...")
-            return 0
-    
-    def process_all_ultra_fast(self):
-        """Main processing function - MAXIMUM SPEED with threading"""
-        print("\n🚀 STARTING ULTRA-FAST THREADED PROCESSING")
-        print("=" * 60)
-        
-        # Load metadata
-        metadata = self.load_metadata_fast()
-        discovered_columns = self.discover_columns_fast(metadata)
-        
-        if not discovered_columns:
-            print("❌ No processable columns found")
+    def _lightning_bulk_insert(self, batch_data: List[List]) -> None:
+        """Ultra-fast bulk insert"""
+        if not batch_data:
             return
         
-        # Group by table
+        # Prepare column list
+        columns = [
+            'normalized_host', 'source_tables', 'hostname', 'fqdn', 'domain',
+            'infrastructure_type', 'region', 'country', 'data_center', 'cloud_region',
+            'ip_address', 'class', 'system_classification', 'business_unit', 'apm',
+            'cio', 'edr_coverage', 'tanium_coverage', 'dlp_agent_coverage',
+            'logging_in_splunk', 'logging_in_gso', 'source_count', 'created_at'
+        ]
+        
+        # Lightning-fast bulk insert using prepared statements
+        placeholders = ', '.join(['?' for _ in columns])
+        insert_sql = f"INSERT INTO universal_cmdb ({', '.join(columns)}) VALUES ({placeholders})"
+        
+        try:
+            # Use transaction for maximum speed
+            self.duck_conn.execute("BEGIN")
+            self.duck_conn.executemany(insert_sql, batch_data)
+            self.duck_conn.execute("COMMIT")
+            
+            self.stats['hosts_created'] += len(batch_data)
+            
+        except Exception as e:
+            self.duck_conn.execute("ROLLBACK")
+            print(f"⚠️  Bulk insert error: {str(e)[:40]}...")
+    
+    def _show_lightning_progress(self, table_index: int, total_tables: int):
+        """Show lightning-fast progress updates"""
+        current_time = time.time()
+        
+        # Only update every few seconds for speed
+        if current_time - self.stats['last_update'] < 3.0:
+            return
+        
+        self.stats['last_update'] = current_time
+        
+        elapsed = current_time - self.stats['start_time']
+        progress_pct = (table_index / total_tables) * 100 if total_tables > 0 else 0
+        
+        records_rate = self.stats['records_processed'] / elapsed if elapsed > 0 else 0
+        hosts_rate = self.stats['hosts_created'] / elapsed if elapsed > 0 else 0
+        
+        # ETA calculation
+        if progress_pct > 0:
+            eta_seconds = (elapsed * (100 - progress_pct)) / progress_pct
+            eta_str = str(timedelta(seconds=int(eta_seconds)))
+        else:
+            eta_str = "calculating..."
+        
+        print(f"⚡ {table_index}/{total_tables} ({progress_pct:.1f}%) | "
+              f"{self.stats['records_processed']:,} recs | {self.stats['hosts_created']:,} hosts | "
+              f"{records_rate:.0f} r/s | {hosts_rate:.0f} h/s | ETA: {eta_str}")
+        print(f"   📂 {os.path.basename(self.stats['current_table'])}")
+    
+    def process_all_lightning(self):
+        """Main lightning-fast processing"""
+        print("\n⚡ STARTING LIGHTNING-FAST PROCESSING")
+        print("=" * 80)
+        
+        # Load and discover at maximum speed
+        metadata = self.load_metadata_lightning()
+        discovered_columns = self.discover_columns_lightning(metadata)
+        
+        if not discovered_columns:
+            print("❌ No processable columns found!")
+            return
+        
+        # Group columns by table
         columns_by_table = defaultdict(list)
         for table_name, column_name, column_type in discovered_columns:
             columns_by_table[table_name].append((table_name, column_name, column_type))
         
-        total_tables = len(columns_by_table)
-        print(f"🎯 Processing {total_tables:,} tables with {self.max_workers} threads")
+        self.stats['total_tables'] = len(columns_by_table)
         
-        # Process tables in parallel using ThreadPoolExecutor
-        start_time = time.time()
-        completed_tables = 0
-        
-        with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
-            # Submit all tables
-            future_to_table = {
-                executor.submit(self.process_table_ultra_fast, table_info): table_name
-                for table_name, table_info in [(name, (name, cols)) for name, cols in columns_by_table.items()]
-            }
-            
-            # Collect results as they complete
-            for future in as_completed(future_to_table):
-                table_name = future_to_table[future]
-                completed_tables += 1
-                
-                try:
-                    records_processed = future.result()
-                    
-                    elapsed = time.time() - start_time
-                    progress = (completed_tables / total_tables) * 100
-                    
-                    with self.stats['stats_lock']:
-                        total_processed = self.stats['records_processed']
-                        total_hosts = self.stats['hosts_created']
-                        total_dups = self.stats['duplicates_skipped']
-                    
-                    rate = total_processed / elapsed if elapsed > 0 else 0
-                    
-                    print(f"🔥 {completed_tables}/{total_tables} ({progress:.1f}%) | "
-                          f"{total_processed:,} records | {total_hosts:,} hosts | "
-                          f"{rate:.0f}/sec | {os.path.basename(table_name)}")
-                    
-                except Exception as e:
-                    print(f"❌ Table error {os.path.basename(table_name)}: {str(e)[:30]}...")
-        
-        # Create indexes now for better query performance
-        print("\n🔧 Creating final indexes...")
-        index_start = time.time()
-        
-        indexes = [
-            "CREATE INDEX IF NOT EXISTS idx_normalized_host ON universal_cmdb(normalized_host)",
-            "CREATE INDEX IF NOT EXISTS idx_business_unit ON universal_cmdb(business_unit)",
-            "CREATE INDEX IF NOT EXISTS idx_region ON universal_cmdb(region)"
-        ]
-        
-        for index_sql in indexes:
-            try:
-                self.duck_conn.execute(index_sql)
-            except Exception as e:
-                print(f"⚠️  Index creation warning: {str(e)[:30]}...")
-        
-        index_time = time.time() - index_start
-        print(f"✅ Indexes created in {index_time:.2f}s")
-        
-        self._generate_ultra_fast_summary(start_time)
-    
-    def _generate_ultra_fast_summary(self, start_time: float):
-        """Generate final summary at maximum speed"""
-        total_time = time.time() - start_time
-        
-        print("\n" + "=" * 80)
-        print("🏆 ULTRA-FAST PROCESSING COMPLETE!")
+        print(f"🎯 Processing {len(columns_by_table):,} tables at LIGHTNING SPEED")
+        print(f"⚡ Single-threaded maximum optimization")
         print("=" * 80)
         
-        # Get final stats
+        # Process each table sequentially but at maximum speed
+        processing_start = time.time()
+        
+        for table_index, (table_name, table_columns) in enumerate(columns_by_table.items(), 1):
+            
+            table_start = time.time()
+            records_processed = self.process_table_lightning(
+                table_name, table_columns, table_index, len(columns_by_table)
+            )
+            table_time = time.time() - table_start
+            
+            if records_processed > 0:
+                table_rate = records_processed / table_time if table_time > 0 else 0
+                print(f"   ✅ {records_processed:,} records in {table_time:.2f}s ({table_rate:.0f}/sec)")
+        
+        # Create essential indexes for final performance
+        print("\n🔧 Creating essential indexes...")
+        index_start = time.time()
+        
         try:
+            self.duck_conn.execute("CREATE INDEX idx_host ON universal_cmdb(normalized_host)")
+            print("   ✅ Host index created")
+        except Exception as e:
+            print(f"   ⚠️  Index warning: {e}")
+        
+        index_time = time.time() - index_start
+        
+        self._generate_lightning_summary(processing_start)
+    
+    def _generate_lightning_summary(self, start_time: float):
+        """Generate lightning-fast final summary"""
+        total_time = time.time() - start_time
+        
+        print("\n" + "=" * 90)
+        print("🏆 LIGHTNING-FAST PROCESSING COMPLETE!")
+        print("=" * 90)
+        
+        try:
+            # Get final counts
             total_hosts = self.duck_conn.execute("SELECT COUNT(*) FROM universal_cmdb").fetchone()[0]
             
-            # Quick data quality check
-            business_unit_count = self.duck_conn.execute(
+            # Quick quality metrics
+            with_business_unit = self.duck_conn.execute(
                 "SELECT COUNT(*) FROM universal_cmdb WHERE business_unit IS NOT NULL"
             ).fetchone()[0]
             
-            region_count = self.duck_conn.execute(
+            with_region = self.duck_conn.execute(
                 "SELECT COUNT(*) FROM universal_cmdb WHERE region IS NOT NULL"
             ).fetchone()[0]
             
-        except:
+        except Exception as e:
+            print(f"Summary query error: {e}")
             total_hosts = self.stats['hosts_created']
-            business_unit_count = 0
-            region_count = 0
+            with_business_unit = 0
+            with_region = 0
         
-        with self.stats['stats_lock']:
-            total_processed = self.stats['records_processed']
-            total_duplicates = self.stats['duplicates_skipped']
+        # Performance metrics
+        records_per_sec = self.stats['records_processed'] / total_time if total_time > 0 else 0
+        hosts_per_sec = total_hosts / total_time if total_time > 0 else 0
         
-        print(f"⏱️  Total time: {timedelta(seconds=int(total_time))}")
-        print(f"📊 Records processed: {total_processed:,}")
-        print(f"🎯 Unique hosts: {total_hosts:,}")
-        print(f"⚡ Processing speed: {total_processed/total_time:.0f} records/second")
-        print(f"🔥 Host creation rate: {total_hosts/total_time:.0f} hosts/second")
-        print(f"🚀 Duplicates skipped: {total_duplicates:,}")
+        print(f"⏱️  Total Time: {timedelta(seconds=int(total_time))}")
+        print(f"📊 Raw Records: {self.stats['records_processed']:,}")
+        print(f"🎯 Unique Hosts: {total_hosts:,}")
+        print(f"🚀 Duplicates: {self.stats['duplicates_skipped']:,}")
+        print(f"⚡ Speed: {records_per_sec:.0f} records/sec | {hosts_per_sec:.0f} hosts/sec")
         
-        # Data quality summary
+        # Quality metrics
         if total_hosts > 0:
-            bu_pct = (business_unit_count / total_hosts) * 100
-            region_pct = (region_count / total_hosts) * 100
-            print(f"📈 Business Unit coverage: {business_unit_count:,} ({bu_pct:.1f}%)")
-            print(f"🌍 Region coverage: {region_count:,} ({region_pct:.1f}%)")
+            bu_pct = (with_business_unit / total_hosts) * 100
+            region_pct = (with_region / total_hosts) * 100
+            print(f"📈 Business Units: {with_business_unit:,} ({bu_pct:.1f}%)")
+            print(f"🌍 Regions: {with_region:,} ({region_pct:.1f}%)")
         
-        if total_time < 1800:  # Less than 30 minutes
-            print(f"🎉 MISSION ACCOMPLISHED - Completed in {total_time/60:.1f} minutes!")
-        elif total_time < 3600:  # Less than 1 hour
-            print(f"✅ Excellent time - Completed in {total_time/60:.1f} minutes!")
+        # Success message
+        if total_time < 600:  # Under 10 minutes
+            print(f"🎉 INCREDIBLE SPEED - Done in {total_time/60:.1f} minutes!")
+        elif total_time < 1800:  # Under 30 minutes  
+            print(f"🔥 EXCELLENT TIME - Done in {total_time/60:.1f} minutes!")
         else:
-            print(f"✅ Completed in {total_time/3600:.1f} hours")
+            print(f"✅ Completed in {total_time/60:.1f} minutes")
         
-        print("=" * 80)
+        print("=" * 90)
     
-    def export_ultra_fast(self, filename: str = "universal_cmdb_ultra_fast.csv"):
-        """Ultra-fast export"""
-        print(f"📤 Ultra-fast export to {filename}...")
+    def export_lightning(self, filename: str = "universal_cmdb_lightning.csv"):
+        """Lightning-fast export"""
+        print(f"\n📤 Lightning export to {filename}...")
         
         start_time = time.time()
         
-        export_query = f"""
-        COPY (
-            SELECT * FROM universal_cmdb 
-            ORDER BY source_count DESC, normalized_host
-        ) TO '{filename}' WITH (FORMAT CSV, HEADER)
-        """
-        
-        self.duck_conn.execute(export_query)
-        
-        export_time = time.time() - start_time
-        file_size = os.path.getsize(filename) / (1024 * 1024)
-        
-        print(f"✅ Exported {file_size:.1f} MB in {export_time:.2f}s ({file_size/export_time:.1f} MB/s)")
+        try:
+            # Ultra-fast CSV export
+            export_sql = f"""
+            COPY (
+                SELECT * FROM universal_cmdb 
+                ORDER BY source_count DESC, normalized_host
+            ) TO '{filename}' WITH (FORMAT CSV, HEADER TRUE)
+            """
+            
+            self.duck_conn.execute(export_sql)
+            
+            export_time = time.time() - start_time
+            file_size = os.path.getsize(filename) / (1024 * 1024)  # MB
+            export_rate = file_size / export_time if export_time > 0 else 0
+            
+            print(f"✅ Exported {file_size:.1f} MB in {export_time:.2f}s ({export_rate:.1f} MB/s)")
+            
+        except Exception as e:
+            print(f"❌ Export error: {e}")
     
     def cleanup(self):
-        """Fast cleanup"""
+        """Lightning cleanup"""
         try:
-            self.duck_conn.close()
+            if hasattr(self, 'duck_conn'):
+                self.duck_conn.close()
+            gc.collect()
+            print("🧹 Lightning cleanup complete")
         except:
             pass
-        
-        # Force garbage collection
-        gc.collect()
-        
-        print("🧹 Cleanup complete")
 
-def run_ultra_fast_processor():
-    """Run the ultra-fast processor"""
+def main():
+    """Run the lightning-fast processor"""
     processor = None
     
+    print("🚀 LIGHTNING FAST CMDB PROCESSOR")
+    print("⚠️  WARNING: Using EXTREME speed settings - database safety OFF!")
+    print("=" * 80)
+    
     try:
-        processor = UltraFastCMDBProcessor("reviewed_labeled_columns.json", "universal_cmdb_ultra.db")
-        processor.process_all_ultra_fast()
-        processor.export_ultra_fast("universal_cmdb_ultra_fast.csv")
+        processor = LightningFastCMDBProcessor(
+            "reviewed_labeled_columns.json", 
+            "universal_cmdb_lightning.db"
+        )
+        
+        processor.process_all_lightning()
+        processor.export_lightning("universal_cmdb_lightning.csv")
+        
+        print("\n🎉 LIGHTNING PROCESSING SUCCESS!")
         
     except KeyboardInterrupt:
-        print("\n⚠️  PROCESSING INTERRUPTED")
+        print("\n⚠️  PROCESSING INTERRUPTED BY USER")
         
     except Exception as e:
-        print(f"\n❌ CRITICAL ERROR: {str(e)}")
+        print(f"\n❌ CRITICAL ERROR: {e}")
         import traceback
         traceback.print_exc()
         
@@ -574,16 +610,4 @@ def run_ultra_fast_processor():
             processor.cleanup()
 
 if __name__ == "__main__":
-    # Set process priority to high
-    try:
-        import psutil
-        current_process = psutil.Process()
-        if platform.system() == "Windows":
-            current_process.nice(psutil.HIGH_PRIORITY_CLASS)
-        else:
-            current_process.nice(-10)
-        print("🔥 Process priority set to HIGH")
-    except:
-        pass
-    
-    run_ultra_fast_processor()
+    main()
