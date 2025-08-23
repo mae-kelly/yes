@@ -43,6 +43,27 @@ class HostDataProcessor:
         self.hostname_patterns = ['host', 'hostname', 'fqdn', 'server_name', 'node_name', 'device_name', 
                                  'endpoint_name', 'splunk_host', 'app_host', 'computer_name']
         
+        self.attribute_patterns = {
+            'business_unit': ['business_unit', 'bu', 'business', 'department', 'division', 'org_unit', 'cost_center'],
+            'region': ['region', 'location', 'site', 'area', 'zone', 'geographic', 'geo_region'],
+            'country': ['country', 'nation', 'country_code'],
+            'infrastructure_type': ['infrastructure_type', 'infra_type', 'server_type', 'platform', 'environment', 'env'],
+            'data_center': ['datacenter', 'data_center', 'dc', 'facility', 'center'],
+            'cloud_region': ['cloud_region', 'aws_region', 'azure_region', 'gcp_region'],
+            'ip_address': ['ip_address', 'ip', 'ipv4', 'host_ip', 'server_ip'],
+            'class': ['class', 'classification', 'tier', 'level', 'grade'],
+            'system_classification': ['system_classification', 'security_classification', 'sensitivity'],
+            'apm': ['apm', 'monitoring', 'application_monitoring'],
+            'cio': ['cio', 'owner', 'responsible', 'contact', 'admin', 'administrator'],
+            'edr_coverage': ['edr_coverage', 'edr', 'endpoint_detection', 'security_agent', 'antivirus'],
+            'tanium_coverage': ['tanium_coverage', 'tanium', 'tanium_agent'],
+            'dlp_agent_coverage': ['dlp_agent_coverage', 'dlp', 'data_loss_prevention'],
+            'logging_in_splunk': ['logging_in_splunk', 'splunk', 'splunk_logging'],
+            'logging_in_gso': ['logging_in_gso', 'gso', 'gso_logging'],
+            'domain': ['domain', 'dns_domain', 'ad_domain'],
+            'fqdn': ['fqdn', 'full_name', 'qualified_name']
+        }
+        
         service_account_file = os.getenv('GCP_SERVICE_ACCOUNT_FILE', 'gcp/gcp_prod_key.json')
         
         if os.path.exists(service_account_file):
@@ -111,29 +132,58 @@ class HostDataProcessor:
     def identify_columns(self, metadata):
         all_columns = []
         
+        print("\n=== COLUMN DISCOVERY DEBUG ===")
+        
         for table_name, columns in metadata['columns'].items():
+            print(f"\nTable: {table_name}")
             for column_name, column_type in columns.items():
                 mapped_type = None
                 
+                # First: exact match on column_type
                 if isinstance(column_type, str) and column_type.lower() in self.column_mapping:
                     mapped_type = self.column_mapping[column_type.lower()]
-                else:
+                    print(f"  EXACT TYPE MATCH: {column_name} ({column_type}) -> {mapped_type}")
+                
+                # Second: check hostname patterns
+                if not mapped_type:
                     column_lower = column_name.lower()
                     for pattern in self.hostname_patterns:
                         if pattern in column_lower:
                             mapped_type = 'hostname'
+                            print(f"  HOSTNAME PATTERN: {column_name} -> {mapped_type}")
                             break
-                    
-                    if not mapped_type:
-                        for orig_type, norm_type in self.column_mapping.items():
-                            if orig_type in column_lower:
-                                mapped_type = norm_type
+                
+                # Third: check ALL attribute patterns
+                if not mapped_type:
+                    column_lower = column_name.lower()
+                    for attr_type, patterns in self.attribute_patterns.items():
+                        for pattern in patterns:
+                            if pattern in column_lower:
+                                mapped_type = attr_type
+                                print(f"  ATTRIBUTE PATTERN: {column_name} -> {mapped_type} (matched '{pattern}')")
                                 break
+                        if mapped_type:
+                            break
+                
+                # Fourth: check if column_type itself matches attribute patterns
+                if not mapped_type and isinstance(column_type, str):
+                    type_lower = column_type.lower()
+                    for attr_type, patterns in self.attribute_patterns.items():
+                        for pattern in patterns:
+                            if pattern in type_lower:
+                                mapped_type = attr_type
+                                print(f"  TYPE PATTERN: {column_name} ({column_type}) -> {mapped_type} (matched '{pattern}')")
+                                break
+                        if mapped_type:
+                            break
                 
                 if mapped_type:
                     all_columns.append((table_name, column_name, mapped_type))
-                    print(f"Found: {table_name}.{column_name} -> {mapped_type}")
+                    print(f"  ✅ FINAL: {table_name}.{column_name} -> {mapped_type}")
+                else:
+                    print(f"  ❌ NO MATCH: {column_name} ({column_type})")
         
+        print(f"\n=== SUMMARY: Found {len(all_columns)} mappable columns ===")
         return all_columns
     
     def process_table_completely(self, table_name, all_columns_for_table):
@@ -186,12 +236,14 @@ class HostDataProcessor:
     def _insert_or_update_host(self, record, table_name):
         normalized_host = record['normalized_host']
         
-        existing = self.duck_conn.execute(
-            "SELECT * FROM universal_cmdb WHERE normalized_host = ?", 
-            [normalized_host]
-        ).fetchone()
+        existing_query = "SELECT * FROM universal_cmdb WHERE normalized_host = ?"
+        existing = self.duck_conn.execute(existing_query, [normalized_host]).fetchone()
         
         if existing:
+            columns_query = "PRAGMA table_info(universal_cmdb)"
+            column_info = self.duck_conn.execute(columns_query).fetchall()
+            column_names = [col[1] for col in column_info]
+            
             updates = []
             values = []
             
@@ -201,10 +253,25 @@ class HostDataProcessor:
                 updates.append("source_tables = ?")
                 values.append(new_tables)
             
-            for key, value in record.items():
-                if key != 'normalized_host' and value:
+            for key, new_value in record.items():
+                if key != 'normalized_host' and new_value and key in column_names:
+                    col_index = column_names.index(key)
+                    existing_value = existing[col_index] if col_index < len(existing) else None
+                    
+                    if existing_value and existing_value.strip():
+                        existing_values = set(v.strip() for v in existing_value.split(' | '))
+                        new_values = existing_values.copy()
+                        new_values.add(new_value.strip())
+                        
+                        if len(new_values) > 1:
+                            final_value = ' | '.join(sorted(new_values))
+                        else:
+                            final_value = new_value.strip()
+                    else:
+                        final_value = new_value.strip()
+                    
                     updates.append(f"{key} = ?")
-                    values.append(value)
+                    values.append(final_value)
             
             if updates:
                 values.append(normalized_host)
