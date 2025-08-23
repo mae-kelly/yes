@@ -76,44 +76,70 @@ class HostDataProcessor:
         self.json_file_path = json_file_path
         self.duckdb_path = duckdb_path
         
-        # Define ALL expected column types and their normalized names
-        self.column_type_mapping = {
-            # Hostname related
-            'host': 'hostname',
-            'hostname': 'hostname', 
-            'fqdn': 'fqdn',
-            'domain': 'domain',
-            # Infrastructure
-            'infrastructure_type': 'infrastructure_type',
-            'infra_type': 'infrastructure_type',  # Merge with infrastructure_type
-            'region': 'region',
-            'country': 'country',
-            'data_center': 'data_center',
-            'cloud_region': 'cloud_region',
-            # Network
-            'ip_address': 'ip_address',
-            # Classification
-            'class': 'class',
-            'system_classification': 'system_classification',
-            'business_unit': 'business_unit',
-            # Management
-            'apm': 'apm',
-            'cio': 'cio',
-            # Security & Monitoring
-            'edr_coverage': 'edr_coverage',
-            'tanium_coverage': 'tanium_coverage',
-            'dlp_agent_coverage': 'dlp_agent_coverage',
-            'logging_in_splunk': 'logging_in_splunk',
-            'logging_in_gso': 'logging_in_gso'
+        # Define column name patterns that indicate specific data types
+        self.column_patterns = {
+            'hostname': [
+                'host', 'hostname', 'fqdn', 'server_name', 'node_name', 'device_name', 
+                'endpoint_name', 'splunk_host', 'app_host', 'chronicle_device_hostname',
+                'device_hostname', 'endpointdomain_name', 'computer_name', 'machine_name'
+            ],
+            'fqdn': ['fqdn', 'full_name', 'qualified_name', 'dns_name'],
+            'domain': ['domain', 'dns_domain', 'ad_domain'],
+            'infrastructure_type': [
+                'infrastructure_type', 'infra_type', 'server_type', 'system_type',
+                'platform', 'environment', 'env_type', 'deployment_type'
+            ],
+            'region': [
+                'region', 'location', 'site', 'datacenter_region', 'aws_region',
+                'azure_region', 'gcp_region', 'geographic_region'
+            ],
+            'country': ['country', 'nation', 'country_code', 'geo_country'],
+            'data_center': [
+                'datacenter', 'data_center', 'dc', 'facility', 'site_name',
+                'datacenter_name', 'center'
+            ],
+            'cloud_region': [
+                'cloud_region', 'aws_region', 'azure_region', 'gcp_region',
+                'cloud_location', 'cloud_zone'
+            ],
+            'ip_address': [
+                'ip_address', 'ip', 'ipv4', 'ipv6', 'host_ip', 'server_ip',
+                'endpoint_ip', 'device_ip', 'internal_ip', 'external_ip'
+            ],
+            'class': [
+                'class', 'classification', 'tier', 'level', 'grade', 'category'
+            ],
+            'system_classification': [
+                'system_classification', 'security_classification', 'data_classification',
+                'classification_level', 'sensitivity'
+            ],
+            'business_unit': [
+                'business_unit', 'bu', 'department', 'division', 'org_unit',
+                'organizational_unit', 'cost_center', 'business_group'
+            ],
+            'apm': [
+                'apm', 'monitoring', 'application_monitoring', 'performance_monitoring'
+            ],
+            'cio': [
+                'cio', 'owner', 'responsible', 'contact', 'admin', 'administrator'
+            ],
+            'edr_coverage': [
+                'edr_coverage', 'edr', 'endpoint_detection', 'security_agent',
+                'antivirus', 'av_coverage'
+            ],
+            'tanium_coverage': [
+                'tanium_coverage', 'tanium', 'tanium_agent', 'endpoint_management'
+            ],
+            'dlp_agent_coverage': [
+                'dlp_agent_coverage', 'dlp', 'data_loss_prevention', 'dlp_agent'
+            ],
+            'logging_in_splunk': [
+                'logging_in_splunk', 'splunk', 'splunk_logging', 'log_forwarding'
+            ],
+            'logging_in_gso': [
+                'logging_in_gso', 'gso', 'gso_logging', 'security_logging'
+            ]
         }
-        
-        # Track which column types contain hostnames (used to create normalized_host)
-        self.hostname_types = {'host', 'hostname', 'fqdn'}
-        
-        # Storage for all collected data - this is key to the new approach
-        self.all_host_data = defaultdict(lambda: defaultdict(set))  # {normalized_host: {column_type: {values}}}
-        self.all_attribute_data = defaultdict(lambda: defaultdict(set))  # {table_name: {column_type: {values}}}
-        self.table_to_hosts = defaultdict(set)  # {table_name: {normalized_hosts}}
         
         # Initialize connections
         logger.info("🔌 Initializing BigQuery connection...")
@@ -122,9 +148,9 @@ class HostDataProcessor:
         logger.info("🗄️  Initializing DuckDB connection...")
         self.duck_conn = duckdb.connect(duckdb_path)
         
-        # Storage for discovered data
-        self.all_columns_info = []
-        self.existing_hosts_cache = set()
+        # Storage for all discovered data
+        self.all_host_data = defaultdict(lambda: defaultdict(set))  # {normalized_host: {column_type: {values}}}
+        self.table_host_mapping = defaultdict(set)  # {table_name: {normalized_hosts}}
         
         # Initialize database
         self._setup_database()
@@ -157,13 +183,9 @@ class HostDataProcessor:
         logger.info("🏗️  Creating base table structure...")
         self._create_base_table()
         
-        # Add ALL possible columns from our mapping
+        # Add ALL possible columns from our patterns
         logger.info("📊 Adding all possible data columns...")
         self._ensure_all_columns_exist()
-        
-        # Load existing hosts
-        logger.info("📥 Loading existing hosts cache...")
-        self.existing_hosts_cache = self._load_existing_hosts()
         
         # Show final table structure
         self._show_table_structure()
@@ -189,14 +211,14 @@ class HostDataProcessor:
         logger.info("✅ Base table created")
     
     def _ensure_all_columns_exist(self):
-        """Ensure ALL possible columns from our mapping exist in the table"""
-        # Get all unique normalized column types
-        all_possible_columns = set(self.column_type_mapping.values())
+        """Ensure ALL possible columns from our patterns exist in the table"""
+        # Get all unique column types from our patterns
+        all_column_types = set(self.column_patterns.keys())
         
-        logger.info(f"📋 Ensuring {len(all_possible_columns)} columns exist...")
+        logger.info(f"📋 Ensuring {len(all_column_types)} columns exist...")
         
         columns_added = 0
-        for column_type in sorted(all_possible_columns):
+        for column_type in sorted(all_column_types):
             if self._add_column_if_not_exists(column_type):
                 columns_added += 1
         
@@ -254,18 +276,6 @@ class HostDataProcessor:
         print("└─────────────────────────────────┴──────────┴─────────┘")
         print(f"📈 Total columns: {len(columns_info)}")
     
-    def _load_existing_hosts(self) -> Set[str]:
-        """Load existing normalized hosts into memory"""
-        try:
-            query = "SELECT DISTINCT normalized_host FROM universal_cmdb WHERE normalized_host IS NOT NULL"
-            results = self.duck_conn.execute(query).fetchall()
-            existing_hosts = {row[0] for row in results}
-            logger.info(f"📥 Loaded {len(existing_hosts)} existing hosts")
-            return existing_hosts
-        except Exception as e:
-            logger.warning(f"⚠️  Could not load existing hosts: {e}")
-            return set()
-    
     def load_metadata(self) -> Dict:
         """Load and parse the JSON metadata file"""
         try:
@@ -297,118 +307,156 @@ class HostDataProcessor:
         
         return normalized
     
-    def analyze_metadata(self, metadata: Dict):
-        """Analyze metadata and discover all column types"""
-        print_section("METADATA ANALYSIS")
+    def analyze_all_columns(self, metadata: Dict):
+        """Analyze ALL columns in metadata and classify them by patterns"""
+        print_section("AGGRESSIVE COLUMN ANALYSIS")
         
         if 'columns' not in metadata:
             logger.error("❌ No 'columns' key found in metadata")
             return []
         
-        # First pass: collect all column types
-        all_found_types = set()
-        all_columns_info = []
+        all_columns_to_process = []
+        pattern_matches = defaultdict(list)
+        unmatched_columns = []
         
+        # Examine EVERY column in EVERY table
         for table_name, columns in metadata['columns'].items():
+            logger.info(f"🔍 Analyzing table: {table_name}")
+            
             for column_name, column_type in columns.items():
+                # First, try to match by the column_type value if it's useful
+                matched_type = None
                 if isinstance(column_type, str):
-                    all_found_types.add(column_type.lower())
-                    
-                    # Check if we recognize this type
-                    normalized_type = self.column_type_mapping.get(column_type.lower())
-                    if normalized_type:
-                        all_columns_info.append((table_name, column_name, column_type, normalized_type))
-                    elif self._is_host_column_name(column_name):
-                        all_columns_info.append((table_name, column_name, 'hostname', 'hostname'))
+                    for pattern_type, patterns in self.column_patterns.items():
+                        if column_type.lower() in [p.lower() for p in patterns]:
+                            matched_type = pattern_type
+                            break
+                
+                # If no type match, try to match by column name
+                if not matched_type:
+                    column_lower = column_name.lower()
+                    for pattern_type, patterns in self.column_patterns.items():
+                        if any(pattern in column_lower for pattern in patterns):
+                            matched_type = pattern_type
+                            break
+                
+                if matched_type:
+                    all_columns_to_process.append((table_name, column_name, column_type, matched_type))
+                    pattern_matches[matched_type].append(f"{table_name}.{column_name}")
+                    logger.info(f"  ✅ {column_name} (type: {column_type}) → {matched_type}")
+                else:
+                    unmatched_columns.append((table_name, column_name, column_type))
+                    logger.debug(f"  ❓ {column_name} (type: {column_type}) → unmatched")
         
-        # Show analysis results
-        recognized_types = set(self.column_type_mapping.keys())
-        mapped_types = {info[2].lower() for info in all_columns_info}
-        unmapped_types = all_found_types - recognized_types
+        # Show comprehensive analysis results
+        print("\n📊 COLUMN ANALYSIS RESULTS:")
+        print(f"  📋 Total columns found: {sum(len(columns) for columns in metadata['columns'].values())}")
+        print(f"  ✅ Matched columns: {len(all_columns_to_process)}")
+        print(f"  ❌ Unmatched columns: {len(unmatched_columns)}")
         
-        print("📊 Column Type Analysis:")
-        print(f"  🔍 Total unique column types found: {len(all_found_types)}")
-        print(f"  ✅ Recognized and mapped: {len(mapped_types)}")
-        print(f"  ❌ Unrecognized (will be skipped): {len(unmapped_types)}")
+        print(f"\n🎯 MATCHES BY DATA TYPE:")
+        for pattern_type in sorted(pattern_matches.keys()):
+            columns = pattern_matches[pattern_type]
+            print(f"  • {pattern_type}: {len(columns)} columns")
+            for col in columns[:3]:  # Show first 3 examples
+                print(f"    - {col}")
+            if len(columns) > 3:
+                print(f"    - ... and {len(columns) - 3} more")
         
-        if unmapped_types:
-            print("  🚫 Unrecognized types:")
-            for utype in sorted(unmapped_types):
-                print(f"     • {utype}")
+        if unmatched_columns:
+            print(f"\n❓ UNMATCHED COLUMNS (first 10):")
+            for table, col, ctype in unmatched_columns[:10]:
+                print(f"  • {table}.{col} (type: {ctype})")
+            if len(unmatched_columns) > 10:
+                print(f"  • ... and {len(unmatched_columns) - 10} more unmatched")
         
-        # Show what we found for each column type
-        type_counts = defaultdict(int)
-        for _, _, _, norm_type in all_columns_info:
-            type_counts[norm_type] += 1
-        
-        print(f"  📋 Columns found by type:")
-        for col_type in sorted(type_counts.keys()):
-            print(f"     • {col_type}: {type_counts[col_type]} columns")
-        
-        print(f"  📋 Total columns to process: {len(all_columns_info)}")
-        
-        self.all_columns_info = all_columns_info
-        return all_columns_info
+        return all_columns_to_process
     
-    def _is_host_column_name(self, column_name: str) -> bool:
-        """Check if column name indicates host data"""
-        host_patterns = [
-            'host', 'hostname', 'endpoint_name', 'endpointdomain_name',
-            'splunk_host', 'app_host', 'chronicle_device_hostname',
-            'server_name', 'node_name', 'device_name', 'device_hostname'
-        ]
+    def collect_all_data_aggressively(self, columns_to_process):
+        """PHASE 1: Aggressively collect ALL data from BigQuery"""
+        print_section("PHASE 1: AGGRESSIVE DATA COLLECTION")
         
-        column_lower = column_name.lower()
-        return any(pattern in column_lower for pattern in host_patterns)
-    
-    def collect_all_data(self):
-        """PHASE 1: Collect ALL data from BigQuery into memory structures"""
-        print_section("PHASE 1: DATA COLLECTION")
+        logger.info("🗂️  Collecting ALL data from BigQuery...")
         
-        logger.info("🗂️  Collecting all data from BigQuery...")
+        # First pass: collect all hostname data to establish hosts
+        hostname_columns = [(t, c, ct, nt) for t, c, ct, nt in columns_to_process if nt == 'hostname']
         
-        for i, (table_name, column_name, orig_type, norm_type) in enumerate(self.all_columns_info, 1):
-            print_progress(i, len(self.all_columns_info), f"{table_name}.{column_name}")
+        logger.info(f"🏠 Processing {len(hostname_columns)} hostname columns...")
+        for i, (table_name, column_name, orig_type, norm_type) in enumerate(hostname_columns, 1):
+            print_progress(i, len(hostname_columns), f"{table_name}.{column_name}")
             
-            # Get all data from this column
-            data = self._fetch_column_data(table_name, column_name)
+            # Get all hostnames from this column
+            hostnames = self._fetch_column_data(table_name, column_name)
+            for hostname in hostnames:
+                normalized_host = self.normalize_hostname(hostname)
+                if normalized_host and len(normalized_host) > 2:
+                    self.all_host_data[normalized_host]['source_tables'].add(table_name)
+                    self.all_host_data[normalized_host][norm_type].add(hostname)
+                    self.table_host_mapping[table_name].add(normalized_host)
+        
+        print(f"\n✅ Discovered {len(self.all_host_data)} unique hosts from hostname columns")
+        
+        # Second pass: collect all attribute data
+        attribute_columns = [(t, c, ct, nt) for t, c, ct, nt in columns_to_process if nt != 'hostname']
+        
+        logger.info(f"📝 Processing {len(attribute_columns)} attribute columns...")
+        attribute_data_collected = defaultdict(lambda: defaultdict(set))  # {table: {attr_type: {values}}}
+        
+        for i, (table_name, column_name, orig_type, norm_type) in enumerate(attribute_columns, 1):
+            print_progress(i, len(attribute_columns), f"{table_name}.{column_name}")
             
-            # Check if this is a hostname column
-            is_hostname_col = (orig_type.lower() in self.hostname_types or 
-                             self._is_host_column_name(column_name))
-            
-            if is_hostname_col:
-                # Process hostname data
-                for value in data:
-                    normalized_host = self.normalize_hostname(value)
-                    if normalized_host and len(normalized_host) > 2:
-                        self.all_host_data[normalized_host]['source_tables'].add(table_name)
-                        self.all_host_data[normalized_host][norm_type].add(value)
-                        self.table_to_hosts[table_name].add(normalized_host)
+            # Get all values from this column
+            values = self._fetch_column_data(table_name, column_name)
+            for value in values:
+                if value and value.strip():
+                    attribute_data_collected[table_name][norm_type].add(value.strip())
+        
+        print(f"\n✅ Collected attribute data from {len(attribute_columns)} columns")
+        
+        # Third pass: apply attribute data to hosts
+        logger.info("🔗 Linking attribute data to hosts...")
+        
+        total_links = 0
+        for table_name, attr_data in attribute_data_collected.items():
+            # If this table has hosts, apply all attributes to those hosts
+            if table_name in self.table_host_mapping:
+                hosts_in_table = self.table_host_mapping[table_name]
+                for attr_type, values in attr_data.items():
+                    # Use the most common/longest value for this attribute
+                    if values:
+                        best_value = max(values, key=lambda x: (values.count if hasattr(values, 'count') else 1, len(x)))
+                        for host in hosts_in_table:
+                            self.all_host_data[host][attr_type].add(best_value)
+                            total_links += 1
             else:
-                # Store attribute data by table
-                for value in data:
-                    if value and value.strip():
-                        self.all_attribute_data[table_name][norm_type].add(value.strip())
+                # Table has no direct hosts, apply to ALL hosts (global attributes)
+                for attr_type, values in attr_data.items():
+                    if values and len(values) <= 10:  # Only if few unique values (likely global)
+                        best_value = max(values, key=len)  # Take longest value
+                        for host in list(self.all_host_data.keys()):
+                            if not self.all_host_data[host][attr_type]:  # Only if not already set
+                                self.all_host_data[host][attr_type].add(best_value)
+                                total_links += 1
         
-        print()  # New line after progress bar
+        logger.info(f"✅ Created {total_links:,} attribute links")
         
-        # Show collection results
-        print("📊 Collection Results:")
-        print(f"  🏠 Unique hosts discovered: {len(self.all_host_data):,}")
-        print(f"  📋 Tables with hosts: {len(self.table_to_hosts)}")
-        print(f"  📝 Tables with attributes: {len(self.all_attribute_data)}")
+        # Show final collection results
+        print("\n📊 FINAL COLLECTION RESULTS:")
+        print(f"  🏠 Total unique hosts: {len(self.all_host_data):,}")
+        print(f"  📋 Tables with hosts: {len(self.table_host_mapping)}")
         
-        # Show attribute data by type
-        attribute_type_counts = defaultdict(int)
-        for table_data in self.all_attribute_data.values():
-            for attr_type, values in table_data.items():
-                attribute_type_counts[attr_type] += len(values)
+        # Show attribute population
+        attribute_counts = defaultdict(int)
+        for host_data in self.all_host_data.values():
+            for attr_type, values in host_data.items():
+                if values and attr_type != 'source_tables':
+                    attribute_counts[attr_type] += 1
         
-        if attribute_type_counts:
-            print("  🎯 Attribute data collected:")
-            for attr_type in sorted(attribute_type_counts.keys()):
-                print(f"     • {attr_type}: {attribute_type_counts[attr_type]:,} unique values")
+        print(f"  🎯 Attribute population:")
+        for attr_type in sorted(attribute_counts.keys()):
+            count = attribute_counts[attr_type]
+            percentage = (count / len(self.all_host_data) * 100) if self.all_host_data else 0
+            print(f"     • {attr_type}: {count:,} hosts ({percentage:.1f}%)")
     
     def _fetch_column_data(self, table_name: str, column_name: str) -> List[str]:
         """Fetch all distinct values from a column"""
@@ -420,7 +468,7 @@ class HostDataProcessor:
         AND `{column_name}` != 'null'
         AND `{column_name}` != 'NULL'
         AND LENGTH(`{column_name}`) > 0
-        LIMIT 50000
+        LIMIT 100000
         """
         
         try:
@@ -431,120 +479,42 @@ class HostDataProcessor:
             logger.error(f"❌ Error fetching {table_name}.{column_name}: {e}")
             return []
     
-    def smart_attribute_linking(self):
-        """PHASE 2: Intelligently link attribute data to hosts"""
-        print_section("PHASE 2: SMART ATTRIBUTE LINKING")
+    def write_all_to_database(self):
+        """PHASE 2: Write everything to database"""
+        print_section("PHASE 2: DATABASE POPULATION")
         
-        logger.info("🧠 Applying intelligent attribute linking...")
-        
-        # Strategy 1: Direct table linking - if hosts and attributes come from same table
-        direct_links = 0
-        for table_name, hosts in self.table_to_hosts.items():
-            if table_name in self.all_attribute_data:
-                for host in hosts:
-                    for attr_type, values in self.all_attribute_data[table_name].items():
-                        # Take the most common value for this attribute type
-                        if values:
-                            most_common_value = max(values, key=lambda x: len(x)) if len(values) > 1 else next(iter(values))
-                            self.all_host_data[host][attr_type].add(most_common_value)
-                            direct_links += 1
-        
-        logger.info(f"✅ Direct table links: {direct_links:,}")
-        
-        # Strategy 2: Pattern-based linking - match attributes to hosts by patterns
-        pattern_links = 0
-        for table_name, attr_data in self.all_attribute_data.items():
-            for attr_type, values in attr_data.items():
-                for value in values:
-                    # Try to extract hostname patterns from attribute values
-                    potential_hosts = self._extract_hostnames_from_value(value)
-                    for potential_host in potential_hosts:
-                        if potential_host in self.all_host_data:
-                            self.all_host_data[potential_host][attr_type].add(value)
-                            pattern_links += 1
-        
-        logger.info(f"✅ Pattern-based links: {pattern_links:,}")
-        
-        # Strategy 3: Global application - apply common attributes globally
-        global_links = 0
-        for table_name, attr_data in self.all_attribute_data.items():
-            for attr_type, values in attr_data.items():
-                # If we have very few unique values for an attribute type, apply globally
-                if len(values) <= 5:  # Configurable threshold
-                    most_common_value = max(values, key=lambda x: len(x)) if len(values) > 1 else next(iter(values))
-                    for host in self.all_host_data.keys():
-                        # Only apply if the host doesn't already have this attribute
-                        if not self.all_host_data[host][attr_type]:
-                            self.all_host_data[host][attr_type].add(most_common_value)
-                            global_links += 1
-        
-        logger.info(f"✅ Global attribute applications: {global_links:,}")
-        
-        # Show final linking results
-        populated_attributes = defaultdict(int)
-        for host_data in self.all_host_data.values():
-            for attr_type, values in host_data.items():
-                if values and attr_type != 'source_tables':
-                    populated_attributes[attr_type] += 1
-        
-        print("🎯 Final attribute population:")
-        for attr_type in sorted(populated_attributes.keys()):
-            percentage = (populated_attributes[attr_type] / len(self.all_host_data) * 100) if self.all_host_data else 0
-            print(f"  • {attr_type}: {populated_attributes[attr_type]:,} hosts ({percentage:.1f}%)")
-    
-    def _extract_hostnames_from_value(self, value: str) -> List[str]:
-        """Try to extract potential hostnames from an attribute value"""
-        potential_hosts = []
-        
-        # Look for hostname patterns in the value
-        if '.' in value:
-            # Might be FQDN or contain hostname
-            parts = value.lower().split('.')
-            for part in parts:
-                normalized = self.normalize_hostname(part)
-                if normalized and len(normalized) > 2:
-                    potential_hosts.append(normalized)
-        
-        # Try the whole value as hostname
-        normalized = self.normalize_hostname(value)
-        if normalized and len(normalized) > 2:
-            potential_hosts.append(normalized)
-        
-        return potential_hosts
-    
-    def write_to_database(self):
-        """PHASE 3: Write all collected and linked data to database"""
-        print_section("PHASE 3: DATABASE POPULATION")
-        
-        logger.info("💾 Writing all data to database...")
+        logger.info("💾 Writing all collected data to database...")
         
         total_hosts = len(self.all_host_data)
         records_written = 0
         
+        # Get all possible column names from our patterns
+        all_column_types = set(self.column_patterns.keys())
+        
         for i, (normalized_host, host_data) in enumerate(self.all_host_data.items(), 1):
-            if i % 100 == 0:
-                print_progress(i, total_hosts, f"Writing host {normalized_host}")
+            if i % 50 == 0:
+                print_progress(i, total_hosts, f"Writing {normalized_host}")
             
-            # Prepare data for insertion
-            source_tables = ', '.join(sorted(host_data['source_tables'])) if host_data['source_tables'] else ''
+            # Build the record data
+            record_data = {
+                'normalized_host': normalized_host,
+                'source_tables': ', '.join(sorted(host_data['source_tables'])) if host_data['source_tables'] else ''
+            }
             
-            # Build the insert/update statement
-            columns = ['normalized_host', 'source_tables']
-            values = [normalized_host, source_tables]
-            
-            # Add all attribute columns
-            for attr_type in sorted(self.column_type_mapping.values()):
+            # Add all attribute data
+            for attr_type in all_column_types:
                 if attr_type in host_data and host_data[attr_type]:
-                    # Take the most representative value (longest string or most common)
-                    value = max(host_data[attr_type], key=len) if host_data[attr_type] else ''
-                    columns.append(attr_type)
-                    values.append(value)
+                    # Take the best value (longest or most representative)
+                    best_value = max(host_data[attr_type], key=len) if host_data[attr_type] else ''
+                    record_data[attr_type] = best_value
                 else:
-                    columns.append(attr_type)
-                    values.append(None)
+                    record_data[attr_type] = None
             
-            # Insert or replace the record
+            # Build and execute insert statement
+            columns = list(record_data.keys())
+            values = list(record_data.values())
             placeholders = ', '.join(['?' for _ in values])
+            
             insert_sql = f"""
             INSERT OR REPLACE INTO universal_cmdb 
             ({', '.join(columns)})
@@ -555,40 +525,34 @@ class HostDataProcessor:
                 self.duck_conn.execute(insert_sql, values)
                 records_written += 1
             except Exception as e:
-                logger.error(f"❌ Error writing host {normalized_host}: {e}")
+                logger.error(f"❌ Error writing {normalized_host}: {e}")
         
         print()  # New line after progress bar
-        logger.info(f"✅ Successfully wrote {records_written:,} host records")
-        
-        # Update existing hosts cache
-        self.existing_hosts_cache = set(self.all_host_data.keys())
+        logger.info(f"✅ Successfully wrote {records_written:,} records to database")
     
     def process_all_data(self):
-        """Main processing function with new 3-phase approach"""
-        print_banner("🔄 DATA PROCESSING - 3 PHASE APPROACH")
+        """Main processing function"""
+        print_banner("🔄 AGGRESSIVE DATA PROCESSING")
         
         # Load and analyze metadata
         metadata = self.load_metadata()
-        columns_info = self.analyze_metadata(metadata)
+        columns_to_process = self.analyze_all_columns(metadata)
         
-        if not columns_info:
+        if not columns_to_process:
             logger.warning("⚠️  No columns to process!")
             return
         
-        # Phase 1: Collect all data from BigQuery
-        self.collect_all_data()
+        # Phase 1: Aggressively collect all data
+        self.collect_all_data_aggressively(columns_to_process)
         
-        # Phase 2: Apply intelligent attribute linking
-        self.smart_attribute_linking()
-        
-        # Phase 3: Write everything to database
-        self.write_to_database()
+        # Phase 2: Write everything to database
+        self.write_all_to_database()
         
         # Create summary table
-        logger.info("📊 Creating summary tables...")
+        logger.info("📊 Creating summary table...")
         self._create_summary_table()
         
-        print("✅ Data processing complete!")
+        print("✅ Aggressive data processing complete!")
     
     def _create_summary_table(self):
         """Create summary table"""
@@ -623,7 +587,6 @@ class HostDataProcessor:
         """Print comprehensive final summary"""
         print_banner("📊 FINAL SUMMARY")
         
-        # Get basic stats
         try:
             total_hosts = self.duck_conn.execute("SELECT COUNT(*) FROM universal_cmdb").fetchone()[0]
             
@@ -636,11 +599,12 @@ class HostDataProcessor:
             print()
             
             # Show data population for each column
-            print("📈 Data Population by Column:")
+            print("📈 DATA POPULATION BY COLUMN:")
             print("┌─────────────────────────────────┬─────────────┬─────────────┐")
             print("│ Column Name                     │ Records     │ Coverage %  │")
             print("├─────────────────────────────────┼─────────────┼─────────────┤")
             
+            non_empty_columns = []
             for col_info in columns_info:
                 col_name = col_info[1]
                 if col_name not in ['last_updated', 'created_at']:
@@ -651,53 +615,41 @@ class HostDataProcessor:
                         
                         display_name = col_name[:31]
                         print(f"│ {display_name:<31} │ {count:>11,} │ {percentage:>10.1f}% │")
-                    except:
-                        pass
+                        
+                        if count > 0 and col_name not in ['normalized_host', 'source_tables']:
+                            non_empty_columns.append(col_name)
+                    except Exception as e:
+                        logger.debug(f"Error getting count for {col_name}: {e}")
             
             print("└─────────────────────────────────┴─────────────┴─────────────┘")
             
-            # Show top hosts by source count
-            print("\n🏆 Top 10 Hosts by Source Coverage:")
-            top_hosts_sql = """
-            SELECT normalized_host, 
-                   LENGTH(source_tables) - LENGTH(REPLACE(source_tables, ',', '')) + 1 as source_count,
-                   source_tables
-            FROM universal_cmdb
-            ORDER BY source_count DESC, normalized_host
-            LIMIT 10
-            """
+            print(f"\n🎉 SUCCESS! Populated {len(non_empty_columns)} data columns:")
+            for col in sorted(non_empty_columns):
+                print(f"   ✅ {col}")
             
-            top_hosts = self.duck_conn.execute(top_hosts_sql).fetchall()
-            for i, (host, count, tables) in enumerate(top_hosts, 1):
-                tables_display = tables[:50] + "..." if len(tables) > 50 else tables
-                print(f"  {i:2d}. {host:<20} ({count} sources): {tables_display}")
-            
-            # Show sample complete records
-            print("\n📄 Sample Complete Records:")
-            sample_sql = """
+            # Show sample records with most data
+            print("\n📄 SAMPLE RECORDS WITH MOST DATA:")
+            sample_sql = f"""
             SELECT * FROM universal_cmdb 
             WHERE normalized_host IS NOT NULL
             ORDER BY (
-                CASE WHEN hostname IS NOT NULL THEN 1 ELSE 0 END +
-                CASE WHEN fqdn IS NOT NULL THEN 1 ELSE 0 END +
-                CASE WHEN domain IS NOT NULL THEN 1 ELSE 0 END +
-                CASE WHEN region IS NOT NULL THEN 1 ELSE 0 END +
-                CASE WHEN business_unit IS NOT NULL THEN 1 ELSE 0 END +
-                CASE WHEN infrastructure_type IS NOT NULL THEN 1 ELSE 0 END
+                {' + '.join([f"CASE WHEN {col} IS NOT NULL AND {col} != '' THEN 1 ELSE 0 END" for col in non_empty_columns[:10]])}
             ) DESC
             LIMIT 5
             """
+            
             sample_results = self.duck_conn.execute(sample_sql).fetchall()
             column_names = [col[1] for col in columns_info]
             
             for i, row in enumerate(sample_results, 1):
-                print(f"\n  Record {i}: {row[0]}")
-                non_empty_fields = 0
+                print(f"\n  🏠 Host {i}: {row[0]}")
+                populated_fields = 0
                 for j, value in enumerate(row[1:], 1):
                     if value and str(value).strip() and column_names[j] not in ['last_updated', 'created_at']:
-                        print(f"    • {column_names[j]}: {value}")
-                        non_empty_fields += 1
-                print(f"    📊 Total populated fields: {non_empty_fields}")
+                        display_value = str(value)[:50] + "..." if len(str(value)) > 50 else str(value)
+                        print(f"     • {column_names[j]}: {display_value}")
+                        populated_fields += 1
+                print(f"     📊 Total populated fields: {populated_fields}")
             
         except Exception as e:
             logger.error(f"❌ Error generating summary: {e}")
@@ -726,7 +678,7 @@ if __name__ == "__main__":
     
     processor = None
     try:
-        print_banner("🌟 UNIVERSAL CMDB CREATOR", 100)
+        print_banner("🌟 UNIVERSAL CMDB CREATOR - AGGRESSIVE MODE", 100)
         print(f"📅 Started at: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
         print(f"📂 Metadata file: {JSON_FILE_PATH}")
         print(f"🗄️  Database file: {DUCKDB_PATH}")
@@ -737,7 +689,7 @@ if __name__ == "__main__":
             duckdb_path=DUCKDB_PATH
         )
         
-        # Process all data with new 3-phase approach
+        # Process all data aggressively
         processor.process_all_data()
         
         # Show final summary
@@ -746,11 +698,11 @@ if __name__ == "__main__":
         # Export results
         processor.export_data("universal_cmdb_export.csv")
         
-        print_banner("🎉 PROCESSING COMPLETE!", 100)
+        print_banner("🎉 AGGRESSIVE PROCESSING COMPLETE!", 100)
         print(f"📅 Finished at: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
         print(f"🎯 Database: {DUCKDB_PATH}")
         print(f"📊 Export: universal_cmdb_export.csv")
-        print(f"✨ Query your data: SELECT * FROM universal_cmdb LIMIT 10;")
+        print(f"✨ Query your data: SELECT * FROM universal_cmdb WHERE hostname IS NOT NULL LIMIT 10;")
         
     except KeyboardInterrupt:
         print("\n\n🛑 Processing interrupted by user")
