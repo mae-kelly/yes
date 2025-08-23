@@ -226,6 +226,21 @@ class HostDataProcessor:
             logger.error("No 'columns' key found in metadata")
             return all_columns
         
+        # First, let's see ALL column types in the metadata
+        all_column_types = set()
+        for table_name, columns in metadata['columns'].items():
+            for column_name, column_type in columns.items():
+                if isinstance(column_type, str):
+                    all_column_types.add(column_type.lower())
+        
+        logger.info(f"All column types found in metadata: {sorted(all_column_types)}")
+        logger.info(f"Recognized column types in mapping: {sorted(self.column_type_mapping.keys())}")
+        
+        # Find column types that aren't in our mapping
+        unmapped_types = all_column_types - set(self.column_type_mapping.keys())
+        if unmapped_types:
+            logger.warning(f"Column types NOT in mapping (will be skipped): {sorted(unmapped_types)}")
+        
         for table_name, columns in metadata['columns'].items():
             logger.info(f"Processing table: {table_name}")
             
@@ -235,7 +250,9 @@ class HostDataProcessor:
                     normalized_type = self.column_type_mapping.get(column_type.lower())
                     if normalized_type:
                         all_columns.append((table_name, column_name, column_type))
-                        logger.info(f"  Found column: {column_name} (type: {column_type})")
+                        logger.info(f"  Found column: {column_name} (type: {column_type} -> {normalized_type})")
+                    else:
+                        logger.debug(f"  Skipping column: {column_name} (unrecognized type: {column_type})")
                 
                 # Also check for host-related column names that might contain actual hostnames
                 elif self._is_host_column_name(column_name):
@@ -243,6 +260,10 @@ class HostDataProcessor:
                     logger.info(f"  Found host column by name: {column_name} (inferred type: hostname)")
         
         logger.info(f"Total relevant columns found: {len(all_columns)}")
+        
+        # Pre-create ALL possible columns that we found
+        self._ensure_all_columns_exist()
+        
         return all_columns
     
     def _is_host_column_name(self, column_name: str) -> bool:
@@ -495,6 +516,18 @@ class HostDataProcessor:
         except Exception as e:
             logger.error(f"Error inserting host {normalized_host}: {e}")
     
+    def _ensure_all_columns_exist(self):
+        """Ensure all possible columns from our mapping exist in the table"""
+        logger.info("Ensuring all mapped column types have corresponding table columns...")
+        
+        # Get all unique normalized column types from our mapping
+        all_possible_columns = set(self.column_type_mapping.values())
+        
+        for column_type in all_possible_columns:
+            self._ensure_column_exists(column_type)
+        
+        logger.info(f"Ensured {len(all_possible_columns)} columns exist: {sorted(all_possible_columns)}")
+
     def _ensure_column_exists(self, column_type: str):
         """Ensure that a column exists in the table, add it if it doesn't"""
         if not column_type or column_type in ['normalized_host', 'source_tables', 'last_updated', 'created_at']:
@@ -519,6 +552,9 @@ class HostDataProcessor:
                     self.duck_conn.execute(f"CREATE INDEX IF NOT EXISTS idx_{column_type} ON universal_cmdb({column_type})")
                 except:
                     pass  # Index creation might fail, that's ok
+            else:
+                # Column exists, make sure it's in our discovered set
+                self.discovered_columns.add(column_type)
                     
         except Exception as e:
             logger.error(f"Error ensuring column {column_type} exists: {e}")
