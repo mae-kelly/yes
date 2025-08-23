@@ -7,6 +7,7 @@ from google.oauth2 import service_account
 from typing import Dict, List, Set, Tuple, Optional
 import logging
 from datetime import datetime
+from collections import defaultdict
 
 # Set up pretty logging
 class ColorFormatter(logging.Formatter):
@@ -108,6 +109,11 @@ class HostDataProcessor:
         
         # Track which column types contain hostnames (used to create normalized_host)
         self.hostname_types = {'host', 'hostname', 'fqdn'}
+        
+        # Storage for all collected data - this is key to the new approach
+        self.all_host_data = defaultdict(lambda: defaultdict(set))  # {normalized_host: {column_type: {values}}}
+        self.all_attribute_data = defaultdict(lambda: defaultdict(set))  # {table_name: {column_type: {values}}}
+        self.table_to_hosts = defaultdict(set)  # {table_name: {normalized_hosts}}
         
         # Initialize connections
         logger.info("🔌 Initializing BigQuery connection...")
@@ -330,6 +336,15 @@ class HostDataProcessor:
             for utype in sorted(unmapped_types):
                 print(f"     • {utype}")
         
+        # Show what we found for each column type
+        type_counts = defaultdict(int)
+        for _, _, _, norm_type in all_columns_info:
+            type_counts[norm_type] += 1
+        
+        print(f"  📋 Columns found by type:")
+        for col_type in sorted(type_counts.keys()):
+            print(f"     • {col_type}: {type_counts[col_type]} columns")
+        
         print(f"  📋 Total columns to process: {len(all_columns_info)}")
         
         self.all_columns_info = all_columns_info
@@ -346,13 +361,57 @@ class HostDataProcessor:
         column_lower = column_name.lower()
         return any(pattern in column_lower for pattern in host_patterns)
     
-    def check_host_exists(self, normalized_host: str) -> bool:
-        """Check if a normalized host already exists"""
-        return normalized_host in self.existing_hosts_cache
+    def collect_all_data(self):
+        """PHASE 1: Collect ALL data from BigQuery into memory structures"""
+        print_section("PHASE 1: DATA COLLECTION")
+        
+        logger.info("🗂️  Collecting all data from BigQuery...")
+        
+        for i, (table_name, column_name, orig_type, norm_type) in enumerate(self.all_columns_info, 1):
+            print_progress(i, len(self.all_columns_info), f"{table_name}.{column_name}")
+            
+            # Get all data from this column
+            data = self._fetch_column_data(table_name, column_name)
+            
+            # Check if this is a hostname column
+            is_hostname_col = (orig_type.lower() in self.hostname_types or 
+                             self._is_host_column_name(column_name))
+            
+            if is_hostname_col:
+                # Process hostname data
+                for value in data:
+                    normalized_host = self.normalize_hostname(value)
+                    if normalized_host and len(normalized_host) > 2:
+                        self.all_host_data[normalized_host]['source_tables'].add(table_name)
+                        self.all_host_data[normalized_host][norm_type].add(value)
+                        self.table_to_hosts[table_name].add(normalized_host)
+            else:
+                # Store attribute data by table
+                for value in data:
+                    if value and value.strip():
+                        self.all_attribute_data[table_name][norm_type].add(value.strip())
+        
+        print()  # New line after progress bar
+        
+        # Show collection results
+        print("📊 Collection Results:")
+        print(f"  🏠 Unique hosts discovered: {len(self.all_host_data):,}")
+        print(f"  📋 Tables with hosts: {len(self.table_to_hosts)}")
+        print(f"  📝 Tables with attributes: {len(self.all_attribute_data)}")
+        
+        # Show attribute data by type
+        attribute_type_counts = defaultdict(int)
+        for table_data in self.all_attribute_data.values():
+            for attr_type, values in table_data.items():
+                attribute_type_counts[attr_type] += len(values)
+        
+        if attribute_type_counts:
+            print("  🎯 Attribute data collected:")
+            for attr_type in sorted(attribute_type_counts.keys()):
+                print(f"     • {attr_type}: {attribute_type_counts[attr_type]:,} unique values")
     
-    def process_column_data(self, table_name: str, column_name: str, original_type: str, normalized_type: str):
-        """Process a single column's data from BigQuery"""
-        # Build query to get all distinct values
+    def _fetch_column_data(self, table_name: str, column_name: str) -> List[str]:
+        """Fetch all distinct values from a column"""
         query = f"""
         SELECT DISTINCT `{column_name}` as value
         FROM `{table_name}`
@@ -365,122 +424,148 @@ class HostDataProcessor:
         """
         
         try:
-            logger.info(f"🔍 Querying {table_name}.{column_name} (type: {original_type} → {normalized_type})")
-            
             query_job = self.bq_client.query(query)
             results = query_job.result()
-            
-            new_hosts = 0
-            host_updates = 0
-            attribute_updates = 0
-            processed = 0
-            
-            # Check if this is a hostname column
-            is_hostname_col = (original_type.lower() in self.hostname_types or 
-                             self._is_host_column_name(column_name))
-            
-            for row in results:
-                if row.value and isinstance(row.value, str):
-                    value = row.value.strip()
-                    processed += 1
-                    
-                    if is_hostname_col:
-                        # This column contains hostnames
-                        normalized_host = self.normalize_hostname(value)
-                        
-                        if normalized_host and len(normalized_host) > 2:  # Skip very short hostnames
-                            if not self.check_host_exists(normalized_host):
-                                # Create new host
-                                self._create_host_record(normalized_host, table_name, normalized_type, value)
-                                new_hosts += 1
-                                self.existing_hosts_cache.add(normalized_host)
-                            else:
-                                # Update existing host
-                                self._update_host_record(normalized_host, table_name, normalized_type, value)
-                                host_updates += 1
-                    else:
-                        # This is attribute data - apply to ALL hosts from this table
-                        hosts_updated = self._apply_attribute_to_table_hosts(table_name, normalized_type, value)
-                        attribute_updates += hosts_updated
-            
-            logger.info(f"  ✅ Processed {processed} values")
-            if new_hosts > 0:
-                logger.info(f"  🆕 Created {new_hosts} new hosts")
-            if host_updates > 0:
-                logger.info(f"  🔄 Updated {host_updates} existing hosts")
-            if attribute_updates > 0:
-                logger.info(f"  📝 Applied attributes to {attribute_updates} hosts")
-                
+            return [row.value for row in results if row.value and isinstance(row.value, str)]
         except Exception as e:
-            logger.error(f"❌ Error processing {table_name}.{column_name}: {e}")
+            logger.error(f"❌ Error fetching {table_name}.{column_name}: {e}")
+            return []
     
-    def _create_host_record(self, normalized_host: str, source_table: str, column_type: str, value: str):
-        """Create a new host record"""
-        try:
-            insert_sql = f"""
-            INSERT OR IGNORE INTO universal_cmdb 
-            (normalized_host, source_tables, {column_type})
-            VALUES (?, ?, ?)
-            """
-            self.duck_conn.execute(insert_sql, [normalized_host, source_table, value])
-        except Exception as e:
-            logger.error(f"❌ Error creating host {normalized_host}: {e}")
+    def smart_attribute_linking(self):
+        """PHASE 2: Intelligently link attribute data to hosts"""
+        print_section("PHASE 2: SMART ATTRIBUTE LINKING")
+        
+        logger.info("🧠 Applying intelligent attribute linking...")
+        
+        # Strategy 1: Direct table linking - if hosts and attributes come from same table
+        direct_links = 0
+        for table_name, hosts in self.table_to_hosts.items():
+            if table_name in self.all_attribute_data:
+                for host in hosts:
+                    for attr_type, values in self.all_attribute_data[table_name].items():
+                        # Take the most common value for this attribute type
+                        if values:
+                            most_common_value = max(values, key=lambda x: len(x)) if len(values) > 1 else next(iter(values))
+                            self.all_host_data[host][attr_type].add(most_common_value)
+                            direct_links += 1
+        
+        logger.info(f"✅ Direct table links: {direct_links:,}")
+        
+        # Strategy 2: Pattern-based linking - match attributes to hosts by patterns
+        pattern_links = 0
+        for table_name, attr_data in self.all_attribute_data.items():
+            for attr_type, values in attr_data.items():
+                for value in values:
+                    # Try to extract hostname patterns from attribute values
+                    potential_hosts = self._extract_hostnames_from_value(value)
+                    for potential_host in potential_hosts:
+                        if potential_host in self.all_host_data:
+                            self.all_host_data[potential_host][attr_type].add(value)
+                            pattern_links += 1
+        
+        logger.info(f"✅ Pattern-based links: {pattern_links:,}")
+        
+        # Strategy 3: Global application - apply common attributes globally
+        global_links = 0
+        for table_name, attr_data in self.all_attribute_data.items():
+            for attr_type, values in attr_data.items():
+                # If we have very few unique values for an attribute type, apply globally
+                if len(values) <= 5:  # Configurable threshold
+                    most_common_value = max(values, key=lambda x: len(x)) if len(values) > 1 else next(iter(values))
+                    for host in self.all_host_data.keys():
+                        # Only apply if the host doesn't already have this attribute
+                        if not self.all_host_data[host][attr_type]:
+                            self.all_host_data[host][attr_type].add(most_common_value)
+                            global_links += 1
+        
+        logger.info(f"✅ Global attribute applications: {global_links:,}")
+        
+        # Show final linking results
+        populated_attributes = defaultdict(int)
+        for host_data in self.all_host_data.values():
+            for attr_type, values in host_data.items():
+                if values and attr_type != 'source_tables':
+                    populated_attributes[attr_type] += 1
+        
+        print("🎯 Final attribute population:")
+        for attr_type in sorted(populated_attributes.keys()):
+            percentage = (populated_attributes[attr_type] / len(self.all_host_data) * 100) if self.all_host_data else 0
+            print(f"  • {attr_type}: {populated_attributes[attr_type]:,} hosts ({percentage:.1f}%)")
     
-    def _update_host_record(self, normalized_host: str, source_table: str, column_type: str, value: str):
-        """Update an existing host record"""
-        try:
-            # Update source tables
-            self._append_source_table(normalized_host, source_table)
+    def _extract_hostnames_from_value(self, value: str) -> List[str]:
+        """Try to extract potential hostnames from an attribute value"""
+        potential_hosts = []
+        
+        # Look for hostname patterns in the value
+        if '.' in value:
+            # Might be FQDN or contain hostname
+            parts = value.lower().split('.')
+            for part in parts:
+                normalized = self.normalize_hostname(part)
+                if normalized and len(normalized) > 2:
+                    potential_hosts.append(normalized)
+        
+        # Try the whole value as hostname
+        normalized = self.normalize_hostname(value)
+        if normalized and len(normalized) > 2:
+            potential_hosts.append(normalized)
+        
+        return potential_hosts
+    
+    def write_to_database(self):
+        """PHASE 3: Write all collected and linked data to database"""
+        print_section("PHASE 3: DATABASE POPULATION")
+        
+        logger.info("💾 Writing all data to database...")
+        
+        total_hosts = len(self.all_host_data)
+        records_written = 0
+        
+        for i, (normalized_host, host_data) in enumerate(self.all_host_data.items(), 1):
+            if i % 100 == 0:
+                print_progress(i, total_hosts, f"Writing host {normalized_host}")
             
-            # Update the specific column
-            update_sql = f"""
-            UPDATE universal_cmdb 
-            SET {column_type} = ?, last_updated = CURRENT_TIMESTAMP
-            WHERE normalized_host = ?
-            """
-            self.duck_conn.execute(update_sql, [value, normalized_host])
-        except Exception as e:
-            logger.error(f"❌ Error updating host {normalized_host}: {e}")
-    
-    def _append_source_table(self, normalized_host: str, table_name: str):
-        """Append source table to existing list"""
-        try:
-            # Get current source tables
-            query = "SELECT source_tables FROM universal_cmdb WHERE normalized_host = ?"
-            result = self.duck_conn.execute(query, [normalized_host]).fetchone()
+            # Prepare data for insertion
+            source_tables = ', '.join(sorted(host_data['source_tables'])) if host_data['source_tables'] else ''
             
-            if result and result[0]:
-                current_tables = result[0]
-                if table_name not in current_tables:
-                    new_tables = f"{current_tables}, {table_name}"
+            # Build the insert/update statement
+            columns = ['normalized_host', 'source_tables']
+            values = [normalized_host, source_tables]
+            
+            # Add all attribute columns
+            for attr_type in sorted(self.column_type_mapping.values()):
+                if attr_type in host_data and host_data[attr_type]:
+                    # Take the most representative value (longest string or most common)
+                    value = max(host_data[attr_type], key=len) if host_data[attr_type] else ''
+                    columns.append(attr_type)
+                    values.append(value)
                 else:
-                    return  # Already exists
-            else:
-                new_tables = table_name
+                    columns.append(attr_type)
+                    values.append(None)
             
-            # Update
-            update_sql = "UPDATE universal_cmdb SET source_tables = ? WHERE normalized_host = ?"
-            self.duck_conn.execute(update_sql, [new_tables, normalized_host])
-        except Exception as e:
-            logger.error(f"❌ Error updating source tables for {normalized_host}: {e}")
-    
-    def _apply_attribute_to_table_hosts(self, source_table: str, column_type: str, value: str) -> int:
-        """Apply attribute value to all hosts from a specific source table"""
-        try:
-            update_sql = f"""
-            UPDATE universal_cmdb 
-            SET {column_type} = ?, last_updated = CURRENT_TIMESTAMP
-            WHERE source_tables LIKE ?
+            # Insert or replace the record
+            placeholders = ', '.join(['?' for _ in values])
+            insert_sql = f"""
+            INSERT OR REPLACE INTO universal_cmdb 
+            ({', '.join(columns)})
+            VALUES ({placeholders})
             """
-            result = self.duck_conn.execute(update_sql, [value, f"%{source_table}%"])
-            return self.duck_conn.execute("SELECT changes()").fetchone()[0]
-        except Exception as e:
-            logger.error(f"❌ Error applying attribute {column_type} to table {source_table}: {e}")
-            return 0
+            
+            try:
+                self.duck_conn.execute(insert_sql, values)
+                records_written += 1
+            except Exception as e:
+                logger.error(f"❌ Error writing host {normalized_host}: {e}")
+        
+        print()  # New line after progress bar
+        logger.info(f"✅ Successfully wrote {records_written:,} host records")
+        
+        # Update existing hosts cache
+        self.existing_hosts_cache = set(self.all_host_data.keys())
     
     def process_all_data(self):
-        """Main processing function"""
-        print_banner("🔄 DATA PROCESSING")
+        """Main processing function with new 3-phase approach"""
+        print_banner("🔄 DATA PROCESSING - 3 PHASE APPROACH")
         
         # Load and analyze metadata
         metadata = self.load_metadata()
@@ -490,30 +575,14 @@ class HostDataProcessor:
             logger.warning("⚠️  No columns to process!")
             return
         
-        # Separate hostname and attribute columns
-        hostname_columns = [(t, c, ot, nt) for t, c, ot, nt in columns_info 
-                           if ot.lower() in self.hostname_types or self._is_host_column_name(c)]
+        # Phase 1: Collect all data from BigQuery
+        self.collect_all_data()
         
-        attribute_columns = [(t, c, ot, nt) for t, c, ot, nt in columns_info 
-                            if (t, c, ot, nt) not in hostname_columns]
+        # Phase 2: Apply intelligent attribute linking
+        self.smart_attribute_linking()
         
-        print_section(f"PROCESSING {len(hostname_columns)} HOSTNAME COLUMNS")
-        
-        # Process hostname columns first
-        for i, (table_name, column_name, orig_type, norm_type) in enumerate(hostname_columns, 1):
-            print_progress(i, len(hostname_columns), f"{table_name}.{column_name}")
-            self.process_column_data(table_name, column_name, orig_type, norm_type)
-        
-        print()  # New line after progress bar
-        
-        print_section(f"PROCESSING {len(attribute_columns)} ATTRIBUTE COLUMNS")
-        
-        # Process attribute columns
-        for i, (table_name, column_name, orig_type, norm_type) in enumerate(attribute_columns, 1):
-            print_progress(i, len(attribute_columns), f"{table_name}.{column_name}")
-            self.process_column_data(table_name, column_name, orig_type, norm_type)
-        
-        print()  # New line after progress bar
+        # Phase 3: Write everything to database
+        self.write_to_database()
         
         # Create summary table
         logger.info("📊 Creating summary tables...")
@@ -608,16 +677,27 @@ class HostDataProcessor:
             sample_sql = """
             SELECT * FROM universal_cmdb 
             WHERE normalized_host IS NOT NULL
-            LIMIT 3
+            ORDER BY (
+                CASE WHEN hostname IS NOT NULL THEN 1 ELSE 0 END +
+                CASE WHEN fqdn IS NOT NULL THEN 1 ELSE 0 END +
+                CASE WHEN domain IS NOT NULL THEN 1 ELSE 0 END +
+                CASE WHEN region IS NOT NULL THEN 1 ELSE 0 END +
+                CASE WHEN business_unit IS NOT NULL THEN 1 ELSE 0 END +
+                CASE WHEN infrastructure_type IS NOT NULL THEN 1 ELSE 0 END
+            ) DESC
+            LIMIT 5
             """
             sample_results = self.duck_conn.execute(sample_sql).fetchall()
             column_names = [col[1] for col in columns_info]
             
             for i, row in enumerate(sample_results, 1):
                 print(f"\n  Record {i}: {row[0]}")
+                non_empty_fields = 0
                 for j, value in enumerate(row[1:], 1):
                     if value and str(value).strip() and column_names[j] not in ['last_updated', 'created_at']:
                         print(f"    • {column_names[j]}: {value}")
+                        non_empty_fields += 1
+                print(f"    📊 Total populated fields: {non_empty_fields}")
             
         except Exception as e:
             logger.error(f"❌ Error generating summary: {e}")
@@ -657,7 +737,7 @@ if __name__ == "__main__":
             duckdb_path=DUCKDB_PATH
         )
         
-        # Process all data
+        # Process all data with new 3-phase approach
         processor.process_all_data()
         
         # Show final summary
