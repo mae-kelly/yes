@@ -10,16 +10,15 @@ from collections import defaultdict, Counter
 import time
 from datetime import datetime, timedelta
 import threading
-from concurrent.futures import ThreadPoolExecutor, as_completed, ProcessPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, as_completed
 import multiprocessing
 import subprocess
 import sys
 import platform
 import asyncio
-import aiofiles
-from itertools import islice
 import gc
 import mmap
+from queue import Queue
 
 # Disable logging for max speed
 logging.disable(logging.CRITICAL)
@@ -32,13 +31,13 @@ class UltraFastCMDBProcessor:
         self.json_file_path = json_file_path
         self.duckdb_path = duckdb_path
         
-        # Get all CPU cores
+        # Get all CPU cores - use threading instead of multiprocessing
         self.cpu_count = multiprocessing.cpu_count()
-        self.max_workers = self.cpu_count * 2  # Aggressive threading
+        self.max_workers = min(20, self.cpu_count * 3)  # Cap at 20 threads max
         
         # Massive batch sizes for speed
-        self.batch_size = 50000  # 10x larger batches
-        self.insert_batch_size = 10000  # Bulk inserts
+        self.batch_size = 100000  # Even bigger batches
+        self.insert_batch_size = 20000  # Huge bulk inserts
         
         print(f"🔥 Using {self.cpu_count} CPU cores with {self.max_workers} worker threads")
         print(f"⚡ Batch size: {self.batch_size:,} | Insert batch: {self.insert_batch_size:,}")
@@ -60,9 +59,9 @@ class UltraFastCMDBProcessor:
             'logging_in_splunk': 'logging_in_splunk', 'logging_in_gso': 'logging_in_gso'
         }
         
-        # In-memory caches for speed
+        # Thread-safe caches for speed
         self.seen_hosts = set()
-        self.host_cache = {}
+        self.seen_hosts_lock = threading.Lock()
         
         # Stats tracking
         self.stats = {
@@ -71,45 +70,49 @@ class UltraFastCMDBProcessor:
             'records_processed': 0,
             'hosts_created': 0,
             'hosts_updated': 0,
-            'duplicates_skipped': 0
+            'duplicates_skipped': 0,
+            'stats_lock': threading.Lock()
         }
         
-        self._init_bigquery_fast()
-        self._init_duckdb_fast()
+        # Thread-local storage for BigQuery clients
+        self.thread_local = threading.local()
+        
+        self._init_duckdb_ultra_fast()
         
         print("✅ Initialization complete - READY FOR MAXIMUM SPEED")
         print("=" * 80)
-        
-    def _init_bigquery_fast(self):
-        """Ultra-fast BigQuery initialization"""
-        service_account_file = os.getenv('GCP_SERVICE_ACCOUNT_FILE', 'gcp/gcp_prod_key.json')
-        
-        if os.path.exists(service_account_file):
-            credentials = service_account.Credentials.from_service_account_file(service_account_file)
-            self.bq_client = bigquery.Client(project="chronicle-fisv", credentials=credentials)
-        else:
-            self.bq_client = bigquery.Client(project="chronicle-fisv")
-        
-        print("⚡ BigQuery connected")
     
-    def _init_duckdb_fast(self):
+    def _get_bq_client(self):
+        """Get thread-local BigQuery client"""
+        if not hasattr(self.thread_local, 'bq_client'):
+            service_account_file = os.getenv('GCP_SERVICE_ACCOUNT_FILE', 'gcp/gcp_prod_key.json')
+            
+            if os.path.exists(service_account_file):
+                credentials = service_account.Credentials.from_service_account_file(service_account_file)
+                self.thread_local.bq_client = bigquery.Client(project="chronicle-fisv", credentials=credentials)
+            else:
+                self.thread_local.bq_client = bigquery.Client(project="chronicle-fisv")
+        
+        return self.thread_local.bq_client
+    
+    def _init_duckdb_ultra_fast(self):
         """Ultra-fast DuckDB setup with performance optimizations"""
         self.duck_conn = duckdb.connect(self.duckdb_path)
         
         # MAXIMUM PERFORMANCE SETTINGS
         performance_settings = [
             "SET memory_limit='80%'",  # Use 80% of available RAM
-            "SET threads TO {}".format(self.cpu_count),
+            f"SET threads TO {self.cpu_count}",
             "SET max_memory='80GB'",
             "SET enable_progress_bar=false",
             "SET enable_profiling=false",
-            "SET checkpoint_threshold='1GB'",
-            "SET wal_autocheckpoint=10000",
-            "SET temp_directory='/tmp/duckdb_temp'",  # Fast temp storage
+            "SET checkpoint_threshold='2GB'",
+            "SET wal_autocheckpoint=50000",
             "PRAGMA journal_mode=WAL",
             "PRAGMA synchronous=OFF",  # DANGEROUS BUT FAST
-            "PRAGMA cache_size=1000000",  # 1M pages in cache
-            "PRAGMA temp_store=MEMORY"
+            "PRAGMA cache_size=2000000",  # 2M pages in cache
+            "PRAGMA temp_store=MEMORY",
+            "PRAGMA mmap_size=2000000000"  # 2GB memory map
         ]
         
         for setting in performance_settings:
@@ -149,13 +152,8 @@ class UltraFastCMDBProcessor:
         """
         self.duck_conn.execute(create_sql)
         
-        # Only essential index for lookups
-        try:
-            self.duck_conn.execute("CREATE INDEX IF NOT EXISTS idx_normalized_host ON universal_cmdb(normalized_host)")
-        except:
-            pass
-        
-        print("⚡ DuckDB optimized for maximum speed")
+        # Defer index creation until the end for speed
+        print("⚡ DuckDB optimized for MAXIMUM SPEED (indexes deferred)")
     
     def normalize_hostname_fast(self, hostname: str) -> str:
         """Ultra-fast hostname normalization"""
@@ -231,7 +229,7 @@ class UltraFastCMDBProcessor:
         FROM `{table_name}`
         WHERE `{hostname_col}` IS NOT NULL 
         AND LENGTH(`{hostname_col}`) > 1
-        LIMIT 1000000
+        AND `{hostname_col}` != '*Undefined'
         """
     
     def process_table_ultra_fast(self, table_info: Tuple) -> int:
@@ -251,15 +249,19 @@ class UltraFastCMDBProcessor:
         query = self.build_ultra_fast_query(table_name, all_columns, primary_hostname_col)
         
         try:
+            # Get thread-local BigQuery client
+            bq_client = self._get_bq_client()
+            
             # Ultra-aggressive BigQuery settings
             job_config = bigquery.QueryJobConfig(
                 use_query_cache=True,
                 use_legacy_sql=False,
-                maximum_bytes_billed=100 * 1024 * 1024 * 1024,  # 100GB limit
-                job_timeout_ms=10 * 60 * 1000  # 10 minutes max
+                maximum_bytes_billed=200 * 1024 * 1024 * 1024,  # 200GB limit
+                job_timeout_ms=15 * 60 * 1000,  # 15 minutes max
+                dry_run=False
             )
             
-            query_job = self.bq_client.query(query, job_config=job_config)
+            query_job = bq_client.query(query, job_config=job_config)
             results = query_job.result(page_size=self.batch_size)
             
             return self._process_results_ultra_fast(results, table_name, attribute_types)
@@ -272,6 +274,7 @@ class UltraFastCMDBProcessor:
         """Ultra-fast result processing with bulk operations"""
         records_processed = 0
         batch_records = []
+        local_duplicates = 0
         
         for row in results:
             records_processed += 1
@@ -284,12 +287,17 @@ class UltraFastCMDBProcessor:
             if not normalized_host:
                 continue
             
-            # Quick duplicate check
-            if normalized_host in self.seen_hosts:
-                self.stats['duplicates_skipped'] += 1
-                continue
+            # Thread-safe duplicate check
+            is_duplicate = False
+            with self.seen_hosts_lock:
+                if normalized_host in self.seen_hosts:
+                    is_duplicate = True
+                    local_duplicates += 1
+                else:
+                    self.seen_hosts.add(normalized_host)
             
-            self.seen_hosts.add(normalized_host)
+            if is_duplicate:
+                continue
             
             # Build record data
             record_data = {
@@ -307,26 +315,40 @@ class UltraFastCMDBProcessor:
             
             # Bulk insert when batch is full
             if len(batch_records) >= self.insert_batch_size:
-                self._bulk_insert_ultra_fast(batch_records)
+                created = self._bulk_insert_ultra_fast(batch_records)
                 batch_records.clear()
                 
+                # Update stats
+                with self.stats['stats_lock']:
+                    self.stats['records_processed'] += records_processed
+                    self.stats['hosts_created'] += created
+                    self.stats['duplicates_skipped'] += local_duplicates
+                
                 # Quick progress update
-                if records_processed % 50000 == 0:
+                if self.stats['records_processed'] % 100000 == 0:
                     elapsed = time.time() - self.stats['start_time']
                     rate = self.stats['records_processed'] / elapsed if elapsed > 0 else 0
-                    print(f"⚡ {self.stats['records_processed']:,} processed | {rate:.0f}/sec | {os.path.basename(table_name)}")
+                    print(f"⚡ {self.stats['records_processed']:,} processed | {rate:.0f}/sec | {local_duplicates:,} dups")
+                
+                records_processed = 0
+                local_duplicates = 0
         
         # Insert remaining records
         if batch_records:
-            self._bulk_insert_ultra_fast(batch_records)
+            created = self._bulk_insert_ultra_fast(batch_records)
+            
+            # Final stats update
+            with self.stats['stats_lock']:
+                self.stats['records_processed'] += records_processed
+                self.stats['hosts_created'] += created
+                self.stats['duplicates_skipped'] += local_duplicates
         
-        self.stats['records_processed'] += records_processed
         return records_processed
     
-    def _bulk_insert_ultra_fast(self, batch_records: List[Dict]):
+    def _bulk_insert_ultra_fast(self, batch_records: List[Dict]) -> int:
         """Ultra-fast bulk insert using DuckDB's native bulk loading"""
         if not batch_records:
-            return
+            return 0
         
         # Prepare bulk insert data
         columns = ['normalized_host', 'source_tables', 'hostname']
@@ -352,19 +374,24 @@ class UltraFastCMDBProcessor:
             
             values_list.append(row_values)
         
-        # Ultra-fast bulk insert
+        # Ultra-fast bulk insert with connection pooling
         placeholders = ', '.join(['?' for _ in all_columns])
         insert_sql = f"INSERT INTO universal_cmdb ({', '.join(all_columns)}, source_count) VALUES ({placeholders}, 1)"
         
         try:
+            # Use a transaction for maximum speed
+            self.duck_conn.execute("BEGIN TRANSACTION")
             self.duck_conn.executemany(insert_sql, values_list)
-            self.stats['hosts_created'] += len(batch_records)
+            self.duck_conn.execute("COMMIT")
+            return len(batch_records)
         except Exception as e:
+            self.duck_conn.execute("ROLLBACK")
             print(f"⚠️  Bulk insert error: {str(e)[:50]}...")
+            return 0
     
     def process_all_ultra_fast(self):
-        """Main processing function - MAXIMUM SPEED"""
-        print("\n🚀 STARTING ULTRA-FAST PROCESSING")
+        """Main processing function - MAXIMUM SPEED with threading"""
+        print("\n🚀 STARTING ULTRA-FAST THREADED PROCESSING")
         print("=" * 60)
         
         # Load metadata
@@ -381,79 +408,64 @@ class UltraFastCMDBProcessor:
             columns_by_table[table_name].append((table_name, column_name, column_type))
         
         total_tables = len(columns_by_table)
-        print(f"🎯 Processing {total_tables:,} tables with MAXIMUM PARALLELIZATION")
+        print(f"🎯 Processing {total_tables:,} tables with {self.max_workers} threads")
         
-        # PARALLEL PROCESSING - Use all available cores
-        table_items = list(columns_by_table.items())
-        
-        # Split into chunks for parallel processing
-        def chunks(lst, n):
-            for i in range(0, len(lst), n):
-                yield lst[i:i + n]
-        
-        chunk_size = max(1, len(table_items) // self.cpu_count)
-        table_chunks = list(chunks(table_items, chunk_size))
-        
-        print(f"⚡ Split into {len(table_chunks)} parallel chunks")
-        
-        # Process chunks in parallel
+        # Process tables in parallel using ThreadPoolExecutor
         start_time = time.time()
+        completed_tables = 0
         
-        with ProcessPoolExecutor(max_workers=self.cpu_count) as executor:
-            # Submit all chunks
-            futures = []
-            for chunk in table_chunks:
-                future = executor.submit(self._process_chunk_ultra_fast, chunk)
-                futures.append(future)
+        with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
+            # Submit all tables
+            future_to_table = {
+                executor.submit(self.process_table_ultra_fast, table_info): table_name
+                for table_name, table_info in [(name, (name, cols)) for name, cols in columns_by_table.items()]
+            }
             
-            # Collect results
-            total_processed = 0
-            for i, future in enumerate(as_completed(futures), 1):
+            # Collect results as they complete
+            for future in as_completed(future_to_table):
+                table_name = future_to_table[future]
+                completed_tables += 1
+                
                 try:
-                    chunk_processed = future.result()
-                    total_processed += chunk_processed
+                    records_processed = future.result()
                     
                     elapsed = time.time() - start_time
-                    rate = total_processed / elapsed if elapsed > 0 else 0
-                    progress = (i / len(futures)) * 100
+                    progress = (completed_tables / total_tables) * 100
                     
-                    print(f"🔥 Chunk {i}/{len(futures)} done ({progress:.1f}%) | {total_processed:,} records | {rate:.0f}/sec")
+                    with self.stats['stats_lock']:
+                        total_processed = self.stats['records_processed']
+                        total_hosts = self.stats['hosts_created']
+                        total_dups = self.stats['duplicates_skipped']
+                    
+                    rate = total_processed / elapsed if elapsed > 0 else 0
+                    
+                    print(f"🔥 {completed_tables}/{total_tables} ({progress:.1f}%) | "
+                          f"{total_processed:,} records | {total_hosts:,} hosts | "
+                          f"{rate:.0f}/sec | {os.path.basename(table_name)}")
                     
                 except Exception as e:
-                    print(f"❌ Chunk error: {str(e)[:50]}...")
+                    print(f"❌ Table error {os.path.basename(table_name)}: {str(e)[:30]}...")
         
-        self._generate_ultra_fast_summary(start_time)
-    
-    def _process_chunk_ultra_fast(self, table_chunk: List) -> int:
-        """Process a chunk of tables in parallel"""
-        # Create separate connections for parallel processing
-        local_conn = duckdb.connect(self.duckdb_path)
+        # Create indexes now for better query performance
+        print("\n🔧 Creating final indexes...")
+        index_start = time.time()
         
-        # Apply same performance settings
-        performance_settings = [
-            "SET memory_limit='20%'",  # Less per process
-            "SET threads TO {}".format(max(1, self.cpu_count // 4)),
-            "PRAGMA synchronous=OFF",
-            "PRAGMA cache_size=100000"
+        indexes = [
+            "CREATE INDEX IF NOT EXISTS idx_normalized_host ON universal_cmdb(normalized_host)",
+            "CREATE INDEX IF NOT EXISTS idx_business_unit ON universal_cmdb(business_unit)",
+            "CREATE INDEX IF NOT EXISTS idx_region ON universal_cmdb(region)"
         ]
         
-        for setting in performance_settings:
+        for index_sql in indexes:
             try:
-                local_conn.execute(setting)
-            except:
-                pass
-        
-        chunk_processed = 0
-        
-        for table_name, table_columns in table_chunk:
-            try:
-                processed = self.process_table_ultra_fast((table_name, table_columns))
-                chunk_processed += processed
+                self.duck_conn.execute(index_sql)
             except Exception as e:
-                print(f"❌ Table error {os.path.basename(table_name)}: {str(e)[:30]}...")
+                print(f"⚠️  Index creation warning: {str(e)[:30]}...")
         
-        local_conn.close()
-        return chunk_processed
+        index_time = time.time() - index_start
+        print(f"✅ Indexes created in {index_time:.2f}s")
+        
+        self._generate_ultra_fast_summary(start_time)
     
     def _generate_ultra_fast_summary(self, start_time: float):
         """Generate final summary at maximum speed"""
@@ -466,18 +478,43 @@ class UltraFastCMDBProcessor:
         # Get final stats
         try:
             total_hosts = self.duck_conn.execute("SELECT COUNT(*) FROM universal_cmdb").fetchone()[0]
+            
+            # Quick data quality check
+            business_unit_count = self.duck_conn.execute(
+                "SELECT COUNT(*) FROM universal_cmdb WHERE business_unit IS NOT NULL"
+            ).fetchone()[0]
+            
+            region_count = self.duck_conn.execute(
+                "SELECT COUNT(*) FROM universal_cmdb WHERE region IS NOT NULL"
+            ).fetchone()[0]
+            
         except:
             total_hosts = self.stats['hosts_created']
+            business_unit_count = 0
+            region_count = 0
+        
+        with self.stats['stats_lock']:
+            total_processed = self.stats['records_processed']
+            total_duplicates = self.stats['duplicates_skipped']
         
         print(f"⏱️  Total time: {timedelta(seconds=int(total_time))}")
-        print(f"📊 Records processed: {self.stats['records_processed']:,}")
+        print(f"📊 Records processed: {total_processed:,}")
         print(f"🎯 Unique hosts: {total_hosts:,}")
-        print(f"⚡ Processing speed: {self.stats['records_processed']/total_time:.0f} records/second")
+        print(f"⚡ Processing speed: {total_processed/total_time:.0f} records/second")
         print(f"🔥 Host creation rate: {total_hosts/total_time:.0f} hosts/second")
-        print(f"🚀 Duplicates skipped: {self.stats['duplicates_skipped']:,}")
+        print(f"🚀 Duplicates skipped: {total_duplicates:,}")
         
-        if total_time < 3600:  # Less than 1 hour
+        # Data quality summary
+        if total_hosts > 0:
+            bu_pct = (business_unit_count / total_hosts) * 100
+            region_pct = (region_count / total_hosts) * 100
+            print(f"📈 Business Unit coverage: {business_unit_count:,} ({bu_pct:.1f}%)")
+            print(f"🌍 Region coverage: {region_count:,} ({region_pct:.1f}%)")
+        
+        if total_time < 1800:  # Less than 30 minutes
             print(f"🎉 MISSION ACCOMPLISHED - Completed in {total_time/60:.1f} minutes!")
+        elif total_time < 3600:  # Less than 1 hour
+            print(f"✅ Excellent time - Completed in {total_time/60:.1f} minutes!")
         else:
             print(f"✅ Completed in {total_time/3600:.1f} hours")
         
