@@ -56,30 +56,51 @@ class HostDataProcessor:
             raise
     
     def _create_cmdb_table(self):
-        """Create the universal CMDB table in DuckDB"""
+        """Create the universal CMDB table in DuckDB with enhanced schema"""
         create_table_sql = """
         CREATE TABLE IF NOT EXISTS universal_cmdb (
-            source_table VARCHAR,
-            source_column VARCHAR,
-            column_type VARCHAR,
-            original_host VARCHAR,
-            normalized_host VARCHAR,
-            extraction_timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            PRIMARY KEY (source_table, source_column, normalized_host)
+            normalized_host VARCHAR PRIMARY KEY,
+            source_tables TEXT,
+            infrastructure_type VARCHAR,
+            region VARCHAR,
+            country VARCHAR,
+            data_center VARCHAR,
+            cloud_region VARCHAR,
+            business_unit VARCHAR,
+            cio VARCHAR,
+            apm VARCHAR,
+            app_class VARCHAR,
+            system_classification VARCHAR,
+            edr_coverage VARCHAR,
+            tanium_coverage VARCHAR,
+            dlp_agent_coverage VARCHAR,
+            logging_in_splunk VARCHAR,
+            logging_in_gso VARCHAR,
+            domain VARCHAR,
+            last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
         """
         self.duck_conn.execute(create_table_sql)
         
-        # Create index for faster lookups
+        # Create indexes for faster lookups
         try:
             self.duck_conn.execute("""
                 CREATE INDEX IF NOT EXISTS idx_normalized_host 
                 ON universal_cmdb(normalized_host)
             """)
+            self.duck_conn.execute("""
+                CREATE INDEX IF NOT EXISTS idx_infrastructure_type 
+                ON universal_cmdb(infrastructure_type)
+            """)
+            self.duck_conn.execute("""
+                CREATE INDEX IF NOT EXISTS idx_business_unit 
+                ON universal_cmdb(business_unit)
+            """)
         except:
-            pass  # Index might already exist
+            pass  # Indexes might already exist
         
-        logger.info("Created/verified universal CMDB table in DuckDB")
+        logger.info("Created/verified universal CMDB table in DuckDB with enhanced schema")
     
     def _load_existing_hosts(self) -> Set[str]:
         """Load existing normalized hosts into memory for faster lookups"""
@@ -200,6 +221,36 @@ class HostDataProcessor:
             logger.error(f"Error checking host existence: {e}")
             return False
     
+    def append_source_table(self, normalized_host: str, table_name: str):
+        """
+        Append a new source table to the existing source_tables field
+        """
+        try:
+            # Get current source_tables value
+            query = "SELECT source_tables FROM universal_cmdb WHERE normalized_host = ?"
+            result = self.duck_conn.execute(query, [normalized_host]).fetchone()
+            
+            if result and result[0]:
+                current_tables = result[0]
+                # Check if this table is already in the list
+                if table_name not in current_tables.split(', '):
+                    new_tables = f"{current_tables}, {table_name}"
+                else:
+                    return  # Table already exists, no update needed
+            else:
+                new_tables = table_name
+            
+            # Update the record
+            update_query = """
+            UPDATE universal_cmdb 
+            SET source_tables = ?, last_updated = CURRENT_TIMESTAMP
+            WHERE normalized_host = ?
+            """
+            self.duck_conn.execute(update_query, [new_tables, normalized_host])
+            
+        except Exception as e:
+            logger.error(f"Error appending source table for {normalized_host}: {e}")
+    
     def process_and_insert_hosts_incrementally(self, table_name: str, column_name: str, column_type: str):
         """
         Query BigQuery and incrementally insert only unique hosts into DuckDB
@@ -228,7 +279,7 @@ class HostDataProcessor:
             results = query_job.result()
             
             new_hosts_added = 0
-            duplicate_hosts_skipped = 0
+            existing_hosts_updated = 0
             
             # Process each host value as it comes
             for row in results:
@@ -241,8 +292,7 @@ class HostDataProcessor:
                         # Check if this normalized host already exists in our database
                         if not self.check_host_exists_in_db(normalized_host):
                             # This is a new unique host, insert it
-                            self._insert_single_host(table_name, column_name, column_type, 
-                                                    original_host, normalized_host)
+                            self._insert_new_host(normalized_host, table_name, original_host)
                             new_hosts_added += 1
                             
                             # Add to cache to avoid duplicate DB checks
@@ -252,59 +302,38 @@ class HostDataProcessor:
                             if new_hosts_added % 100 == 0:
                                 logger.info(f"  Added {new_hosts_added} new unique hosts so far...")
                         else:
-                            duplicate_hosts_skipped += 1
-                            
-                            # Optionally, you might want to track which tables also have this host
-                            # by inserting a record with the same normalized_host but different source
-                            if self._should_track_duplicate_source(table_name, column_name, normalized_host):
-                                self._insert_single_host(table_name, column_name, column_type,
-                                                        original_host, normalized_host)
+                            # Host exists, append this table to source_tables
+                            self.append_source_table(normalized_host, table_name)
+                            existing_hosts_updated += 1
             
             logger.info(f"Completed {table_name}.{column_name}:")
             logger.info(f"  - New unique hosts added: {new_hosts_added}")
-            logger.info(f"  - Duplicate hosts skipped: {duplicate_hosts_skipped}")
+            logger.info(f"  - Existing hosts updated: {existing_hosts_updated}")
             logger.info(f"  - Total unique hosts in DB now: {len(self.existing_hosts_cache)}")
             
         except Exception as e:
             logger.error(f"Error processing {table_name}.{column_name}: {e}")
     
-    def _should_track_duplicate_source(self, table_name: str, column_name: str, normalized_host: str) -> bool:
-        """
-        Check if we should track this source for an existing normalized host
-        (i.e., this table/column combination hasn't been recorded for this host yet)
-        """
-        query = """
-        SELECT COUNT(*) as count
-        FROM universal_cmdb
-        WHERE source_table = ?
-        AND source_column = ?
-        AND normalized_host = ?
-        """
-        
-        try:
-            result = self.duck_conn.execute(query, [table_name, column_name, normalized_host]).fetchone()
-            return result[0] == 0 if result else True
-        except Exception as e:
-            logger.error(f"Error checking duplicate source: {e}")
-            return False
-    
-    def _insert_single_host(self, table_name: str, column_name: str, column_type: str,
-                           original_host: str, normalized_host: str):
-        """Insert a single host record into the database"""
+    def _insert_new_host(self, normalized_host: str, table_name: str, original_host: str):
+        """Insert a new host record into the database with initial values"""
         insert_sql = """
         INSERT OR IGNORE INTO universal_cmdb 
-        (source_table, source_column, column_type, original_host, normalized_host)
-        VALUES (?, ?, ?, ?, ?)
+        (normalized_host, source_tables, domain)
+        VALUES (?, ?, ?)
         """
         
         try:
-            self.duck_conn.execute(insert_sql, 
-                                  [table_name, column_name, column_type, original_host, normalized_host])
+            # Extract domain from original host if it contains a dot
+            domain = ""
+            if '.' in original_host:
+                domain = original_host.lower().split('.', 1)[1] if len(original_host.split('.')) > 1 else ""
+            
+            self.duck_conn.execute(insert_sql, [normalized_host, table_name, domain])
         except Exception as e:
             logger.error(f"Error inserting host {normalized_host}: {e}")
     
     def create_all_sources_table(self):
-        """Create an all_sources summary table like in your Flask app"""
+        """Create an all_sources summary table"""
         try:
             # Drop and recreate the all_sources table
             drop_sql = "DROP TABLE IF EXISTS all_sources"
@@ -312,22 +341,93 @@ class HostDataProcessor:
             
             create_sql = """
             CREATE TABLE all_sources AS (
-                SELECT DISTINCT
+                SELECT 
                     normalized_host as host,
-                    source_table as source_table,
-                    source_column as source_column,
-                    column_type as type,
-                    COUNT(*) OVER (PARTITION BY normalized_host) as source_count
+                    source_tables,
+                    LENGTH(source_tables) - LENGTH(REPLACE(source_tables, ',', '')) + 1 as source_count,
+                    infrastructure_type,
+                    region,
+                    country,
+                    business_unit,
+                    domain,
+                    last_updated
                 FROM universal_cmdb
                 WHERE normalized_host IS NOT NULL 
                 AND normalized_host != ''
-                ORDER BY normalized_host, source_table
+                ORDER BY source_count DESC, normalized_host
             )
             """
             self.duck_conn.execute(create_sql)
             logger.info("Created all_sources summary table")
         except Exception as e:
             logger.error(f"Error creating all_sources table: {e}")
+    
+    def update_host_attributes(self, normalized_host: str, **attributes):
+        """
+        Update specific attributes for a host
+        
+        Args:
+            normalized_host: The normalized hostname
+            **attributes: Key-value pairs of attributes to update
+        """
+        valid_columns = {
+            'infrastructure_type', 'region', 'country', 'data_center', 'cloud_region',
+            'business_unit', 'cio', 'apm', 'app_class', 'system_classification',
+            'edr_coverage', 'tanium_coverage', 'dlp_agent_coverage', 
+            'logging_in_splunk', 'logging_in_gso', 'domain'
+        }
+        
+        # Filter out invalid column names
+        valid_attributes = {k: v for k, v in attributes.items() if k in valid_columns}
+        
+        if not valid_attributes:
+            logger.warning(f"No valid attributes provided for update: {list(attributes.keys())}")
+            return
+        
+        # Build dynamic update query
+        set_clauses = [f"{col} = ?" for col in valid_attributes.keys()]
+        set_clause = ", ".join(set_clauses)
+        
+        update_sql = f"""
+        UPDATE universal_cmdb 
+        SET {set_clause}, last_updated = CURRENT_TIMESTAMP
+        WHERE normalized_host = ?
+        """
+        
+        try:
+            values = list(valid_attributes.values()) + [normalized_host]
+            self.duck_conn.execute(update_sql, values)
+            logger.info(f"Updated {len(valid_attributes)} attributes for host: {normalized_host}")
+        except Exception as e:
+            logger.error(f"Error updating host attributes for {normalized_host}: {e}")
+    
+    def bulk_update_from_csv(self, csv_file_path: str):
+        """
+        Bulk update host attributes from a CSV file
+        Expected CSV columns: normalized_host, infrastructure_type, region, country, etc.
+        """
+        try:
+            import csv
+            with open(csv_file_path, 'r') as csvfile:
+                reader = csv.DictReader(csvfile)
+                updated_count = 0
+                
+                for row in reader:
+                    normalized_host = row.get('normalized_host')
+                    if not normalized_host:
+                        continue
+                    
+                    # Remove normalized_host from attributes
+                    attributes = {k: v for k, v in row.items() 
+                                if k != 'normalized_host' and v and v.strip()}
+                    
+                    if attributes:
+                        self.update_host_attributes(normalized_host, **attributes)
+                        updated_count += 1
+                
+                logger.info(f"Bulk updated {updated_count} hosts from {csv_file_path}")
+        except Exception as e:
+            logger.error(f"Error in bulk update from CSV: {e}")
     
     def process_all_tables(self):
         """
@@ -367,11 +467,12 @@ class HostDataProcessor:
         # Overall stats
         stats_query = """
         SELECT 
-            COUNT(DISTINCT source_table) as total_tables,
-            COUNT(DISTINCT source_column) as total_columns,
-            COUNT(DISTINCT normalized_host) as total_unique_normalized_hosts,
-            COUNT(DISTINCT original_host) as total_unique_original_hosts,
-            COUNT(*) as total_entries
+            COUNT(*) as total_hosts,
+            COUNT(CASE WHEN infrastructure_type IS NOT NULL THEN 1 END) as hosts_with_infrastructure_type,
+            COUNT(CASE WHEN region IS NOT NULL THEN 1 END) as hosts_with_region,
+            COUNT(CASE WHEN business_unit IS NOT NULL THEN 1 END) as hosts_with_business_unit,
+            COUNT(CASE WHEN edr_coverage IS NOT NULL THEN 1 END) as hosts_with_edr_coverage,
+            AVG(LENGTH(source_tables) - LENGTH(REPLACE(source_tables, ',', '')) + 1) as avg_source_count
         FROM universal_cmdb
         """
         
@@ -382,17 +483,20 @@ class HostDataProcessor:
         print("="*80)
         
         if stats:
-            print(f"Tables processed: {stats[0]}")
-            print(f"Columns processed: {stats[1]}")
-            print(f"Unique normalized hosts: {stats[2]}")
-            print(f"Unique original hosts: {stats[3]}")
-            print(f"Total entries: {stats[4]}")
+            print(f"Total unique hosts: {stats[0]}")
+            print(f"Hosts with infrastructure type: {stats[1]} ({stats[1]/stats[0]*100:.1f}%)")
+            print(f"Hosts with region info: {stats[2]} ({stats[2]/stats[0]*100:.1f}%)")
+            print(f"Hosts with business unit: {stats[3]} ({stats[3]/stats[0]*100:.1f}%)")
+            print(f"Hosts with EDR coverage info: {stats[4]} ({stats[4]/stats[0]*100:.1f}%)")
+            print(f"Average sources per host: {stats[5]:.1f}")
         
-        # Top normalized hosts by source count
+        # Top hosts by source count
         top_hosts_query = """
-        SELECT normalized_host, COUNT(DISTINCT source_table) as source_count
+        SELECT 
+            normalized_host, 
+            LENGTH(source_tables) - LENGTH(REPLACE(source_tables, ',', '')) + 1 as source_count,
+            source_tables
         FROM universal_cmdb
-        GROUP BY normalized_host
         ORDER BY source_count DESC, normalized_host
         LIMIT 10
         """
@@ -400,55 +504,49 @@ class HostDataProcessor:
         top_hosts = self.duck_conn.execute(top_hosts_query).fetchall()
         
         print(f"\nTop 10 hosts by source count:")
-        print("-" * 60)
-        for host, count in top_hosts:
+        print("-" * 100)
+        for host, count, tables in top_hosts:
             print(f"  {host}: appears in {count} different tables")
+            print(f"    Tables: {tables[:80]}{'...' if len(tables) > 80 else ''}")
         
-        # Show some sample data
-        sample_query = """
-        SELECT source_table, source_column, original_host, normalized_host 
-        FROM universal_cmdb 
-        LIMIT 5
-        """
-        sample_results = self.duck_conn.execute(sample_query).fetchall()
-        
-        print(f"\nSample normalized entries:")
-        print("-" * 80)
-        for row in sample_results:
-            print(f"  {row[0]}.{row[1]}: '{row[2]}' -> '{row[3]}'")
-        
-        # Coverage by table
-        coverage_query = """
-        SELECT source_table, 
-               COUNT(DISTINCT normalized_host) as unique_hosts,
-               COUNT(*) as total_entries
+        # Show infrastructure type distribution
+        infra_query = """
+        SELECT infrastructure_type, COUNT(*) as count
         FROM universal_cmdb
-        GROUP BY source_table
-        ORDER BY unique_hosts DESC
+        WHERE infrastructure_type IS NOT NULL
+        GROUP BY infrastructure_type
+        ORDER BY count DESC
         """
+        infra_results = self.duck_conn.execute(infra_query).fetchall()
         
-        coverage_results = self.duck_conn.execute(coverage_query).fetchall()
+        if infra_results:
+            print(f"\nInfrastructure Type Distribution:")
+            print("-" * 50)
+            for infra_type, count in infra_results:
+                print(f"  {infra_type}: {count} hosts")
         
-        print(f"\nCoverage by source table:")
-        print("-" * 80)
-        for table, unique_hosts, total_entries in coverage_results:
-            print(f"  {table}: {unique_hosts} unique hosts ({total_entries} total entries)")
+        # Show business unit distribution
+        bu_query = """
+        SELECT business_unit, COUNT(*) as count
+        FROM universal_cmdb
+        WHERE business_unit IS NOT NULL
+        GROUP BY business_unit
+        ORDER BY count DESC
+        """
+        bu_results = self.duck_conn.execute(bu_query).fetchall()
         
-        # Show growth statistics
-        print(f"\nGrowth Statistics:")
-        print("-" * 80)
-        print(f"  Started with: {len(self._load_existing_hosts())} hosts")
-        print(f"  Ended with: {len(self.existing_hosts_cache)} hosts")
-        print(f"  New hosts added: {len(self.existing_hosts_cache) - len(self._load_existing_hosts())}")
+        if bu_results:
+            print(f"\nBusiness Unit Distribution:")
+            print("-" * 50)
+            for bu, count in bu_results:
+                print(f"  {bu}: {count} hosts")
     
     def export_results(self, output_file: str = "universal_cmdb_export.csv"):
         """Export results to CSV for further analysis"""
         export_query = """
         COPY (
-            SELECT source_table, source_column, column_type, 
-                   original_host, normalized_host, extraction_timestamp
-            FROM universal_cmdb 
-            ORDER BY source_table, source_column, normalized_host
+            SELECT * FROM universal_cmdb 
+            ORDER BY normalized_host
         ) TO ? WITH (FORMAT CSV, HEADER)
         """
         
@@ -463,23 +561,57 @@ class HostDataProcessor:
         coverage_query = """
         SELECT 
             normalized_host,
-            COUNT(DISTINCT source_table) as table_count,
-            COUNT(DISTINCT source_column) as column_count,
-            STRING_AGG(DISTINCT source_table, ', ') as source_tables
+            LENGTH(source_tables) - LENGTH(REPLACE(source_tables, ',', '')) + 1 as source_count,
+            source_tables,
+            infrastructure_type,
+            business_unit,
+            region
         FROM universal_cmdb
-        GROUP BY normalized_host
-        HAVING table_count > 1
-        ORDER BY table_count DESC, normalized_host
+        WHERE LENGTH(source_tables) - LENGTH(REPLACE(source_tables, ',', '')) + 1 > 1
+        ORDER BY source_count DESC, normalized_host
+        LIMIT 20
         """
         
         results = self.duck_conn.execute(coverage_query).fetchall()
         
-        print(f"\nHosts appearing in multiple sources:")
-        print("-" * 100)
-        for host, table_count, column_count, tables in results[:20]:  # Show top 20
-            print(f"  {host}: {table_count} tables, {column_count} columns")
+        print(f"\nTop 20 hosts appearing in multiple sources:")
+        print("-" * 120)
+        for host, source_count, tables, infra_type, bu, region in results:
+            print(f"  {host}: {source_count} sources | {infra_type or 'N/A'} | {bu or 'N/A'} | {region or 'N/A'}")
             print(f"    Sources: {tables}")
             print()
+    
+    def generate_template_csv(self, output_file: str = "cmdb_template.csv"):
+        """Generate a template CSV file for bulk updates"""
+        template_query = """
+        SELECT 
+            normalized_host,
+            '' as infrastructure_type,
+            '' as region,
+            '' as country,
+            '' as data_center,
+            '' as cloud_region,
+            '' as business_unit,
+            '' as cio,
+            '' as apm,
+            '' as app_class,
+            '' as system_classification,
+            '' as edr_coverage,
+            '' as tanium_coverage,
+            '' as dlp_agent_coverage,
+            '' as logging_in_splunk,
+            '' as logging_in_gso,
+            domain
+        FROM universal_cmdb
+        ORDER BY normalized_host
+        LIMIT 100
+        """
+        
+        try:
+            self.duck_conn.execute(f"COPY ({template_query}) TO '{output_file}' WITH (FORMAT CSV, HEADER)")
+            logger.info(f"Template CSV generated: {output_file}")
+        except Exception as e:
+            logger.error(f"Error generating template CSV: {e}")
     
     def close_connections(self):
         """Close database connections"""
@@ -508,10 +640,14 @@ if __name__ == "__main__":
         # Export results
         processor.export_results("universal_cmdb_export.csv")
         
+        # Generate template for manual updates
+        processor.generate_template_csv("cmdb_update_template.csv")
+        
         print("\n" + "="*80)
         print("UNIVERSAL CMDB CREATION COMPLETE!")
         print(f"Database saved to: {DUCKDB_PATH}")
         print("You can now query the universal_cmdb table or all_sources table")
+        print("Use cmdb_update_template.csv to bulk update host attributes")
         print("="*80)
         
     except Exception as e:
