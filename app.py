@@ -1,78 +1,16 @@
-def load_table_mappings():
-    """
-    Load and parse the reviewed_labeled_columns.json file to extract table and column mappings.
-    
-    Returns:
-        Dictionary with table names as keys and column mappings as values
-        
-    The JSON structure is:
-    {
-      "table_name": {
-        "ORIGINAL_COLUMN_NAME": "label",  // e.g. "ENDPOINT_NAME": "host"
-        "OTHER_COLUMN": "domain"          // e.g. "DOMAIN_NAME": "domain"
-      }
-    }
-    
-    We look for columns where the LABEL (value) is "host", not where the column name is "host"
-    """
-    try:
-        mapping_file = os.path.join(file_path, "reviewed_labeled_columns.json")
-        
-        if not os.path.exists(mapping_file):
-            print(f"ERROR: {mapping_file} not found!")
-            return {}
-        
-        print(f"Loading table mappings from: {mapping_file}")
-        
-        with open(mapping_file, 'r') as f:
-            raw_mappings = json.load(f)
-        
-        print(f"Loaded JSON with {len(raw_mappings)} tables")
-        
-        # Process the mappings to find tables with hostname columns
-        processed_mappings = {}
-        tables_with_hosts = 0
-        total_host_columns = 0
-        
-        for table_name, column_mappings in raw_mappings.items():
-            if isinstance(column_mappings, dict):
-                # Find columns where the LABEL is "host" 
-                hostname_columns = []
-                for column_name, label in column_mappings.items():
-                    if label == "host":
-                        hostname_columns.append(column_name)
-                
-                if hostname_columns:
-                    tables_with_hosts += 1
-                    total_host_columns += len(hostname_columns)
-                    processed_mappings[table_name] = column_mappings
-                    print(f"✓ Found hostname table: {table_name}")
-                    print(f"  Host columns: {hostname_columns}")
-            else:
-                print(f"⚠ Skipping {table_name}: invalid structure")
-        
-        print(f"\n*** SUMMARY ***")
-        print(f"Total tables in JSON: {len(raw_mappings)}")
-        print(f"Tables with hostname columns (label='host'): {tables_with_hosts}")
-        print(f"Total hostname columns found: {total_host_columns}")
-        
-        return processed_mappings
-        
-    except Exception as e:
-        print(f"Error loading table mappings: {e}")
-        return {}#!/usr/bin/env python3
+#!/usr/bin/env python3
 """
-Hostname Normalization Application
-=================================
+Hostname Normalizer Application
+==============================
 
-A Flask application specifically built to create and manage a comprehensive
-hostname inventory across all BigQuery tables. This app reads table mappings,
-normalizes hostnames, and creates a master DuckDB for asset visibility.
+A Flask application that creates a master hostname inventory by:
+1. Reading table/column mappings from reviewed_labeled_columns.json
+2. Authenticating to BigQuery using service account credentials
+3. Querying each table to extract hostname data (where label="host")
+4. Normalizing all hostnames using consistent rules
+5. Creating a master DuckDB with normalized hostnames and source tracking
 
-Built in the same style as the Log Lens application but focused specifically
-on hostname normalization and inventory management.
-
-Author: Based on Log Lens by Jonathan Tomasulo
+Author: Based on Log Lens architecture
 """
 
 import os
@@ -83,7 +21,6 @@ import datetime
 from functools import wraps
 from collections import defaultdict
 from typing import Dict, List, Set, Any
-import concurrent.futures
 
 # Flask and web framework imports
 from flask import Flask, send_from_directory, request, Response, session, jsonify, redirect, url_for
@@ -97,7 +34,6 @@ from identity.flask import Auth
 # Database and data processing
 import duckdb
 import pandas as pd
-import pandas_gbq
 
 # Google Cloud services
 from google.cloud import bigquery
@@ -120,15 +56,22 @@ app = Flask(__name__)
 
 # Load configuration from settings file
 file_path = os.path.abspath(os.path.dirname(__file__))
-settings = json.load(open(os.path.join(file_path, "settings.json")))
+settings_file = os.path.join(file_path, "settings.json")
+
+if os.path.exists(settings_file):
+    with open(settings_file, 'r') as f:
+        settings = json.load(f)
+else:
+    settings = {}  # Default empty settings
+
 Compress(app)
 
 # Security configuration
-app.secret_key = os.getenv("FLASK_SECRET_KEY")
+app.secret_key = os.getenv("FLASK_SECRET_KEY") or "dev-secret-key-change-in-production"
 pd.set_option('future.no_silent_downcasting', True)
 
 # ============================================================================
-# EXTERNAL SERVICE CONFIGURATIONS
+# AUTHENTICATION CONFIGURATION
 # ============================================================================
 
 # Microsoft Entra (Azure AD) Configuration
@@ -144,10 +87,43 @@ auth = Auth(
     redirect_uri=os.getenv("REDIRECT_URI"),
 )
 
-# Google Cloud BigQuery Configuration
-SERVICE_ACCOUNT_FILE = os.path.join(file_path, "gcp_prod_key.json")
-credentials = service_account.Credentials.from_service_account_file(SERVICE_ACCOUNT_FILE)
-bq_client = bigquery.Client(project="chronicle-fisv", credentials=credentials)
+# ============================================================================
+# BIGQUERY AUTHENTICATION AND CONNECTION
+# ============================================================================
+
+def initialize_bigquery_client():
+    """
+    Initialize and authenticate BigQuery client using service account credentials.
+    
+    Returns:
+        Authenticated BigQuery client or None if authentication fails
+    """
+    try:
+        service_account_file = os.path.join(file_path, "gcp_prod_key.json")
+        
+        if not os.path.exists(service_account_file):
+            print(f"ERROR: BigQuery service account file not found: {service_account_file}")
+            print("Please ensure gcp_prod_key.json is in the application directory")
+            return None
+        
+        print(f"Authenticating to BigQuery using: {service_account_file}")
+        
+        credentials = service_account.Credentials.from_service_account_file(service_account_file)
+        client = bigquery.Client(project="chronicle-fisv", credentials=credentials)
+        
+        # Test the connection
+        query = "SELECT 1 as test_connection LIMIT 1"
+        test_result = client.query(query).result()
+        
+        print("✓ BigQuery authentication successful")
+        return client
+        
+    except Exception as e:
+        print(f"ERROR: Failed to authenticate to BigQuery: {e}")
+        return None
+
+# Initialize BigQuery client
+bq_client = initialize_bigquery_client()
 
 # ============================================================================
 # DATABASE OPERATIONS
@@ -155,37 +131,36 @@ bq_client = bigquery.Client(project="chronicle-fisv", credentials=credentials)
 
 def writeToLocalDB(df, table_name):
     """
-    Save data to local DuckDB database for fast querying.
+    Save DataFrame to local DuckDB database.
     
     Args:
         df: Pandas DataFrame containing the data
         table_name: Name of the table to create/replace
-        
-    This function connects to a local DuckDB file and saves the data,
-    making it available for fast SQL queries later.
     """
     try:
-        conn = duckdb.connect(os.path.join(file_path, "hostname_inventory.duckdb"))
-        # Check if table exists and get schema info
-        table_exists = conn.execute("SELECT COUNT(*) FROM information_schema.tables WHERE table_name = ?", [table_name]).fetchone()[0] > 0
+        db_path = os.path.join(file_path, "hostname_inventory.duckdb")
+        conn = duckdb.connect(db_path)
         
-        if table_exists:
-            print(f"Dropping existing table: {table_name}")
-            conn.execute(f"DROP TABLE {table_name}")
+        # Drop existing table if it exists
+        conn.execute(f"DROP TABLE IF EXISTS {table_name}")
+        print(f"Creating table: {table_name}")
         
-        print(f"Creating new table: {table_name}")
-        conn.execute(f"CREATE TABLE {table_name} AS SELECT * FROM df")
+        # Create new table from DataFrame
+        conn.register("temp_df", df)
+        conn.execute(f"CREATE TABLE {table_name} AS SELECT * FROM temp_df")
+        
         conn.close()
+        print(f"✓ Saved {len(df)} records to {table_name}")
         
     except Exception as e:
-        print(f"Error writing to database: {e}")
+        print(f"ERROR: Failed to write to database: {e}")
         if 'conn' in locals():
             conn.close()
 
 
 def runLocalDBQuery(query, params=None):
     """
-    Execute SQL queries against the local hostname inventory DuckDB.
+    Execute SQL queries against the hostname inventory DuckDB.
     
     Args:
         query: SQL query string
@@ -193,108 +168,50 @@ def runLocalDBQuery(query, params=None):
         
     Returns:
         List of dictionaries with query results
-        
-    This function handles all database connections and returns results
-    for the hostname inventory system.
     """
     try:
-        conn = duckdb.connect(os.path.join(file_path, "hostname_inventory.duckdb"))
+        db_path = os.path.join(file_path, "hostname_inventory.duckdb")
+        conn = duckdb.connect(db_path)
+        
         if params:
-            data = conn.execute(query, params).df()
+            result = conn.execute(query, params).df()
         else:
-            data = conn.execute(query).df()
+            result = conn.execute(query).df()
+        
         conn.close()
-        data = data.to_dict(orient="records")
-        return data
+        return result.to_dict(orient="records")
+        
     except Exception as e:
-        print(f"Database query error: {e}")
+        print(f"ERROR: Database query failed: {e}")
         if 'conn' in locals():
             conn.close()
         return []
 
 # ============================================================================
-# HOSTNAME NORMALIZATION FUNCTIONS
+# JSON MAPPING FILE PROCESSING
 # ============================================================================
-
-def normalize_hostname(hostname):
-    """
-    Apply comprehensive normalization rules to a hostname.
-    
-    Args:
-        hostname: Original hostname string
-        
-    Returns:
-        Normalized hostname string or None if invalid
-        
-    This function standardizes hostnames by:
-    - Converting to lowercase
-    - Removing domain suffixes (everything after first dot)
-    - Removing hyphens, underscores, and special characters
-    - Removing common prefixes and suffixes
-    - Keeping only alphanumeric characters
-    """
-    if not hostname or pd.isna(hostname) or str(hostname).strip() == '':
-        return None
-        
-    # Start with original hostname, strip whitespace, convert to lowercase
-    normalized = str(hostname).strip().lower()
-    
-    # Skip if it's an IP address
-    if re.match(r'^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$', normalized):
-        return None
-        
-    # Skip if it's too short or too long to be a valid hostname
-    if len(normalized) < 2 or len(normalized) > 63:
-        return None
-    
-    # Normalization rules applied in sequence
-    normalization_patterns = [
-        # Remove domain suffixes (everything after first dot)
-        (r'^([^.]+)\..*$', r'\1'),
-        # Remove hyphens and underscores
-        (r'[-_]', ''),
-        # Remove common prefixes
-        (r'^(host|server|srv|ws|pc|desktop|laptop)', ''),
-        # Remove environment suffixes
-        (r'(prod|dev|test|stage|staging|qa)$', ''),
-        # Remove leading zeros from numbers
-        (r'^([a-zA-Z]+)0+(\d+)$', r'\1\2'),
-        # Remove all non-alphanumeric characters
-        (r'[^a-zA-Z0-9]', ''),
-    ]
-    
-    # Apply normalization patterns
-    for pattern, replacement in normalization_patterns:
-        normalized = re.sub(pattern, replacement, normalized, flags=re.IGNORECASE)
-        
-    # Final cleanup
-    normalized = normalized.strip().lower()
-    
-    # Return None if normalization resulted in empty string or invalid hostname
-    if not normalized or len(normalized) < 2 or not re.match(r'^[a-zA-Z0-9]+$', normalized):
-        return None
-        
-    return normalized
-
 
 def load_table_mappings():
     """
-    Load and parse the reviewed_labeled_columns.json file to extract table and column mappings.
+    Load and parse the reviewed_labeled_columns.json file.
     
     Returns:
         Dictionary with table names as keys and column mappings as values
         
-    This function reads the JSON file that contains the mapping of:
-    - BigQuery table names (keys)
-    - Column mappings within each table (values)
-    - Orange labels (like "host", "domain") mapped to blue column names
+    The JSON structure is:
+    {
+      "table_name": {
+        "ORIGINAL_COLUMN_NAME": "label",  // e.g. "ENDPOINT_NAME": "host"
+        "OTHER_COLUMN": "domain"          // e.g. "DOMAIN_NAME": "domain"  
+      }
+    }
     """
     try:
         mapping_file = os.path.join(file_path, "reviewed_labeled_columns.json")
         
         if not os.path.exists(mapping_file):
             print(f"ERROR: {mapping_file} not found!")
-            print("Please ensure reviewed_labeled_columns.json is in the application directory")
+            print("Please place reviewed_labeled_columns.json in the application directory")
             return {}
         
         print(f"Loading table mappings from: {mapping_file}")
@@ -302,112 +219,172 @@ def load_table_mappings():
         with open(mapping_file, 'r') as f:
             raw_mappings = json.load(f)
         
-        print(f"Raw JSON type: {type(raw_mappings)}")
-        print(f"Raw JSON keys (first 5): {list(raw_mappings.keys())[:5] if isinstance(raw_mappings, dict) else 'Not a dict'}")
-        
-        # The JSON should be a dictionary where:
-        # - Keys are BigQuery table names (like "prj-fisv-p-gcss-sas-d19dd8f1df.SAS_BI.V_DTM_ENDPOINT")
-        # - Values are dictionaries mapping column names to labels
-        if isinstance(raw_mappings, dict):
-            processed_mappings = {}
-            
-            for table_name, column_mapping in raw_mappings.items():
-                if isinstance(column_mapping, dict):
-                    # This table has column mappings
-                    processed_mappings[table_name] = column_mapping
-                    print(f"Table: {table_name} -> {len(column_mapping)} columns")
-                else:
-                    print(f"Skipping {table_name}: invalid column mapping type {type(column_mapping)}")
-            
-            print(f"Successfully loaded mappings for {len(processed_mappings)} tables")
-            return processed_mappings
-            
-        else:
-            print(f"ERROR: Expected dictionary at root level, got {type(raw_mappings)}")
+        if not isinstance(raw_mappings, dict):
+            print(f"ERROR: Expected JSON object at root level, got {type(raw_mappings)}")
             return {}
-            
-    except json.JSONDecodeError as e:
-        print(f"JSON decode error: {e}")
-        return {}
+        
+        print(f"✓ Loaded JSON with {len(raw_mappings)} table definitions")
+        
+        # Filter to only tables that have hostname columns (where label="host")
+        hostname_tables = {}
+        total_host_columns = 0
+        
+        for table_name, column_mappings in raw_mappings.items():
+            if isinstance(column_mappings, dict):
+                # Find columns labeled as "host"
+                hostname_columns = [col_name for col_name, label in column_mappings.items() if label == "host"]
+                
+                if hostname_columns:
+                    hostname_tables[table_name] = column_mappings
+                    total_host_columns += len(hostname_columns)
+                    print(f"✓ {table_name}: {len(hostname_columns)} hostname column(s)")
+            else:
+                print(f"⚠ Skipping {table_name}: invalid column mapping structure")
+        
+        print(f"\n*** MAPPING SUMMARY ***")
+        print(f"Total tables in JSON: {len(raw_mappings)}")
+        print(f"Tables with hostname columns: {len(hostname_tables)}")
+        print(f"Total hostname columns found: {total_host_columns}")
+        
+        return hostname_tables
+        
     except Exception as e:
-        print(f"Error loading table mappings: {e}")
+        print(f"ERROR: Failed to load table mappings: {e}")
         return {}
+
+# ============================================================================
+# HOSTNAME NORMALIZATION
+# ============================================================================
+
+def normalize_hostname(hostname):
+    """
+    Apply comprehensive normalization rules to hostname.
+    
+    Args:
+        hostname: Original hostname string
+        
+    Returns:
+        Normalized hostname string or None if invalid
+        
+    Normalization rules:
+    - Convert to lowercase
+    - Remove domain suffixes (everything after first dot)
+    - Remove hyphens, underscores, special characters
+    - Remove common prefixes (host, server, etc.)
+    - Remove environment suffixes (prod, dev, etc.)
+    - Keep only alphanumeric characters
+    """
+    if not hostname or pd.isna(hostname) or str(hostname).strip() == '':
+        return None
+    
+    # Convert to string and lowercase
+    normalized = str(hostname).strip().lower()
+    
+    # Skip IP addresses
+    if re.match(r'^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$', normalized):
+        return None
+    
+    # Skip if too short or too long
+    if len(normalized) < 2 or len(normalized) > 63:
+        return None
+    
+    # Apply normalization patterns
+    patterns = [
+        (r'^([^.]+)\..*$', r'\1'),              # Remove domain suffix
+        (r'[-_]', ''),                          # Remove hyphens and underscores
+        (r'^(host|server|srv|ws|pc|desktop|laptop)', ''),  # Remove prefixes
+        (r'(prod|dev|test|stage|staging|qa)$', ''),         # Remove suffixes
+        (r'^([a-zA-Z]+)0+(\d+)$', r'\1\2'),     # Remove leading zeros
+        (r'[^a-zA-Z0-9]', ''),                  # Keep only alphanumeric
+    ]
+    
+    for pattern, replacement in patterns:
+        normalized = re.sub(pattern, replacement, normalized, flags=re.IGNORECASE)
+    
+    # Final validation
+    normalized = normalized.strip().lower()
+    if not normalized or len(normalized) < 2 or not re.match(r'^[a-zA-Z0-9]+$', normalized):
+        return None
+    
+    return normalized
 
 # ============================================================================
 # BIGQUERY DATA COLLECTION
 # ============================================================================
 
-def collect_hostnames_from_table(table_name, column_mappings):
+def collect_hostname_data_from_table(table_name, column_mappings):
     """
-    Collect hostnames and metadata from a specific BigQuery table.
+    Query a BigQuery table to extract hostname data and metadata.
     
     Args:
         table_name: Full BigQuery table name (project.dataset.table)
-        column_mappings: Dictionary mapping column names to their purposes
+        column_mappings: Dictionary mapping column names to labels
         
     Returns:
-        DataFrame with hostnames and metadata from this table
-        
-    This function queries a single BigQuery table to extract all hostname
-    data and associated metadata like domain, region, business unit, etc.
+        DataFrame with hostname data from this table
     """
+    if not bq_client:
+        print(f"ERROR: BigQuery client not initialized, skipping {table_name}")
+        return pd.DataFrame()
+    
     try:
-        # Ensure column_mappings is a dictionary
-        if not isinstance(column_mappings, dict):
-            print(f"Invalid column mappings for table {table_name}: expected dict, got {type(column_mappings)}")
-            return pd.DataFrame()
+        print(f"Querying BigQuery table: {table_name}")
         
         # Build SELECT clause based on column mappings
         select_clauses = []
         hostname_columns = []
-        where_conditions = []
+        metadata_columns = []
         
-        for original_col, label in column_mappings.items():
+        for column_name, label in column_mappings.items():
             if label == "host":
                 alias = f"hostname_{len(hostname_columns)}"
-                select_clauses.append(f"CAST({original_col} AS STRING) as {alias}")
-                hostname_columns.append(alias)
-                where_conditions.append(f"{original_col} IS NOT NULL AND TRIM(CAST({original_col} AS STRING)) != ''")
+                select_clauses.append(f"CAST({column_name} AS STRING) as {alias}")
+                hostname_columns.append(column_name)
             elif label in ["domain", "region", "business_unit", "infrastructure_type", 
                           "system_classification", "app", "application", "country", "platform"]:
-                alias = f"{label}_{len(select_clauses)}"
-                select_clauses.append(f"CAST({original_col} AS STRING) as {alias}")
+                alias = f"{label}_{len(metadata_columns)}"
+                select_clauses.append(f"CAST({column_name} AS STRING) as {alias}")
+                metadata_columns.append((column_name, label))
         
         if not hostname_columns:
-            print(f"No hostname columns found for table: {table_name}")
+            print(f"⚠ No hostname columns found in {table_name}")
             return pd.DataFrame()
         
-        if not where_conditions:
-            print(f"No valid WHERE conditions for table: {table_name}")
-            return pd.DataFrame()
+        # Build WHERE clause to filter null/empty hostnames
+        where_conditions = []
+        for col_name in hostname_columns:
+            where_conditions.append(f"{col_name} IS NOT NULL AND TRIM(CAST({col_name} AS STRING)) != ''")
         
-        # Build and execute query
+        # Construct BigQuery SQL
         query = f"""
         SELECT DISTINCT
             {', '.join(select_clauses)}
         FROM `{table_name}`
         WHERE {' OR '.join(where_conditions)}
-        LIMIT 50000
+        LIMIT 100000
         """
         
-        print(f"Querying table: {table_name}")
-        df = bq_client.query(query).to_dataframe()
+        print(f"Executing query on {table_name}...")
         
-        # Add source table tracking
+        # Execute BigQuery query
+        query_job = bq_client.query(query)
+        df = query_job.to_dataframe()
+        
+        # Add source tracking
         df['source_table'] = table_name
         df['collection_timestamp'] = datetime.datetime.now()
         
-        print(f"Collected {len(df)} rows from {table_name}")
+        print(f"✓ Retrieved {len(df)} rows from {table_name}")
         return df
         
     except Exception as e:
-        print(f"Error collecting from table {table_name}: {e}")
+        print(f"ERROR: Failed to query {table_name}: {e}")
         return pd.DataFrame()
 
 
-def process_collected_data(df, source_table):
+def process_hostname_records(df, source_table):
     """
-    Process collected data and extract normalized hostnames with metadata.
+    Process DataFrame from BigQuery and extract normalized hostname records.
     
     Args:
         df: DataFrame from BigQuery table
@@ -415,28 +392,25 @@ def process_collected_data(df, source_table):
         
     Returns:
         List of processed hostname records
-        
-    This function takes raw BigQuery data and extracts all hostnames,
-    normalizes them, and packages the metadata for the master inventory.
     """
-    processed_records = []
-    
     if df.empty:
-        return processed_records
+        return []
+    
+    records = []
     
     for _, row in df.iterrows():
-        # Extract all hostname columns from this row
+        # Extract hostnames from hostname columns
         hostnames = []
         for col in df.columns:
             if col.startswith('hostname_') and pd.notna(row[col]) and str(row[col]).strip():
                 hostnames.append(str(row[col]).strip())
         
-        # Process each hostname found
+        # Process each hostname
         for original_hostname in hostnames:
             normalized = normalize_hostname(original_hostname)
             
             if normalized:
-                # Create record for this hostname
+                # Create record
                 record = {
                     'normalized_host': normalized,
                     'original_hostname': original_hostname,
@@ -444,212 +418,172 @@ def process_collected_data(df, source_table):
                     'collection_timestamp': row.get('collection_timestamp', datetime.datetime.now())
                 }
                 
-                # Extract metadata fields
-                metadata_fields = ['domain', 'region', 'business_unit', 'infrastructure_type',
-                                 'system_classification', 'app', 'application', 'country', 'platform']
+                # Extract metadata
+                for col in df.columns:
+                    if '_' in col and not col.startswith('hostname_'):
+                        if pd.notna(row[col]) and str(row[col]).strip():
+                            record[col] = str(row[col]).strip()
                 
-                for field in metadata_fields:
-                    values = []
-                    for col in df.columns:
-                        if col.startswith(f'{field}_') and pd.notna(row[col]) and str(row[col]).strip():
-                            values.append(str(row[col]).strip())
-                    record[field] = '|'.join(values) if values else None
-                
-                processed_records.append(record)
+                records.append(record)
     
-    return processed_records
+    return records
 
+# ============================================================================
+# MASTER HOSTNAME INVENTORY CREATION
+# ============================================================================
 
-def gatherAllHostnames():
+def create_master_hostname_inventory():
     """
-    Main function to gather hostnames from all BigQuery tables.
+    Main function that orchestrates the complete hostname inventory creation process.
     
     This function:
-    1. Loads the table mappings from reviewed_labeled_columns.json
-    2. Identifies tables with hostname columns (where label = "host")
-    3. Queries each table to extract hostnames and metadata
-    4. Normalizes all hostnames using consistent rules
-    5. Aggregates data and creates the master hostname inventory
-    
-    This is the core data collection function that runs on a schedule.
+    1. Loads table mappings from reviewed_labeled_columns.json
+    2. Authenticates to BigQuery  
+    3. Queries each table to extract hostname data
+    4. Normalizes hostnames and aggregates metadata
+    5. Creates the master DuckDB with the final inventory
     """
-    print("Starting comprehensive hostname collection...")
+    print("=" * 80)
+    print("STARTING MASTER HOSTNAME INVENTORY CREATION")
+    print("=" * 80)
     
-    # Step 1: Load table mappings from JSON file
+    # Step 1: Load table mappings
+    print("\nStep 1: Loading table mappings from JSON file...")
     table_mappings = load_table_mappings()
+    
     if not table_mappings:
-        print("Error: Could not load table mappings from reviewed_labeled_columns.json")
-        return
+        print("ERROR: No table mappings loaded. Cannot proceed.")
+        return False
     
-    print(f"Loaded {len(table_mappings)} tables from JSON mapping file")
+    # Step 2: Verify BigQuery connection
+    print(f"\nStep 2: Verifying BigQuery connection...")
+    if not bq_client:
+        print("ERROR: BigQuery client not initialized. Cannot proceed.")
+        return False
     
-    # Step 2: Filter to only tables that have hostname columns (labeled as "host")
-    hostname_tables = {}
-    for table_name, column_mappings in table_mappings.items():
-        if isinstance(column_mappings, dict):
-            # Check if any column is labeled as "host"
-            hostname_columns = [col for col, label in column_mappings.items() if label == "host"]
-            if hostname_columns:
-                hostname_tables[table_name] = column_mappings
-                print(f"Found hostname table: {table_name} with columns: {hostname_columns}")
-        else:
-            print(f"Skipping {table_name}: invalid column mapping structure")
+    # Step 3: Process each table
+    print(f"\nStep 3: Processing {len(table_mappings)} BigQuery tables...")
+    all_records = []
+    successful_tables = 0
     
-    print(f"Found {len(hostname_tables)} tables with hostname columns")
-    
-    if not hostname_tables:
-        print("ERROR: No tables with hostname columns found in JSON mapping")
-        return
-    
-    # Step 3: Process each table to collect hostname data
-    all_processed_records = []
-    
-    for table_name, column_mappings in hostname_tables.items():
-        print(f"Processing table: {table_name}")
+    for i, (table_name, column_mappings) in enumerate(table_mappings.items(), 1):
+        print(f"\n[{i}/{len(table_mappings)}] Processing: {table_name}")
+        
         try:
-            # Collect data from this table
-            df = collect_hostnames_from_table(table_name, column_mappings)
+            # Query BigQuery table
+            df = collect_hostname_data_from_table(table_name, column_mappings)
+            
             if not df.empty:
-                records = process_collected_data(df, table_name)
-                all_processed_records.extend(records)
-                print(f"✓ Processed {len(records)} hostname records from {table_name}")
+                # Process the data
+                records = process_hostname_records(df, table_name)
+                all_records.extend(records)
+                successful_tables += 1
+                print(f"✓ Extracted {len(records)} hostname records")
             else:
-                print(f"⚠ No hostname data found in {table_name}")
+                print(f"⚠ No data retrieved from {table_name}")
+                
         except Exception as e:
-            print(f"✗ Error processing table {table_name}: {e}")
+            print(f"✗ Failed to process {table_name}: {e}")
             continue
     
-    if not all_processed_records:
-        print("ERROR: No hostname records collected from any table")
-        return
+    print(f"\nProcessing complete:")
+    print(f"  Tables processed successfully: {successful_tables}/{len(table_mappings)}")
+    print(f"  Total hostname records collected: {len(all_records)}")
     
-    print(f"Total hostname records collected: {len(all_processed_records)}")
+    if not all_records:
+        print("ERROR: No hostname records collected. Cannot create inventory.")
+        return False
     
-    # Step 4: Aggregate records by normalized hostname
-    print("Aggregating and creating master hostname inventory...")
+    # Step 4: Aggregate and normalize
+    print(f"\nStep 4: Aggregating hostnames and creating master inventory...")
     hostname_aggregation = defaultdict(lambda: {
         'normalized_host': '',
         'locations_across_bq': set(),
         'original_hostnames': set(),
-        'domains': set(),
-        'regions': set(),
-        'business_units': set(),
-        'infrastructure_types': set(),
-        'system_classifications': set(),
-        'applications': set(),
-        'countries': set(),
-        'platforms': set(),
+        'metadata': defaultdict(set),
         'first_seen': None,
         'last_seen': None,
         'record_count': 0
     })
     
-    # Process all collected records
-    for record in all_processed_records:
+    # Aggregate all records by normalized hostname
+    for record in all_records:
         normalized_host = record['normalized_host']
-        aggregated = hostname_aggregation[normalized_host]
+        agg = hostname_aggregation[normalized_host]
         
-        # Set normalized hostname
-        aggregated['normalized_host'] = normalized_host
+        # Core fields
+        agg['normalized_host'] = normalized_host
+        agg['locations_across_bq'].add(record['source_table'])
+        agg['original_hostnames'].add(record['original_hostname'])
+        agg['record_count'] += 1
         
-        # Track source information
-        aggregated['locations_across_bq'].add(record['source_table'])
-        aggregated['original_hostnames'].add(record['original_hostname'])
-        aggregated['record_count'] += 1
-        
-        # Update timestamps
+        # Timestamps
         timestamp = record['collection_timestamp']
-        if aggregated['first_seen'] is None or timestamp < aggregated['first_seen']:
-            aggregated['first_seen'] = timestamp
-        if aggregated['last_seen'] is None or timestamp > aggregated['last_seen']:
-            aggregated['last_seen'] = timestamp
+        if agg['first_seen'] is None or timestamp < agg['first_seen']:
+            agg['first_seen'] = timestamp
+        if agg['last_seen'] is None or timestamp > agg['last_seen']:
+            agg['last_seen'] = timestamp
         
-        # Aggregate metadata
-        metadata_fields = ['domain', 'region', 'business_unit', 'infrastructure_type',
-                          'system_classification', 'app', 'application', 'country', 'platform']
-        
-        for field in metadata_fields:
-            if record.get(field):
-                if field == 'app' or field == 'application':
-                    aggregated['applications'].add(record[field])
-                else:
-                    field_set_name = f"{field}s" if not field.endswith('s') else field
-                    if field_set_name in aggregated:
-                        aggregated[field_set_name].add(record[field])
+        # Metadata
+        for key, value in record.items():
+            if key not in ['normalized_host', 'original_hostname', 'source_table', 'collection_timestamp']:
+                agg['metadata'][key].add(value)
     
-    # Step 5: Convert aggregated data to DataFrame and save
+    # Step 5: Create final DataFrame
+    print(f"Step 5: Creating final master hostname inventory...")
     final_records = []
+    
     for hostname, data in hostname_aggregation.items():
-        final_record = {
+        record = {
             'host': data['normalized_host'],
             'locations_across_bq': ','.join(sorted(data['locations_across_bq'])),
             'original_hostnames': '|'.join(sorted(data['original_hostnames'])),
-            'domains': ','.join(sorted(data['domains'])) if data['domains'] else None,
-            'regions': ','.join(sorted(data['regions'])) if data['regions'] else None,
-            'business_units': ','.join(sorted(data['business_units'])) if data['business_units'] else None,
-            'infrastructure_types': ','.join(sorted(data['infrastructure_types'])) if data['infrastructure_types'] else None,
-            'system_classifications': ','.join(sorted(data['system_classifications'])) if data['system_classifications'] else None,
-            'applications': ','.join(sorted(data['applications'])) if data['applications'] else None,
-            'countries': ','.join(sorted(data['countries'])) if data['countries'] else None,
-            'platforms': ','.join(sorted(data['platforms'])) if data['platforms'] else None,
             'table_count': len(data['locations_across_bq']),
             'record_count': data['record_count'],
             'first_seen': data['first_seen'],
             'last_seen': data['last_seen']
         }
-        final_records.append(final_record)
-    
-    # Save to DuckDB
-    if final_records:
-        master_df = pd.DataFrame(final_records)
-        writeToLocalDB(master_df, "master_hostnames")
         
-        # Create indexes for performance
-        try:
-            conn = duckdb.connect(os.path.join(file_path, "hostname_inventory.duckdb"))
-            conn.execute("CREATE INDEX IF NOT EXISTS idx_host ON master_hostnames(host)")
-            conn.execute("CREATE INDEX IF NOT EXISTS idx_table_count ON master_hostnames(table_count)")
-            conn.execute("CREATE INDEX IF NOT EXISTS idx_record_count ON master_hostnames(record_count)")
-            conn.close()
-        except Exception as e:
-            print(f"Error creating indexes: {e}")
+        # Add metadata fields
+        for meta_key, meta_values in data['metadata'].items():
+            if meta_values:
+                record[meta_key] = ','.join(sorted(meta_values))
         
-        print(f"✓ Master hostname inventory created with {len(final_records)} unique hostnames")
-        print(f"✓ Average tables per hostname: {master_df['table_count'].mean():.2f}")
-        print(f"✓ Hostnames in multiple tables: {len(master_df[master_df['table_count'] > 1])}")
-    else:
-        print("ERROR: No valid hostname records to save")
-
-# ============================================================================
-# CACHE MANAGEMENT
-# ============================================================================
-
-def clear_hostname_cache():
-    """
-    Clear all cached hostname data to force fresh collection.
+        final_records.append(record)
     
-    This function removes cached data to ensure the next collection
-    pulls fresh information from all BigQuery tables.
-    """
-    print("Clearing hostname inventory cache...")
+    # Step 6: Save to DuckDB
+    print(f"Step 6: Saving master inventory to DuckDB...")
+    master_df = pd.DataFrame(final_records)
+    writeToLocalDB(master_df, "master_hostnames")
     
-    # Clear any cached data by recreating relevant tables
+    # Create indexes
     try:
-        conn = duckdb.connect(os.path.join(file_path, "hostname_inventory.duckdb"))
-        conn.execute("DROP TABLE IF EXISTS master_hostnames")
+        db_path = os.path.join(file_path, "hostname_inventory.duckdb")
+        conn = duckdb.connect(db_path)
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_host ON master_hostnames(host)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_table_count ON master_hostnames(table_count)")
         conn.close()
-        print("Cleared hostname cache tables")
+        print("✓ Created database indexes")
     except Exception as e:
-        print(f"Error clearing cache: {e}")
+        print(f"⚠ Warning: Failed to create indexes: {e}")
+    
+    # Final summary
+    print("\n" + "=" * 80)
+    print("MASTER HOSTNAME INVENTORY CREATION COMPLETE")
+    print("=" * 80)
+    print(f"✓ Unique normalized hostnames: {len(final_records)}")
+    print(f"✓ Average tables per hostname: {master_df['table_count'].mean():.2f}")
+    print(f"✓ Hostnames in multiple tables: {len(master_df[master_df['table_count'] > 1])}")
+    print(f"✓ Database location: {os.path.join(file_path, 'hostname_inventory.duckdb')}")
+    
+    return True
 
 # ============================================================================
-# AUTHENTICATION (Same as Log Lens)
+# AUTHENTICATION (Same patterns as Log Lens)
 # ============================================================================
 
 def login_required(f):
-    """
-    Decorator to require user authentication for protected routes.
-    """
+    """Decorator to require user authentication."""
     @wraps(f)
     def decorated_function(*args, **kwargs):
         if "_logged_in_user" not in session:
@@ -659,9 +593,7 @@ def login_required(f):
 
 
 def roles_required(roles_required):
-    """
-    Decorator to require specific user roles for access control.
-    """
+    """Decorator to require specific user roles."""
     def decorator(f):
         @wraps(f)
         def decorated_function(*args, **kwargs):
@@ -669,97 +601,52 @@ def roles_required(roles_required):
                 return redirect(url_for("login"))
             
             user_roles = session["_logged_in_user"].get("roles", [])
-            
             if not any(role in user_roles for role in roles_required):
-                return "You do not have permission to access this resource", 403
+                return "Access denied", 403
             return f(*args, **kwargs)
         return decorated_function
     return decorator
 
 
 def logActivity(request, status_code, description):
-    """
-    Log user activities for audit and security monitoring.
-    """
+    """Log user activities for audit purposes."""
     user_data = session.get("_logged_in_user", {})
     log_data = {
-        "base_app": "Nexia",
         "app": "HostnameNormalizer",
-        "host": request.host,
-        "method": request.method,
-        "path": request.path,
-        "query_string": request.query_string.decode('utf-8'),
-        "remote_addr": request.remote_addr,
-        "email": user_data.get('preferred_username', 'N/A'),
+        "user": user_data.get('preferred_username', 'Unknown'),
+        "action": description,
         "timestamp": datetime.datetime.now().isoformat(),
-        "status_code": status_code,
-        "description": description
+        "status": status_code
     }
-    
-    # Log to Chronicle in background
-    threading.Thread(target=log_task, args=(log_data,)).start()
+    # In production, send to Chronicle or other logging system
+    print(f"AUDIT: {log_data}")
 
 # ============================================================================
-# FLASK ROUTES FOR HOSTNAME INVENTORY
+# FLASK ROUTES
 # ============================================================================
 
 @app.route('/')
 @auth.login_required
 @roles_required(['admin', 'hostname_admin'])
-def root(context=None):
-    """
-    Main dashboard page for the Hostname Normalization application.
-    
-    This serves the primary interface where users can view the master
-    hostname inventory, search for specific hosts, and analyze coverage.
-    """
-    response = send_from_directory('../client/dist', 'index.html')
-    logActivity(request, response.status_code, "Served hostname normalizer main page")
-    return response
+def dashboard():
+    """Main dashboard for hostname inventory."""
+    logActivity(request, 200, "Accessed hostname normalizer dashboard")
+    return send_from_directory('../client/dist', 'index.html')
 
 
-@app.route('/getHostnameStats')
+@app.route('/api/stats')
 @auth.login_required
 @roles_required(['admin', 'hostname_admin'])
-def getHostnameStats(context=None):
-    """
-    Get comprehensive statistics about the hostname inventory.
-    
-    Returns:
-        JSON with statistics including:
-        - Total unique normalized hostnames
-        - Hostnames appearing in multiple tables
-        - Table coverage distribution
-        - Metadata completeness statistics
-    """
+def get_inventory_stats():
+    """Get comprehensive statistics about the hostname inventory."""
     try:
-        # Basic statistics
+        # Basic counts
         total_hosts = runLocalDBQuery("SELECT COUNT(*) as count FROM master_hostnames")[0]['count']
+        multi_table_hosts = runLocalDBQuery("SELECT COUNT(*) as count FROM master_hostnames WHERE table_count > 1")[0]['count']
         
-        multi_table_hosts = runLocalDBQuery("""
-            SELECT COUNT(*) as count FROM master_hostnames WHERE table_count > 1
-        """)[0]['count']
-        
-        avg_table_coverage = runLocalDBQuery("""
-            SELECT AVG(table_count) as avg_coverage FROM master_hostnames
-        """)[0]['avg_coverage']
-        
-        max_table_coverage = runLocalDBQuery("""
-            SELECT MAX(table_count) as max_coverage FROM master_hostnames
-        """)[0]['max_coverage']
-        
-        # Metadata completeness
-        domain_coverage = runLocalDBQuery("""
-            SELECT COUNT(*) as count FROM master_hostnames WHERE domains IS NOT NULL
-        """)[0]['count']
-        
-        region_coverage = runLocalDBQuery("""
-            SELECT COUNT(*) as count FROM master_hostnames WHERE regions IS NOT NULL
-        """)[0]['count']
-        
-        business_unit_coverage = runLocalDBQuery("""
-            SELECT COUNT(*) as count FROM master_hostnames WHERE business_units IS NOT NULL
-        """)[0]['count']
+        # Coverage stats
+        avg_tables = runLocalDBQuery("SELECT AVG(table_count) as avg FROM master_hostnames")[0]['avg']
+        max_tables = runLocalDBQuery("SELECT MAX(table_count) as max FROM master_hostnames")[0]['max']
         
         # Top tables by hostname count
         top_tables = runLocalDBQuery("""
@@ -776,61 +663,39 @@ def getHostnameStats(context=None):
             'total_hostnames': total_hosts,
             'multi_table_hostnames': multi_table_hosts,
             'single_table_hostnames': total_hosts - multi_table_hosts,
-            'avg_table_coverage': round(avg_table_coverage, 2),
-            'max_table_coverage': max_table_coverage,
-            'domain_coverage_percent': round((domain_coverage / total_hosts) * 100, 2),
-            'region_coverage_percent': round((region_coverage / total_hosts) * 100, 2),
-            'business_unit_coverage_percent': round((business_unit_coverage / total_hosts) * 100, 2),
+            'avg_table_coverage': round(avg_tables, 2),
+            'max_table_coverage': max_tables,
             'top_tables': top_tables
         }
         
-        response = json.dumps(stats), 200
-        logActivity(request, response[1], "Fetched hostname statistics")
-        return response
+        logActivity(request, 200, "Retrieved inventory statistics")
+        return jsonify(stats)
         
     except Exception as e:
-        print(f"Error getting hostname stats: {e}")
-        response = json.dumps({'error': 'Failed to get statistics'}), 500
-        logActivity(request, response[1], "Error fetching hostname statistics")
-        return response
+        print(f"Error getting stats: {e}")
+        logActivity(request, 500, f"Error getting stats: {e}")
+        return jsonify({'error': 'Failed to get statistics'}), 500
 
 
-@app.route('/searchHostnames')
+@app.route('/api/search')
 @auth.login_required
 @roles_required(['admin', 'hostname_admin'])
-def searchHostnames(context=None):
-    """
-    Search the master hostname inventory.
-    
-    Query Parameters:
-        term: Search term to find in hostnames or table names
-        page: Page number for pagination
-        limit: Number of results per page
-        
-    Returns:
-        JSON with paginated search results including hostname data and metadata
-    """
+def search_hostnames():
+    """Search the hostname inventory."""
     try:
-        search_term = request.args.get('term', '')
+        search_term = request.args.get('q', '').strip()
         page = request.args.get('page', 1, type=int)
-        limit = request.args.get('limit', 25, type=int)
+        limit = request.args.get('limit', 50, type=int)
         offset = (page - 1) * limit
         
         if search_term:
-            # Search in hostnames, original hostnames, and table locations
-            search_query = f"""
+            query = f"""
             SELECT 
                 host,
                 locations_across_bq,
-                original_hostnames,
-                domains,
-                regions,
-                business_units,
-                infrastructure_types,
                 table_count,
                 record_count,
-                first_seen,
-                last_seen
+                original_hostnames
             FROM master_hostnames
             WHERE 
                 host LIKE '%{search_term.lower()}%' 
@@ -849,301 +714,146 @@ def searchHostnames(context=None):
                 OR original_hostnames LIKE '%{search_term}%'
             """
         else:
-            # Return all hostnames when no search term
-            search_query = f"""
+            query = f"""
             SELECT 
                 host,
                 locations_across_bq,
-                original_hostnames,
-                domains,
-                regions,
-                business_units,
-                infrastructure_types,
                 table_count,
                 record_count,
-                first_seen,
-                last_seen
+                original_hostnames
             FROM master_hostnames
             ORDER BY table_count DESC, record_count DESC
             LIMIT {limit} OFFSET {offset}
             """
-            
             count_query = "SELECT COUNT(*) as total FROM master_hostnames"
         
-        # Execute queries
-        results = runLocalDBQuery(search_query)
-        total_count = runLocalDBQuery(count_query)[0]['total']
-        total_pages = (total_count + limit - 1) // limit
+        results = runLocalDBQuery(query)
+        total = runLocalDBQuery(count_query)[0]['total']
         
         response_data = {
             'results': results,
             'pagination': {
-                'current_page': page,
-                'total_pages': total_pages,
-                'total_count': total_count,
-                'limit': limit
-            },
-            'search_term': search_term
+                'page': page,
+                'limit': limit,
+                'total': total,
+                'pages': (total + limit - 1) // limit
+            }
         }
         
-        response = json.dumps(response_data, default=str), 200
-        logActivity(request, response[1], f"Searched hostnames with term: {search_term}")
-        return response
+        logActivity(request, 200, f"Searched hostnames: '{search_term}'")
+        return jsonify(response_data)
         
     except Exception as e:
-        print(f"Error searching hostnames: {e}")
-        response = json.dumps({'error': 'Search failed'}), 500
-        logActivity(request, response[1], "Error searching hostnames")
-        return response
+        print(f"Search error: {e}")
+        logActivity(request, 500, f"Search error: {e}")
+        return jsonify({'error': 'Search failed'}), 500
 
 
-@app.route('/getTopHostnames')
+@app.route('/api/hostname/<hostname>')
 @auth.login_required
 @roles_required(['admin', 'hostname_admin'])
-def getTopHostnames(context=None):
-    """
-    Get the top hostnames by table coverage and record count.
-    
-    Returns:
-        JSON with the most widely distributed hostnames across BigQuery tables
-        
-    This helps identify the most important/common hostnames in your infrastructure.
-    """
+def get_hostname_details(hostname):
+    """Get detailed information about a specific hostname."""
     try:
-        query = """
-        SELECT 
-            host,
-            table_count,
-            record_count,
-            locations_across_bq,
-            domains,
-            regions,
-            business_units
-        FROM master_hostnames
-        ORDER BY table_count DESC, record_count DESC
-        LIMIT 50
-        """
+        query = "SELECT * FROM master_hostnames WHERE host = ?"
+        results = runLocalDBQuery(query, [hostname.lower()])
         
-        data = runLocalDBQuery(query)
-        
-        response = json.dumps(data, default=str), 200
-        logActivity(request, response[1], "Fetched top hostnames")
-        return response
-        
-    except Exception as e:
-        print(f"Error getting top hostnames: {e}")
-        response = json.dumps({'error': 'Failed to get top hostnames'}), 500
-        logActivity(request, response[1], "Error fetching top hostnames")
-        return response
-
-
-@app.route('/getHostnameDetails/<hostname>')
-@auth.login_required
-@roles_required(['admin', 'hostname_admin'])
-def getHostnameDetails(hostname, context=None):
-    """
-    Get detailed information about a specific hostname.
-    
-    Args:
-        hostname: The normalized hostname to look up
-        
-    Returns:
-        JSON with complete details including all original variants,
-        all tables it appears in, and all associated metadata
-    """
-    try:
-        query = """
-        SELECT *
-        FROM master_hostnames
-        WHERE host = ?
-        """
-        
-        data = runLocalDBQuery(query, [hostname.lower()])
-        
-        if data:
-            # Split comma/pipe separated fields into arrays for better display
-            result = data[0]
-            result['locations_list'] = result['locations_across_bq'].split(',') if result['locations_across_bq'] else []
+        if results:
+            result = results[0]
+            # Parse comma/pipe separated fields
+            result['locations_list'] = result['locations_across_bq'].split(',')
             result['original_hostnames_list'] = result['original_hostnames'].split('|') if result['original_hostnames'] else []
-            result['domains_list'] = result['domains'].split(',') if result['domains'] else []
-            result['regions_list'] = result['regions'].split(',') if result['regions'] else []
             
-            response = json.dumps(result, default=str), 200
+            logActivity(request, 200, f"Retrieved hostname details: {hostname}")
+            return jsonify(result)
         else:
-            response = json.dumps({'error': 'Hostname not found'}), 404
+            logActivity(request, 404, f"Hostname not found: {hostname}")
+            return jsonify({'error': 'Hostname not found'}), 404
             
-        logActivity(request, response[1], f"Fetched details for hostname: {hostname}")
-        return response
-        
     except Exception as e:
         print(f"Error getting hostname details: {e}")
-        response = json.dumps({'error': 'Failed to get hostname details'}), 500
-        logActivity(request, response[1], f"Error fetching details for hostname: {hostname}")
-        return response
+        logActivity(request, 500, f"Error getting hostname details: {e}")
+        return jsonify({'error': 'Failed to get hostname details'}), 500
 
 
-@app.route('/exportHostnames')
+@app.route('/api/export')
 @auth.login_required
 @roles_required(['admin', 'hostname_admin'])
-def exportHostnames(context=None):
-    """
-    Export the complete hostname inventory to CSV.
-    
-    Returns:
-        CSV file download with the complete master hostname inventory
-        
-    This allows users to download the complete normalized hostname
-    inventory for offline analysis, reporting, or integration with other tools.
-    """
+def export_inventory():
+    """Export complete hostname inventory to CSV."""
     try:
-        query = """
-        SELECT *
-        FROM master_hostnames
-        ORDER BY table_count DESC, record_count DESC
-        """
-        
+        query = "SELECT * FROM master_hostnames ORDER BY table_count DESC, record_count DESC"
         data = runLocalDBQuery(query)
         df = pd.DataFrame(data)
         
-        # Convert to CSV
         csv_data = StringIO()
         df.to_csv(csv_data, index=False)
         csv_data.seek(0)
         
         timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-        filename = f"master_hostname_inventory_{timestamp}.csv"
+        filename = f"hostname_inventory_{timestamp}.csv"
         
-        response = Response(
+        logActivity(request, 200, "Exported hostname inventory")
+        return Response(
             csv_data.getvalue(),
             mimetype="text/csv",
             headers={"Content-disposition": f"attachment; filename={filename}"}
-        ), 200
-        
-        logActivity(request, response[1], "Exported complete hostname inventory")
-        return response
+        )
         
     except Exception as e:
-        print(f"Error exporting hostnames: {e}")
-        response = json.dumps({'error': 'Export failed'}), 500
-        logActivity(request, response[1], "Error exporting hostnames")
-        return response
+        print(f"Export error: {e}")
+        logActivity(request, 500, f"Export error: {e}")
+        return jsonify({'error': 'Export failed'}), 500
 
 
-@app.route('/getTableCoverage')
+@app.route('/api/refresh', methods=['POST'])
 @auth.login_required
 @roles_required(['admin', 'hostname_admin'])
-def getTableCoverage(context=None):
-    """
-    Get coverage analysis showing which BigQuery tables have the most hostnames.
-    
-    Returns:
-        JSON with table coverage statistics
-        
-    This helps understand which BigQuery tables are the richest sources
-    of hostname data and which might need attention.
-    """
+def refresh_inventory():
+    """Trigger a manual refresh of the hostname inventory."""
     try:
-        query = """
-        SELECT 
-            unnest(string_split(locations_across_bq, ',')) as table_name,
-            COUNT(*) as unique_hostnames,
-            SUM(record_count) as total_records,
-            AVG(table_count) as avg_cross_table_presence
-        FROM master_hostnames
-        GROUP BY table_name
-        ORDER BY unique_hostnames DESC
-        """
+        # Start refresh in background
+        threading.Thread(target=run_inventory_refresh_background).start()
         
-        data = runLocalDBQuery(query)
-        
-        response = json.dumps(data, default=str), 200
-        logActivity(request, response[1], "Fetched table coverage analysis")
-        return response
-        
-    except Exception as e:
-        print(f"Error getting table coverage: {e}")
-        response = json.dumps({'error': 'Failed to get table coverage'}), 500
-        logActivity(request, response[1], "Error fetching table coverage")
-        return response
-
-
-@app.route('/refreshHostnames')
-@auth.login_required
-@roles_required(['admin', 'hostname_admin'])
-def refreshHostnames(context=None):
-    """
-    Trigger a manual refresh of the hostname inventory.
-    
-    Returns:
-        JSON confirmation that the refresh has been started
-        
-    This endpoint allows administrators to manually trigger a complete
-    refresh of the hostname inventory from all BigQuery tables.
-    """
-    try:
-        # Start refresh in background thread
-        threading.Thread(target=run_hostname_collection_background).start()
-        
-        response = json.dumps({
+        logActivity(request, 202, "Started hostname inventory refresh")
+        return jsonify({
             'message': 'Hostname inventory refresh started in background',
             'status': 'started'
         }), 202
         
-        logActivity(request, response[1], "Triggered manual hostname refresh")
-        return response
-        
     except Exception as e:
-        print(f"Error starting hostname refresh: {e}")
-        response = json.dumps({'error': 'Failed to start refresh'}), 500
-        logActivity(request, response[1], "Error starting hostname refresh")
-        return response
+        print(f"Refresh error: {e}")
+        logActivity(request, 500, f"Refresh error: {e}")
+        return jsonify({'error': 'Failed to start refresh'}), 500
 
 # ============================================================================
 # BACKGROUND PROCESSING
 # ============================================================================
 
-def run_hostname_collection_background():
-    """
-    Execute hostname collection in a separate background thread.
-    
-    This function runs the complete hostname normalization process
-    without blocking the web interface.
-    """
-    print("Starting background hostname collection...")
+def run_inventory_refresh_background():
+    """Run hostname inventory creation in background thread."""
+    print("Starting background hostname inventory refresh...")
     try:
-        gatherAllHostnames()
-        print("Background hostname collection completed successfully")
+        success = create_master_hostname_inventory()
+        if success:
+            print("✓ Background hostname inventory refresh completed successfully")
+        else:
+            print("✗ Background hostname inventory refresh failed")
     except Exception as e:
-        print(f"Background hostname collection failed: {e}")
-
-
-def log_task(log_data):
-    """
-    Background task for logging user activities.
-    """
-    try:
-        headers = {
-            "x-goog-api-key": os.getenv("CHRONICLE_API_KEY"),
-            "x-webhook-access-key": os.getenv("CHRONICLE_SECRET_KEY"),
-            "Content-Type": "application/json"
-        }
-        
-        response = requests.post(os.getenv("CHRONICLE_ENDPOINT"), headers=headers, json=log_data)
-        response.raise_for_status()
-    except requests.exceptions.RequestException as e:
-        print(f"Failed to send log to Google Chronicle: {e}")
+        print(f"✗ Background hostname inventory refresh error: {e}")
 
 # ============================================================================
 # SCHEDULED TASKS
 # ============================================================================
 
-# Hostname collection scheduler - runs every 6 hours
+# Schedule hostname inventory refresh every 8 hours
 scheduler = BackgroundScheduler()
-hostname_job = scheduler.add_job(
-    gatherAllHostnames,
-    trigger=CronTrigger.from_crontab("0 */6 * * *"),  # Every 6 hours
-    id='hostname_collection',
-    name='Comprehensive Hostname Collection'
+scheduler.add_job(
+    func=create_master_hostname_inventory,
+    trigger=CronTrigger(hour='*/8'),  # Every 8 hours
+    id='hostname_inventory_refresh',
+    name='Hostname Inventory Refresh',
+    replace_existing=True
 )
 scheduler.start()
 
@@ -1152,142 +862,35 @@ scheduler.start()
 # ============================================================================
 
 if __name__ == "__main__":
-    """
-    Application entry point.
+    """Application entry point."""
     
-    Starts the Flask server and begins background hostname collection.
-    """
-    print("Starting Hostname Normalization Application...")
+    print("=" * 80)
+    print("HOSTNAME NORMALIZER APPLICATION STARTING")
+    print("=" * 80)
     
-    # Check if JSON mapping file exists
-    mapping_file = os.path.join(file_path, "reviewed_labeled_columns.json")
-    if not os.path.exists(mapping_file):
-        print(f"ERROR: Missing required file: {mapping_file}")
-        print("Please ensure reviewed_labeled_columns.json is in the application directory")
+    # Verify required files
+    required_files = [
+        "reviewed_labeled_columns.json",
+        "gcp_prod_key.json"
+    ]
+    
+    missing_files = []
+    for file_name in required_files:
+        file_path_check = os.path.join(file_path, file_name)
+        if not os.path.exists(file_path_check):
+            missing_files.append(file_name)
+    
+    if missing_files:
+        print("ERROR: Missing required files:")
+        for missing_file in missing_files:
+            print(f"  - {missing_file}")
+        print("\nPlease ensure all required files are in the application directory")
         exit(1)
     
-    # Start initial hostname collection in background
-    print("Starting initial hostname collection...")
-    threading.Thread(target=run_hostname_collection_background).start()
+    # Start initial inventory creation in background
+    print("Starting initial hostname inventory creation...")
+    threading.Thread(target=run_inventory_refresh_background).start()
     
-    # Run Flask application
+    # Start Flask application
+    print("Starting Flask web server on http://localhost:5001")
     app.run(debug=False, host='0.0.0.0', port=5001)
-
-
-# ============================================================================
-# INTEGRATION FUNCTIONS FOR LOG LENS
-# ============================================================================
-
-def get_normalized_hostname_lookup():
-    """
-    Get a lookup dictionary for hostname normalization in Log Lens.
-    
-    Returns:
-        Dictionary mapping original hostnames to normalized versions
-        
-    This function can be imported by the main Log Lens application
-    to use the comprehensive hostname normalization for better asset correlation.
-    """
-    try:
-        conn = duckdb.connect(os.path.join(file_path, "hostname_inventory.duckdb"))
-        query = """
-        SELECT host, original_hostnames
-        FROM master_hostnames
-        """
-        
-        results = conn.execute(query).fetchall()
-        conn.close()
-        
-        # Create lookup dictionary
-        lookup = {}
-        for normalized_host, original_hostnames_str in results:
-            if original_hostnames_str:
-                original_hostnames = original_hostnames_str.split('|')
-                for original in original_hostnames:
-                    lookup[original.lower()] = normalized_host
-        
-        return lookup
-        
-    except Exception as e:
-        print(f"Error creating hostname lookup: {e}")
-        return {}
-
-
-def get_hostname_table_coverage(hostname):
-    """
-    Get all BigQuery tables that contain a specific hostname.
-    
-    Args:
-        hostname: Normalized hostname to look up
-        
-    Returns:
-        List of table names that contain this hostname
-        
-    This helps with data lineage and understanding where specific
-    assets appear across the BigQuery infrastructure.
-    """
-    try:
-        query = """
-        SELECT locations_across_bq
-        FROM master_hostnames
-        WHERE host = ?
-        """
-        
-        result = runLocalDBQuery(query, [hostname.lower()])
-        if result and result[0]['locations_across_bq']:
-            return result[0]['locations_across_bq'].split(',')
-        return []
-        
-    except Exception as e:
-        print(f"Error getting table coverage for {hostname}: {e}")
-        return []
-
-# ============================================================================
-# SUMMARY AND DOCUMENTATION
-# ============================================================================
-
-"""
-HOSTNAME NORMALIZATION APPLICATION SUMMARY
-=========================================
-
-This Flask application creates a comprehensive hostname inventory by:
-
-1. **Data Collection**:
-   - Reads JSON mapping of BigQuery tables with hostname columns
-   - Queries all tables in parallel for maximum efficiency
-   - Extracts hostnames and rich metadata (domain, region, business unit, etc.)
-
-2. **Hostname Normalization**:
-   - Converts to lowercase
-   - Removes domain suffixes (.company.com -> server)
-   - Removes hyphens and special characters (web-server-01 -> webserver01)
-   - Removes common prefixes and suffixes (host-web-prod -> web)
-   - Standardizes format for consistent asset identification
-
-3. **Master Inventory Creation**:
-   - Creates DuckDB with normalized hostnames as primary key
-   - Tracks which BigQuery tables each hostname appears in
-   - Maintains rich metadata for asset classification
-   - Provides complete data lineage and source tracking
-
-4. **Web Interface**:
-   - Search functionality across all hostnames and metadata
-   - Statistics and coverage analysis
-   - Data export capabilities for offline analysis
-   - Integration endpoints for use by other applications (like Log Lens)
-
-5. **Background Processing**:
-   - Scheduled data collection every 6 hours
-   - Manual refresh capabilities
-   - Parallel processing for efficiency with large datasets
-
-The resulting database provides:
-- `host`: Normalized hostname (primary identifier)
-- `locations_across_bq`: Comma-separated list of BigQuery tables
-- Rich metadata fields for asset classification and analysis
-- Performance indexes for fast querying
-
-This system solves the core problem of hostname inconsistency across
-enterprise BigQuery tables and provides a single source of truth for
-asset identification and tracking.
-"""
