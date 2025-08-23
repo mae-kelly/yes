@@ -229,8 +229,18 @@ def load_table_mappings():
         mapping_file = os.path.join(file_path, "reviewed_labeled_columns.json")
         with open(mapping_file, 'r') as f:
             mappings = json.load(f)
-        print(f"Loaded mappings for {len(mappings)} tables")
-        return mappings
+        
+        # Handle case where JSON might be a list or dict
+        if isinstance(mappings, list):
+            print("Warning: JSON appears to be a list, expected dictionary")
+            return {}
+        elif isinstance(mappings, dict):
+            print(f"Loaded mappings for {len(mappings)} tables")
+            return mappings
+        else:
+            print(f"Unexpected JSON format: {type(mappings)}")
+            return {}
+            
     except Exception as e:
         print(f"Error loading table mappings: {e}")
         return {}
@@ -254,28 +264,36 @@ def collect_hostnames_from_table(table_name, column_mappings):
     data and associated metadata like domain, region, business unit, etc.
     """
     try:
+        # Ensure column_mappings is a dictionary
+        if not isinstance(column_mappings, dict):
+            print(f"Invalid column mappings for table {table_name}: expected dict, got {type(column_mappings)}")
+            return pd.DataFrame()
+        
         # Build SELECT clause based on column mappings
         select_clauses = []
         hostname_columns = []
+        where_conditions = []
         
         for original_col, label in column_mappings.items():
             if label == "host":
-                select_clauses.append(f"{original_col} as hostname_{len(hostname_columns)}")
-                hostname_columns.append(f"hostname_{len(hostname_columns)}")
+                alias = f"hostname_{len(hostname_columns)}"
+                select_clauses.append(f"CAST({original_col} AS STRING) as {alias}")
+                hostname_columns.append(alias)
+                where_conditions.append(f"{original_col} IS NOT NULL AND TRIM(CAST({original_col} AS STRING)) != ''")
             elif label in ["domain", "region", "business_unit", "infrastructure_type", 
                           "system_classification", "app", "application", "country", "platform"]:
-                select_clauses.append(f"{original_col} as {label}_{len(select_clauses)}")
+                alias = f"{label}_{len(select_clauses)}"
+                select_clauses.append(f"CAST({original_col} AS STRING) as {alias}")
         
         if not hostname_columns:
             print(f"No hostname columns found for table: {table_name}")
             return pd.DataFrame()
         
-        # Build query with WHERE clause to filter out null/empty hostnames
-        where_conditions = []
-        for i, _ in enumerate(hostname_columns):
-            original_col = list(column_mappings.keys())[i]
-            where_conditions.append(f"{original_col} IS NOT NULL AND TRIM(CAST({original_col} AS STRING)) != ''")
+        if not where_conditions:
+            print(f"No valid WHERE conditions for table: {table_name}")
+            return pd.DataFrame()
         
+        # Build and execute query
         query = f"""
         SELECT DISTINCT
             {', '.join(select_clauses)}
@@ -375,37 +393,37 @@ def gatherAllHostnames():
         print("Error: Could not load table mappings")
         return
     
-    # Filter to only tables with hostname columns
-    hostname_tables = {}
-    for table_name, columns in table_mappings.items():
-        if any(label == "host" for label in columns.values()):
-            hostname_tables[table_name] = columns
+    print(f"Processing {len(table_mappings)} tables from JSON mapping")
     
-    print(f"Found {len(hostname_tables)} tables with hostname columns")
-    
-    # Collect data from all tables in parallel
+    # Filter to only tables with hostname columns and process each table
     all_processed_records = []
     
-    with concurrent.futures.ThreadPoolExecutor(max_workers=8) as executor:
-        # Submit queries for all tables
-        future_to_table = {
-            executor.submit(collect_hostnames_from_table, table_name, columns): table_name
-            for table_name, columns in hostname_tables.items()
-        }
+    for table_name, column_mappings in table_mappings.items():
+        # Check if this table has hostname columns
+        has_hostname_columns = False
+        if isinstance(column_mappings, dict):
+            has_hostname_columns = any(label == "host" for label in column_mappings.values())
         
-        # Process results as they complete
-        for future in concurrent.futures.as_completed(future_to_table):
-            table_name = future_to_table[future]
+        if has_hostname_columns:
+            print(f"Processing table: {table_name}")
             try:
-                df = future.result()
+                # Collect data from this table
+                df = collect_hostnames_from_table(table_name, column_mappings)
                 if not df.empty:
                     records = process_collected_data(df, table_name)
                     all_processed_records.extend(records)
                     print(f"Processed {len(records)} hostname records from {table_name}")
                 else:
-                    print(f"No data found in {table_name}")
+                    print(f"No hostname data found in {table_name}")
             except Exception as e:
                 print(f"Error processing table {table_name}: {e}")
+                continue
+        else:
+            print(f"Skipping {table_name} - no hostname columns found")
+    
+    if not all_processed_records:
+        print("No hostname records collected from any table")
+        return
     
     # Aggregate records by normalized hostname
     print("Aggregating and creating master hostname inventory...")
@@ -423,8 +441,7 @@ def gatherAllHostnames():
         'platforms': set(),
         'first_seen': None,
         'last_seen': None,
-        'record_count': 0,
-        'table_count': 0
+        'record_count': 0
     })
     
     # Process all collected records
@@ -483,22 +500,25 @@ def gatherAllHostnames():
         final_records.append(final_record)
     
     # Save to DuckDB
-    master_df = pd.DataFrame(final_records)
-    writeToLocalDB(master_df, "master_hostnames")
-    
-    # Create indexes for performance
-    conn = duckdb.connect(os.path.join(file_path, "hostname_inventory.duckdb"))
-    try:
-        conn.execute("CREATE INDEX IF NOT EXISTS idx_host ON master_hostnames(host)")
-        conn.execute("CREATE INDEX IF NOT EXISTS idx_table_count ON master_hostnames(table_count)")
-        conn.execute("CREATE INDEX IF NOT EXISTS idx_record_count ON master_hostnames(record_count)")
-    except:
-        pass  # Indexes might already exist
-    conn.close()
-    
-    print(f"Master hostname inventory created with {len(final_records)} unique hostnames")
-    print(f"Average tables per hostname: {master_df['table_count'].mean():.2f}")
-    print(f"Hostnames in multiple tables: {len(master_df[master_df['table_count'] > 1])}")
+    if final_records:
+        master_df = pd.DataFrame(final_records)
+        writeToLocalDB(master_df, "master_hostnames")
+        
+        # Create indexes for performance
+        try:
+            conn = duckdb.connect(os.path.join(file_path, "hostname_inventory.duckdb"))
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_host ON master_hostnames(host)")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_table_count ON master_hostnames(table_count)")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_record_count ON master_hostnames(record_count)")
+            conn.close()
+        except Exception as e:
+            print(f"Error creating indexes: {e}")
+        
+        print(f"Master hostname inventory created with {len(final_records)} unique hostnames")
+        print(f"Average tables per hostname: {master_df['table_count'].mean():.2f}")
+        print(f"Hostnames in multiple tables: {len(master_df[master_df['table_count'] > 1])}")
+    else:
+        print("No valid hostname records to save")
 
 # ============================================================================
 # CACHE MANAGEMENT
