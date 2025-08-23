@@ -217,30 +217,56 @@ def normalize_hostname(hostname):
 
 def load_table_mappings():
     """
-    Load the JSON mapping file that defines which tables and columns to process.
+    Load and parse the reviewed_labeled_columns.json file to extract table and column mappings.
     
     Returns:
-        Dictionary containing table and column mappings from reviewed_labeled_columns.json
+        Dictionary with table names as keys and column mappings as values
         
-    This function reads the configuration file that maps BigQuery tables to
-    their hostname columns and metadata fields.
+    This function reads the JSON file that contains the mapping of:
+    - BigQuery table names (keys)
+    - Column mappings within each table (values)
+    - Orange labels (like "host", "domain") mapped to blue column names
     """
     try:
         mapping_file = os.path.join(file_path, "reviewed_labeled_columns.json")
-        with open(mapping_file, 'r') as f:
-            mappings = json.load(f)
         
-        # Handle case where JSON might be a list or dict
-        if isinstance(mappings, list):
-            print("Warning: JSON appears to be a list, expected dictionary")
+        if not os.path.exists(mapping_file):
+            print(f"ERROR: {mapping_file} not found!")
+            print("Please ensure reviewed_labeled_columns.json is in the application directory")
             return {}
-        elif isinstance(mappings, dict):
-            print(f"Loaded mappings for {len(mappings)} tables")
-            return mappings
+        
+        print(f"Loading table mappings from: {mapping_file}")
+        
+        with open(mapping_file, 'r') as f:
+            raw_mappings = json.load(f)
+        
+        print(f"Raw JSON type: {type(raw_mappings)}")
+        print(f"Raw JSON keys (first 5): {list(raw_mappings.keys())[:5] if isinstance(raw_mappings, dict) else 'Not a dict'}")
+        
+        # The JSON should be a dictionary where:
+        # - Keys are BigQuery table names (like "prj-fisv-p-gcss-sas-d19dd8f1df.SAS_BI.V_DTM_ENDPOINT")
+        # - Values are dictionaries mapping column names to labels
+        if isinstance(raw_mappings, dict):
+            processed_mappings = {}
+            
+            for table_name, column_mapping in raw_mappings.items():
+                if isinstance(column_mapping, dict):
+                    # This table has column mappings
+                    processed_mappings[table_name] = column_mapping
+                    print(f"Table: {table_name} -> {len(column_mapping)} columns")
+                else:
+                    print(f"Skipping {table_name}: invalid column mapping type {type(column_mapping)}")
+            
+            print(f"Successfully loaded mappings for {len(processed_mappings)} tables")
+            return processed_mappings
+            
         else:
-            print(f"Unexpected JSON format: {type(mappings)}")
+            print(f"ERROR: Expected dictionary at root level, got {type(raw_mappings)}")
             return {}
             
+    except json.JSONDecodeError as e:
+        print(f"JSON decode error: {e}")
+        return {}
     except Exception as e:
         print(f"Error loading table mappings: {e}")
         return {}
@@ -377,55 +403,67 @@ def gatherAllHostnames():
     Main function to gather hostnames from all BigQuery tables.
     
     This function:
-    1. Loads the table mappings from JSON
-    2. Queries all tables in parallel for efficiency
-    3. Normalizes all hostnames
-    4. Aggregates metadata across sources
-    5. Creates the master hostname inventory
+    1. Loads the table mappings from reviewed_labeled_columns.json
+    2. Identifies tables with hostname columns (where label = "host")
+    3. Queries each table to extract hostnames and metadata
+    4. Normalizes all hostnames using consistent rules
+    5. Aggregates data and creates the master hostname inventory
     
     This is the core data collection function that runs on a schedule.
     """
     print("Starting comprehensive hostname collection...")
     
-    # Load table mappings
+    # Step 1: Load table mappings from JSON file
     table_mappings = load_table_mappings()
     if not table_mappings:
-        print("Error: Could not load table mappings")
+        print("Error: Could not load table mappings from reviewed_labeled_columns.json")
         return
     
-    print(f"Processing {len(table_mappings)} tables from JSON mapping")
+    print(f"Loaded {len(table_mappings)} tables from JSON mapping file")
     
-    # Filter to only tables with hostname columns and process each table
+    # Step 2: Filter to only tables that have hostname columns (labeled as "host")
+    hostname_tables = {}
+    for table_name, column_mappings in table_mappings.items():
+        if isinstance(column_mappings, dict):
+            # Check if any column is labeled as "host"
+            hostname_columns = [col for col, label in column_mappings.items() if label == "host"]
+            if hostname_columns:
+                hostname_tables[table_name] = column_mappings
+                print(f"Found hostname table: {table_name} with columns: {hostname_columns}")
+        else:
+            print(f"Skipping {table_name}: invalid column mapping structure")
+    
+    print(f"Found {len(hostname_tables)} tables with hostname columns")
+    
+    if not hostname_tables:
+        print("ERROR: No tables with hostname columns found in JSON mapping")
+        return
+    
+    # Step 3: Process each table to collect hostname data
     all_processed_records = []
     
-    for table_name, column_mappings in table_mappings.items():
-        # Check if this table has hostname columns
-        has_hostname_columns = False
-        if isinstance(column_mappings, dict):
-            has_hostname_columns = any(label == "host" for label in column_mappings.values())
-        
-        if has_hostname_columns:
-            print(f"Processing table: {table_name}")
-            try:
-                # Collect data from this table
-                df = collect_hostnames_from_table(table_name, column_mappings)
-                if not df.empty:
-                    records = process_collected_data(df, table_name)
-                    all_processed_records.extend(records)
-                    print(f"Processed {len(records)} hostname records from {table_name}")
-                else:
-                    print(f"No hostname data found in {table_name}")
-            except Exception as e:
-                print(f"Error processing table {table_name}: {e}")
-                continue
-        else:
-            print(f"Skipping {table_name} - no hostname columns found")
+    for table_name, column_mappings in hostname_tables.items():
+        print(f"Processing table: {table_name}")
+        try:
+            # Collect data from this table
+            df = collect_hostnames_from_table(table_name, column_mappings)
+            if not df.empty:
+                records = process_collected_data(df, table_name)
+                all_processed_records.extend(records)
+                print(f"✓ Processed {len(records)} hostname records from {table_name}")
+            else:
+                print(f"⚠ No hostname data found in {table_name}")
+        except Exception as e:
+            print(f"✗ Error processing table {table_name}: {e}")
+            continue
     
     if not all_processed_records:
-        print("No hostname records collected from any table")
+        print("ERROR: No hostname records collected from any table")
         return
     
-    # Aggregate records by normalized hostname
+    print(f"Total hostname records collected: {len(all_processed_records)}")
+    
+    # Step 4: Aggregate records by normalized hostname
     print("Aggregating and creating master hostname inventory...")
     hostname_aggregation = defaultdict(lambda: {
         'normalized_host': '',
@@ -477,7 +515,7 @@ def gatherAllHostnames():
                     if field_set_name in aggregated:
                         aggregated[field_set_name].add(record[field])
     
-    # Convert aggregated data to DataFrame
+    # Step 5: Convert aggregated data to DataFrame and save
     final_records = []
     for hostname, data in hostname_aggregation.items():
         final_record = {
@@ -514,11 +552,11 @@ def gatherAllHostnames():
         except Exception as e:
             print(f"Error creating indexes: {e}")
         
-        print(f"Master hostname inventory created with {len(final_records)} unique hostnames")
-        print(f"Average tables per hostname: {master_df['table_count'].mean():.2f}")
-        print(f"Hostnames in multiple tables: {len(master_df[master_df['table_count'] > 1])}")
+        print(f"✓ Master hostname inventory created with {len(final_records)} unique hostnames")
+        print(f"✓ Average tables per hostname: {master_df['table_count'].mean():.2f}")
+        print(f"✓ Hostnames in multiple tables: {len(master_df[master_df['table_count'] > 1])}")
     else:
-        print("No valid hostname records to save")
+        print("ERROR: No valid hostname records to save")
 
 # ============================================================================
 # CACHE MANAGEMENT
