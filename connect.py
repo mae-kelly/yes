@@ -12,7 +12,7 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 class HostDataProcessor:
-    def __init__(self, json_file_path: str, duckdb_path: str = "universal_cmdb.duckdb"):
+    def __init__(self, json_file_path: str, duckdb_path: str = "universal_cmdb.db"):
         """
         Initialize the processor with BigQuery and DuckDB connections
         
@@ -73,7 +73,7 @@ class HostDataProcessor:
         """Initialize BigQuery client using service account like in your Flask app"""
         try:
             # Try to get service account file from environment or settings
-            service_account_file = os.getenv('GCP_SERVICE_ACCOUNT_FILE', 'gcp_prod_key.json')
+            service_account_file = os.getenv('GCP_SERVICE_ACCOUNT_FILE', 'gcp/gcp_prod_key.json')
             
             if os.path.exists(service_account_file):
                 credentials = service_account.Credentials.from_service_account_file(service_account_file)
@@ -686,7 +686,7 @@ class HostDataProcessor:
 if __name__ == "__main__":
     # Configuration
     JSON_FILE_PATH = "reviewed_labeled_columns.json"  # Update with correct path
-    DUCKDB_PATH = "universal_cmdb.duckdb"  # Universal CMDB database file path
+    DUCKDB_PATH = "universal_cmdb.db"  # Universal CMDB database file path
     
     try:
         # Initialize processor
