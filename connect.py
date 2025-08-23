@@ -364,19 +364,61 @@ class HostDataProcessor:
                   'business_unit', 'apm', 'cio', 'edr_coverage', 'tanium_coverage', 
                   'dlp_agent_coverage', 'logging_in_splunk', 'logging_in_gso']
         
-        print("\nColumn Population:")
+        print("\n=== COLUMN VERIFICATION ===")
+        populated_columns = []
+        empty_columns = []
+        
         for col in columns:
             count = self.duck_conn.execute(f"SELECT COUNT(*) FROM universal_cmdb WHERE {col} IS NOT NULL AND {col} != ''").fetchone()[0]
             pct = (count / total * 100) if total > 0 else 0
-            print(f"  {col}: {count} ({pct:.1f}%)")
+            
+            if count > 0:
+                populated_columns.append(col)
+                print(f"✅ VERIFIED: {col} has {count} records ({pct:.1f}%)")
+                
+                # Show sample values
+                sample_query = f"SELECT DISTINCT {col} FROM universal_cmdb WHERE {col} IS NOT NULL AND {col} != '' LIMIT 3"
+                samples = self.duck_conn.execute(sample_query).fetchall()
+                sample_values = [str(s[0])[:30] for s in samples]
+                print(f"   Sample values: {', '.join(sample_values)}")
+            else:
+                empty_columns.append(col)
+                print(f"❌ EMPTY: {col} has no data")
         
-        print("\nSample records:")
-        samples = self.duck_conn.execute("SELECT * FROM universal_cmdb LIMIT 3").fetchall()
-        for sample in samples:
-            print(f"Host: {sample[0]}")
-            for i, col in enumerate(['source_tables'] + columns):
-                if sample[i+1]:
-                    print(f"  {col}: {sample[i+1]}")
+        print(f"\n📊 VERIFICATION SUMMARY:")
+        print(f"   ✅ Columns with data: {len(populated_columns)}")
+        print(f"   ❌ Empty columns: {len(empty_columns)}")
+        
+        if populated_columns:
+            print(f"   🎉 SUCCESS: Data verified in: {', '.join(populated_columns)}")
+        
+        if empty_columns:
+            print(f"   ⚠️  WARNING: No data found in: {', '.join(empty_columns)}")
+        
+        print("\nSample complete records:")
+        sample_query = """
+        SELECT * FROM universal_cmdb 
+        WHERE normalized_host IS NOT NULL
+        ORDER BY (
+            CASE WHEN hostname IS NOT NULL AND hostname != '' THEN 1 ELSE 0 END +
+            CASE WHEN business_unit IS NOT NULL AND business_unit != '' THEN 1 ELSE 0 END +
+            CASE WHEN region IS NOT NULL AND region != '' THEN 1 ELSE 0 END +
+            CASE WHEN infrastructure_type IS NOT NULL AND infrastructure_type != '' THEN 1 ELSE 0 END
+        ) DESC
+        LIMIT 3
+        """
+        samples = self.duck_conn.execute(sample_query).fetchall()
+        
+        column_names = ['normalized_host', 'source_tables'] + columns + ['last_updated', 'created_at']
+        
+        for i, sample in enumerate(samples, 1):
+            print(f"\nRecord {i}: {sample[0]}")
+            fields_with_data = 0
+            for j, col_name in enumerate(column_names[1:], 1):
+                if j < len(sample) and sample[j] and str(sample[j]).strip() and col_name not in ['last_updated', 'created_at']:
+                    print(f"  {col_name}: {str(sample[j])[:50]}")
+                    fields_with_data += 1
+            print(f"  📈 Total fields populated: {fields_with_data}")
     
     def export(self, filename="universal_cmdb_export.csv"):
         self.duck_conn.execute(f"COPY (SELECT * FROM universal_cmdb ORDER BY normalized_host) TO '{filename}' WITH (FORMAT CSV, HEADER)")
