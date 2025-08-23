@@ -190,13 +190,26 @@ class HostDataProcessor:
         hostname_cols = [c for c in all_columns_for_table if c[2] == 'hostname']
         attribute_cols = [c for c in all_columns_for_table if c[2] != 'hostname']
         
+        print(f"\n=== PROCESSING TABLE: {table_name} ===")
+        print(f"Hostname columns: {len(hostname_cols)}")
+        print(f"Attribute columns: {len(attribute_cols)}")
+        
+        for col in hostname_cols:
+            print(f"  Hostname: {col[1]} -> {col[2]}")
+        for col in attribute_cols:
+            print(f"  Attribute: {col[1]} -> {col[2]}")
+        
         if not hostname_cols:
+            print(f"  ❌ SKIPPING {table_name} - No hostname columns found")
             return
         
         hostname_col = hostname_cols[0][1]
         
         column_names = [hostname_col] + [c[1] for c in attribute_cols]
         attribute_types = [c[2] for c in attribute_cols]
+        
+        print(f"  Query columns: {column_names}")
+        print(f"  Target types: ['hostname'] + {attribute_types}")
         
         query = f"""
         SELECT {', '.join([f'`{col}`' for col in column_names])}
@@ -208,11 +221,13 @@ class HostDataProcessor:
         """
         
         try:
-            print(f"Processing {table_name} with {len(column_names)} columns...")
+            print(f"  🔍 Executing BigQuery...")
             query_job = self.bq_client.query(query)
             results = query_job.result()
             
             records = []
+            attribute_data_found = {attr_type: 0 for attr_type in attribute_types}
+            
             for row in results:
                 if row[0] and isinstance(row[0], str):
                     normalized_host = self.normalize_hostname(row[0])
@@ -220,18 +235,35 @@ class HostDataProcessor:
                         record = {'normalized_host': normalized_host, 'hostname': row[0]}
                         
                         for i, attr_type in enumerate(attribute_types, 1):
-                            if i < len(row) and row[i]:
+                            if i < len(row) and row[i] and str(row[i]).strip():
                                 record[attr_type] = str(row[i]).strip()
+                                attribute_data_found[attr_type] += 1
                         
                         records.append(record)
             
+            print(f"  📊 Data found:")
+            print(f"    Total records: {len(records)}")
+            for attr_type, count in attribute_data_found.items():
+                print(f"    {attr_type}: {count} non-empty values")
+            
+            records_written = 0
             for record in records:
                 self._insert_or_update_host(record, table_name)
+                records_written += 1
                 
-            print(f"Processed {len(records)} records from {table_name}")
+            print(f"  ✅ Successfully processed {records_written} records from {table_name}")
+            
+            # VERIFICATION: Check if data actually made it to the database
+            print(f"  🔍 VERIFICATION - Checking database...")
+            for attr_type in attribute_types:
+                count_query = f"SELECT COUNT(*) FROM universal_cmdb WHERE {attr_type} IS NOT NULL AND {attr_type} != ''"
+                db_count = self.duck_conn.execute(count_query).fetchone()[0]
+                print(f"    {attr_type}: {db_count} records in database")
             
         except Exception as e:
-            print(f"Error processing {table_name}: {e}")
+            print(f"  ❌ Error processing {table_name}: {e}")
+            import traceback
+            traceback.print_exc()
     
     def _insert_or_update_host(self, record, table_name):
         normalized_host = record['normalized_host']
