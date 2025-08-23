@@ -31,6 +31,9 @@ class HostDataProcessor:
         
         # Create the universal CMDB table in DuckDB
         self._create_cmdb_table()
+        
+        # Cache for existing normalized hosts to speed up lookups
+        self.existing_hosts_cache = self._load_existing_hosts()
     
     def _initialize_bigquery_client(self):
         """Initialize BigQuery client using service account like in your Flask app"""
@@ -66,7 +69,29 @@ class HostDataProcessor:
         )
         """
         self.duck_conn.execute(create_table_sql)
+        
+        # Create index for faster lookups
+        try:
+            self.duck_conn.execute("""
+                CREATE INDEX IF NOT EXISTS idx_normalized_host 
+                ON universal_cmdb(normalized_host)
+            """)
+        except:
+            pass  # Index might already exist
+        
         logger.info("Created/verified universal CMDB table in DuckDB")
+    
+    def _load_existing_hosts(self) -> Set[str]:
+        """Load existing normalized hosts into memory for faster lookups"""
+        try:
+            query = "SELECT DISTINCT normalized_host FROM universal_cmdb"
+            results = self.duck_conn.execute(query).fetchall()
+            existing_hosts = {row[0] for row in results if row[0]}
+            logger.info(f"Loaded {len(existing_hosts)} existing normalized hosts into cache")
+            return existing_hosts
+        except Exception as e:
+            logger.warning(f"Could not load existing hosts (may be first run): {e}")
+            return set()
     
     def load_metadata(self) -> Dict:
         """Load and parse the JSON metadata file"""
@@ -146,17 +171,43 @@ class HostDataProcessor:
         column_lower = column_name.lower()
         return any(pattern in column_lower for pattern in host_patterns)
     
-    def query_bigquery_hosts(self, table_name: str, column_name: str) -> Set[Tuple[str, str]]:
+    def check_host_exists_in_db(self, normalized_host: str) -> bool:
         """
-        Query BigQuery to get unique host values from a specific table/column
-        Returns tuples of (original_host, normalized_host)
+        Check if a normalized host already exists in the database
+        Uses cache first, then falls back to database query if needed
+        """
+        # First check cache
+        if normalized_host in self.existing_hosts_cache:
+            return True
+        
+        # Double-check database in case cache is out of sync
+        query = """
+        SELECT COUNT(*) as count 
+        FROM universal_cmdb 
+        WHERE normalized_host = ?
+        """
+        
+        try:
+            result = self.duck_conn.execute(query, [normalized_host]).fetchone()
+            exists = result[0] > 0 if result else False
+            
+            # Update cache if host exists but wasn't in cache
+            if exists:
+                self.existing_hosts_cache.add(normalized_host)
+            
+            return exists
+        except Exception as e:
+            logger.error(f"Error checking host existence: {e}")
+            return False
+    
+    def process_and_insert_hosts_incrementally(self, table_name: str, column_name: str, column_type: str):
+        """
+        Query BigQuery and incrementally insert only unique hosts into DuckDB
         
         Args:
             table_name: BigQuery table name (format: project.dataset.table)
             column_name: Column name containing host data
-            
-        Returns:
-            Set of tuples: (original_host_value, normalized_host_value)
+            column_type: Type of the column (host, domain, etc.)
         """
         query = f"""
         SELECT DISTINCT `{column_name}` as host_value
@@ -176,44 +227,70 @@ class HostDataProcessor:
             query_job = self.bq_client.query(query)
             results = query_job.result()
             
-            host_pairs = set()
+            new_hosts_added = 0
+            duplicate_hosts_skipped = 0
+            
+            # Process each host value as it comes
             for row in results:
                 if row.host_value and isinstance(row.host_value, str):
                     original_host = row.host_value.strip()
                     normalized_host = self.normalize_hostname(original_host)
                     
-                    # Only add if normalization produced something meaningful
+                    # Only process if normalization produced something meaningful
                     if normalized_host and len(normalized_host) > 0:
-                        host_pairs.add((original_host, normalized_host))
+                        # Check if this normalized host already exists in our database
+                        if not self.check_host_exists_in_db(normalized_host):
+                            # This is a new unique host, insert it
+                            self._insert_single_host(table_name, column_name, column_type, 
+                                                    original_host, normalized_host)
+                            new_hosts_added += 1
+                            
+                            # Add to cache to avoid duplicate DB checks
+                            self.existing_hosts_cache.add(normalized_host)
+                            
+                            # Log progress every 100 new hosts
+                            if new_hosts_added % 100 == 0:
+                                logger.info(f"  Added {new_hosts_added} new unique hosts so far...")
+                        else:
+                            duplicate_hosts_skipped += 1
+                            
+                            # Optionally, you might want to track which tables also have this host
+                            # by inserting a record with the same normalized_host but different source
+                            if self._should_track_duplicate_source(table_name, column_name, normalized_host):
+                                self._insert_single_host(table_name, column_name, column_type,
+                                                        original_host, normalized_host)
             
-            logger.info(f"Found {len(host_pairs)} unique hosts in {table_name}.{column_name}")
-            return host_pairs
+            logger.info(f"Completed {table_name}.{column_name}:")
+            logger.info(f"  - New unique hosts added: {new_hosts_added}")
+            logger.info(f"  - Duplicate hosts skipped: {duplicate_hosts_skipped}")
+            logger.info(f"  - Total unique hosts in DB now: {len(self.existing_hosts_cache)}")
             
         except Exception as e:
-            logger.error(f"Error querying {table_name}.{column_name}: {e}")
-            return set()
+            logger.error(f"Error processing {table_name}.{column_name}: {e}")
     
-    def insert_hosts_to_cmdb(self, table_name: str, column_name: str, column_type: str, host_pairs: Set[Tuple[str, str]]):
+    def _should_track_duplicate_source(self, table_name: str, column_name: str, normalized_host: str) -> bool:
         """
-        Insert host data into the universal CMDB
-        
-        Args:
-            table_name: Source table name
-            column_name: Source column name
-            column_type: Type of the column (host, domain, etc.)
-            host_pairs: Set of (original_host, normalized_host) tuples
+        Check if we should track this source for an existing normalized host
+        (i.e., this table/column combination hasn't been recorded for this host yet)
         """
-        if not host_pairs:
-            logger.warning(f"No host values to insert for {table_name}.{column_name}")
-            return
+        query = """
+        SELECT COUNT(*) as count
+        FROM universal_cmdb
+        WHERE source_table = ?
+        AND source_column = ?
+        AND normalized_host = ?
+        """
         
-        # Prepare data for insertion
-        data_to_insert = [
-            (table_name, column_name, column_type, original_host, normalized_host)
-            for original_host, normalized_host in host_pairs
-        ]
-        
-        # Insert with ON CONFLICT DO NOTHING to handle duplicates
+        try:
+            result = self.duck_conn.execute(query, [table_name, column_name, normalized_host]).fetchone()
+            return result[0] == 0 if result else True
+        except Exception as e:
+            logger.error(f"Error checking duplicate source: {e}")
+            return False
+    
+    def _insert_single_host(self, table_name: str, column_name: str, column_type: str,
+                           original_host: str, normalized_host: str):
+        """Insert a single host record into the database"""
         insert_sql = """
         INSERT OR IGNORE INTO universal_cmdb 
         (source_table, source_column, column_type, original_host, normalized_host)
@@ -221,10 +298,10 @@ class HostDataProcessor:
         """
         
         try:
-            self.duck_conn.executemany(insert_sql, data_to_insert)
-            logger.info(f"Inserted {len(data_to_insert)} hosts from {table_name}.{column_name}")
+            self.duck_conn.execute(insert_sql, 
+                                  [table_name, column_name, column_type, original_host, normalized_host])
         except Exception as e:
-            logger.error(f"Error inserting data: {e}")
+            logger.error(f"Error inserting host {normalized_host}: {e}")
     
     def create_all_sources_table(self):
         """Create an all_sources summary table like in your Flask app"""
@@ -257,6 +334,7 @@ class HostDataProcessor:
         Main processing function that orchestrates the entire workflow
         """
         logger.info("Starting universal CMDB creation...")
+        logger.info(f"Starting with {len(self.existing_hosts_cache)} existing hosts in database")
         
         # Load metadata
         metadata = self.load_metadata()
@@ -268,20 +346,14 @@ class HostDataProcessor:
             logger.warning("No host-related columns found in metadata")
             return
         
-        # Process each host column
-        total_processed = 0
-        for table_name, column_name, column_type in host_columns:
-            logger.info(f"Processing {table_name}.{column_name} (type: {column_type})")
+        # Process each host column incrementally
+        for idx, (table_name, column_name, column_type) in enumerate(host_columns, 1):
+            logger.info(f"\nProcessing table {idx}/{len(host_columns)}: {table_name}.{column_name} (type: {column_type})")
             
-            # Query BigQuery for unique hosts
-            host_pairs = self.query_bigquery_hosts(table_name, column_name)
-            
-            # Insert into universal CMDB
-            self.insert_hosts_to_cmdb(table_name, column_name, column_type, host_pairs)
-            
-            total_processed += len(host_pairs)
+            # Process and insert hosts incrementally, checking for uniqueness
+            self.process_and_insert_hosts_incrementally(table_name, column_name, column_type)
         
-        logger.info(f"Total host values processed: {total_processed}")
+        logger.info(f"\nTotal unique normalized hosts in database: {len(self.existing_hosts_cache)}")
         
         # Create summary tables
         self.create_all_sources_table()
@@ -361,6 +433,13 @@ class HostDataProcessor:
         print("-" * 80)
         for table, unique_hosts, total_entries in coverage_results:
             print(f"  {table}: {unique_hosts} unique hosts ({total_entries} total entries)")
+        
+        # Show growth statistics
+        print(f"\nGrowth Statistics:")
+        print("-" * 80)
+        print(f"  Started with: {len(self._load_existing_hosts())} hosts")
+        print(f"  Ended with: {len(self.existing_hosts_cache)} hosts")
+        print(f"  New hosts added: {len(self.existing_hosts_cache) - len(self._load_existing_hosts())}")
     
     def export_results(self, output_file: str = "universal_cmdb_export.csv"):
         """Export results to CSV for further analysis"""
