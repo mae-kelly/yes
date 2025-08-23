@@ -1,4 +1,66 @@
-#!/usr/bin/env python3
+def load_table_mappings():
+    """
+    Load and parse the reviewed_labeled_columns.json file to extract table and column mappings.
+    
+    Returns:
+        Dictionary with table names as keys and column mappings as values
+        
+    The JSON structure is:
+    {
+      "table_name": {
+        "ORIGINAL_COLUMN_NAME": "label",  // e.g. "ENDPOINT_NAME": "host"
+        "OTHER_COLUMN": "domain"          // e.g. "DOMAIN_NAME": "domain"
+      }
+    }
+    
+    We look for columns where the LABEL (value) is "host", not where the column name is "host"
+    """
+    try:
+        mapping_file = os.path.join(file_path, "reviewed_labeled_columns.json")
+        
+        if not os.path.exists(mapping_file):
+            print(f"ERROR: {mapping_file} not found!")
+            return {}
+        
+        print(f"Loading table mappings from: {mapping_file}")
+        
+        with open(mapping_file, 'r') as f:
+            raw_mappings = json.load(f)
+        
+        print(f"Loaded JSON with {len(raw_mappings)} tables")
+        
+        # Process the mappings to find tables with hostname columns
+        processed_mappings = {}
+        tables_with_hosts = 0
+        total_host_columns = 0
+        
+        for table_name, column_mappings in raw_mappings.items():
+            if isinstance(column_mappings, dict):
+                # Find columns where the LABEL is "host" 
+                hostname_columns = []
+                for column_name, label in column_mappings.items():
+                    if label == "host":
+                        hostname_columns.append(column_name)
+                
+                if hostname_columns:
+                    tables_with_hosts += 1
+                    total_host_columns += len(hostname_columns)
+                    processed_mappings[table_name] = column_mappings
+                    print(f"✓ Found hostname table: {table_name}")
+                    print(f"  Host columns: {hostname_columns}")
+            else:
+                print(f"⚠ Skipping {table_name}: invalid structure")
+        
+        print(f"\n*** SUMMARY ***")
+        print(f"Total tables in JSON: {len(raw_mappings)}")
+        print(f"Tables with hostname columns (label='host'): {tables_with_hosts}")
+        print(f"Total hostname columns found: {total_host_columns}")
+        
+        return processed_mappings
+        
+    except Exception as e:
+        print(f"Error loading table mappings: {e}")
+        return {}#!/usr/bin/env python3
 """
 Hostname Normalization Application
 =================================
