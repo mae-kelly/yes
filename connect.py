@@ -16,12 +16,12 @@ from datetime import datetime
 logging.basicConfig(level=logging.INFO, format='%(asctime)s | %(message)s', datefmt='%H:%M:%S')
 logger = logging.getLogger(__name__)
 
-class AO1DynamicVisibilityProcessor:
-    def __init__(self, json_file_path: str, duckdb_path: str = "ao1_visibility_cmdb.db"):
+class AO1DynamicProcessor:
+    def __init__(self, json_file_path: str, duckdb_path: str = "ao1_universal_cmdb.db"):
         print("\n" + "=" * 80)
-        print("AO1 LOG VISIBILITY MEASUREMENT - DYNAMIC PROCESSOR")
-        print("Requirements-Driven Column Normalization")
-        print("Created: " + datetime.now().strftime("%Y-%m-%d %H:%M"))
+        print("AO1 LOG VISIBILITY MEASUREMENT - DYNAMIC CMDB PROCESSOR")
+        print("Objective: Measure visibility across ALL critical logging domains")
+        print("Processing ALL columns dynamically from metadata")
         print("=" * 80 + "\n")
         
         self.json_file_path = json_file_path
@@ -35,12 +35,11 @@ class AO1DynamicVisibilityProcessor:
         self.special_tables = {
             'prj-fisv-p-gcss-sas-dl9dd0f1df.SAS_BI.V_DIM_ENDPOINTAGENT': 'present_in_crowdstrike',
             'prj-fisv-p-gcss-sas-dl9dd0f1df.SAS_BI.V_DIM_ENDPOINT': 'present_in_cmdb',
-            'prj-fisv-p-gcss-sas-dl9dd0f1df.SAS_BI.V_SPL_ENDPOINT_LOG': 'logging_in_splunk'
+            'prj-fisv-p-gcss-sas-dl9dd0f1df.SAS_BI.V_SPL_ENDPOINT_LOG': 'present_in_splunk_log'
         }
         
-        self.all_discovered_columns = set()
+        self.all_columns = set()
         self.column_type_mapping = {}
-        self.normalized_column_names = {}
         self.stats = defaultdict(int)
         self.existing_hosts = {}
         
@@ -51,7 +50,7 @@ class AO1DynamicVisibilityProcessor:
         self.duck_conn.execute("PRAGMA memory_limit='8GB'")
         
         print(f"Using {self.max_workers} parallel workers")
-        print("\nObjective: Measure visibility across ALL discovered data domains\n")
+        print("Discovering all unique columns from metadata...\n")
     
     def _init_bigquery(self):
         service_account_file = os.getenv('GCP_SERVICE_ACCOUNT_FILE', 'gcp/gcp_prod_key.json')
@@ -61,137 +60,100 @@ class AO1DynamicVisibilityProcessor:
         else:
             self.bq_client = bigquery.Client(project="chronicle-fisv")
     
-    def normalize_column_name(self, column_type: str) -> str:
-        if not column_type or column_type == 'unknown':
-            return None
-        
-        normalized = column_type.lower().strip()
-        normalized = normalized.replace('_', '')
-        normalized = normalized.replace('-', '')
-        normalized = normalized.replace(' ', '')
-        
-        normalization_map = {
-            'hostname': 'hostname',
-            'host': 'hostname',
-            'servername': 'hostname',
-            'fqdn': 'fqdn',
-            'fullyqualifieddomainname': 'fqdn',
-            'domain': 'domain',
-            'dnsdomain': 'domain',
-            'infrastructuretype': 'infrastructure_type',
-            'infratype': 'infrastructure_type',
-            'region': 'region',
-            'location': 'region',
-            'country': 'country',
-            'nation': 'country',
-            'datacenter': 'data_center',
-            'datacentre': 'data_center',
-            'dc': 'data_center',
-            'cloudregion': 'cloud_region',
-            'awsregion': 'cloud_region',
-            'azureregion': 'cloud_region',
-            'ipaddress': 'ip_address',
-            'ip': 'ip_address',
-            'class': 'class',
-            'classification': 'class',
-            'systemclassification': 'system_classification',
-            'businessunit': 'business_unit',
-            'bu': 'business_unit',
-            'apm': 'apm',
-            'applicationmonitor': 'apm',
-            'cio': 'cio',
-            'owner': 'cio',
-            'edrcoverage': 'edr_coverage',
-            'edr': 'edr_coverage',
-            'taniumcoverage': 'tanium_coverage',
-            'tanium': 'tanium_coverage',
-            'dlpagentcoverage': 'dlp_agent_coverage',
-            'dlp': 'dlp_agent_coverage',
-            'logginginsplunk': 'logging_in_splunk',
-            'splunk': 'logging_in_splunk',
-            'logingingso': 'logging_in_gso',
-            'gso': 'logging_in_gso'
-        }
-        
-        return normalization_map.get(normalized, column_type)
-    
     def discover_all_columns(self, metadata: Dict):
-        print("Discovering ALL columns across all tables...")
+        print("Discovering ALL unique columns across all tables...")
         
         for table_name, columns in metadata.get('columns', {}).items():
             for column_name, column_type in columns.items():
                 if column_type and column_type != 'unknown':
-                    normalized = self.normalize_column_name(column_type)
-                    if normalized:
-                        self.all_discovered_columns.add(normalized)
-                        self.column_type_mapping[f"{table_name}.{column_name}"] = normalized
-                        
-                        if normalized not in self.normalized_column_names:
-                            self.normalized_column_names[normalized] = []
-                        self.normalized_column_names[normalized].append((table_name, column_name))
+                    normalized_type = self.normalize_column_type(column_type)
+                    self.all_columns.add(normalized_type)
+                    
+                    if column_type not in self.column_type_mapping:
+                        self.column_type_mapping[column_type] = normalized_type
         
-        print(f"Discovered {len(self.all_discovered_columns)} unique normalized column types")
-        print(f"Column types found: {', '.join(sorted(self.all_discovered_columns))}\n")
+        self.all_columns.add('normalized_host')
+        self.all_columns.add('source_tables')
+        self.all_columns.add('source_count')
+        self.all_columns.add('visibility_score')
+        self.all_columns.add('present_in_crowdstrike')
+        self.all_columns.add('present_in_cmdb')
+        self.all_columns.add('present_in_splunk_log')
+        self.all_columns.add('first_seen')
+        self.all_columns.add('last_updated')
+        
+        print(f"Discovered {len(self.all_columns)} unique column types")
+        print(f"Column types found: {', '.join(sorted(self.all_columns)[:20])}")
+        if len(self.all_columns) > 20:
+            print(f"... and {len(self.all_columns) - 20} more columns")
+        print()
     
-    def _create_dynamic_table(self):
+    def normalize_column_type(self, column_type: str) -> str:
+        if not column_type:
+            return 'unknown'
+        
+        normalized = column_type.lower().strip()
+        normalized = normalized.replace(' ', '_')
+        normalized = normalized.replace('-', '_')
+        normalized = re.sub(r'[^a-z0-9_]', '', normalized)
+        
+        if normalized.startswith(tuple('0123456789')):
+            normalized = 'col_' + normalized
+        
+        return normalized if normalized else 'unknown'
+    
+    def create_dynamic_table(self):
         print("Creating dynamic table with ALL discovered columns...")
         
-        base_columns = """
-            normalized_host VARCHAR PRIMARY KEY,
-            source_tables TEXT,
-            source_count INTEGER DEFAULT 1,
-            visibility_score FLOAT DEFAULT 0.0,
-            data_quality_score FLOAT DEFAULT 1.0,
-            first_seen TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        """
+        column_definitions = [
+            "normalized_host VARCHAR PRIMARY KEY",
+            "source_tables TEXT",
+            "source_count INTEGER DEFAULT 1",
+            "visibility_score FLOAT DEFAULT 0.0",
+            "present_in_crowdstrike TEXT",
+            "present_in_cmdb TEXT",
+            "present_in_splunk_log TEXT",
+            "first_seen TIMESTAMP DEFAULT CURRENT_TIMESTAMP",
+            "last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP"
+        ]
         
-        dynamic_columns = []
-        for col in sorted(self.all_discovered_columns):
-            if col not in ['normalized_host', 'source_tables', 'source_count']:
-                dynamic_columns.append(f"{col} TEXT")
-        
-        dynamic_columns.append("present_in_crowdstrike TEXT")
-        dynamic_columns.append("present_in_cmdb TEXT")
-        
-        all_columns = base_columns + ",\n" + ",\n".join(dynamic_columns)
+        for col in sorted(self.all_columns):
+            if col not in ['normalized_host', 'source_tables', 'source_count', 'visibility_score', 
+                          'present_in_crowdstrike', 'present_in_cmdb', 'present_in_splunk_log',
+                          'first_seen', 'last_updated']:
+                column_definitions.append(f"{col} TEXT")
         
         create_sql = f"""
         CREATE TABLE IF NOT EXISTS universal_cmdb (
-            {all_columns}
+            {', '.join(column_definitions)}
         )
         """
         
-        self.duck_conn.execute(create_sql)
-        
         try:
+            self.duck_conn.execute("DROP TABLE IF EXISTS universal_cmdb")
+            self.duck_conn.execute(create_sql)
+            print(f"Created table with {len(column_definitions)} columns")
+            
             self.duck_conn.execute("CREATE INDEX IF NOT EXISTS idx_normalized ON universal_cmdb(normalized_host)")
             self.duck_conn.execute("CREATE INDEX IF NOT EXISTS idx_visibility ON universal_cmdb(visibility_score)")
-        except:
-            pass
-        
-        print(f"Created table with {len(self.all_discovered_columns) + 10} columns\n")
+            
+        except Exception as e:
+            print(f"Error creating table: {e}")
     
-    def _load_existing_hosts(self):
+    def load_existing_hosts(self):
         try:
-            columns = ['normalized_host', 'source_tables'] + sorted(list(self.all_discovered_columns)) + ['present_in_crowdstrike', 'present_in_cmdb', 'source_count']
-            
-            query = f"""
-            SELECT {', '.join(columns)}
-            FROM universal_cmdb
-            """
-            
+            columns_str = ', '.join(sorted(self.all_columns))
+            query = f"SELECT {columns_str} FROM universal_cmdb"
             result = self.duck_conn.execute(query).fetchall()
             
             for row in result:
-                self.existing_hosts[row[0]] = {columns[i]: row[i] for i in range(1, len(columns))}
+                self.existing_hosts[row[0]] = {col: row[i] for i, col in enumerate(sorted(self.all_columns))}
             
-            print(f"Loaded {len(self.existing_hosts)} existing hosts\n")
-        except Exception as e:
-            print(f"No existing hosts loaded: {str(e)[:100]}\n")
+            print(f"Loaded {len(self.existing_hosts)} existing hosts")
+        except:
+            print("No existing hosts found (new database)")
     
-    def normalize_hostname_fast(self, hostname: str) -> str:
+    def normalize_hostname(self, hostname: str) -> str:
         if not hostname or not isinstance(hostname, str):
             return ""
         normalized = hostname.lower().strip()
@@ -205,71 +167,64 @@ class AO1DynamicVisibilityProcessor:
     
     def calculate_visibility_score(self, record: Dict) -> float:
         score = 0.0
-        total_possible = 0.0
+        total_fields = 0
+        populated_fields = 0
         
-        weights = {
+        critical_fields = {
             'hostname': 10,
             'fqdn': 10,
-            'domain': 5,
             'ip_address': 10,
+            'domain': 5,
             'infrastructure_type': 10,
             'region': 5,
             'country': 5,
-            'data_center': 5,
-            'cloud_region': 5,
             'business_unit': 10,
-            'cio': 5,
-            'apm': 5,
-            'class': 5,
-            'system_classification': 5,
             'logging_in_splunk': 15,
             'logging_in_gso': 10,
-            'edr_coverage': 10,
-            'tanium_coverage': 5,
-            'dlp_agent_coverage': 5,
             'present_in_crowdstrike': 10,
             'present_in_cmdb': 10
         }
         
-        for field in self.all_discovered_columns:
-            weight = weights.get(field, 2)
-            total_possible += weight
-            
+        for field in record:
+            total_fields += 1
             if record.get(field) and str(record[field]).strip() not in self.invalid_values:
-                score += weight
+                populated_fields += 1
+                
+                for critical_field, weight in critical_fields.items():
+                    if critical_field in field.lower():
+                        score += weight
+                        break
         
-        for special in ['present_in_crowdstrike', 'present_in_cmdb']:
-            if special in weights:
-                total_possible += weights[special]
-                if record.get(special) == 'yes':
-                    score += weights[special]
+        data_completeness = (populated_fields / max(1, total_fields)) * 50
+        critical_score = min(50, score / 2)
         
-        return round((score / max(1, total_possible)) * 100, 2) if total_possible > 0 else 0.0
+        return round(data_completeness + critical_score, 2)
     
-    def load_and_process(self):
-        print("Loading metadata and discovering columns...")
-        
+    def load_metadata(self) -> Dict:
+        print("Loading metadata...")
         with open(self.json_file_path, 'r') as f:
             metadata = json.load(f)
+        if 'columns' in metadata:
+            print(f"Found {len(metadata['columns'])} tables\n")
+        return metadata
+    
+    def process_all_parallel(self):
+        print("Starting AO1 Dynamic Processing...\n")
+        start_time = time.time()
+        
+        metadata = self.load_metadata()
         
         self.discover_all_columns(metadata)
-        self._create_dynamic_table()
-        self._load_existing_hosts()
+        self.create_dynamic_table()
+        self.load_existing_hosts()
         
-        columns_by_table = defaultdict(list)
-        for table_name, columns in metadata.get('columns', {}).items():
-            for column_name, column_type in columns.items():
-                if column_type and column_type != 'unknown':
-                    normalized = self.normalize_column_name(column_type)
-                    if normalized:
-                        columns_by_table[table_name].append((column_name, column_type, normalized))
+        columns_by_table = self.organize_columns_by_table(metadata)
         
-        print(f"Processing {len(columns_by_table)} tables with normalized columns\n")
+        if not columns_by_table:
+            print("No processable tables found")
+            return
         
-        return self.process_all_tables(columns_by_table)
-    
-    def process_all_tables(self, columns_by_table: Dict):
-        start_time = time.time()
+        print(f"\nProcessing {len(columns_by_table)} tables in parallel\n")
         
         with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
             futures = {}
@@ -292,22 +247,43 @@ class AO1DynamicVisibilityProcessor:
                     print(f"[{completed}/{len(columns_by_table)}] {table_name}: ERROR - {str(e)[:100]}")
                     self.stats['processing_errors'] += 1
         
+        self.generate_ao1_report()
+        self.export_visibility_data()
+        
         total_time = time.time() - start_time
-        print(f"\nProcessing complete in {total_time:.2f} seconds")
-        return total_time
+        print(f"\nProcessing complete in {total_time:.2f} seconds ({total_time/60:.1f} minutes)")
+        print(f"Rate: {self.stats['total_records_processed']/max(1, total_time):.0f} records/second")
     
-    def process_table_dynamic(self, table_name: str, table_columns: List[Tuple[str, str, str]]) -> int:
-        hostname_cols = [col for col, ctype, norm in table_columns if norm == 'hostname']
+    def organize_columns_by_table(self, metadata: Dict) -> Dict:
+        columns_by_table = defaultdict(list)
+        
+        for table_name, columns in metadata.get('columns', {}).items():
+            for column_name, column_type in columns.items():
+                if column_type and column_type != 'unknown':
+                    columns_by_table[table_name].append((column_name, column_type))
+        
+        return columns_by_table
+    
+    def process_table_dynamic(self, table_name: str, table_columns: List[Tuple[str, str]]) -> int:
+        hostname_cols = []
+        all_cols = []
+        col_type_map = {}
+        
+        for col_name, col_type in table_columns:
+            all_cols.append(col_name)
+            normalized_type = self.normalize_column_type(col_type)
+            col_type_map[col_name] = normalized_type
+            
+            if col_type == 'hostname':
+                hostname_cols.append(col_name)
         
         if not hostname_cols:
             return 0
         
         primary_hostname = hostname_cols[0]
-        all_columns = [col for col, _, _ in table_columns]
-        column_mapping = {col: norm for col, _, norm in table_columns}
         
         query = f"""
-        SELECT {', '.join(f'`{col}`' for col in all_columns)}
+        SELECT {', '.join(f'`{col}`' for col in all_cols)}
         FROM `{table_name}`
         WHERE `{primary_hostname}` IS NOT NULL 
         AND `{primary_hostname}` != ''
@@ -320,33 +296,32 @@ class AO1DynamicVisibilityProcessor:
             job_config.use_query_cache = True
             
             query_job = self.bq_client.query(query, job_config=job_config)
-            return self.process_results_dynamic(query_job, table_name, all_columns, column_mapping)
+            return self.process_results_dynamic(query_job, table_name, all_cols, col_type_map, primary_hostname)
             
         except Exception as e:
             raise e
     
-    def process_results_dynamic(self, query_job, table_name: str, columns: List[str], column_mapping: Dict) -> int:
+    def process_results_dynamic(self, query_job, table_name: str, columns: List[str], 
+                                col_type_map: Dict, primary_hostname: str) -> int:
         records_processed = 0
         batch_records = []
         batch_size = 5000
         
         special_column = self.special_tables.get(table_name)
         
-        results = list(query_job.result(timeout=300))
+        try:
+            results = list(query_job.result(timeout=300))
+        except:
+            return 0
         
         for row in results:
             records_processed += 1
             
-            hostname_idx = None
-            for i, col in enumerate(columns):
-                if column_mapping.get(col) == 'hostname':
-                    hostname_idx = i
-                    break
-            
-            if hostname_idx is None or not row[hostname_idx]:
+            hostname_idx = columns.index(primary_hostname)
+            if not row[hostname_idx]:
                 continue
             
-            normalized_host = self.normalize_hostname_fast(row[hostname_idx])
+            normalized_host = self.normalize_hostname(row[hostname_idx])
             if not normalized_host:
                 continue
             
@@ -358,16 +333,12 @@ class AO1DynamicVisibilityProcessor:
             if special_column:
                 record_data[special_column] = 'yes'
             
-            for i, col in enumerate(columns):
+            for i, col_name in enumerate(columns):
                 if i < len(row) and row[i]:
                     val = str(row[i]).strip()
                     if val.lower() not in self.invalid_values:
-                        normalized_col = column_mapping.get(col)
-                        if normalized_col:
-                            if normalized_col == 'logging_in_splunk' and table_name == 'prj-fisv-p-gcss-sas-dl9dd0f1df.SAS_BI.V_SPL_ENDPOINT_LOG':
-                                record_data[normalized_col] = 'yes'
-                            else:
-                                record_data[normalized_col] = val
+                        normalized_col_type = col_type_map.get(col_name, 'unknown')
+                        record_data[normalized_col_type] = val
             
             record_data['visibility_score'] = self.calculate_visibility_score(record_data)
             
@@ -381,6 +352,7 @@ class AO1DynamicVisibilityProcessor:
             self.save_batch_dynamic(batch_records)
         
         self.stats['total_records_processed'] += records_processed
+        
         return records_processed
     
     def save_batch_dynamic(self, records: List[Dict]):
@@ -389,24 +361,23 @@ class AO1DynamicVisibilityProcessor:
                 normalized_host = record['normalized_host']
                 
                 if normalized_host in self.existing_hosts:
-                    self.update_dynamic_host(record)
+                    self.update_host_dynamic(record)
                 else:
-                    self.insert_dynamic_host(record)
-                    self.existing_hosts[normalized_host] = {}
+                    self.insert_host_dynamic(record)
+                    self.existing_hosts[normalized_host] = record
     
-    def insert_dynamic_host(self, record: Dict):
-        columns = ['normalized_host', 'source_tables', 'visibility_score']
-        values = [record['normalized_host'], record['table_name'], record.get('visibility_score', 0.0)]
+    def insert_host_dynamic(self, record: Dict):
+        columns = []
+        values = []
         
-        for col in self.all_discovered_columns:
-            if col in record:
+        for col in record:
+            if col in self.all_columns:
                 columns.append(col)
                 values.append(record[col])
         
-        for special in ['present_in_crowdstrike', 'present_in_cmdb']:
-            if special in record:
-                columns.append(special)
-                values.append(record[special])
+        if 'source_tables' not in columns:
+            columns.append('source_tables')
+            values.append(record.get('table_name', ''))
         
         placeholders = ', '.join(['?' for _ in values])
         insert_sql = f"INSERT INTO universal_cmdb ({', '.join(columns)}) VALUES ({placeholders})"
@@ -417,32 +388,29 @@ class AO1DynamicVisibilityProcessor:
         except:
             pass
     
-    def update_dynamic_host(self, record: Dict):
+    def update_host_dynamic(self, record: Dict):
+        normalized_host = record['normalized_host']
+        existing = self.existing_hosts.get(normalized_host, {})
+        
         updates = []
         values = []
         
-        existing = self.existing_hosts.get(record['normalized_host'], {})
-        
         current_tables = existing.get('source_tables', '')
-        table_name = record['table_name']
+        table_name = record.get('table_name', '')
         
-        if table_name not in current_tables:
+        if table_name and table_name not in current_tables:
             new_tables = f"{current_tables}, {table_name}" if current_tables else table_name
             updates.append("source_tables = ?")
             values.append(new_tables)
             updates.append("source_count = source_count + 1")
         
-        if record.get('visibility_score'):
-            updates.append("visibility_score = ?")
-            values.append(record['visibility_score'])
-        
-        for col in self.all_discovered_columns:
-            if col in record and record[col]:
+        for col in record:
+            if col in self.all_columns and col not in ['normalized_host', 'source_tables', 'source_count']:
                 new_value = record[col]
                 existing_value = existing.get(col)
                 
-                if col in ['present_in_crowdstrike', 'present_in_cmdb', 'logging_in_splunk', 'logging_in_gso'] and new_value == 'yes':
-                    if existing_value != 'yes':
+                if col in ['present_in_crowdstrike', 'present_in_cmdb', 'present_in_splunk_log']:
+                    if new_value == 'yes' and existing_value != 'yes':
                         updates.append(f"{col} = ?")
                         values.append('yes')
                 elif existing_value and new_value not in str(existing_value):
@@ -454,7 +422,8 @@ class AO1DynamicVisibilityProcessor:
                     values.append(new_value)
         
         if updates:
-            values.append(record['normalized_host'])
+            updates.append("last_updated = CURRENT_TIMESTAMP")
+            values.append(normalized_host)
             update_sql = f"UPDATE universal_cmdb SET {', '.join(updates)} WHERE normalized_host = ?"
             
             try:
@@ -463,9 +432,10 @@ class AO1DynamicVisibilityProcessor:
             except:
                 pass
     
-    def generate_dynamic_report(self):
+    def generate_ao1_report(self):
         print("\n" + "=" * 80)
-        print("AO1 DYNAMIC VISIBILITY REPORT")
+        print("AO1 LOG VISIBILITY MEASUREMENT REPORT")
+        print("Requirements Section Analysis")
         print("=" * 80)
         
         total_hosts = self.duck_conn.execute("SELECT COUNT(*) FROM universal_cmdb").fetchone()[0]
@@ -474,10 +444,18 @@ class AO1DynamicVisibilityProcessor:
         print(f"Tables Processed: {self.stats['tables_processed']}")
         print(f"Records Processed: {self.stats['total_records_processed']:,}")
         
-        print("\n--- REQUIREMENTS-BASED VISIBILITY METRICS ---")
+        print("\n--- REQUIREMENTS VISIBILITY METRICS ---")
         
-        print("\n1. Global View - Infrastructure Type Coverage:")
-        if 'infrastructure_type' in self.all_discovered_columns:
+        print("\n1. GLOBAL VIEW - CSOC Visibility (x% of all assets globally):")
+        
+        for col in ['hostname', 'fqdn', 'ip_address', 'domain']:
+            if col in self.all_columns:
+                count = self.duck_conn.execute(f"SELECT COUNT(*) FROM universal_cmdb WHERE {col} IS NOT NULL AND {col} != ''").fetchone()[0]
+                print(f"   {col}: {count:,} hosts ({count/max(1,total_hosts)*100:.1f}%)")
+        
+        print("\n2. INFRASTRUCTURE TYPE - CSOC Display (% visibility by type):")
+        
+        if 'infrastructure_type' in self.all_columns:
             infra_query = """
             SELECT infrastructure_type, COUNT(*) as cnt 
             FROM universal_cmdb 
@@ -488,103 +466,138 @@ class AO1DynamicVisibilityProcessor:
             """
             for row in self.duck_conn.execute(infra_query).fetchall():
                 if row[0]:
-                    print(f"   {row[0]}: {row[1]:,}")
+                    print(f"   {row[0]}: {row[1]:,} hosts")
         
-        print("\n2. Regional and Country View:")
+        cloud_cols = [col for col in self.all_columns if 'cloud' in col.lower()]
+        onprem_cols = [col for col in self.all_columns if 'prem' in col.lower()]
+        saas_cols = [col for col in self.all_columns if 'saas' in col.lower() or 'application' in col.lower()]
+        api_cols = [col for col in self.all_columns if 'api' in col.lower()]
+        
+        print(f"   Cloud-related columns: {len(cloud_cols)}")
+        print(f"   On-Premise columns: {len(onprem_cols)}")
+        print(f"   SaaS/Application columns: {len(saas_cols)}")
+        print(f"   API columns: {len(api_cols)}")
+        
+        print("\n3. REGIONAL AND COUNTRY VIEW - Visibility by location:")
+        
         for col in ['region', 'country', 'data_center', 'cloud_region']:
-            if col in self.all_discovered_columns:
-                count_query = f"SELECT COUNT(*) FROM universal_cmdb WHERE {col} IS NOT NULL AND {col} != ''"
-                count = self.duck_conn.execute(count_query).fetchone()[0]
-                print(f"   {col}: {count:,} ({count/max(1,total_hosts)*100:.1f}%)")
+            if col in self.all_columns:
+                count = self.duck_conn.execute(f"SELECT COUNT(DISTINCT {col}) FROM universal_cmdb WHERE {col} IS NOT NULL").fetchone()[0]
+                total = self.duck_conn.execute(f"SELECT COUNT(*) FROM universal_cmdb WHERE {col} IS NOT NULL").fetchone()[0]
+                print(f"   {col}: {count} unique values, {total:,} hosts covered")
         
-        print("\n3. BU and Application View:")
-        for col in ['business_unit', 'cio', 'apm', 'class']:
-            if col in self.all_discovered_columns:
-                count_query = f"SELECT COUNT(*) FROM universal_cmdb WHERE {col} IS NOT NULL AND {col} != ''"
-                count = self.duck_conn.execute(count_query).fetchone()[0]
-                print(f"   {col}: {count:,} ({count/max(1,total_hosts)*100:.1f}%)")
+        print("\n4. BU AND APPLICATION VIEW:")
         
-        print("\n4. System Classification:")
-        if 'system_classification' in self.all_discovered_columns:
-            class_query = """
-            SELECT system_classification, COUNT(*) as cnt 
-            FROM universal_cmdb 
-            WHERE system_classification IS NOT NULL 
-            GROUP BY system_classification 
-            ORDER BY cnt DESC 
-            LIMIT 5
-            """
-            for row in self.duck_conn.execute(class_query).fetchall():
-                if row[0]:
-                    print(f"   {row[0]}: {row[1]:,}")
+        for col in ['business_unit', 'cio', 'apm', 'application_class']:
+            if col in self.all_columns:
+                count = self.duck_conn.execute(f"SELECT COUNT(*) FROM universal_cmdb WHERE {col} IS NOT NULL AND {col} != ''").fetchone()[0]
+                print(f"   {col}: {count:,} hosts ({count/max(1,total_hosts)*100:.1f}%)")
         
-        print("\n5. Security Control Coverage:")
+        print("\n5. SYSTEM CLASSIFICATION:")
+        
+        server_cols = [col for col in self.all_columns if 'server' in col.lower()]
+        windows_cols = [col for col in self.all_columns if 'windows' in col.lower()]
+        linux_cols = [col for col in self.all_columns if 'linux' in col.lower() or 'unix' in col.lower()]
+        mainframe_cols = [col for col in self.all_columns if 'mainframe' in col.lower()]
+        database_cols = [col for col in self.all_columns if 'database' in col.lower() or 'db' in col.lower()]
+        network_cols = [col for col in self.all_columns if 'network' in col.lower() or 'appliance' in col.lower()]
+        
+        print(f"   Web Server columns: {len(server_cols)}")
+        print(f"   Windows Server columns: {len(windows_cols)}")
+        print(f"   Linux Server columns: {len(linux_cols)}")
+        print(f"   Mainframe columns: {len(mainframe_cols)}")
+        print(f"   Database columns: {len(database_cols)}")
+        print(f"   Network Appliance columns: {len(network_cols)}")
+        
+        print("\n6. SECURITY CONTROL COVERAGE - Agent based:")
+        
         for col in ['edr_coverage', 'tanium_coverage', 'dlp_agent_coverage']:
-            if col in self.all_discovered_columns:
-                count_query = f"SELECT COUNT(*) FROM universal_cmdb WHERE {col} IS NOT NULL AND {col} != ''"
-                count = self.duck_conn.execute(count_query).fetchone()[0]
-                print(f"   {col}: {count:,} ({count/max(1,total_hosts)*100:.1f}%)")
+            if col in self.all_columns:
+                count = self.duck_conn.execute(f"SELECT COUNT(*) FROM universal_cmdb WHERE {col} IS NOT NULL AND {col} != ''").fetchone()[0]
+                print(f"   {col}: {count:,} hosts ({count/max(1,total_hosts)*100:.1f}%)")
         
-        print("\n6. Logging Compliance in GSO and Splunk:")
-        for col in ['logging_in_gso', 'logging_in_splunk']:
-            if col in self.all_discovered_columns:
-                count_query = f"SELECT COUNT(*) FROM universal_cmdb WHERE {col} = 'yes'"
-                count = self.duck_conn.execute(count_query).fetchone()[0]
-                print(f"   {col}: {count:,} ({count/max(1,total_hosts)*100:.1f}%)")
-        
-        print("\n7. Domain Visibility:")
-        for col in ['hostname', 'fqdn', 'domain', 'ip_address']:
-            if col in self.all_discovered_columns:
-                count_query = f"SELECT COUNT(*) FROM universal_cmdb WHERE {col} IS NOT NULL AND {col} != ''"
-                count = self.duck_conn.execute(count_query).fetchone()[0]
-                print(f"   {col}: {count:,} ({count/max(1,total_hosts)*100:.1f}%)")
-        
-        print("\n8. Special Table Coverage:")
         crowdstrike = self.duck_conn.execute("SELECT COUNT(*) FROM universal_cmdb WHERE present_in_crowdstrike = 'yes'").fetchone()[0]
-        cmdb = self.duck_conn.execute("SELECT COUNT(*) FROM universal_cmdb WHERE present_in_cmdb = 'yes'").fetchone()[0]
+        print(f"   CrowdStrike (Axonius/Console): {crowdstrike:,} hosts ({crowdstrike/max(1,total_hosts)*100:.1f}%)")
         
-        print(f"   CrowdStrike (V_DIM_ENDPOINTAGENT): {crowdstrike:,} ({crowdstrike/max(1,total_hosts)*100:.1f}%)")
-        print(f"   CMDB (V_DIM_ENDPOINT): {cmdb:,} ({cmdb/max(1,total_hosts)*100:.1f}%)")
+        print("\n7. LOGGING COMPLIANCE IN GSO AND SPLUNK - Ensure:")
         
-        print("\n9. Visibility Score Distribution:")
+        for col in ['logging_in_gso', 'logging_in_splunk']:
+            if col in self.all_columns:
+                count = self.duck_conn.execute(f"SELECT COUNT(*) FROM universal_cmdb WHERE {col} IS NOT NULL AND {col} != ''").fetchone()[0]
+                print(f"   {col}: {count:,} hosts ({count/max(1,total_hosts)*100:.1f}%)")
+        
+        splunk_log = self.duck_conn.execute("SELECT COUNT(*) FROM universal_cmdb WHERE present_in_splunk_log = 'yes'").fetchone()[0]
+        print(f"   Present in Splunk Log Table: {splunk_log:,} hosts")
+        
+        print("\n8. DOMAIN VISIBILITY:")
+        
+        if 'domain' in self.all_columns:
+            domain_count = self.duck_conn.execute("SELECT COUNT(*) FROM universal_cmdb WHERE domain IS NOT NULL AND domain != ''").fetchone()[0]
+            unique_domains = self.duck_conn.execute("SELECT COUNT(DISTINCT domain) FROM universal_cmdb WHERE domain IS NOT NULL").fetchone()[0]
+            print(f"   Asset visibility by domain: {domain_count:,} hosts")
+            print(f"   Unique domains: {unique_domains}")
+        
+        print("\n9. VISIBILITY SCORE ANALYSIS:")
+        
         avg_score = self.duck_conn.execute("SELECT AVG(visibility_score) FROM universal_cmdb").fetchone()[0]
         high = self.duck_conn.execute("SELECT COUNT(*) FROM universal_cmdb WHERE visibility_score >= 70").fetchone()[0]
         medium = self.duck_conn.execute("SELECT COUNT(*) FROM universal_cmdb WHERE visibility_score >= 40 AND visibility_score < 70").fetchone()[0]
         low = self.duck_conn.execute("SELECT COUNT(*) FROM universal_cmdb WHERE visibility_score < 40").fetchone()[0]
         
-        print(f"   Average Score: {avg_score:.1f}%")
-        print(f"   High (≥70%): {high:,}")
-        print(f"   Medium (40-69%): {medium:,}")
-        print(f"   Low (<40%): {low:,}")
+        print(f"   Average Visibility Score: {avg_score:.1f}%")
+        print(f"   High Visibility (≥70%): {high:,} hosts")
+        print(f"   Medium Visibility (40-69%): {medium:,} hosts") 
+        print(f"   Low Visibility (<40%): {low:,} hosts")
         
-        print("\n10. Column Coverage Summary:")
-        print(f"   Total unique column types discovered: {len(self.all_discovered_columns)}")
-        print(f"   Columns with data:")
+        print("\n10. DATA QUALITY METRICS:")
         
-        for col in sorted(self.all_discovered_columns):
-            count_query = f"SELECT COUNT(*) FROM universal_cmdb WHERE {col} IS NOT NULL AND {col} != ''"
-            count = self.duck_conn.execute(count_query).fetchone()[0]
-            if count > 0:
-                print(f"      {col}: {count:,} records")
+        print(f"   Total unique columns discovered: {len(self.all_columns)}")
+        print(f"   New hosts created: {self.stats['hosts_created']:,}")
+        print(f"   Existing hosts updated: {self.stats['hosts_updated']:,}")
+        
+        empty_cols = []
+        populated_cols = []
+        
+        for col in self.all_columns:
+            if col not in ['first_seen', 'last_updated']:
+                count = self.duck_conn.execute(f"SELECT COUNT(*) FROM universal_cmdb WHERE {col} IS NOT NULL AND {col} != ''").fetchone()[0]
+                if count == 0:
+                    empty_cols.append(col)
+                else:
+                    populated_cols.append((col, count))
+        
+        print(f"   Columns with data: {len(populated_cols)}")
+        print(f"   Empty columns: {len(empty_cols)}")
+        
+        print("\nASSUMPTIONS (per AO1 requirements):")
+        print("  ✓ CMDB is accurate and complete")
+        print("  ✓ CMDB incorporates asset inventory from Asset Management")
+        print("  ✓ CMDB incorporates all discovery scanning")
+        print("  ✓ CMDB incorporates DHCP records for IP mapping")
+        print("  ✓ CMDB integrates Vulnerability Scanning")
+        print("  ✓ CMDB incorporates Cloud Hosting controls")
+        print("  ✓ CMDB incorporates external discovery services")
     
-    def export_results(self):
+    def export_visibility_data(self):
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        
         filename = f"ao1_dynamic_visibility_{timestamp}.csv"
+        print(f"\nExporting ALL columns to {filename}...")
         
-        print(f"\nExporting to {filename}...")
-        
-        columns = ['normalized_host'] + sorted(list(self.all_discovered_columns)) + ['present_in_crowdstrike', 'present_in_cmdb', 'visibility_score', 'source_count', 'source_tables']
+        columns_str = ', '.join(sorted(self.all_columns))
         
         export_query = f"""
         COPY (
-            SELECT {', '.join(columns)}
+            SELECT {columns_str}
             FROM universal_cmdb 
-            ORDER BY visibility_score DESC, source_count DESC
+            ORDER BY visibility_score DESC, source_count DESC, normalized_host
         ) TO '{filename}' (HEADER, DELIMITER ',')
         """
         
         self.duck_conn.execute(export_query)
         print(f"Export complete: {filename}")
+        
+        print(f"\nExported {len(self.all_columns)} columns including all dynamically discovered fields")
     
     def close(self):
         self.duck_conn.close()
@@ -594,15 +607,12 @@ if __name__ == "__main__":
     
     try:
         print("\n" + "=" * 80)
-        print("AO1 DYNAMIC VISIBILITY MEASUREMENT")
-        print("Requirements-Driven Universal Processing")
+        print("AO1 DYNAMIC LOG VISIBILITY MEASUREMENT")
+        print("Processing ALL columns from metadata")
         print("=" * 80 + "\n")
         
-        processor = AO1DynamicVisibilityProcessor("reviewed_labeled_columns.json")
-        
-        processing_time = processor.load_and_process()
-        processor.generate_dynamic_report()
-        processor.export_results()
+        processor = AO1DynamicProcessor("reviewed_labeled_columns.json", "ao1_universal_cmdb.db")
+        processor.process_all_parallel()
         
         print("\n" + "=" * 80)
         print("DYNAMIC VISIBILITY MEASUREMENT COMPLETE")
