@@ -500,11 +500,12 @@ class UltraFastCMDBProcessor:
             raise e
     
     def _process_results_ultra_fast(self, query_job, table_name: str, hostname_col: str, attribute_types: List[str]) -> int:
-        """Ultra-fast streaming result processing"""
+        """Ultra-fast streaming result processing with full attribute capture"""
         records_processed = 0
         batch_size = 5000
         batch_records = []
         local_seen = set()
+        attributes_collected = defaultdict(int)
         
         print(f"  Fetching results from {table_name}...")
         
@@ -512,6 +513,10 @@ class UltraFastCMDBProcessor:
         try:
             results = list(query_job.result(timeout=300))  # 5 minute timeout
             print(f"  Retrieved {len(results):,} rows from {table_name}")
+            
+            if attribute_types:
+                print(f"  Collecting attributes: {', '.join(attribute_types[:5])}" + 
+                      (f" and {len(attribute_types)-5} more" if len(attribute_types) > 5 else ""))
         except Exception as e:
             print(f"  ERROR fetching results from {table_name}: {str(e)}")
             return 0
@@ -545,19 +550,20 @@ class UltraFastCMDBProcessor:
             
             local_seen.add(normalized_host)
             
-            # Build record
+            # Build record with ALL available attributes
             record_data = {
                 'normalized_host': normalized_host,
                 'hostname': str(row[0]).strip(),
                 'table_name': table_name
             }
             
-            # Fast attribute collection
+            # Collect ALL attributes from this row
             for i, attr_type in enumerate(attribute_types, 1):
                 if i < len(row) and row[i]:
                     val = str(row[i]).strip()
                     if val and val.lower() not in self.invalid_values:
                         record_data[attr_type] = val
+                        attributes_collected[attr_type] += 1
             
             batch_records.append(record_data)
             
@@ -572,7 +578,13 @@ class UltraFastCMDBProcessor:
             print(f"    Writing final batch of {len(batch_records)} records to database...")
             self._bulk_write_ultra_fast(batch_records)
         
-        print(f"  Finished processing {table_name}: {records_processed:,} total rows")
+        # Report attribute collection stats
+        if attributes_collected:
+            print(f"  Attributes collected from {table_name}:")
+            for attr, count in sorted(attributes_collected.items(), key=lambda x: x[1], reverse=True)[:5]:
+                print(f"    - {attr}: {count:,} values")
+        
+        print(f"  Finished processing {table_name}: {records_processed:,} total rows, {len(local_seen):,} unique hosts")
         
         self.stats['total_records_processed'] += records_processed
         return records_processed
@@ -662,27 +674,86 @@ class UltraFastCMDBProcessor:
                     pass
     
     def _bulk_update_ultra_fast(self, records: List[Dict]) -> None:
-        """Ultra-fast bulk update using CASE statements"""
+        """Ultra-fast bulk update - merge all data from records"""
         if not records:
             return
         
-        # Group updates by normalized_host for efficiency
+        # Process each record with full attribute updates
         for record in records:
             try:
-                # Simple update - just increment source count
-                update_sql = """
-                UPDATE universal_cmdb 
-                SET source_count = source_count + 1,
-                    source_tables = source_tables || ', ' || ?,
-                    last_updated = CURRENT_TIMESTAMP
+                # Get existing record
+                existing_query = """
+                SELECT source_tables, source_count, hostname, fqdn, domain,
+                       infrastructure_type, region, country, data_center, cloud_region,
+                       ip_address, class, system_classification, business_unit, apm,
+                       cio, edr_coverage, tanium_coverage, dlp_agent_coverage,
+                       logging_in_splunk, logging_in_gso
+                FROM universal_cmdb 
                 WHERE normalized_host = ?
                 """
-                self.duck_conn.execute(update_sql, [record['table_name'], record['normalized_host']])
-            except:
+                
+                existing = self.duck_conn.execute(existing_query, [record['normalized_host']]).fetchone()
+                
+                if existing:
+                    updates = []
+                    values = []
+                    
+                    # Update source tables
+                    current_tables = existing[0] if existing[0] else ""
+                    table_name = record['table_name']
+                    
+                    if table_name not in current_tables:
+                        new_tables = f"{current_tables}, {table_name}" if current_tables else table_name
+                        updates.append("source_tables = ?")
+                        values.append(new_tables)
+                        
+                        new_source_count = (existing[1] or 0) + 1
+                        updates.append("source_count = ?")
+                        values.append(new_source_count)
+                    
+                    # Update ALL attribute columns with new data if they exist in record
+                    attribute_columns = [
+                        'hostname', 'fqdn', 'domain', 'infrastructure_type', 'region', 'country',
+                        'data_center', 'cloud_region', 'ip_address', 'class', 'system_classification',
+                        'business_unit', 'apm', 'cio', 'edr_coverage', 'tanium_coverage',
+                        'dlp_agent_coverage', 'logging_in_splunk', 'logging_in_gso'
+                    ]
+                    
+                    for i, col_name in enumerate(attribute_columns, 2):
+                        if col_name in record:
+                            new_value = record[col_name]
+                            existing_value = existing[i] if i < len(existing) else None
+                            
+                            # Merge values if both exist and are different
+                            if existing_value and new_value and new_value != existing_value:
+                                # Combine unique values
+                                existing_parts = set(part.strip() for part in str(existing_value).split('|'))
+                                if new_value not in existing_parts:
+                                    existing_parts.add(new_value)
+                                    merged_value = ' | '.join(sorted(existing_parts))
+                                    updates.append(f"{col_name} = ?")
+                                    values.append(merged_value)
+                            elif not existing_value and new_value:
+                                # Set new value if existing is empty
+                                updates.append(f"{col_name} = ?")
+                                values.append(new_value)
+                    
+                    if updates:
+                        updates.append("last_updated = CURRENT_TIMESTAMP")
+                        values.append(record['normalized_host'])
+                        
+                        update_sql = f"UPDATE universal_cmdb SET {', '.join(updates)} WHERE normalized_host = ?"
+                        self.duck_conn.execute(update_sql, values)
+                else:
+                    # If not found in existing, insert as new
+                    self._bulk_insert_ultra_fast([record])
+                    
+            except Exception as e:
+                logger.debug(f"Update error for {record.get('normalized_host')}: {e}")
                 pass
     
     def generate_report(self):
-        """Generate summary report"""
+        """Generate comprehensive summary report"""
         print("\n" + "═" * 80)
         print(" " * 30 + "PROCESSING REPORT")
         print("═" * 80 + "\n")
@@ -701,6 +772,71 @@ class UltraFastCMDBProcessor:
         
         if self.stats['processing_errors'] > 0:
             print(f"  Processing Errors: {self.stats['processing_errors']}")
+        
+        # Comprehensive data coverage analysis
+        print("\nData Coverage Analysis:")
+        print("─" * 40)
+        
+        all_columns = [
+            'hostname', 'fqdn', 'domain', 'business_unit', 'region', 
+            'infrastructure_type', 'country', 'data_center', 'cloud_region',
+            'ip_address', 'class', 'system_classification', 'apm', 'cio',
+            'edr_coverage', 'tanium_coverage', 'dlp_agent_coverage',
+            'logging_in_splunk', 'logging_in_gso'
+        ]
+        
+        for col in all_columns:
+            count_query = f"SELECT COUNT(*) FROM universal_cmdb WHERE {col} IS NOT NULL AND {col} != ''"
+            count = self.duck_conn.execute(count_query).fetchone()[0]
+            
+            if count > 0:
+                percentage = (count / total_hosts * 100) if total_hosts > 0 else 0
+                print(f"  {col:25s}: {count:8,} records ({percentage:5.1f}%)")
+                
+                # Get sample values
+                sample_query = f"SELECT DISTINCT {col} FROM universal_cmdb WHERE {col} IS NOT NULL AND {col} != '' LIMIT 2"
+                samples = self.duck_conn.execute(sample_query).fetchall()
+                if samples:
+                    sample_values = [str(s[0])[:30] for s in samples]
+                    print(f"    Examples: {', '.join(sample_values)}")
+        
+        # Multi-source hosts
+        print("\nHosts with Multiple Sources:")
+        print("─" * 40)
+        
+        multi_source_query = """
+        SELECT source_count, COUNT(*) as cnt 
+        FROM universal_cmdb 
+        GROUP BY source_count
+        ORDER BY source_count DESC
+        LIMIT 5
+        """
+        
+        for row in self.duck_conn.execute(multi_source_query).fetchall():
+            if row[0] and row[0] > 1:
+                print(f"  {row[0]} sources: {row[1]:,} hosts")
+        
+        # Top enriched hosts
+        print("\nMost Enriched Hosts (Sample):")
+        print("─" * 40)
+        
+        enriched_query = """
+        SELECT normalized_host, source_count, 
+               CASE WHEN hostname IS NOT NULL THEN 1 ELSE 0 END +
+               CASE WHEN business_unit IS NOT NULL THEN 1 ELSE 0 END +
+               CASE WHEN region IS NOT NULL THEN 1 ELSE 0 END +
+               CASE WHEN infrastructure_type IS NOT NULL THEN 1 ELSE 0 END +
+               CASE WHEN ip_address IS NOT NULL THEN 1 ELSE 0 END +
+               CASE WHEN country IS NOT NULL THEN 1 ELSE 0 END +
+               CASE WHEN data_center IS NOT NULL THEN 1 ELSE 0 END as attributes_count
+        FROM universal_cmdb
+        ORDER BY attributes_count DESC, source_count DESC
+        LIMIT 3
+        """
+        
+        for row in self.duck_conn.execute(enriched_query).fetchall():
+            print(f"  Host: {row[0]}")
+            print(f"    Sources: {row[1]}, Attributes: {row[2]}")
         
         logger.info(f"Report complete - {total_hosts:,} total hosts")
     
