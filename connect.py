@@ -111,6 +111,8 @@ class OptimizedCMDBProcessor:
             dlp_agent_coverage TEXT,
             logging_in_splunk TEXT,
             logging_in_gso TEXT,
+            present_in_crowdstrike TEXT,
+            present_in_cmdb TEXT,
             data_quality_score FLOAT DEFAULT 1.0,
             source_count INTEGER DEFAULT 1,
             first_seen TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -132,7 +134,8 @@ class OptimizedCMDBProcessor:
                    infrastructure_type, region, country, data_center, cloud_region,
                    ip_address, class, system_classification, business_unit, apm,
                    cio, edr_coverage, tanium_coverage, dlp_agent_coverage,
-                   logging_in_splunk, logging_in_gso, source_count
+                   logging_in_splunk, logging_in_gso, present_in_crowdstrike,
+                   present_in_cmdb, source_count
             FROM universal_cmdb
             """
             for row in self.duck_conn.execute(query).fetchall():
@@ -157,7 +160,9 @@ class OptimizedCMDBProcessor:
                     'dlp_agent_coverage': row[18],
                     'logging_in_splunk': row[19],
                     'logging_in_gso': row[20],
-                    'source_count': row[21]
+                    'present_in_crowdstrike': row[21],
+                    'present_in_cmdb': row[22],
+                    'source_count': row[23]
                 }
         except:
             pass
@@ -253,6 +258,14 @@ class OptimizedCMDBProcessor:
         batch_size = 1000
         duplicates_found = 0
         
+        special_tables = {
+            'prj-fisv-p-gcss-sas-dl9dd0f1df.SAS_BI.V_DIM_ENDPOINTAGENT': 'present_in_crowdstrike',
+            'prj-fisv-p-gcss-sas-dl9dd0f1df.SAS_BI.V_DIM_ENDPOINT': 'present_in_cmdb',
+            'prj-fisv-p-gcss-sas-dl9dd0f1df.SAS_BI.V_SPL_ENDPOINT_LOG': 'logging_in_splunk'
+        }
+        
+        special_column = special_tables.get(table_name)
+        
         for row in query_job:
             records_processed += 1
             
@@ -272,9 +285,15 @@ class OptimizedCMDBProcessor:
                 'table_name': table_name
             }
             
+            if special_column:
+                record_data[special_column] = 'yes'
+            
             for i, attr_type in enumerate(attribute_types, 1):
                 if i < len(row) and self.is_valid_value(row[i]):
-                    record_data[attr_type] = str(row[i]).strip()
+                    if attr_type == 'logging_in_splunk' and table_name == 'prj-fisv-p-gcss-sas-dl9dd0f1df.SAS_BI.V_SPL_ENDPOINT_LOG':
+                        record_data[attr_type] = 'yes'
+                    else:
+                        record_data[attr_type] = str(row[i]).strip()
             
             batch_records.append(record_data)
             
@@ -331,6 +350,8 @@ class OptimizedCMDBProcessor:
             'dlp_agent_coverage': record.get('dlp_agent_coverage'),
             'logging_in_splunk': record.get('logging_in_splunk'),
             'logging_in_gso': record.get('logging_in_gso'),
+            'present_in_crowdstrike': record.get('present_in_crowdstrike'),
+            'present_in_cmdb': record.get('present_in_cmdb'),
             'source_count': 1
         }
     
@@ -342,7 +363,8 @@ class OptimizedCMDBProcessor:
             'hostname', 'fqdn', 'domain', 'infrastructure_type', 'region', 'country',
             'data_center', 'cloud_region', 'ip_address', 'class', 'system_classification',
             'business_unit', 'apm', 'cio', 'edr_coverage', 'tanium_coverage',
-            'dlp_agent_coverage', 'logging_in_splunk', 'logging_in_gso'
+            'dlp_agent_coverage', 'logging_in_splunk', 'logging_in_gso',
+            'present_in_crowdstrike', 'present_in_cmdb'
         ]
         
         for col in attribute_columns:
@@ -383,7 +405,8 @@ class OptimizedCMDBProcessor:
             'hostname', 'fqdn', 'domain', 'infrastructure_type', 'region', 'country',
             'data_center', 'cloud_region', 'ip_address', 'class', 'system_classification',
             'business_unit', 'apm', 'cio', 'edr_coverage', 'tanium_coverage',
-            'dlp_agent_coverage', 'logging_in_splunk', 'logging_in_gso'
+            'dlp_agent_coverage', 'logging_in_splunk', 'logging_in_gso',
+            'present_in_crowdstrike', 'present_in_cmdb'
         ]
         
         for col in attribute_columns:
@@ -391,7 +414,17 @@ class OptimizedCMDBProcessor:
                 new_value = record[col]
                 existing_value = existing.get(col)
                 
-                if existing_value and new_value != existing_value:
+                if col in ['present_in_crowdstrike', 'present_in_cmdb'] and new_value == 'yes':
+                    if existing_value != 'yes':
+                        updates.append(f"{col} = ?")
+                        values.append('yes')
+                        existing[col] = 'yes'
+                elif col == 'logging_in_splunk' and new_value == 'yes':
+                    if existing_value != 'yes':
+                        updates.append(f"{col} = ?")
+                        values.append('yes')
+                        existing[col] = 'yes'
+                elif existing_value and new_value != existing_value:
                     if new_value not in str(existing_value):
                         merged_value = f"{existing_value} | {new_value}"
                         updates.append(f"{col} = ?")
@@ -463,7 +496,8 @@ class OptimizedCMDBProcessor:
             'infrastructure_type', 'country', 'data_center', 'cloud_region',
             'ip_address', 'class', 'system_classification', 'apm', 'cio',
             'edr_coverage', 'tanium_coverage', 'dlp_agent_coverage',
-            'logging_in_splunk', 'logging_in_gso'
+            'logging_in_splunk', 'logging_in_gso', 'present_in_crowdstrike', 
+            'present_in_cmdb'
         ]
         
         for col in columns:
@@ -472,6 +506,16 @@ class OptimizedCMDBProcessor:
             if count > 0:
                 percentage = (count / total_hosts * 100) if total_hosts > 0 else 0
                 print(f"  {col}: {count:,} ({percentage:.1f}%)")
+        
+        print("\nSpecial table coverage:")
+        
+        crowdstrike_count = self.duck_conn.execute("SELECT COUNT(*) FROM universal_cmdb WHERE present_in_crowdstrike = 'yes'").fetchone()[0]
+        cmdb_count = self.duck_conn.execute("SELECT COUNT(*) FROM universal_cmdb WHERE present_in_cmdb = 'yes'").fetchone()[0]
+        splunk_log_count = self.duck_conn.execute("SELECT COUNT(*) FROM universal_cmdb WHERE logging_in_splunk = 'yes'").fetchone()[0]
+        
+        print(f"  Hosts in CrowdStrike: {crowdstrike_count:,}")
+        print(f"  Hosts in CMDB: {cmdb_count:,}")
+        print(f"  Hosts logging to Splunk: {splunk_log_count:,}")
     
     def export_csv(self, filename: str = "universal_cmdb_export.csv"):
         print(f"\nExporting to {filename}...")
