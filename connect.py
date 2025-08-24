@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 class OptimizedCMDBProcessor:
     def __init__(self, json_file_path: str, duckdb_path: str = "universal_cmdb.db"):
         print("\n" + "=" * 80)
-        print("OPTIMIZED CMDB PROCESSOR")
+        print("OPTIMIZED CMDB PROCESSOR - ENHANCED VERSION")
         print("=" * 80 + "\n")
         
         self.json_file_path = json_file_path
@@ -27,8 +27,8 @@ class OptimizedCMDBProcessor:
         self.db_lock = threading.Lock()
         
         self.column_mapping = {
-            'fqdn': 'fqdn', 'domain': 'domain', 'host': 'hostname',
-            'hostname': 'hostname', 'infrastructure_type': 'infrastructure_type',
+            'fqdn': 'fqdn', 'domain': 'domain', 'host': 'host',
+            'hostname': 'host', 'infrastructure_type': 'infrastructure_type',
             'infra_type': 'infrastructure_type', 'region': 'region',
             'country': 'country', 'data_center': 'data_center',
             'datacenter': 'data_center', 'cloud_region': 'cloud_region',
@@ -90,9 +90,8 @@ class OptimizedCMDBProcessor:
     def _create_table(self):
         create_sql = """
         CREATE TABLE IF NOT EXISTS universal_cmdb (
-            normalized_host VARCHAR PRIMARY KEY,
+            host VARCHAR PRIMARY KEY,
             source_tables TEXT,
-            hostname TEXT,
             fqdn TEXT,
             domain TEXT,
             infrastructure_type TEXT,
@@ -123,14 +122,14 @@ class OptimizedCMDBProcessor:
         self.duck_conn.execute(create_sql)
         
         try:
-            self.duck_conn.execute("CREATE INDEX IF NOT EXISTS idx_normalized_host ON universal_cmdb(normalized_host)")
+            self.duck_conn.execute("CREATE INDEX IF NOT EXISTS idx_host ON universal_cmdb(host)")
         except:
             pass
     
     def _load_existing_hosts(self):
         try:
             query = """
-            SELECT normalized_host, source_tables, hostname, fqdn, domain,
+            SELECT host, source_tables, fqdn, domain,
                    infrastructure_type, region, country, data_center, cloud_region,
                    ip_address, class, system_classification, business_unit, apm,
                    cio, edr_coverage, tanium_coverage, dlp_agent_coverage,
@@ -141,33 +140,33 @@ class OptimizedCMDBProcessor:
             for row in self.duck_conn.execute(query).fetchall():
                 self.existing_hosts[row[0]] = {
                     'source_tables': row[1],
-                    'hostname': row[2],
-                    'fqdn': row[3],
-                    'domain': row[4],
-                    'infrastructure_type': row[5],
-                    'region': row[6],
-                    'country': row[7],
-                    'data_center': row[8],
-                    'cloud_region': row[9],
-                    'ip_address': row[10],
-                    'class': row[11],
-                    'system_classification': row[12],
-                    'business_unit': row[13],
-                    'apm': row[14],
-                    'cio': row[15],
-                    'edr_coverage': row[16],
-                    'tanium_coverage': row[17],
-                    'dlp_agent_coverage': row[18],
-                    'logging_in_splunk': row[19],
-                    'logging_in_gso': row[20],
-                    'present_in_crowdstrike': row[21],
-                    'present_in_cmdb': row[22],
-                    'source_count': row[23]
+                    'fqdn': row[2],
+                    'domain': row[3],
+                    'infrastructure_type': row[4],
+                    'region': row[5],
+                    'country': row[6],
+                    'data_center': row[7],
+                    'cloud_region': row[8],
+                    'ip_address': row[9],
+                    'class': row[10],
+                    'system_classification': row[11],
+                    'business_unit': row[12],
+                    'apm': row[13],
+                    'cio': row[14],
+                    'edr_coverage': row[15],
+                    'tanium_coverage': row[16],
+                    'dlp_agent_coverage': row[17],
+                    'logging_in_splunk': row[18],
+                    'logging_in_gso': row[19],
+                    'present_in_crowdstrike': row[20],
+                    'present_in_cmdb': row[21],
+                    'source_count': row[22]
                 }
         except:
             pass
     
     def normalize_hostname(self, hostname: str) -> str:
+        """Normalize hostname for use as primary key"""
         if not hostname or not isinstance(hostname, str) or hostname.strip() == '*Undefined':
             return ""
         normalized = hostname.lower().strip()
@@ -176,6 +175,38 @@ class OptimizedCMDBProcessor:
         normalized = normalized.replace('-', '')
         normalized = re.sub(r'[^a-z0-9]', '', normalized)
         return normalized if len(normalized) > 1 else ""
+    
+    def normalize_fqdn(self, fqdn: str) -> str:
+        """Normalize FQDN by converting to lowercase"""
+        if not fqdn or not isinstance(fqdn, str) or fqdn.strip() == '*Undefined':
+            return ""
+        return fqdn.lower().strip()
+    
+    def normalize_region(self, region: str) -> str:
+        """Normalize region values"""
+        if not region or not isinstance(region, str):
+            return region
+        
+        region = region.strip()
+        # Convert NA to North America
+        if region.upper() in ['NA', 'N.A.', 'N/A']:
+            return 'North America'
+        elif region.lower() == 'north america':
+            return 'North America'
+        return region
+    
+    def normalize_country(self, country: str) -> str:
+        """Normalize country values"""
+        if not country or not isinstance(country, str):
+            return country
+        
+        country = country.strip()
+        # Convert USA to United States
+        if country.upper() in ['USA', 'U.S.A.', 'US', 'U.S.']:
+            return 'United States'
+        elif country.lower() == 'united states':
+            return 'United States'
+        return country
     
     def is_valid_value(self, value) -> bool:
         if not value:
@@ -194,7 +225,7 @@ class OptimizedCMDBProcessor:
         
         for pattern in self.hostname_patterns:
             if pattern in column_lower:
-                return 'hostname'
+                return 'host'
         
         for target_type, patterns in self.advanced_patterns.items():
             for pattern in patterns:
@@ -225,8 +256,8 @@ class OptimizedCMDBProcessor:
         return discovered
     
     def process_table(self, table_name: str, table_columns: List[Tuple[str, str, str]]) -> int:
-        hostname_cols = [(col, ctype) for _, col, ctype in table_columns if ctype == 'hostname']
-        attribute_cols = [(col, ctype) for _, col, ctype in table_columns if ctype != 'hostname']
+        hostname_cols = [(col, ctype) for _, col, ctype in table_columns if ctype == 'host']
+        attribute_cols = [(col, ctype) for _, col, ctype in table_columns if ctype != 'host']
         
         if not hostname_cols:
             return 0
@@ -237,6 +268,7 @@ class OptimizedCMDBProcessor:
         
         print(f"Processing {table_name}: {len(all_columns)} columns")
         
+        # Optimize query with LIMIT for very large tables
         query = f"""
         SELECT {', '.join(f'`{col}`' for col in all_columns)}
         FROM `{table_name}`
@@ -245,17 +277,34 @@ class OptimizedCMDBProcessor:
         AND `{primary_hostname_col}` != '*Undefined'
         """
         
-        try:
-            query_job = self.bq_client.query(query)
-            return self.process_results(query_job, table_name, attribute_types)
-        except Exception as e:
-            print(f"Error processing {table_name}: {str(e)[:100]}")
-            return 0
+        max_retries = 3
+        retry_count = 0
+        
+        while retry_count < max_retries:
+            try:
+                query_job = self.bq_client.query(query)
+                return self.process_results(query_job, table_name, attribute_types)
+            except Exception as e:
+                retry_count += 1
+                error_msg = str(e)
+                
+                if "timeout" in error_msg.lower() or "deadline" in error_msg.lower():
+                    print(f"Timeout processing {table_name}, retry {retry_count}/{max_retries}")
+                    time.sleep(2 ** retry_count)  # Exponential backoff
+                    continue
+                elif retry_count == max_retries:
+                    print(f"Failed to process {table_name} after {max_retries} retries: {error_msg[:100]}")
+                    return 0
+                else:
+                    print(f"Error processing {table_name}: {error_msg[:100]}")
+                    return 0
+        
+        return 0
     
     def process_results(self, query_job, table_name: str, attribute_types: List[str]) -> int:
         records_processed = 0
         batch_records = []
-        batch_size = 1000
+        batch_size = 5000  # Increased batch size for better performance
         duplicates_found = 0
         
         special_tables = {
@@ -266,47 +315,68 @@ class OptimizedCMDBProcessor:
         
         special_column = special_tables.get(table_name)
         
-        for row in query_job:
-            records_processed += 1
+        try:
+            for row in query_job:
+                records_processed += 1
+                
+                if records_processed % 25000 == 0:
+                    print(f"  Processed {records_processed:,} rows from {table_name}")
+                
+                if not row[0] or not self.is_valid_value(row[0]):
+                    continue
+                
+                normalized_host = self.normalize_hostname(row[0])
+                if not normalized_host:
+                    continue
+                
+                record_data = {
+                    'host': normalized_host,
+                    'table_name': table_name
+                }
+                
+                if special_column:
+                    record_data[special_column] = 'yes'
+                
+                for i, attr_type in enumerate(attribute_types, 1):
+                    if i < len(row) and self.is_valid_value(row[i]):
+                        value = str(row[i]).strip()
+                        
+                        # Apply normalizations
+                        if attr_type == 'fqdn':
+                            value = self.normalize_fqdn(value)
+                        elif attr_type == 'region':
+                            value = self.normalize_region(value)
+                        elif attr_type == 'country':
+                            value = self.normalize_country(value)
+                        elif attr_type == 'logging_in_splunk' and table_name == 'prj-fisv-p-gcss-sas-dl9dd0f1df.SAS_BI.V_SPL_ENDPOINT_LOG':
+                            value = 'yes'
+                        
+                        record_data[attr_type] = value
+                
+                batch_records.append(record_data)
+                
+                if len(batch_records) >= batch_size:
+                    dups = self.save_batch(batch_records)
+                    duplicates_found += dups
+                    batch_records = []
             
-            if records_processed % 10000 == 0:
-                print(f"  Processed {records_processed} rows from {table_name}")
-            
-            if not row[0] or not self.is_valid_value(row[0]):
-                continue
-            
-            normalized_host = self.normalize_hostname(row[0])
-            if not normalized_host:
-                continue
-            
-            record_data = {
-                'normalized_host': normalized_host,
-                'hostname': str(row[0]).strip(),
-                'table_name': table_name
-            }
-            
-            if special_column:
-                record_data[special_column] = 'yes'
-            
-            for i, attr_type in enumerate(attribute_types, 1):
-                if i < len(row) and self.is_valid_value(row[i]):
-                    if attr_type == 'logging_in_splunk' and table_name == 'prj-fisv-p-gcss-sas-dl9dd0f1df.SAS_BI.V_SPL_ENDPOINT_LOG':
-                        record_data[attr_type] = 'yes'
-                    else:
-                        record_data[attr_type] = str(row[i]).strip()
-            
-            batch_records.append(record_data)
-            
-            if len(batch_records) >= batch_size:
+            # Process remaining records
+            if batch_records:
                 dups = self.save_batch(batch_records)
                 duplicates_found += dups
-                batch_records = []
+            
+            print(f"  Completed {table_name}: {records_processed:,} rows, {duplicates_found:,} duplicates merged")
+            
+        except Exception as e:
+            print(f"  Error processing results for {table_name}: {str(e)[:100]}")
+            # Save any remaining records before error
+            if batch_records:
+                try:
+                    dups = self.save_batch(batch_records)
+                    duplicates_found += dups
+                except:
+                    pass
         
-        if batch_records:
-            dups = self.save_batch(batch_records)
-            duplicates_found += dups
-        
-        print(f"  Completed {table_name}: {records_processed} rows, {duplicates_found} duplicates merged")
         self.stats['total_records_processed'] += records_processed
         self.stats['duplicate_hosts_found'] += duplicates_found
         
@@ -316,22 +386,31 @@ class OptimizedCMDBProcessor:
         duplicates = 0
         
         with self.db_lock:
-            for record in records:
-                normalized_host = record['normalized_host']
+            # Start transaction for better performance
+            self.duck_conn.execute("BEGIN TRANSACTION")
+            
+            try:
+                for record in records:
+                    host = record['host']
+                    
+                    if host in self.existing_hosts:
+                        duplicates += 1
+                        self.update_existing_host(host, record)
+                    else:
+                        self.insert_new_host(record)
+                        self.existing_hosts[host] = self.build_host_data(record)
                 
-                if normalized_host in self.existing_hosts:
-                    duplicates += 1
-                    self.update_existing_host(normalized_host, record)
-                else:
-                    self.insert_new_host(record)
-                    self.existing_hosts[normalized_host] = self.build_host_data(record)
+                self.duck_conn.execute("COMMIT")
+            except Exception as e:
+                self.duck_conn.execute("ROLLBACK")
+                print(f"Batch save error: {e}")
+                raise
         
         return duplicates
     
     def build_host_data(self, record: Dict) -> Dict:
         return {
             'source_tables': record['table_name'],
-            'hostname': record.get('hostname'),
             'fqdn': record.get('fqdn'),
             'domain': record.get('domain'),
             'infrastructure_type': record.get('infrastructure_type'),
@@ -356,11 +435,11 @@ class OptimizedCMDBProcessor:
         }
     
     def insert_new_host(self, record: Dict):
-        columns = ['normalized_host', 'source_tables', 'source_count']
-        values = [record['normalized_host'], record['table_name'], 1]
+        columns = ['host', 'source_tables', 'source_count']
+        values = [record['host'], record['table_name'], 1]
         
         attribute_columns = [
-            'hostname', 'fqdn', 'domain', 'infrastructure_type', 'region', 'country',
+            'fqdn', 'domain', 'infrastructure_type', 'region', 'country',
             'data_center', 'cloud_region', 'ip_address', 'class', 'system_classification',
             'business_unit', 'apm', 'cio', 'edr_coverage', 'tanium_coverage',
             'dlp_agent_coverage', 'logging_in_splunk', 'logging_in_gso',
@@ -382,8 +461,8 @@ class OptimizedCMDBProcessor:
             if "duplicate" not in str(e).lower():
                 print(f"Insert error: {e}")
     
-    def update_existing_host(self, normalized_host: str, record: Dict):
-        existing = self.existing_hosts[normalized_host]
+    def update_existing_host(self, host: str, record: Dict):
+        existing = self.existing_hosts[host]
         updates = []
         values = []
         
@@ -402,7 +481,7 @@ class OptimizedCMDBProcessor:
             existing['source_count'] = new_count
         
         attribute_columns = [
-            'hostname', 'fqdn', 'domain', 'infrastructure_type', 'region', 'country',
+            'fqdn', 'domain', 'infrastructure_type', 'region', 'country',
             'data_center', 'cloud_region', 'ip_address', 'class', 'system_classification',
             'business_unit', 'apm', 'cio', 'edr_coverage', 'tanium_coverage',
             'dlp_agent_coverage', 'logging_in_splunk', 'logging_in_gso',
@@ -437,9 +516,9 @@ class OptimizedCMDBProcessor:
         
         if updates:
             updates.append("last_updated = CURRENT_TIMESTAMP")
-            values.append(normalized_host)
+            values.append(host)
             
-            update_sql = f"UPDATE universal_cmdb SET {', '.join(updates)} WHERE normalized_host = ?"
+            update_sql = f"UPDATE universal_cmdb SET {', '.join(updates)} WHERE host = ?"
             
             try:
                 self.duck_conn.execute(update_sql, values)
@@ -464,10 +543,27 @@ class OptimizedCMDBProcessor:
         
         print(f"Processing {len(columns_by_table)} tables\n")
         
-        for idx, (table_name, table_columns) in enumerate(columns_by_table.items(), 1):
-            print(f"\n[{idx}/{len(columns_by_table)}] {table_name}")
-            self.process_table(table_name, table_columns)
-            self.stats['tables_processed'] += 1
+        # Process tables with ThreadPoolExecutor for better parallelism
+        max_workers = 3  # Adjust based on BigQuery quotas
+        
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            futures = []
+            
+            for idx, (table_name, table_columns) in enumerate(columns_by_table.items(), 1):
+                print(f"\n[{idx}/{len(columns_by_table)}] Submitting {table_name}")
+                future = executor.submit(self.process_table, table_name, table_columns)
+                futures.append((future, table_name))
+                self.stats['tables_processed'] += 1
+            
+            # Wait for all futures to complete
+            for future, table_name in futures:
+                try:
+                    result = future.result(timeout=600)  # 10 minute timeout per table
+                except Exception as e:
+                    print(f"Failed to process {table_name}: {e}")
+        
+        # Ensure all data is committed
+        self.duck_conn.execute("CHECKPOINT")
         
         self.generate_report()
         self.export_csv()
@@ -492,7 +588,7 @@ class OptimizedCMDBProcessor:
         print("\nColumn coverage:")
         
         columns = [
-            'hostname', 'fqdn', 'domain', 'business_unit', 'region', 
+            'host', 'fqdn', 'domain', 'business_unit', 'region', 
             'infrastructure_type', 'country', 'data_center', 'cloud_region',
             'ip_address', 'class', 'system_classification', 'apm', 'cio',
             'edr_coverage', 'tanium_coverage', 'dlp_agent_coverage',
@@ -516,6 +612,15 @@ class OptimizedCMDBProcessor:
         print(f"  Hosts in CrowdStrike: {crowdstrike_count:,}")
         print(f"  Hosts in CMDB: {cmdb_count:,}")
         print(f"  Hosts logging to Splunk: {splunk_log_count:,}")
+        
+        # Check for normalized values
+        print("\nNormalization statistics:")
+        
+        na_region_count = self.duck_conn.execute("SELECT COUNT(*) FROM universal_cmdb WHERE region = 'North America'").fetchone()[0]
+        us_country_count = self.duck_conn.execute("SELECT COUNT(*) FROM universal_cmdb WHERE country = 'United States'").fetchone()[0]
+        
+        print(f"  Hosts with region 'North America': {na_region_count:,}")
+        print(f"  Hosts with country 'United States': {us_country_count:,}")
     
     def export_csv(self, filename: str = "universal_cmdb_export.csv"):
         print(f"\nExporting to {filename}...")
@@ -523,7 +628,7 @@ class OptimizedCMDBProcessor:
         export_query = f"""
         COPY (
             SELECT * FROM universal_cmdb 
-            ORDER BY source_count DESC, normalized_host
+            ORDER BY source_count DESC, host
         ) TO '{filename}' (HEADER, DELIMITER ',')
         """
         
@@ -531,7 +636,10 @@ class OptimizedCMDBProcessor:
         print(f"Export complete: {filename}")
     
     def close(self):
-        self.duck_conn.close()
+        try:
+            self.duck_conn.close()
+        except:
+            pass
 
 if __name__ == "__main__":
     processor = None
