@@ -11,13 +11,25 @@ import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import threading
 
-# Minimal logging setup
-logging.basicConfig(level=logging.WARNING)
+# Enhanced logging setup
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s | %(levelname)s | %(message)s',
+    datefmt='%H:%M:%S'
+)
 logger = logging.getLogger(__name__)
 
 class FastCMDBProcessor:
     def __init__(self, json_file_path: str, duckdb_path: str = "universal_cmdb.db"):
-        print("\n═══ FAST CMDB PROCESSOR ═══\n")
+        print("\n" + "═" * 80)
+        print(" " * 25 + "FAST CMDB PROCESSOR")
+        print("═" * 80 + "\n")
+        
+        logger.info("Starting initialization...")
+        print(f"Configuration:")
+        print(f"  JSON File: {json_file_path}")
+        print(f"  Database: {duckdb_path}")
+        print()
         
         self.json_file_path = json_file_path
         self.duckdb_path = duckdb_path
@@ -87,15 +99,19 @@ class FastCMDBProcessor:
         self.global_hosts_seen = set()  # Track all hosts globally
         
         # Initialize connections
+        logger.info("Initializing BigQuery connection...")
         self._init_bigquery()
         
         # Single DuckDB connection (not thread-safe, will use lock)
+        logger.info("Initializing DuckDB connection...")
         self.duck_conn = duckdb.connect(duckdb_path)
+        logger.info("Creating database schema...")
         
         self._create_optimized_table()
         self._load_existing_hosts()
         
-        print("Initialization complete.\n")
+        logger.info("Initialization complete")
+        print("─" * 60 + "\n")
     
     def _init_bigquery(self):
         service_account_file = os.getenv('GCP_SERVICE_ACCOUNT_FILE', 'gcp/gcp_prod_key.json')
@@ -147,13 +163,15 @@ class FastCMDBProcessor:
     
     def _load_existing_hosts(self):
         """Load existing hosts into memory to prevent duplicates"""
-        print("Loading existing hosts...")
+        logger.info("Loading existing hosts from database...")
         try:
             existing = self.duck_conn.execute("SELECT normalized_host FROM universal_cmdb").fetchall()
             self.global_hosts_seen = set(row[0] for row in existing)
-            print(f"Loaded {len(self.global_hosts_seen)} existing hosts\n")
+            logger.info(f"Successfully loaded {len(self.global_hosts_seen):,} existing hosts")
+            print(f"  Existing hosts in database: {len(self.global_hosts_seen):,}\n")
         except:
-            print("No existing hosts found\n")
+            logger.info("No existing hosts found (new database)")
+            print("  Starting with empty database\n")
     
     def normalize_hostname(self, hostname: str) -> str:
         """Optimized hostname normalization"""
@@ -181,34 +199,54 @@ class FastCMDBProcessor:
     
     def load_metadata(self) -> Dict:
         """Fast metadata loading"""
-        print("Loading metadata...")
+        logger.info(f"Loading metadata from {self.json_file_path}")
+        print(f"Loading metadata...")
+        
+        start_time = time.time()
         with open(self.json_file_path, 'r') as f:
             metadata = json.load(f)
         
+        load_time = time.time() - start_time
+        
         if 'columns' in metadata:
             table_count = len(metadata['columns'])
-            print(f"Found {table_count} tables\n")
+            total_columns = sum(len(cols) for cols in metadata['columns'].values())
+            logger.info(f"Metadata loaded in {load_time:.2f}s - {table_count} tables, {total_columns} columns")
+            print(f"  Found {table_count} tables with {total_columns:,} total columns")
+            print(f"  Load time: {load_time:.2f} seconds\n")
         
         return metadata
     
     def discover_columns_comprehensive(self, metadata: Dict) -> List[Tuple[str, str, str]]:
         """Optimized column discovery"""
-        print("Discovering columns...")
+        logger.info("Starting column discovery process...")
+        print("Discovering relevant columns...")
         
         discovered_columns = []
+        tables_with_data = 0
         
         if 'columns' not in metadata:
+            logger.error("No 'columns' key in metadata")
             return []
         
         for table_name, columns in metadata['columns'].items():
+            table_discoveries = 0
             for column_name, column_type in columns.items():
                 mapped_type = self._identify_column_type_fast(column_name, column_type)
                 
                 if mapped_type:
                     discovered_columns.append((table_name, column_name, mapped_type))
+                    table_discoveries += 1
+            
+            if table_discoveries > 0:
+                tables_with_data += 1
         
         self.stats['columns_discovered'] = len(discovered_columns)
-        print(f"Discovered {len(discovered_columns)} relevant columns\n")
+        
+        logger.info(f"Discovery complete: {len(discovered_columns)} columns in {tables_with_data} tables")
+        print(f"  Discovered {len(discovered_columns)} relevant columns")
+        print(f"  Tables with relevant data: {tables_with_data}")
+        print()
         
         return discovered_columns
     
@@ -236,17 +274,46 @@ class FastCMDBProcessor:
     
     def process_tables_sequential(self, columns_by_table: Dict) -> None:
         """Process tables sequentially to avoid concurrency issues"""
-        print(f"Processing {len(columns_by_table)} tables...\n")
+        total_tables = len(columns_by_table)
+        logger.info(f"Starting sequential processing of {total_tables} tables")
+        print(f"\n{'═' * 60}")
+        print(f"Processing {total_tables} tables")
+        print(f"{'═' * 60}\n")
         
         completed = 0
+        start_time = time.time()
+        
         for table_name, table_columns in columns_by_table.items():
             completed += 1
+            table_start = time.time()
+            
+            logger.info(f"Processing table {completed}/{total_tables}: {table_name}")
+            print(f"[{completed}/{total_tables}] Processing: {table_name}")
+            
+            # Show column details
+            hostname_cols = [col for _, col, ctype in table_columns if ctype == 'hostname']
+            attr_cols = [col for _, col, ctype in table_columns if ctype != 'hostname']
+            print(f"  Hostname columns: {', '.join(hostname_cols) if hostname_cols else 'None'}")
+            print(f"  Attribute columns: {len(attr_cols)}")
+            
             try:
                 records = self.process_table_optimized(table_name, table_columns)
-                print(f"[{completed}/{len(columns_by_table)}] {table_name}: {records:,} records")
+                table_time = time.time() - table_start
+                
+                logger.info(f"Table {table_name} complete: {records:,} records in {table_time:.2f}s")
+                print(f"  ✓ Processed {records:,} records in {table_time:.2f}s")
+                print(f"  Rate: {records/max(0.01, table_time):.0f} records/second\n")
+                
             except Exception as e:
-                print(f"[{completed}/{len(columns_by_table)}] {table_name}: Error - {str(e)[:100]}")
+                table_time = time.time() - table_start
+                logger.error(f"Error processing {table_name}: {str(e)}")
+                print(f"  ✗ Error after {table_time:.2f}s: {str(e)[:100]}\n")
                 self.stats['processing_errors'] += 1
+        
+        total_time = time.time() - start_time
+        logger.info(f"All tables processed in {total_time:.2f}s")
+        print(f"{'─' * 60}")
+        print(f"Table processing complete in {total_time:.2f} seconds\n")
     
     def process_table_optimized(self, table_name: str, table_columns: List[Tuple[str, str, str]]) -> int:
         """Optimized table processing"""
@@ -293,22 +360,33 @@ class FastCMDBProcessor:
         records_processed = 0
         batch_size = 1000
         batch_records = []
+        new_hosts = 0
+        updated_hosts = 0
+        skipped_invalid = 0
+        
+        logger.info(f"Processing query results for {table_name}")
         
         for row in query_job:
             records_processed += 1
             
+            # Log progress every 10k records
+            if records_processed % 10000 == 0:
+                logger.info(f"  Processed {records_processed:,} rows from {table_name}")
+            
             if not row[0] or not self.is_valid_value(row[0]):
+                skipped_invalid += 1
                 continue
             
             normalized_host = self.normalize_hostname(row[0])
             if not normalized_host:
+                skipped_invalid += 1
                 continue
             
-            # Skip if we've already seen this host globally
+            # Track if this is new or existing
             if normalized_host in self.global_hosts_seen:
-                self.stats['hosts_updated'] += 1
-                # Still process for updates
+                updated_hosts += 1
             else:
+                new_hosts += 1
                 self.global_hosts_seen.add(normalized_host)
             
             record_data = {
@@ -317,20 +395,28 @@ class FastCMDBProcessor:
                 'table_name': table_name
             }
             
+            # Collect attributes
+            attributes_found = 0
             for i, attr_type in enumerate(attribute_types, 1):
                 if i < len(row) and self.is_valid_value(row[i]):
                     record_data[attr_type] = str(row[i]).strip()
+                    attributes_found += 1
             
             batch_records.append(record_data)
             
             if len(batch_records) >= batch_size:
+                logger.debug(f"Processing batch of {len(batch_records)} records")
                 with self.db_lock:
                     self._safe_bulk_insert_or_update(batch_records)
                 batch_records.clear()
         
+        # Process remaining records
         if batch_records:
+            logger.debug(f"Processing final batch of {len(batch_records)} records")
             with self.db_lock:
                 self._safe_bulk_insert_or_update(batch_records)
+        
+        logger.info(f"Table {table_name} results: {records_processed:,} total, {new_hosts:,} new, {updated_hosts:,} existing, {skipped_invalid:,} invalid")
         
         self.stats['total_records_processed'] += records_processed
         return records_processed
@@ -445,24 +531,81 @@ class FastCMDBProcessor:
     
     def generate_report(self):
         """Generate summary report"""
-        print("\n═══ PROCESSING REPORT ═══\n")
+        print("\n" + "═" * 80)
+        print(" " * 30 + "PROCESSING REPORT")
+        print("═" * 80 + "\n")
+        
+        logger.info("Generating final report...")
         
         total_hosts = self.duck_conn.execute("SELECT COUNT(*) FROM universal_cmdb").fetchone()[0]
         
-        print(f"Total Unique Hosts: {total_hosts:,}")
-        print(f"Tables Processed: {self.stats['tables_processed']}")
-        print(f"Records Processed: {self.stats['total_records_processed']:,}")
-        print(f"New Hosts Created: {self.stats['hosts_created']:,}")
-        print(f"Hosts Updated: {self.stats['hosts_updated']:,}")
+        print("Summary Statistics:")
+        print("─" * 40)
+        print(f"  Total Unique Hosts: {total_hosts:,}")
+        print(f"  Tables Processed: {self.stats['tables_processed']}")
+        print(f"  Records Processed: {self.stats['total_records_processed']:,}")
+        print(f"  New Hosts Created: {self.stats['hosts_created']:,}")
+        print(f"  Hosts Updated: {self.stats['hosts_updated']:,}")
         
         if self.stats['processing_errors'] > 0:
-            print(f"Processing Errors: {self.stats['processing_errors']}")
+            print(f"  Processing Errors: {self.stats['processing_errors']}")
+        
+        # Data quality metrics
+        print("\nData Coverage Analysis:")
+        print("─" * 40)
+        
+        columns_to_check = [
+            'hostname', 'business_unit', 'region', 'infrastructure_type', 
+            'ip_address', 'country', 'data_center', 'domain'
+        ]
+        
+        for col in columns_to_check:
+            count_query = f"SELECT COUNT(*) FROM universal_cmdb WHERE {col} IS NOT NULL AND {col} != ''"
+            count = self.duck_conn.execute(count_query).fetchone()[0]
+            percentage = (count / total_hosts * 100) if total_hosts > 0 else 0
+            
+            if count > 0:
+                print(f"  {col:20s}: {count:8,} records ({percentage:5.1f}%)")
+                
+                # Get sample values
+                sample_query = f"SELECT DISTINCT {col} FROM universal_cmdb WHERE {col} IS NOT NULL AND {col} != '' LIMIT 2"
+                samples = self.duck_conn.execute(sample_query).fetchall()
+                if samples:
+                    sample_values = [str(s[0])[:30] for s in samples]
+                    print(f"    Examples: {', '.join(sample_values)}")
+        
+        # Top source tables
+        print("\nTop Source Tables by Host Count:")
+        print("─" * 40)
+        
+        source_query = """
+        SELECT source_tables, COUNT(*) as cnt 
+        FROM universal_cmdb 
+        WHERE source_tables IS NOT NULL
+        GROUP BY source_tables
+        ORDER BY cnt DESC
+        LIMIT 5
+        """
+        
+        for row in self.duck_conn.execute(source_query).fetchall():
+            if row[0]:
+                tables = row[0][:60] + "..." if len(row[0]) > 60 else row[0]
+                print(f"  {tables}: {row[1]:,} hosts")
+        
+        logger.info(f"Report complete - {total_hosts:,} total hosts")
     
     def export_comprehensive(self, filename: str = "universal_cmdb_export.csv"):
         """Export to CSV"""
-        print(f"\nExporting to {filename}...")
+        logger.info(f"Starting export to {filename}")
+        print(f"\nExporting data to {filename}...")
         
         try:
+            start_time = time.time()
+            
+            # Get row count first
+            row_count = self.duck_conn.execute("SELECT COUNT(*) FROM universal_cmdb").fetchone()[0]
+            print(f"  Exporting {row_count:,} rows...")
+            
             export_query = f"""
             COPY (
                 SELECT * FROM universal_cmdb 
@@ -471,30 +614,45 @@ class FastCMDBProcessor:
             """
             
             self.duck_conn.execute(export_query)
-            print(f"Export complete: {filename}")
+            
+            export_time = time.time() - start_time
+            file_size = os.path.getsize(filename) / (1024 * 1024)  # Size in MB
+            
+            logger.info(f"Export complete: {row_count:,} rows, {file_size:.2f}MB in {export_time:.2f}s")
+            print(f"  ✓ Export complete: {file_size:.2f}MB in {export_time:.2f} seconds")
+            
         except Exception as e:
-            print(f"Export error: {str(e)}")
+            logger.error(f"Export failed: {str(e)}")
+            print(f"  ✗ Export error: {str(e)}")
     
     def process_all_fast(self):
         """Main processing function"""
-        print("\n═══ STARTING FAST PROCESSING ═══\n")
+        print("\n" + "=" * 80)
+        print(" " * 20 + "STARTING CMDB PROCESSING")
+        print("=" * 80 + "\n")
         
-        start_time = time.time()
+        overall_start = time.time()
+        logger.info("Starting CMDB processing pipeline")
         
         # Load and discover
         metadata = self.load_metadata()
         discovered_columns = self.discover_columns_comprehensive(metadata)
         
         if not discovered_columns:
-            print("No processable columns discovered")
+            logger.error("No processable columns discovered")
+            print("ERROR: No processable columns discovered")
             return
         
         # Organize by table
+        logger.info("Organizing columns by source table...")
         columns_by_table = defaultdict(list)
         for table_name, column_name, column_type in discovered_columns:
             columns_by_table[table_name].append((table_name, column_name, column_type))
         
-        # Process tables sequentially to avoid concurrency issues
+        print(f"Tables to process: {len(columns_by_table)}")
+        print(f"Average columns per table: {len(discovered_columns) / len(columns_by_table):.1f}")
+        
+        # Process tables sequentially
         self.process_tables_sequential(columns_by_table)
         
         # Generate report
@@ -503,11 +661,18 @@ class FastCMDBProcessor:
         # Export
         self.export_comprehensive()
         
-        total_time = time.time() - start_time
+        total_time = time.time() - overall_start
         
-        print(f"\n═══ PROCESSING COMPLETE ═══")
-        print(f"Total Time: {total_time:.2f} seconds")
-        print(f"Processing Rate: {self.stats['total_records_processed']/max(1, total_time):.0f} records/second")
+        print("\n" + "=" * 80)
+        print(" " * 25 + "PROCESSING COMPLETE")
+        print("=" * 80)
+        
+        print(f"\nPerformance Metrics:")
+        print(f"  Total Time: {total_time:.2f} seconds ({total_time/60:.1f} minutes)")
+        print(f"  Processing Rate: {self.stats['total_records_processed']/max(1, total_time):.0f} records/second")
+        print(f"  Average per Table: {total_time/max(1, len(columns_by_table)):.2f} seconds")
+        
+        logger.info(f"Pipeline complete in {total_time:.2f}s - {self.stats['total_records_processed']:,} records processed")
     
     def close_connections(self):
         """Clean up connections"""
