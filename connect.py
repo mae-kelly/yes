@@ -187,12 +187,12 @@ class OptimizedCMDBProcessor:
         if not region or not isinstance(region, str):
             return region
         
-        region = region.strip()
-        # Convert NA to North America
+        region = region.strip().lower()  # Apply lowercase here
+        # Convert NA to North America (but lowercase)
         if region.upper() in ['NA', 'N.A.', 'N/A']:
-            return 'North America'
-        elif region.lower() == 'north america':
-            return 'North America'
+            return 'north america'
+        elif region == 'north america':
+            return 'north america'
         return region
     
     def normalize_country(self, country: str) -> str:
@@ -200,13 +200,19 @@ class OptimizedCMDBProcessor:
         if not country or not isinstance(country, str):
             return country
         
-        country = country.strip()
-        # Convert USA to United States
+        country = country.strip().lower()  # Apply lowercase here
+        # Convert USA to United States (but lowercase)
         if country.upper() in ['USA', 'U.S.A.', 'US', 'U.S.']:
-            return 'United States'
-        elif country.lower() == 'united states':
-            return 'United States'
+            return 'united states'
+        elif country == 'united states':
+            return 'united states'
         return country
+    
+    def normalize_value(self, value: str) -> str:
+        """Normalize any string value by converting to lowercase"""
+        if not value or not isinstance(value, str):
+            return value
+        return value.strip().lower()
     
     def is_valid_value(self, value) -> bool:
         if not value:
@@ -341,7 +347,7 @@ class OptimizedCMDBProcessor:
                     if i < len(row) and self.is_valid_value(row[i]):
                         value = str(row[i]).strip()
                         
-                        # Apply normalizations
+                        # Apply normalizations - now all values get lowercased
                         if attr_type == 'fqdn':
                             value = self.normalize_fqdn(value)
                         elif attr_type == 'region':
@@ -350,6 +356,9 @@ class OptimizedCMDBProcessor:
                             value = self.normalize_country(value)
                         elif attr_type == 'logging_in_splunk' and table_name == 'prj-fisv-p-gcss-sas-dl9dd0f1df.SAS_BI.V_SPL_ENDPOINT_LOG':
                             value = 'yes'
+                        else:
+                            # Apply lowercase normalization to all other string values
+                            value = self.normalize_value(value)
                         
                         record_data[attr_type] = value
                 
@@ -613,14 +622,14 @@ class OptimizedCMDBProcessor:
         print(f"  Hosts in CMDB: {cmdb_count:,}")
         print(f"  Hosts logging to Splunk: {splunk_log_count:,}")
         
-        # Check for normalized values
+        # Check for normalized values (now lowercase)
         print("\nNormalization statistics:")
         
-        na_region_count = self.duck_conn.execute("SELECT COUNT(*) FROM universal_cmdb WHERE region = 'North America'").fetchone()[0]
-        us_country_count = self.duck_conn.execute("SELECT COUNT(*) FROM universal_cmdb WHERE country = 'United States'").fetchone()[0]
+        na_region_count = self.duck_conn.execute("SELECT COUNT(*) FROM universal_cmdb WHERE region = 'north america'").fetchone()[0]
+        us_country_count = self.duck_conn.execute("SELECT COUNT(*) FROM universal_cmdb WHERE country = 'united states'").fetchone()[0]
         
-        print(f"  Hosts with region 'North America': {na_region_count:,}")
-        print(f"  Hosts with country 'United States': {us_country_count:,}")
+        print(f"  Hosts with region 'north america': {na_region_count:,}")
+        print(f"  Hosts with country 'united states': {us_country_count:,}")
     
     def export_csv(self, filename: str = "universal_cmdb_export.csv"):
         print(f"\nExporting to {filename}...")
