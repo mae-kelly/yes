@@ -401,50 +401,68 @@ class UltraFastCMDBProcessor:
         completed = 0
         start_time = time.time()
         
+        # Process with immediate feedback
         with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
             futures = {}
             
+            # Submit all tasks
             for table_name, table_columns in columns_by_table.items():
+                print(f"Submitting table: {table_name}")
                 future = executor.submit(self.process_table_ultra_fast, table_name, table_columns)
                 futures[future] = table_name
             
+            print(f"\nAll {len(futures)} tables submitted for processing\n")
+            
+            # Process results as they complete
             for future in as_completed(futures):
                 completed += 1
                 table_name = futures[future]
                 
                 try:
-                    records, table_time = future.result()
+                    records, table_time = future.result(timeout=300)  # 5 minute timeout
                     
                     logger.info(f"Table {table_name} complete: {records:,} records in {table_time:.2f}s")
-                    print(f"[{completed}/{total_tables}] {table_name}")
-                    print(f"  ✓ {records:,} records in {table_time:.2f}s ({records/max(0.01, table_time):.0f} rec/s)")
+                    print(f"[{completed}/{total_tables}] ✓ {table_name}")
+                    print(f"    Processed {records:,} records in {table_time:.2f}s ({records/max(0.01, table_time):.0f} rec/s)")
+                    
+                    # Show overall progress
+                    elapsed = time.time() - start_time
+                    avg_time = elapsed / completed
+                    remaining = (total_tables - completed) * avg_time
+                    print(f"    Progress: {completed}/{total_tables} tables | ETA: {remaining/60:.1f} minutes\n")
                     
                 except Exception as e:
                     logger.error(f"Error processing {table_name}: {str(e)}")
-                    print(f"[{completed}/{total_tables}] {table_name}")
-                    print(f"  ✗ Error: {str(e)[:100]}")
+                    print(f"[{completed}/{total_tables}] ✗ {table_name}")
+                    print(f"    Error: {str(e)[:100]}\n")
                     self.stats['processing_errors'] += 1
         
         total_time = time.time() - start_time
         logger.info(f"All tables processed in {total_time:.2f}s")
-        print(f"\n{'─' * 60}")
-        print(f"Table processing complete in {total_time:.2f} seconds\n")
+        print(f"{'─' * 60}")
+        print(f"Table processing complete in {total_time:.2f} seconds")
+        print(f"Success rate: {(total_tables - self.stats['processing_errors'])/total_tables*100:.1f}%\n")
     
     def process_table_ultra_fast(self, table_name: str, table_columns: List[Tuple[str, str, str]]) -> Tuple[int, float]:
         """Ultra-fast table processing with streaming"""
         start_time = time.time()
         
+        print(f"  Starting to process: {table_name}")
+        
         hostname_cols = [(col, ctype) for _, col, ctype in table_columns if ctype == 'hostname']
         attribute_cols = [(col, ctype) for _, col, ctype in table_columns if ctype != 'hostname']
         
         if not hostname_cols:
+            print(f"  Skipping {table_name} - no hostname columns")
             return 0, 0
         
         primary_hostname_col = hostname_cols[0][0]
         all_columns = [primary_hostname_col] + [col for col, _ in attribute_cols]
         attribute_types = [ctype for _, ctype in attribute_cols]
         
-        # Build optimized query with page size
+        print(f"  Querying {table_name} with {len(all_columns)} columns...")
+        
+        # Build optimized query
         query = f"""
         SELECT {', '.join(f'`{col}`' for col in all_columns)}
         FROM `{table_name}`
@@ -452,15 +470,19 @@ class UltraFastCMDBProcessor:
         AND `{primary_hostname_col}` != ''
         AND `{primary_hostname_col}` != '*Undefined'
         AND LENGTH(`{primary_hostname_col}`) > 0
+        LIMIT 500000
         """
         
         try:
-            # Use page_size for streaming results
+            # Execute query
             job_config = bigquery.QueryJobConfig()
             job_config.use_query_cache = True
             
             query_job = self.bq_client.query(query, job_config=job_config)
             
+            print(f"  Query submitted for {table_name}, waiting for results...")
+            
+            # Process results
             records_processed = self._process_results_ultra_fast(
                 query_job, table_name, primary_hostname_col, attribute_types
             )
@@ -468,21 +490,39 @@ class UltraFastCMDBProcessor:
             self.stats['tables_processed'] += 1
             elapsed = time.time() - start_time
             
+            print(f"  Completed {table_name}: {records_processed:,} records")
+            
             return records_processed, elapsed
             
         except Exception as e:
+            print(f"  ERROR in {table_name}: {str(e)[:200]}")
             self.stats['processing_errors'] += 1
             raise e
     
     def _process_results_ultra_fast(self, query_job, table_name: str, hostname_col: str, attribute_types: List[str]) -> int:
         """Ultra-fast streaming result processing"""
         records_processed = 0
-        batch_size = 5000  # Larger batches for speed
+        batch_size = 5000
         batch_records = []
-        local_seen = set()  # Local deduplication
+        local_seen = set()
         
-        for row in query_job:
+        print(f"  Fetching results from {table_name}...")
+        
+        # Get results
+        try:
+            results = list(query_job.result(timeout=300))  # 5 minute timeout
+            print(f"  Retrieved {len(results):,} rows from {table_name}")
+        except Exception as e:
+            print(f"  ERROR fetching results from {table_name}: {str(e)}")
+            return 0
+        
+        # Process results
+        for row_idx, row in enumerate(results):
             records_processed += 1
+            
+            # Progress indicator every 10k records
+            if records_processed % 10000 == 0:
+                print(f"    Processing row {records_processed:,} of {len(results):,} from {table_name}")
             
             # Fast validation
             if not row[0]:
@@ -523,12 +563,16 @@ class UltraFastCMDBProcessor:
             
             # Process batch when full
             if len(batch_records) >= batch_size:
+                print(f"    Writing batch of {len(batch_records)} records to database...")
                 self._bulk_write_ultra_fast(batch_records)
                 batch_records = []
         
         # Process remaining records
         if batch_records:
+            print(f"    Writing final batch of {len(batch_records)} records to database...")
             self._bulk_write_ultra_fast(batch_records)
+        
+        print(f"  Finished processing {table_name}: {records_processed:,} total rows")
         
         self.stats['total_records_processed'] += records_processed
         return records_processed
