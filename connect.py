@@ -46,6 +46,13 @@ class OptimizedCMDBProcessor:
         self.duplicate_tracker = set()
         self._lock = threading.Lock()
         
+        # Special tables for presence tracking
+        self.special_tables = {
+            'prj-fisv-p-gcss-sas-dl9dd0f1df.SAS_BI.V_DIM_ENDPOINTAGENT': 'present_in_crowdstrike',
+            'prj-fisv-p-gcss-sas-dl9dd0f1df.SAS_BI.V_DIM_ENDPOINT': 'present_in_cmdb',
+            'prj-fisv-p-gcss-sas-dl9dd0f1df.SAS_BI.V_SPL_ENDPOINT_LOG': 'present_in_splunk'
+        }
+        
         # Initialize connections
         self._init_bigquery()
         self.duck_conn = duckdb.connect(duckdb_path, config={'threads': self.max_workers})
@@ -147,6 +154,9 @@ class OptimizedCMDBProcessor:
             dlp_agent_coverage TEXT,
             logging_in_splunk TEXT,
             logging_in_gso TEXT,
+            present_in_crowdstrike TEXT DEFAULT 'No',
+            present_in_cmdb TEXT DEFAULT 'No',
+            present_in_splunk TEXT DEFAULT 'No',
             data_quality_score FLOAT DEFAULT 1.0,
             source_count INTEGER DEFAULT 1,
             first_seen TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -163,7 +173,10 @@ class OptimizedCMDBProcessor:
             "CREATE INDEX IF NOT EXISTS idx_region ON universal_cmdb(region)",
             "CREATE INDEX IF NOT EXISTS idx_infrastructure_type ON universal_cmdb(infrastructure_type)",
             "CREATE INDEX IF NOT EXISTS idx_source_count ON universal_cmdb(source_count)",
-            "CREATE INDEX IF NOT EXISTS idx_last_updated ON universal_cmdb(last_updated)"
+            "CREATE INDEX IF NOT EXISTS idx_last_updated ON universal_cmdb(last_updated)",
+            "CREATE INDEX IF NOT EXISTS idx_present_in_crowdstrike ON universal_cmdb(present_in_crowdstrike)",
+            "CREATE INDEX IF NOT EXISTS idx_present_in_cmdb ON universal_cmdb(present_in_cmdb)",
+            "CREATE INDEX IF NOT EXISTS idx_present_in_splunk ON universal_cmdb(present_in_splunk)"
         ]
         
         for index_sql in indexes:
@@ -287,6 +300,13 @@ class OptimizedCMDBProcessor:
             return 0
         
         primary_hostname_col = hostname_cols[0][0]
+        
+        # Check if this is a special presence table
+        presence_column = self.special_tables.get(table_name)
+        if presence_column:
+            logger.info(f"🔍 Processing special table for {presence_column}: {table_name}")
+            return self._process_presence_table(table_name, primary_hostname_col, presence_column)
+        
         all_columns = [primary_hostname_col] + [col for col, _ in attribute_cols]
         attribute_types = [ctype for _, ctype in attribute_cols]
         
@@ -307,6 +327,84 @@ class OptimizedCMDBProcessor:
         except Exception as e:
             logger.error(f"❌ Query failed for {table_name}: {str(e)[:100]}")
             return 0
+    
+    def _process_presence_table(self, table_name: str, hostname_col: str, presence_column: str) -> int:
+        """Process special tables to mark host presence"""
+        logger.info(f"🔍 Checking host presence in {presence_column}")
+        
+        # Simple query to get all hostnames from this table
+        query = f"""
+        SELECT DISTINCT `{hostname_col}`
+        FROM `{table_name}`
+        WHERE `{hostname_col}` IS NOT NULL 
+        AND `{hostname_col}` != ''
+        AND `{hostname_col}` != '*Undefined'
+        AND LENGTH(`{hostname_col}`) > 1
+        LIMIT 1000000
+        """
+        
+        try:
+            job_config = bigquery.QueryJobConfig()
+            job_config.use_query_cache = True
+            job_config.maximum_bytes_billed = 5 * 1024 * 1024 * 1024  # 5GB limit
+            
+            query_job = self.bq_client.query(query, job_config=job_config)
+            results = query_job.result()
+            
+            # Process results and update presence
+            presence_hosts = []
+            records_processed = 0
+            
+            for row in results:
+                if not self.running:
+                    break
+                    
+                records_processed += 1
+                
+                if not row[0] or not self.is_valid_value(row[0]):
+                    continue
+                
+                normalized_host = self.normalize_hostname(row[0])
+                if normalized_host:
+                    presence_hosts.append(normalized_host)
+            
+            # Bulk update presence for all found hosts
+            if presence_hosts:
+                self._bulk_update_presence(presence_hosts, presence_column)
+                logger.info(f"✅ Updated {len(presence_hosts):,} hosts for {presence_column}")
+            
+            with self._lock:
+                self.stats['total_records_processed'] += records_processed
+                self.stats['tables_processed'] += 1
+            
+            return records_processed
+            
+        except Exception as e:
+            logger.error(f"❌ Presence query failed for {table_name}: {str(e)[:100]}")
+            return 0
+    
+    def _bulk_update_presence(self, presence_hosts: List[str], presence_column: str):
+        """Bulk update presence column for hosts"""
+        if not presence_hosts:
+            return
+        
+        # Process in chunks to avoid query size limits
+        chunk_size = 1000
+        
+        for i in range(0, len(presence_hosts), chunk_size):
+            chunk = presence_hosts[i:i + chunk_size]
+            placeholders = ','.join(['?' for _ in chunk])
+            
+            update_sql = f"""
+            UPDATE universal_cmdb 
+            SET {presence_column} = 'Yes', last_updated = CURRENT_TIMESTAMP
+            WHERE normalized_host IN ({placeholders})
+            """
+            
+            try:
+                self.duck_conn.execute(update_sql, chunk)
+            except Exception as e:
+                logger.error(f"❌ Presence update error for {presence_column}: {str(e)[:100]}")
     
     def _build_fast_query(self, table_name: str, columns: List[str], hostname_col: str) -> str:
         """Build optimized query with sampling for large tables"""
@@ -551,6 +649,12 @@ class OptimizedCMDBProcessor:
         
         try:
             total_hosts = self.duck_conn.execute("SELECT COUNT(*) FROM universal_cmdb").fetchone()[0]
+            
+            # Get presence statistics
+            crowdstrike_count = self.duck_conn.execute("SELECT COUNT(*) FROM universal_cmdb WHERE present_in_crowdstrike = 'Yes'").fetchone()[0]
+            cmdb_count = self.duck_conn.execute("SELECT COUNT(*) FROM universal_cmdb WHERE present_in_cmdb = 'Yes'").fetchone()[0]
+            splunk_count = self.duck_conn.execute("SELECT COUNT(*) FROM universal_cmdb WHERE present_in_splunk = 'Yes'").fetchone()[0]
+            
             total_time = time.time() - self.stats['start_time']
             
             print("\n" + "=" * 80)
@@ -564,6 +668,11 @@ class OptimizedCMDBProcessor:
             print(f"➕ New Hosts Created: {self.stats['hosts_created']:,}")
             print(f"🔄 Hosts Updated: {self.stats['hosts_updated']:,}")
             print(f"⚡ Processing Speed: {self.stats['total_records_processed']/max(1, total_time):.0f} records/sec")
+            print()
+            print("🔍 PRESENCE ANALYSIS:")
+            print(f"   🛡️  CrowdStrike Coverage: {crowdstrike_count:,} hosts ({crowdstrike_count/max(1, total_hosts)*100:.1f}%)")
+            print(f"   🗄️  CMDB Coverage: {cmdb_count:,} hosts ({cmdb_count/max(1, total_hosts)*100:.1f}%)")
+            print(f"   📊 Splunk Coverage: {splunk_count:,} hosts ({splunk_count/max(1, total_hosts)*100:.1f}%)")
             
             if self.stats['processing_errors'] > 0:
                 print(f"⚠️  Processing Errors: {self.stats['processing_errors']}")
