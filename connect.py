@@ -8,25 +8,9 @@ from typing import Dict, List, Set, Tuple, Optional
 import logging
 from collections import defaultdict, Counter
 import time
-from datetime import datetime, timedelta
+from datetime import datetime
 import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
-import multiprocessing
-import subprocess
-import sys
-import platform
-
-try:
-    import psutil
-except ImportError:
-    subprocess.check_call([sys.executable, '-m', 'pip', 'install', 'psutil'])
-    import psutil
-
-try:
-    import wakepy
-except ImportError:
-    subprocess.check_call([sys.executable, '-m', 'pip', 'install', 'wakepy'])
-    import wakepy
 
 class FeminineFormatter(logging.Formatter):
     def format(self, record):
@@ -44,116 +28,23 @@ logger = logging.getLogger(__name__)
 logger.handlers.clear()
 logger.addHandler(console_handler)
 
-class SystemOptimizer:
-    def __init__(self):
-        self.keep_alive_session = None
-        self.original_priority = None
-        
-    def keep_system_awake(self):
-        try:
-            self.keep_alive_session = wakepy.keep.running()
-            print("   ♡ System sleep prevention activated")
-            return True
-        except Exception as e:
-            print(f"   ₊˚⊹ Warning: Could not prevent system sleep: {e}")
-            return False
-    
-    def optimize_process_priority(self):
-        try:
-            current_process = psutil.Process()
-            self.original_priority = current_process.nice()
-            
-            if platform.system() == "Windows":
-                current_process.nice(psutil.HIGH_PRIORITY_CLASS)
-            else:
-                current_process.nice(-10)
-            
-            print(f"   ✧˚ Process priority elevated from {self.original_priority}")
-            return True
-        except Exception as e:
-            print(f"   ₊˚⊹ Warning: Could not elevate process priority: {e}")
-            return False
-    
-    def get_optimal_workers(self):
-        cpu_count = multiprocessing.cpu_count()
-        memory_gb = psutil.virtual_memory().total / (1024**3)
-        
-        optimal_workers = min(cpu_count, max(2, int(memory_gb / 4)))
-        
-        print(f"   𖦹 CPU cores: {cpu_count}, RAM: {memory_gb:.1f}GB")
-        print(f"   ♡ Optimal worker threads: {optimal_workers}")
-        
-        return optimal_workers
-    
-    def cleanup(self):
-        if self.keep_alive_session:
-            try:
-                self.keep_alive_session.close()
-                print("   ✧˚ System sleep prevention deactivated")
-            except:
-                pass
-        
-        if self.original_priority is not None:
-            try:
-                current_process = psutil.Process()
-                current_process.nice(self.original_priority)
-                print(f"   ♡ Process priority restored to {self.original_priority}")
-            except:
-                pass
-
-class PerformanceMonitor:
-    def __init__(self):
-        self.start_time = time.time()
-        self.last_check = time.time()
-        self.processed_records = 0
-        
-    def update_progress(self, records_added: int, current_table: str = ""):
-        self.processed_records += records_added
-        current_time = time.time()
-        
-        total_elapsed = current_time - self.start_time
-        records_per_second = self.processed_records / total_elapsed if total_elapsed > 0 else 0
-        
-        if current_table:
-            print(f"      ⋆｡‧˚ Current: {current_table}")
-        
-        print(f"      ♡ Processed: {self.processed_records:,} records")
-        print(f"      𖦹 Speed: {records_per_second:.0f} records/second")
-        print(f"      ✧˚ Elapsed: {timedelta(seconds=int(total_elapsed))}")
-        
-        memory_usage = psutil.virtual_memory().percent
-        cpu_usage = psutil.cpu_percent(interval=0.1)
-        
-        print(f"      ༘˚⋆ CPU: {cpu_usage:.1f}%, Memory: {memory_usage:.1f}%")
-
 class OptimizedCMDBProcessor:
     def __init__(self, json_file_path: str, duckdb_path: str = "universal_cmdb.db"):
         print("\n\n")
-        print("═" * 90)
-        print("                ₊˚✩ OPTIMIZED CMDB PROCESSOR INITIALIZATION ✩˚₊")
-        print("═" * 90)
+        print("═" * 80)
+        print("                    ₊˚✩ CMDB PROCESSOR INITIALIZATION ✩˚₊")
+        print("═" * 80)
+        print()
+        
+        logger.info("Starting initialization process...")
         print()
         
         self.json_file_path = json_file_path
         self.duckdb_path = duckdb_path
         
-        print("   Initializing system optimizations...")
+        logger.info("༘˚⋆ Setting up column mapping dictionaries")
+        print("   Building comprehensive attribute patterns...")
         print()
-        
-        self.system_optimizer = SystemOptimizer()
-        self.performance_monitor = PerformanceMonitor()
-        
-        print("   ༘˚⋆ Optimizing system performance...")
-        self.system_optimizer.keep_system_awake()
-        self.system_optimizer.optimize_process_priority()
-        
-        self.optimal_workers = self.system_optimizer.get_optimal_workers()
-        self.batch_size = min(5000, max(1000, self.optimal_workers * 500))
-        
-        print(f"   ♡ Batch size optimized: {self.batch_size:,} records")
-        print()
-        
-        logger.info("Setting up column mapping dictionaries...")
         
         self.column_mapping = {
             'fqdn': 'fqdn',
@@ -259,51 +150,52 @@ class OptimizedCMDBProcessor:
         
         self.stats = {
             'tables_processed': 0,
-            'tables_total': 0,
             'columns_discovered': 0,
             'hosts_created': 0,
             'hosts_updated': 0,
             'duplicate_hosts_found': 0,
             'total_records_processed': 0,
-            'processing_errors': 0,
-            'current_table': '',
-            'processing_start_time': time.time()
+            'processing_errors': 0
         }
         
         self.duplicate_tracker = set()
         
-        print("   𖦹 Establishing BigQuery connection...")
+        print("   ♡ Pattern dictionaries configured")
+        print()
+        
+        logger.info("𖦹 Establishing BigQuery connection")
         self._init_bigquery()
         print()
         
-        print("   ⋆｡‧˚ Establishing DuckDB connection...")
+        logger.info("⋆｡‧˚ Establishing DuckDB connection")
         self.duck_conn = duckdb.connect(duckdb_path)
-        print(f"      Database: {duckdb_path}")
+        print("   Database file:", duckdb_path)
         print()
         
-        print("   ༘˚⋆ Creating optimized database schema...")
+        logger.info("༘˚⋆ Creating optimized database schema")
         self._create_optimized_table()
-        print("      Schema: 25 columns with performance indexes")
+        print("   Schema with 25 columns and indexes created")
         print()
         
-        print("─" * 70)
-        print("              ♡ High-Performance Initialization Complete ♡")
-        print("─" * 70)
-        print()
+        print("─" * 60)
+        print("                ♡ Initialization Complete ♡")
+        print("─" * 60)
+        print("\n\n")
         
     def _init_bigquery(self):
         service_account_file = os.getenv('GCP_SERVICE_ACCOUNT_FILE', 'gcp/gcp_prod_key.json')
         
         if os.path.exists(service_account_file):
-            print(f"      Using service account: {os.path.basename(service_account_file)}")
+            logger.info(f"   Using service account authentication")
+            print(f"   File: {service_account_file}")
             credentials = service_account.Credentials.from_service_account_file(service_account_file)
             self.bq_client = bigquery.Client(project="chronicle-fisv", credentials=credentials)
-            print("      ✧˚ Authentication successful")
+            print("   ✧˚ Authentication successful")
         else:
-            print("      Using default credentials")
+            logger.info("   Using default BigQuery credentials")
             self.bq_client = bigquery.Client(project="chronicle-fisv")
-            print("      ♡ Connected successfully")
-    
+            print("   ♡ Connected with default credentials")
+            
     def _create_optimized_table(self):
         create_sql = """
         CREATE TABLE IF NOT EXISTS universal_cmdb (
@@ -350,7 +242,7 @@ class OptimizedCMDBProcessor:
                 self.duck_conn.execute(index_sql)
             except:
                 pass
-    
+                
     def normalize_hostname(self, hostname: str) -> str:
         if not hostname or not isinstance(hostname, str) or hostname.strip() == '*Undefined':
             return ""
@@ -380,7 +272,8 @@ class OptimizedCMDBProcessor:
         print("═" * 80)
         print()
         
-        print(f"   Loading: {self.json_file_path}")
+        logger.info(f"Loading metadata file...")
+        print(f"   Source: {self.json_file_path}")
         print()
         
         start_time = time.time()
@@ -394,22 +287,19 @@ class OptimizedCMDBProcessor:
             table_count = len(metadata['columns'])
             column_count = sum(len(cols) for cols in metadata['columns'].values())
             
-            self.stats['tables_total'] = table_count
-            
-            print(f"   ♡ Loaded in {load_time:.2f} seconds")
+            print(f"   ♡ Successfully loaded in {load_time:.2f} seconds")
             print()
-            print(f"   Tables discovered: {table_count:,}")
-            print(f"   Columns discovered: {column_count:,}")
-            print(f"   Average columns per table: {column_count/table_count:.1f}")
+            print(f"   Tables found: {table_count:,}")
+            print(f"   Total columns: {column_count:,}")
             print()
         else:
-            print("   ₊˚⊹ Warning: Metadata structure issue")
+            print("   ₊˚⊹ Warning: Metadata missing 'columns' key")
             print()
         
         print("─" * 60)
-        print("              ✧˚ Metadata Analysis Complete ✧˚")
+        print("              ✧˚ Metadata Loading Complete ✧˚")
         print("─" * 60)
-        print()
+        print("\n\n")
             
         return metadata
     
@@ -419,26 +309,22 @@ class OptimizedCMDBProcessor:
         print("═" * 80)
         print()
         
-        print("   Advanced pattern matching analysis...")
+        logger.info("Starting comprehensive column analysis...")
+        print("   Using advanced pattern matching across all table columns")
         print()
         
         discovered_columns = []
         
         if 'columns' not in metadata:
-            print("   𖦹 Error: Invalid metadata structure")
+            print("   𖦹 Error: No columns found in metadata structure")
             return []
         
         table_count = len(metadata['columns'])
-        
-        print(f"   Scanning {table_count} tables...")
+        print(f"   Analyzing {table_count} tables for relevant data...")
         print()
         
-        progress_interval = max(1, table_count // 20)
-        
         for table_idx, (table_name, columns) in enumerate(metadata['columns'].items(), 1):
-            if table_idx % progress_interval == 0 or table_idx == table_count:
-                progress_pct = (table_idx / table_count) * 100
-                print(f"   ⋆｡‧˚ Progress: {progress_pct:.1f}% ({table_idx}/{table_count})")
+            print(f"   Table {table_idx:2d}/{table_count}: {table_name}")
             
             table_matches = 0
             
@@ -448,17 +334,23 @@ class OptimizedCMDBProcessor:
                 if mapped_type:
                     discovered_columns.append((table_name, column_name, mapped_type))
                     table_matches += 1
+                    
+                    match_reason = self._get_match_reason(column_name, column_type, mapped_type)
+                    print(f"      ♡ {column_name} → {mapped_type}")
+                    print(f"         ({match_reason})")
             
             if table_matches > 0:
-                print(f"      ♡ {os.path.basename(table_name)}: {table_matches} columns")
+                print(f"      𖦹 Found {table_matches} relevant columns")
+            else:
+                print(f"      ₊˚⊹ No relevant columns found")
+            print()
         
         self.stats['columns_discovered'] = len(discovered_columns)
         
-        print()
         print("─" * 60)
-        print(f"    ✧˚ Discovery Complete: {len(discovered_columns)} Mappable Columns ✧˚")
+        print(f"         ✧˚ Discovery Complete: {len(discovered_columns)} Columns ✧˚")
         print("─" * 60)
-        print()
+        print("\n\n")
         
         return discovered_columns
     
@@ -480,76 +372,87 @@ class OptimizedCMDBProcessor:
         
         return None
     
-    def process_table_batch_optimized(self, table_name: str, table_columns: List[Tuple[str, str, str]]) -> int:
-        self.stats['current_table'] = table_name
-        table_display = os.path.basename(table_name)
+    def _get_match_reason(self, column_name: str, column_type, mapped_type: str) -> str:
+        column_lower = column_name.lower()
+        type_lower = str(column_type).lower() if column_type else ""
         
-        print("─" * 80)
-        print(f"   🔄 PROCESSING: {table_display}")
-        print("─" * 80)
+        if isinstance(column_type, str) and type_lower in self.column_mapping:
+            return f"exact type match: '{column_type}'"
+        
+        if mapped_type == 'hostname':
+            for pattern in self.hostname_patterns:
+                if pattern in column_lower:
+                    return f"hostname pattern: '{pattern}'"
+        
+        for target_type, patterns in self.advanced_patterns.items():
+            if target_type == mapped_type:
+                for pattern in patterns:
+                    if pattern in column_lower:
+                        return f"column name pattern: '{pattern}'"
+                    if pattern in type_lower:
+                        return f"column type pattern: '{pattern}'"
+        
+        return "advanced pattern match"
+    
+    def process_table_optimized(self, table_name: str, table_columns: List[Tuple[str, str, str]]) -> int:
+        print("─" * 70)
+        print(f"   Processing: {table_name}")
+        print("─" * 70)
         print()
         
         hostname_cols = [(col, ctype) for _, col, ctype in table_columns if ctype == 'hostname']
         attribute_cols = [(col, ctype) for _, col, ctype in table_columns if ctype != 'hostname']
         
         if not hostname_cols:
-            print("   ₊˚⊹ Skipped - no hostname columns")
+            print("   ₊˚⊹ Skipping table - no hostname columns detected")
+            print()
             return 0
         
         primary_hostname_col = hostname_cols[0][0]
-        print(f"   Primary hostname: {primary_hostname_col}")
+        print(f"   Primary hostname column: {primary_hostname_col}")
+        print()
         
         if attribute_cols:
-            print(f"   Attribute columns: {len(attribute_cols)}")
-            for col, ctype in attribute_cols[:5]:
-                print(f"      • {col} → {ctype}")
-            if len(attribute_cols) > 5:
-                print(f"      • ... and {len(attribute_cols) - 5} more")
-        print()
+            print(f"   Attribute columns ({len(attribute_cols)}):")
+            for col, ctype in attribute_cols:
+                print(f"      ♡ {col} → {ctype}")
+            print()
         
         all_columns = [primary_hostname_col] + [col for col, _ in attribute_cols]
         attribute_types = [ctype for _, ctype in attribute_cols]
         
-        query = self._build_optimized_query(table_name, all_columns, primary_hostname_col)
+        query = self._build_comprehensive_query(table_name, all_columns, primary_hostname_col)
         
-        print("   ⋆｡‧˚ Executing optimized BigQuery...")
-        
-        table_start_time = time.time()
+        print("   ⋆｡‧˚ Executing comprehensive BigQuery...")
+        start_time = time.time()
         
         try:
-            job_config = bigquery.QueryJobConfig(
-                use_query_cache=True,
-                use_legacy_sql=False,
-                maximum_bytes_billed=50 * 1024 * 1024 * 1024,
-                job_timeout_ms=30 * 60 * 1000
-            )
+            query_job = self.bq_client.query(query)
+            results = query_job.result()
             
-            query_job = self.bq_client.query(query, job_config=job_config)
-            results = query_job.result(page_size=self.batch_size)
-            
-            query_time = time.time() - table_start_time
-            print(f"   Query completed: {query_time:.2f}s")
+            query_time = time.time() - start_time
+            print(f"   Query completed in {query_time:.2f} seconds")
             print()
             
-            records_processed = self._process_results_batch_parallel(
-                results, table_name, primary_hostname_col, attribute_types
-            )
+            records_processed = self._process_query_results(results, table_name, primary_hostname_col, attribute_types)
             
-            total_time = time.time() - table_start_time
-            print(f"   ✧˚ Table completed: {total_time:.2f}s total")
-            print(f"      Records processed: {records_processed:,}")
-            print(f"      Processing rate: {records_processed/total_time:.0f} records/sec")
+            print(f"   ✧˚ Table processing complete")
+            print(f"      Total records: {records_processed:,}")
             print()
             
             return records_processed
             
         except Exception as e:
-            print(f"   𖦹 Error: {str(e)[:80]}...")
+            print(f"   𖦹 Query execution failed")
+            print(f"      Error: {str(e)[:100]}...")
+            print()
             self.stats['processing_errors'] += 1
             return 0
     
-    def _build_optimized_query(self, table_name: str, columns: List[str], hostname_col: str) -> str:
-        column_selects = [f"`{col}`" for col in columns]
+    def _build_comprehensive_query(self, table_name: str, columns: List[str], hostname_col: str) -> str:
+        column_selects = []
+        for col in columns:
+            column_selects.append(f"`{col}`")
         
         return f"""
         SELECT {', '.join(column_selects)}
@@ -560,8 +463,9 @@ class OptimizedCMDBProcessor:
         AND LENGTH(`{hostname_col}`) > 0
         """
     
-    def _process_results_batch_parallel(self, results, table_name: str, hostname_col: str, attribute_types: List[str]) -> int:
-        print("   ༘˚⋆ High-speed batch processing...")
+    def _process_query_results(self, results, table_name: str, hostname_col: str, attribute_types: List[str]) -> int:
+        print("   ༘˚⋆ Processing query results...")
+        print()
         
         records_processed = 0
         hosts_created = 0
@@ -570,21 +474,14 @@ class OptimizedCMDBProcessor:
         attribute_stats = {attr_type: 0 for attr_type in attribute_types}
         
         batch_records = []
+        batch_size = 1000
         table_hostnames_seen = set()
-        
-        update_interval = self.batch_size
-        last_update = time.time()
         
         for row_idx, row in enumerate(results):
             records_processed += 1
             
-            current_time = time.time()
-            if records_processed % update_interval == 0 or (current_time - last_update) > 5.0:
-                elapsed = current_time - self.stats['processing_start_time']
-                overall_rate = self.stats['total_records_processed'] / elapsed if elapsed > 0 else 0
-                
-                print(f"      ♡ {records_processed:,} rows | {overall_rate:.0f} rec/sec | {timedelta(seconds=int(elapsed))}")
-                last_update = current_time
+            if records_processed % 10000 == 0:
+                print(f"      Processing: {records_processed:,} rows...")
             
             if not row[0] or not self.is_valid_value(row[0]):
                 continue
@@ -612,43 +509,43 @@ class OptimizedCMDBProcessor:
             
             batch_records.append(record_data)
             
-            if len(batch_records) >= self.batch_size:
-                created, updated = self._process_record_batch_fast(batch_records)
+            if len(batch_records) >= batch_size:
+                created, updated = self._process_record_batch(batch_records)
                 hosts_created += created
                 hosts_updated += updated
                 batch_records.clear()
         
         if batch_records:
-            created, updated = self._process_record_batch_fast(batch_records)
+            created, updated = self._process_record_batch(batch_records)
             hosts_created += created
             hosts_updated += updated
         
         print()
-        print("   📊 Processing Results:")
-        print(f"      ♡ Raw records: {records_processed:,}")
-        print(f"      ⋆｡‧˚ New hosts: {hosts_created:,}")
-        print(f"      𖦹 Updated hosts: {hosts_updated:,}")
+        print("   Results Summary:")
+        print(f"      ♡ Records processed: {records_processed:,}")
+        print(f"      ⋆｡‧˚ New hosts created: {hosts_created:,}")
+        print(f"      𖦹 Existing hosts updated: {hosts_updated:,}")
         
         if duplicates_in_table > 0:
-            print(f"      ₊˚⊹ Table duplicates: {duplicates_in_table:,}")
+            print(f"      ₊˚⊹ Duplicate hosts in this table: {duplicates_in_table:,}")
             self.stats['duplicate_hosts_found'] += duplicates_in_table
         
+        print()
+        
         if attribute_stats:
-            print()
-            print("   📝 Attribute Data Captured:")
-            for attr_type, count in sorted(attribute_stats.items()):
+            print("   Attribute Data Found:")
+            for attr_type, count in attribute_stats.items():
                 if count > 0:
-                    print(f"      • {attr_type}: {count:,}")
+                    print(f"      ♡ {attr_type}: {count:,} values")
+            print()
         
         self.stats['total_records_processed'] += records_processed
         self.stats['hosts_created'] += hosts_created
         self.stats['hosts_updated'] += hosts_updated
         
-        self.performance_monitor.update_progress(records_processed, table_name)
-        
         return records_processed
     
-    def _process_record_batch_fast(self, batch_records: List[Dict]) -> Tuple[int, int]:
+    def _process_record_batch(self, batch_records: List[Dict]) -> Tuple[int, int]:
         hosts_created = 0
         hosts_updated = 0
         
@@ -774,11 +671,14 @@ class OptimizedCMDBProcessor:
         print("═" * 80)
         print()
         
-        print("   Building comprehensive analysis views...")
+        logger.info("Creating comprehensive analysis tables...")
+        print("   Building summary views for data analysis")
+        print()
         
         try:
             self.duck_conn.execute("DROP TABLE IF EXISTS all_sources")
             self.duck_conn.execute("DROP TABLE IF EXISTS data_quality_summary")
+            self.duck_conn.execute("DROP TABLE IF EXISTS coverage_analysis")
             
             all_sources_sql = """
             CREATE TABLE all_sources AS (
@@ -798,49 +698,52 @@ class OptimizedCMDBProcessor:
             )
             """
             
-            self.duck_conn.execute(all_sources_sql)
+            quality_summary_sql = """
+            CREATE TABLE data_quality_summary AS (
+                SELECT 
+                    'hostname' as column_name,
+                    COUNT(*) as total_records,
+                    COUNT(CASE WHEN hostname IS NOT NULL AND hostname != '' THEN 1 END) as populated_records,
+                    ROUND(COUNT(CASE WHEN hostname IS NOT NULL AND hostname != '' THEN 1 END) * 100.0 / COUNT(*), 2) as population_percentage
+                FROM universal_cmdb
+                
+                UNION ALL
+                
+                SELECT 'business_unit', COUNT(*), COUNT(CASE WHEN business_unit IS NOT NULL AND business_unit != '' THEN 1 END),
+                       ROUND(COUNT(CASE WHEN business_unit IS NOT NULL AND business_unit != '' THEN 1 END) * 100.0 / COUNT(*), 2)
+                FROM universal_cmdb
+                
+                UNION ALL
+                
+                SELECT 'region', COUNT(*), COUNT(CASE WHEN region IS NOT NULL AND region != '' THEN 1 END),
+                       ROUND(COUNT(CASE WHEN region IS NOT NULL AND region != '' THEN 1 END) * 100.0 / COUNT(*), 2)
+                FROM universal_cmdb
+                
+                ORDER BY population_percentage DESC
+            )
+            """
             
-            print("   ♡ Analysis tables created")
-            print("   ✧˚ Summary views optimized")
+            self.duck_conn.execute(all_sources_sql)
+            self.duck_conn.execute(quality_summary_sql)
+            
+            print("   ♡ Summary tables created successfully")
+            print("   ⋆｡‧˚ Data quality metrics calculated")
             print()
             
         except Exception as e:
-            print(f"   𖦹 Summary creation error: {str(e)[:60]}...")
+            print(f"   𖦹 Summary creation encountered an error:")
+            print(f"      {str(e)[:100]}...")
+            print()
     
-    def generate_performance_report(self):
+    def generate_comprehensive_report(self):
         print("\n")
-        print("═" * 90)
-        print("                 ₊˚✩ HIGH-PERFORMANCE PROCESSING REPORT ✩˚₊")
-        print("═" * 90)
+        print("═" * 80)
+        print("                 ₊˚✩ COMPREHENSIVE REPORT ✩˚₊")
+        print("═" * 80)
         print()
         
-        total_time = time.time() - self.stats['processing_start_time']
         total_hosts = self.duck_conn.execute("SELECT COUNT(*) FROM universal_cmdb").fetchone()[0]
-        
-        print("   🏆 PERFORMANCE METRICS")
-        print("   " + "─" * 40)
-        print()
-        print(f"   ♡ Total processing time: {timedelta(seconds=int(total_time))}")
-        print(f"   𖦹 Tables processed: {self.stats['tables_processed']}/{self.stats['tables_total']}")
-        print(f"   ⋆｡‧˚ Records processed: {self.stats['total_records_processed']:,}")
-        print(f"   ༘˚⋆ Average processing speed: {self.stats['total_records_processed']/total_time:.0f} records/second")
-        print(f"   ✧˚ Optimal batch size used: {self.batch_size:,}")
-        print(f"   ₊˚✩ Worker threads utilized: {self.optimal_workers}")
-        print()
-        
-        print("   📊 DATA QUALITY ANALYSIS")
-        print("   " + "─" * 35)
-        print()
-        print(f"   ♡ Unique hosts discovered: {total_hosts:,}")
-        print(f"   ⋆｡‧˚ New hosts created: {self.stats['hosts_created']:,}")
-        print(f"   𖦹 Existing hosts updated: {self.stats['hosts_updated']:,}")
-        print(f"   ₊˚⊹ Duplicate records found: {self.stats['duplicate_hosts_found']:,}")
-        
-        if self.stats['total_records_processed'] > 0:
-            duplicate_rate = (self.stats['duplicate_hosts_found'] / self.stats['total_records_processed']) * 100
-            dedup_efficiency = ((self.stats['total_records_processed'] - self.stats['duplicate_hosts_found']) / self.stats['total_records_processed']) * 100
-            print(f"   ༘˚⋆ Duplicate rate: {duplicate_rate:.1f}%")
-            print(f"   ♡ Deduplication efficiency: {dedup_efficiency:.1f}%")
+        print(f"   Total Unique Hosts Discovered: {total_hosts:,}")
         print()
         
         columns_to_check = [
@@ -850,12 +753,12 @@ class OptimizedCMDBProcessor:
             'dlp_agent_coverage', 'logging_in_splunk', 'logging_in_gso'
         ]
         
-        print("   📈 COLUMN POPULATION SUCCESS")
-        print("   " + "─" * 40)
+        print("   Column Population Analysis:")
+        print("   " + "─" * 50)
         print()
         
         populated_columns = []
-        high_quality_columns = []
+        empty_columns = []
         
         for col in columns_to_check:
             count_query = f"SELECT COUNT(*) FROM universal_cmdb WHERE {col} IS NOT NULL AND {col} != ''"
@@ -864,64 +767,104 @@ class OptimizedCMDBProcessor:
             
             if count > 0:
                 populated_columns.append(col)
-                if percentage >= 50:
-                    high_quality_columns.append((col, percentage))
-                    print(f"   ✧˚ {col}: {count:,} ({percentage:.1f}%)")
-                else:
-                    print(f"   ♡ {col}: {count:,} ({percentage:.1f}%)")
+                print(f"   ♡ {col}")
+                print(f"      Records: {count:,} ({percentage:.1f}% coverage)")
+                
+                sample_query = f"SELECT DISTINCT {col} FROM universal_cmdb WHERE {col} IS NOT NULL AND {col} != '' LIMIT 3"
+                samples = self.duck_conn.execute(sample_query).fetchall()
+                sample_values = [str(s[0])[:25] for s in samples]
+                print(f"      Examples: {', '.join(sample_values)}")
+                print()
+            else:
+                empty_columns.append(col)
+                print(f"   ₊˚⊹ {col}: No data found")
+                print()
         
+        print("\n")
+        print("   Processing Statistics:")
+        print("   " + "─" * 30)
         print()
-        print(f"   🎯 SUCCESS SUMMARY")
-        print("   " + "─" * 25)
-        print()
-        print(f"   ♡ Populated columns: {len(populated_columns)}/19 ({len(populated_columns)/19*100:.1f}%)")
-        print(f"   ✧˚ High-quality columns (>50%): {len(high_quality_columns)}")
-        print(f"   𖦹 Column discovery rate: {self.stats['columns_discovered']/self.stats['tables_total']:.1f} per table")
+        print(f"   ♡ Tables processed: {self.stats['tables_processed']}")
+        print(f"   𖦹 Columns analyzed: {self.stats['columns_discovered']}")
+        print(f"   ⋆｡‧˚ Records processed: {self.stats['total_records_processed']:,}")
+        print(f"   ༘˚⋆ New hosts created: {self.stats['hosts_created']:,}")
+        print(f"   ₊˚✩ Existing hosts updated: {self.stats['hosts_updated']:,}")
+        print(f"   ₊˚⊹ Duplicate hosts found: {self.stats['duplicate_hosts_found']:,}")
         
         if self.stats['processing_errors'] > 0:
-            error_rate = (self.stats['processing_errors'] / self.stats['tables_total']) * 100
-            print(f"   ₊˚⊹ Processing errors: {self.stats['processing_errors']} ({error_rate:.1f}%)")
-        
+            print(f"   𖦹 Processing errors encountered: {self.stats['processing_errors']}")
         print()
-        print("   📄 TOP ENRICHED RECORDS")
-        print("   " + "─" * 35)
+        
+        duplicate_percentage = (self.stats['duplicate_hosts_found'] / max(1, self.stats['total_records_processed']) * 100)
+        print(f"   Duplicate Analysis:")
+        print(f"      ♡ Total raw records: {self.stats['total_records_processed']:,}")
+        print(f"      ⋆｡‧˚ Unique hosts identified: {total_hosts:,}")
+        print(f"      ₊˚⊹ Duplicate entries: {self.stats['duplicate_hosts_found']:,} ({duplicate_percentage:.1f}%)")
+        print()
+        
+        print("\n")
+        print("   Success Summary:")
+        print("   " + "─" * 20)
+        print()
+        print(f"   ♡ Columns with data: {len(populated_columns)}")
+        print(f"   ₊˚⊹ Empty columns: {len(empty_columns)}")
+        print()
+        
+        if populated_columns:
+            print(f"   ✧˚ Successfully populated:")
+            chunk_size = 5
+            for i in range(0, len(populated_columns), chunk_size):
+                chunk = populated_columns[i:i+chunk_size]
+                print(f"      {', '.join(chunk)}")
+            print()
+        
+        print("   Sample Enriched Records:")
+        print("   " + "─" * 30)
         print()
         
         sample_query = """
-        SELECT normalized_host, source_count, 
-               (CASE WHEN hostname IS NOT NULL THEN 1 ELSE 0 END +
-                CASE WHEN business_unit IS NOT NULL THEN 1 ELSE 0 END +
-                CASE WHEN region IS NOT NULL THEN 1 ELSE 0 END +
-                CASE WHEN infrastructure_type IS NOT NULL THEN 1 ELSE 0 END +
-                CASE WHEN ip_address IS NOT NULL THEN 1 ELSE 0 END) as field_count
-        FROM universal_cmdb 
-        ORDER BY field_count DESC, source_count DESC
-        LIMIT 5
+        SELECT * FROM universal_cmdb 
+        WHERE normalized_host IS NOT NULL
+        ORDER BY source_count DESC, data_quality_score DESC
+        LIMIT 3
         """
         
         samples = self.duck_conn.execute(sample_query).fetchall()
+        column_names = [
+            'normalized_host', 'source_tables', 'hostname', 'fqdn', 'domain',
+            'infrastructure_type', 'region', 'country', 'data_center', 'cloud_region',
+            'ip_address', 'class', 'system_classification', 'business_unit', 'apm',
+            'cio', 'edr_coverage', 'tanium_coverage', 'dlp_agent_coverage',
+            'logging_in_splunk', 'logging_in_gso'
+        ]
         
-        for i, (host, sources, fields) in enumerate(samples, 1):
-            print(f"   {i}. {host}")
-            print(f"      Sources: {sources} | Fields: {fields}")
+        for i, sample in enumerate(samples, 1):
+            print(f"   Record {i}: {sample[0]}")
+            populated_fields = 0
+            for j, col_name in enumerate(column_names[1:], 1):
+                if j < len(sample) and sample[j] and str(sample[j]).strip():
+                    if col_name not in ['data_quality_score', 'source_count', 'first_seen', 'last_updated', 'created_at']:
+                        print(f"      ♡ {col_name}: {str(sample[j])[:40]}")
+                        populated_fields += 1
+            print(f"      𖦹 Total populated fields: {populated_fields}")
+            print()
         
-        print()
-        print("─" * 70)
-        print("            ✧˚ High-Performance Processing Complete ✧˚")
-        print("─" * 70)
-        print()
+        print("─" * 60)
+        print("              ✧˚ Report Generation Complete ✧˚")
+        print("─" * 60)
+        print("\n\n")
     
-    def export_optimized(self, filename: str = "universal_cmdb_export.csv"):
+    def export_comprehensive(self, filename: str = "universal_cmdb_export.csv"):
         print("═" * 80)
-        print("                    ༘˚⋆ OPTIMIZED DATA EXPORT ⋆˚༘")
+        print("                    ༘˚⋆ DATA EXPORT ⋆˚༘")
         print("═" * 80)
         print()
         
-        print(f"   Exporting to: {filename}")
+        logger.info(f"Exporting comprehensive dataset...")
+        print(f"   Output file: {filename}")
+        print()
         
         try:
-            export_start = time.time()
-            
             export_query = f"""
             COPY (
                 SELECT * FROM universal_cmdb 
@@ -930,157 +873,149 @@ class OptimizedCMDBProcessor:
             """
             self.duck_conn.execute(export_query)
             
-            export_time = time.time() - export_start
-            file_size = os.path.getsize(filename) / (1024 * 1024)
-            
-            print(f"   ✧˚ Export completed in {export_time:.2f}s")
-            print(f"   ♡ File size: {file_size:.1f} MB")
-            print(f"   𖦹 Export rate: {file_size/export_time:.1f} MB/s")
+            print("   ✧˚ Export completed successfully")
+            print("   ♡ Data sorted by source count and quality score")
             print()
             
         except Exception as e:
-            print(f"   ₊˚⊹ Export error: {str(e)[:60]}...")
+            print(f"   𖦹 Export encountered an error:")
+            print(f"      {str(e)[:100]}...")
+            print()
     
-    def process_all_high_performance(self):
-        print("\n")
-        print("═" * 90)
-        print("            ₊˚✩ HIGH-PERFORMANCE BATCH PROCESSING START ✩˚₊")
-        print("═" * 90)
+    def process_all_comprehensive(self):
+        print("\n\n")
+        print("═" * 80)
+        print("              ₊˚✩ COMPREHENSIVE PROCESSING START ✩˚₊")
+        print("═" * 80)
         print()
         
-        self.stats['processing_start_time'] = time.time()
+        start_time = time.time()
         
         metadata = self.load_metadata()
         discovered_columns = self.discover_columns_comprehensive(metadata)
         
         if not discovered_columns:
-            print("   𖦹 No processable columns found")
+            print("   𖦹 Error: No processable columns discovered")
+            print("   Unable to continue with processing")
+            print()
             return
         
         print("═" * 80)
-        print("                  ⋆｡‧˚ BATCH TABLE PROCESSING ˚‧｡⋆")
+        print("                    ⋆｡‧˚ TABLE PROCESSING ˚‧｡⋆")
         print("═" * 80)
         print()
         
+        logger.info("Organizing discovered columns by source table...")
         columns_by_table = defaultdict(list)
         for table_name, column_name, column_type in discovered_columns:
             columns_by_table[table_name].append((table_name, column_name, column_type))
         
-        self.stats['tables_total'] = len(columns_by_table)
-        
-        print(f"   🚀 Processing {len(columns_by_table)} tables with maximum optimization")
-        print(f"   ⋆｡‧˚ Batch size: {self.batch_size:,} records")
-        print(f"   ♡ Worker threads: {self.optimal_workers}")
+        table_count = len(columns_by_table)
+        print(f"   Tables to process: {table_count}")
         print()
         
-        start_time = time.time()
-        
         for table_idx, (table_name, table_columns) in enumerate(columns_by_table.items(), 1):
-            self.stats['tables_processed'] = table_idx
-            
-            progress_pct = (table_idx / len(columns_by_table)) * 100
-            elapsed = time.time() - start_time
-            
-            print(f"   📍 TABLE {table_idx}/{len(columns_by_table)} ({progress_pct:.1f}%)")
-            print(f"      Elapsed: {timedelta(seconds=int(elapsed))}")
-            print(f"      ETA: {timedelta(seconds=int(elapsed * (len(columns_by_table) - table_idx) / table_idx)) if table_idx > 0 else 'calculating...'}")
-            print()
+            print(f"\n   [{table_idx:2d} of {table_count}]")
             
             table_start = time.time()
-            records_processed = self.process_table_batch_optimized(table_name, table_columns)
+            records_processed = self.process_table_optimized(table_name, table_columns)
+            table_time = time.time() - table_start
             
-            if records_processed > 0:
-                table_time = time.time() - table_start
-                print(f"   ⚡ Table rate: {records_processed/table_time:.0f} records/sec")
-            
+            print(f"   ✧˚ Table completed in {table_time:.2f} seconds")
+            print(f"      Records processed: {records_processed:,}")
+            self.stats['tables_processed'] += 1
             print()
         
         self.create_comprehensive_summary()
-        self.generate_performance_report()
+        self.generate_comprehensive_report()
         
         total_time = time.time() - start_time
         
         print("═" * 80)
-        print("              ₊˚✩ HIGH-PERFORMANCE PROCESSING COMPLETE ✩˚₊")
+        print("                ₊˚✩ PROCESSING COMPLETE ✩˚₊")
         print("═" * 80)
         print()
-        print(f"   🏆 Total time: {timedelta(seconds=int(total_time))}")
-        print(f"   ⚡ Overall rate: {self.stats['total_records_processed']/total_time:.0f} records/second")
-        print(f"   ♡ System optimizations utilized throughout processing")
+        print(f"   Total execution time: {total_time:.2f} seconds")
+        print(f"   Average time per table: {total_time/max(1, self.stats['tables_processed']):.2f} seconds")
+        print()
+        print("   ♡ All data successfully integrated into universal CMDB")
         print()
     
-    def cleanup(self):
+    def close_connections(self):
         print("\n")
         print("═" * 80)
-        print("                   ༘˚⋆ SYSTEM CLEANUP ⋆˚༘")
+        print("                   ༘˚⋆ SESSION CLEANUP ⋆˚༘")
         print("═" * 80)
         print()
         
+        logger.info("Closing database connections...")
         try:
             self.duck_conn.close()
-            print("   ♡ Database connections closed")
-        except:
-            pass
-        
-        self.system_optimizer.cleanup()
-        
-        print("   ✧˚ All systems restored to normal operation")
+            print("   ♡ Database connections closed successfully")
+            print("   ✧˚ Session cleanup complete")
+        except Exception as e:
+            print(f"   ₊˚⊹ Warning during cleanup: {e}")
         print()
 
 if __name__ == "__main__":
-    print("\n")
-    print("═" * 100)
-    print("               ₊˚✩ ULTRA HIGH-PERFORMANCE UNIVERSAL CMDB PROCESSOR ✩˚₊")
-    print("═" * 100)
+    print("\n\n")
+    print("═" * 90)
+    print("                   ₊˚✩ OPTIMIZED UNIVERSAL CMDB PROCESSOR ✩˚₊")
+    print("═" * 90)
     print()
-    print("   Advanced system optimizations for maximum processing speed")
-    print("   Intelligent batch processing with real-time performance monitoring")
-    print("   Comprehensive duplicate detection and data quality analysis")
+    print("   A comprehensive system for discovering, analyzing, and")
+    print("   integrating host data from multiple BigQuery sources")
     print()
-    print("═" * 100)
+    print("═" * 90)
     
     processor = None
     
     try:
         processor = OptimizedCMDBProcessor("reviewed_labeled_columns.json", "universal_cmdb.db")
         
-        processor.process_all_high_performance()
-        processor.export_optimized("universal_cmdb_complete.csv")
+        processor.process_all_comprehensive()
+        processor.export_comprehensive("universal_cmdb_complete.csv")
         
-        print("\n")
-        print("═" * 100)
-        print("                     ✧˚ ULTRA HIGH-PERFORMANCE PROCESSING COMPLETE ✧˚")
-        print("═" * 100)
+        print("\n\n")
+        print("═" * 90)
+        print("                      ✧˚ PROCESSING COMPLETE ✧˚")
+        print("═" * 90)
         print()
-        print("   🏆 Maximum performance achieved with system optimizations")
-        print("   ♡ Universal CMDB successfully created with comprehensive data")
-        print("   𖦹 All duplicate detection and quality analysis completed")
+        print("   Your universal CMDB has been successfully created and populated")
+        print("   with comprehensive host data from all discovered sources.")
         print()
-        print("   Database: universal_cmdb.db")
-        print("   Export: universal_cmdb_complete.csv")
+        print("   Database file: universal_cmdb.db")
+        print("   Export file: universal_cmdb_complete.csv")
         print()
-        print("═" * 100)
+        print("═" * 90)
+        print()
         
     except KeyboardInterrupt:
         print("\n\n")
         print("═" * 80)
-        print("                     ₊˚⊹ PROCESSING INTERRUPTED ⊹˚₊")
+        print("                     ₊˚⊹ USER INTERRUPTION ⊹˚₊")
         print("═" * 80)
         print()
-        print("   Processing stopped by user - partial data saved")
+        print("   Processing was interrupted by user request.")
+        print("   Partial data may have been saved to the database.")
+        print()
         
     except Exception as e:
         print("\n\n")
         print("═" * 80)
-        print("                        𖦹 PROCESSING ERROR 𖦹")
+        print("                        𖦹 ERROR OCCURRED 𖦹")
         print("═" * 80)
         print()
-        print(f"   Error: {str(e)[:80]}...")
+        print("   An error occurred during processing:")
+        print(f"   {str(e)[:100]}...")
+        print()
         import traceback
-        for line in traceback.format_exc().split('\n')[:8]:
+        print("   Detailed error information:")
+        for line in traceback.format_exc().split('\n')[:10]:
             if line.strip():
                 print(f"   {line}")
+        print()
         
     finally:
         if processor:
-            processor.cleanup()
+            processor.close_connections()
