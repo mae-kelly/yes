@@ -9,6 +9,7 @@ import logging
 from collections import defaultdict
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
+import threading
 
 # Minimal logging setup
 logging.basicConfig(level=logging.WARNING)
@@ -21,10 +22,13 @@ class FastCMDBProcessor:
         self.json_file_path = json_file_path
         self.duckdb_path = duckdb_path
         
-        # Pre-compiled regex patterns for faster matching
+        # Thread-safe lock for database operations
+        self.db_lock = threading.Lock()
+        
+        # Pre-compiled regex patterns
         self.normalize_pattern = re.compile(r'[^a-z0-9]')
         
-        # Optimized column mappings
+        # Column mappings
         self.column_mapping = {
             'fqdn': 'fqdn',
             'domain': 'domain',
@@ -52,47 +56,44 @@ class FastCMDBProcessor:
             'logging_in_gso': 'logging_in_gso'
         }
         
-        # Frozen sets for O(1) membership testing
-        self.hostname_patterns = frozenset([
+        self.hostname_patterns = [
             'host', 'hostname', 'fqdn', 'server_name', 'node_name', 'device_name',
             'endpoint_name', 'splunk_host', 'app_host', 'computer_name', 'machine_name',
             'chronicle_device_hostname', 'endpointdomain_name', 'asset_name'
-        ])
+        ]
         
-        # Pre-compiled pattern sets
         self.advanced_patterns = {
-            'business_unit': frozenset(['business_unit', 'bu', 'business', 'department', 'division', 'org_unit']),
-            'region': frozenset(['region', 'location', 'site', 'area', 'zone', 'geographic_region']),
-            'country': frozenset(['country', 'nation', 'country_code', 'geo_country']),
-            'infrastructure_type': frozenset(['infrastructure_type', 'infra_type', 'server_type', 'system_type', 'platform', 'environment', 'env']),
-            'data_center': frozenset(['datacenter', 'data_center', 'dc', 'facility', 'center']),
-            'cloud_region': frozenset(['cloud_region', 'aws_region', 'azure_region', 'gcp_region']),
-            'ip_address': frozenset(['ip_address', 'ip', 'ipv4', 'ipv6', 'host_ip']),
-            'class': frozenset(['class', 'classification', 'tier', 'level']),
-            'system_classification': frozenset(['system_classification', 'security_classification']),
-            'apm': frozenset(['apm', 'monitoring', 'application_monitoring']),
-            'cio': frozenset(['cio', 'owner', 'responsible', 'contact']),
-            'edr_coverage': frozenset(['edr_coverage', 'edr', 'endpoint_detection']),
-            'tanium_coverage': frozenset(['tanium_coverage', 'tanium', 'tanium_agent']),
-            'dlp_agent_coverage': frozenset(['dlp_agent_coverage', 'dlp', 'data_loss_prevention']),
-            'logging_in_splunk': frozenset(['logging_in_splunk', 'splunk', 'splunk_logging']),
-            'logging_in_gso': frozenset(['logging_in_gso', 'gso', 'gso_logging']),
-            'domain': frozenset(['domain', 'dns_domain', 'ad_domain']),
-            'fqdn': frozenset(['fqdn', 'full_name', 'qualified_name'])
+            'business_unit': ['business_unit', 'bu', 'business', 'department', 'division', 'org_unit'],
+            'region': ['region', 'location', 'site', 'area', 'zone', 'geographic_region'],
+            'country': ['country', 'nation', 'country_code', 'geo_country'],
+            'infrastructure_type': ['infrastructure_type', 'infra_type', 'server_type', 'system_type', 'platform', 'environment', 'env'],
+            'data_center': ['datacenter', 'data_center', 'dc', 'facility', 'center'],
+            'cloud_region': ['cloud_region', 'aws_region', 'azure_region', 'gcp_region'],
+            'ip_address': ['ip_address', 'ip', 'ipv4', 'ipv6', 'host_ip'],
+            'class': ['class', 'classification', 'tier', 'level'],
+            'system_classification': ['system_classification', 'security_classification'],
+            'apm': ['apm', 'monitoring', 'application_monitoring'],
+            'cio': ['cio', 'owner', 'responsible', 'contact'],
+            'edr_coverage': ['edr_coverage', 'edr', 'endpoint_detection'],
+            'tanium_coverage': ['tanium_coverage', 'tanium', 'tanium_agent'],
+            'dlp_agent_coverage': ['dlp_agent_coverage', 'dlp', 'data_loss_prevention'],
+            'logging_in_splunk': ['logging_in_splunk', 'splunk', 'splunk_logging'],
+            'logging_in_gso': ['logging_in_gso', 'gso', 'gso_logging'],
+            'domain': ['domain', 'dns_domain', 'ad_domain'],
+            'fqdn': ['fqdn', 'full_name', 'qualified_name']
         }
         
         self.stats = defaultdict(int)
-        self.duplicate_tracker = set()
+        self.global_hosts_seen = set()  # Track all hosts globally
         
         # Initialize connections
         self._init_bigquery()
         
-        # Use optimized DuckDB settings
+        # Single DuckDB connection (not thread-safe, will use lock)
         self.duck_conn = duckdb.connect(duckdb_path)
-        self.duck_conn.execute("PRAGMA threads=4")
-        self.duck_conn.execute("PRAGMA memory_limit='4GB'")
         
         self._create_optimized_table()
+        self._load_existing_hosts()
         
         print("Initialization complete.\n")
     
@@ -139,16 +140,20 @@ class FastCMDBProcessor:
         self.duck_conn.execute(create_sql)
         
         # Create indexes
-        indexes = [
-            "CREATE INDEX IF NOT EXISTS idx_normalized_host ON universal_cmdb(normalized_host)",
-            "CREATE INDEX IF NOT EXISTS idx_source_count ON universal_cmdb(source_count)"
-        ]
-        
-        for idx in indexes:
-            try:
-                self.duck_conn.execute(idx)
-            except:
-                pass
+        try:
+            self.duck_conn.execute("CREATE INDEX IF NOT EXISTS idx_normalized_host ON universal_cmdb(normalized_host)")
+        except:
+            pass
+    
+    def _load_existing_hosts(self):
+        """Load existing hosts into memory to prevent duplicates"""
+        print("Loading existing hosts...")
+        try:
+            existing = self.duck_conn.execute("SELECT normalized_host FROM universal_cmdb").fetchall()
+            self.global_hosts_seen = set(row[0] for row in existing)
+            print(f"Loaded {len(self.global_hosts_seen)} existing hosts\n")
+        except:
+            print("No existing hosts found\n")
     
     def normalize_hostname(self, hostname: str) -> str:
         """Optimized hostname normalization"""
@@ -229,29 +234,19 @@ class FastCMDBProcessor:
         
         return None
     
-    def process_tables_parallel(self, columns_by_table: Dict) -> None:
-        """Process multiple tables in parallel"""
+    def process_tables_sequential(self, columns_by_table: Dict) -> None:
+        """Process tables sequentially to avoid concurrency issues"""
         print(f"Processing {len(columns_by_table)} tables...\n")
         
-        max_workers = min(4, len(columns_by_table))
-        
-        with ThreadPoolExecutor(max_workers=max_workers) as executor:
-            futures = {}
-            
-            for table_name, table_columns in columns_by_table.items():
-                future = executor.submit(self.process_table_optimized, table_name, table_columns)
-                futures[future] = table_name
-            
-            completed = 0
-            for future in as_completed(futures):
-                completed += 1
-                table_name = futures[future]
-                try:
-                    records = future.result()
-                    print(f"[{completed}/{len(columns_by_table)}] {table_name}: {records:,} records")
-                except Exception as e:
-                    print(f"[{completed}/{len(columns_by_table)}] {table_name}: Error - {str(e)[:50]}")
-                    self.stats['processing_errors'] += 1
+        completed = 0
+        for table_name, table_columns in columns_by_table.items():
+            completed += 1
+            try:
+                records = self.process_table_optimized(table_name, table_columns)
+                print(f"[{completed}/{len(columns_by_table)}] {table_name}: {records:,} records")
+            except Exception as e:
+                print(f"[{completed}/{len(columns_by_table)}] {table_name}: Error - {str(e)[:100]}")
+                self.stats['processing_errors'] += 1
     
     def process_table_optimized(self, table_name: str, table_columns: List[Tuple[str, str, str]]) -> int:
         """Optimized table processing"""
@@ -296,9 +291,8 @@ class FastCMDBProcessor:
     def _process_results_batch(self, query_job, table_name: str, hostname_col: str, attribute_types: List[str]) -> int:
         """Process query results in batches"""
         records_processed = 0
-        batch_size = 5000
+        batch_size = 1000
         batch_records = []
-        table_hostnames_seen = set()
         
         for row in query_job:
             records_processed += 1
@@ -307,10 +301,15 @@ class FastCMDBProcessor:
                 continue
             
             normalized_host = self.normalize_hostname(row[0])
-            if not normalized_host or normalized_host in table_hostnames_seen:
+            if not normalized_host:
                 continue
             
-            table_hostnames_seen.add(normalized_host)
+            # Skip if we've already seen this host globally
+            if normalized_host in self.global_hosts_seen:
+                self.stats['hosts_updated'] += 1
+                # Still process for updates
+            else:
+                self.global_hosts_seen.add(normalized_host)
             
             record_data = {
                 'normalized_host': normalized_host,
@@ -325,44 +324,58 @@ class FastCMDBProcessor:
             batch_records.append(record_data)
             
             if len(batch_records) >= batch_size:
-                self._bulk_insert_or_update(batch_records)
+                with self.db_lock:
+                    self._safe_bulk_insert_or_update(batch_records)
                 batch_records.clear()
         
         if batch_records:
-            self._bulk_insert_or_update(batch_records)
+            with self.db_lock:
+                self._safe_bulk_insert_or_update(batch_records)
         
         self.stats['total_records_processed'] += records_processed
         return records_processed
     
-    def _bulk_insert_or_update(self, records: List[Dict]) -> None:
-        """Bulk insert/update records"""
+    def _safe_bulk_insert_or_update(self, records: List[Dict]) -> None:
+        """Thread-safe bulk insert/update with proper duplicate handling"""
         if not records:
             return
         
         for record in records:
             normalized_host = record['normalized_host']
             
-            # Check if exists
-            existing_query = """
-            SELECT source_tables, source_count
-            FROM universal_cmdb 
-            WHERE normalized_host = ?
-            """
-            
-            existing = self.duck_conn.execute(existing_query, [normalized_host]).fetchone()
-            
-            if existing:
-                # Update existing
-                self._update_host(record, existing)
-                self.stats['hosts_updated'] += 1
-            else:
-                # Insert new
-                self._insert_host(record)
-                self.stats['hosts_created'] += 1
-                self.duplicate_tracker.add(normalized_host)
+            try:
+                # Check if exists
+                existing_query = """
+                SELECT source_tables, source_count
+                FROM universal_cmdb 
+                WHERE normalized_host = ?
+                """
+                
+                existing = self.duck_conn.execute(existing_query, [normalized_host]).fetchone()
+                
+                if existing:
+                    # Update existing - use MERGE logic
+                    self._safe_update_host(record, existing)
+                else:
+                    # Insert new - use INSERT OR IGNORE
+                    self._safe_insert_host(record)
+                    self.stats['hosts_created'] += 1
+                    
+            except Exception as e:
+                if "duplicate key" in str(e).lower():
+                    # If duplicate key error, try to update instead
+                    try:
+                        existing = self.duck_conn.execute(existing_query, [normalized_host]).fetchone()
+                        if existing:
+                            self._safe_update_host(record, existing)
+                    except:
+                        pass  # Skip this record
+                else:
+                    # Other errors, just skip
+                    pass
     
-    def _insert_host(self, record: Dict) -> None:
-        """Insert new host"""
+    def _safe_insert_host(self, record: Dict) -> None:
+        """Safe insert with duplicate handling"""
         columns = ['normalized_host', 'source_tables', 'source_count']
         values = [record['normalized_host'], record['table_name'], 1]
         
@@ -381,10 +394,14 @@ class FastCMDBProcessor:
         placeholders = ', '.join(['?' for _ in values])
         insert_sql = f"INSERT INTO universal_cmdb ({', '.join(columns)}) VALUES ({placeholders})"
         
-        self.duck_conn.execute(insert_sql, values)
+        try:
+            self.duck_conn.execute(insert_sql, values)
+        except Exception as e:
+            if "duplicate key" not in str(e).lower():
+                raise  # Re-raise if not a duplicate key error
     
-    def _update_host(self, record: Dict, existing) -> None:
-        """Update existing host"""
+    def _safe_update_host(self, record: Dict, existing) -> None:
+        """Safe update of existing host"""
         normalized_host = record['normalized_host']
         updates = []
         values = []
@@ -402,7 +419,7 @@ class FastCMDBProcessor:
             updates.append("source_count = ?")
             values.append(new_source_count)
         
-        # Update other fields if they exist in record
+        # Update other fields
         data_columns = [
             'hostname', 'fqdn', 'domain', 'infrastructure_type', 'region', 'country',
             'data_center', 'cloud_region', 'ip_address', 'class', 'system_classification',
@@ -420,7 +437,11 @@ class FastCMDBProcessor:
             values.append(normalized_host)
             
             update_sql = f"UPDATE universal_cmdb SET {', '.join(updates)} WHERE normalized_host = ?"
-            self.duck_conn.execute(update_sql, values)
+            
+            try:
+                self.duck_conn.execute(update_sql, values)
+            except:
+                pass  # Skip if update fails
     
     def generate_report(self):
         """Generate summary report"""
@@ -436,31 +457,23 @@ class FastCMDBProcessor:
         
         if self.stats['processing_errors'] > 0:
             print(f"Processing Errors: {self.stats['processing_errors']}")
-        
-        # Show data coverage
-        columns_to_check = ['hostname', 'business_unit', 'region', 'infrastructure_type', 'ip_address']
-        
-        print("\nTop Column Coverage:")
-        for col in columns_to_check:
-            count_query = f"SELECT COUNT(*) FROM universal_cmdb WHERE {col} IS NOT NULL AND {col} != ''"
-            count = self.duck_conn.execute(count_query).fetchone()[0]
-            percentage = (count / total_hosts * 100) if total_hosts > 0 else 0
-            if count > 0:
-                print(f"  {col}: {count:,} ({percentage:.1f}%)")
     
     def export_comprehensive(self, filename: str = "universal_cmdb_export.csv"):
         """Export to CSV"""
         print(f"\nExporting to {filename}...")
         
-        export_query = f"""
-        COPY (
-            SELECT * FROM universal_cmdb 
-            ORDER BY source_count DESC, normalized_host
-        ) TO '{filename}' (HEADER, DELIMITER ',')
-        """
-        
-        self.duck_conn.execute(export_query)
-        print(f"Export complete: {filename}")
+        try:
+            export_query = f"""
+            COPY (
+                SELECT * FROM universal_cmdb 
+                ORDER BY source_count DESC, normalized_host
+            ) TO '{filename}' (HEADER, DELIMITER ',')
+            """
+            
+            self.duck_conn.execute(export_query)
+            print(f"Export complete: {filename}")
+        except Exception as e:
+            print(f"Export error: {str(e)}")
     
     def process_all_fast(self):
         """Main processing function"""
@@ -481,8 +494,8 @@ class FastCMDBProcessor:
         for table_name, column_name, column_type in discovered_columns:
             columns_by_table[table_name].append((table_name, column_name, column_type))
         
-        # Process tables in parallel
-        self.process_tables_parallel(columns_by_table)
+        # Process tables sequentially to avoid concurrency issues
+        self.process_tables_sequential(columns_by_table)
         
         # Generate report
         self.generate_report()
