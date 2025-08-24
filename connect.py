@@ -10,45 +10,74 @@ from collections import defaultdict
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import threading
-import multiprocessing
+import platform
+import subprocess
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s | %(message)s', datefmt='%H:%M:%S')
 logger = logging.getLogger(__name__)
 
-class UltraFastCMDBProcessor:
+class OptimizedCMDBProcessor:
     def __init__(self, json_file_path: str, duckdb_path: str = "universal_cmdb.db"):
         print("\n" + "=" * 80)
-        print("ULTRA-FAST CMDB PROCESSOR")
+        print("OPTIMIZED CMDB PROCESSOR")
         print("=" * 80 + "\n")
         
         self.json_file_path = json_file_path
         self.duckdb_path = duckdb_path
         self.db_lock = threading.Lock()
-        self.max_workers = min(8, multiprocessing.cpu_count())
         
-        self.normalize_pattern = re.compile(r'[^a-z0-9]')
-        self.invalid_values = frozenset(['*undefined', 'null', 'none', 'undefined', ''])
+        self.column_mapping = {
+            'fqdn': 'fqdn', 'domain': 'domain', 'host': 'hostname',
+            'hostname': 'hostname', 'infrastructure_type': 'infrastructure_type',
+            'infra_type': 'infrastructure_type', 'region': 'region',
+            'country': 'country', 'data_center': 'data_center',
+            'datacenter': 'data_center', 'cloud_region': 'cloud_region',
+            'ip_address': 'ip_address', 'ip': 'ip_address', 'class': 'class',
+            'system_classification': 'system_classification',
+            'business_unit': 'business_unit', 'bu': 'business_unit',
+            'apm': 'apm', 'cio': 'cio', 'edr_coverage': 'edr_coverage',
+            'tanium_coverage': 'tanium_coverage',
+            'dlp_agent_coverage': 'dlp_agent_coverage',
+            'logging_in_splunk': 'logging_in_splunk',
+            'logging_in_gso': 'logging_in_gso'
+        }
         
-        self.special_tables = {
-            'prj-fisv-p-gcss-sas-dl9dd0f1df.SAS_BI.V_DIM_ENDPOINTAGENT': 'present_in_crowdstrike',
-            'prj-fisv-p-gcss-sas-dl9dd0f1df.SAS_BI.V_DIM_ENDPOINT': 'present_in_cmdb',
-            'prj-fisv-p-gcss-sas-dl9dd0f1df.SAS_BI.V_SPL_ENDPOINT_LOG': 'logging_in_splunk'
+        self.hostname_patterns = [
+            'host', 'hostname', 'fqdn', 'server_name', 'node_name', 'device_name',
+            'endpoint_name', 'splunk_host', 'app_host', 'computer_name', 'machine_name',
+            'chronicle_device_hostname', 'endpointdomain_name', 'asset_name'
+        ]
+        
+        self.advanced_patterns = {
+            'business_unit': ['business_unit', 'bu', 'business', 'department', 'division', 'org_unit'],
+            'region': ['region', 'location', 'site', 'area', 'zone', 'geographic_region'],
+            'country': ['country', 'nation', 'country_code', 'geo_country'],
+            'infrastructure_type': ['infrastructure_type', 'infra_type', 'server_type', 'system_type', 'platform', 'environment', 'env'],
+            'data_center': ['datacenter', 'data_center', 'dc', 'facility', 'center'],
+            'cloud_region': ['cloud_region', 'aws_region', 'azure_region', 'gcp_region'],
+            'ip_address': ['ip_address', 'ip', 'ipv4', 'ipv6', 'host_ip'],
+            'class': ['class', 'classification', 'tier', 'level'],
+            'system_classification': ['system_classification', 'security_classification'],
+            'apm': ['apm', 'monitoring', 'application_monitoring'],
+            'cio': ['cio', 'owner', 'responsible', 'contact'],
+            'edr_coverage': ['edr_coverage', 'edr', 'endpoint_detection'],
+            'tanium_coverage': ['tanium_coverage', 'tanium', 'tanium_agent'],
+            'dlp_agent_coverage': ['dlp_agent_coverage', 'dlp', 'data_loss_prevention'],
+            'logging_in_splunk': ['logging_in_splunk', 'splunk', 'splunk_logging'],
+            'logging_in_gso': ['logging_in_gso', 'gso', 'gso_logging'],
+            'domain': ['domain', 'dns_domain', 'ad_domain'],
+            'fqdn': ['fqdn', 'full_name', 'qualified_name']
         }
         
         self.stats = defaultdict(int)
         self.existing_hosts = {}
         
         self._init_bigquery()
-        
         self.duck_conn = duckdb.connect(duckdb_path)
-        self.duck_conn.execute("PRAGMA threads=8")
-        self.duck_conn.execute("PRAGMA memory_limit='8GB'")
-        
         self._create_table()
-        self._load_existing_hosts_fast()
+        self._load_existing_hosts()
         
-        print(f"Loaded {len(self.existing_hosts)} existing hosts")
-        print(f"Using {self.max_workers} parallel workers\n")
+        print(f"Loaded {len(self.existing_hosts)} existing hosts\n")
     
     def _init_bigquery(self):
         service_account_file = os.getenv('GCP_SERVICE_ACCOUNT_FILE', 'gcp/gcp_prod_key.json')
@@ -94,11 +123,11 @@ class UltraFastCMDBProcessor:
         self.duck_conn.execute(create_sql)
         
         try:
-            self.duck_conn.execute("CREATE INDEX IF NOT EXISTS idx_normalized ON universal_cmdb(normalized_host, source_count)")
+            self.duck_conn.execute("CREATE INDEX IF NOT EXISTS idx_normalized_host ON universal_cmdb(normalized_host)")
         except:
             pass
     
-    def _load_existing_hosts_fast(self):
+    def _load_existing_hosts(self):
         try:
             query = """
             SELECT normalized_host, source_tables, hostname, fqdn, domain,
@@ -109,24 +138,70 @@ class UltraFastCMDBProcessor:
                    present_in_cmdb, source_count
             FROM universal_cmdb
             """
-            result = self.duck_conn.execute(query).fetchall()
-            
-            for row in result:
-                self.existing_hosts[row[0]] = list(row[1:])
+            for row in self.duck_conn.execute(query).fetchall():
+                self.existing_hosts[row[0]] = {
+                    'source_tables': row[1],
+                    'hostname': row[2],
+                    'fqdn': row[3],
+                    'domain': row[4],
+                    'infrastructure_type': row[5],
+                    'region': row[6],
+                    'country': row[7],
+                    'data_center': row[8],
+                    'cloud_region': row[9],
+                    'ip_address': row[10],
+                    'class': row[11],
+                    'system_classification': row[12],
+                    'business_unit': row[13],
+                    'apm': row[14],
+                    'cio': row[15],
+                    'edr_coverage': row[16],
+                    'tanium_coverage': row[17],
+                    'dlp_agent_coverage': row[18],
+                    'logging_in_splunk': row[19],
+                    'logging_in_gso': row[20],
+                    'present_in_crowdstrike': row[21],
+                    'present_in_cmdb': row[22],
+                    'source_count': row[23]
+                }
         except:
             pass
     
-    def normalize_hostname_fast(self, hostname: str) -> str:
-        if not hostname or not isinstance(hostname, str):
+    def normalize_hostname(self, hostname: str) -> str:
+        if not hostname or not isinstance(hostname, str) or hostname.strip() == '*Undefined':
             return ""
         normalized = hostname.lower().strip()
-        if normalized in self.invalid_values:
-            return ""
         if '.' in normalized:
-            normalized = normalized.split('.', 1)[0]
+            normalized = normalized.split('.')[0]
         normalized = normalized.replace('-', '')
-        normalized = self.normalize_pattern.sub('', normalized)
+        normalized = re.sub(r'[^a-z0-9]', '', normalized)
         return normalized if len(normalized) > 1 else ""
+    
+    def is_valid_value(self, value) -> bool:
+        if not value:
+            return False
+        if isinstance(value, str):
+            stripped = value.strip()
+            return stripped != '' and stripped != '*Undefined' and stripped.lower() not in ['null', 'none', 'undefined']
+        return True
+    
+    def identify_column_type(self, column_name: str, column_type) -> Optional[str]:
+        column_lower = column_name.lower()
+        type_lower = str(column_type).lower() if column_type else ""
+        
+        if isinstance(column_type, str) and type_lower in self.column_mapping:
+            return self.column_mapping[type_lower]
+        
+        for pattern in self.hostname_patterns:
+            if pattern in column_lower:
+                return 'hostname'
+        
+        for target_type, patterns in self.advanced_patterns.items():
+            for pattern in patterns:
+                if pattern in column_lower or pattern in type_lower:
+                    return target_type
+        
+        return None
     
     def load_metadata(self) -> Dict:
         print("Loading metadata...")
@@ -136,154 +211,109 @@ class UltraFastCMDBProcessor:
             print(f"Found {len(metadata['columns'])} tables\n")
         return metadata
     
-    def discover_columns_fast(self, metadata: Dict) -> Dict:
-        print("Organizing columns by table...")
-        columns_by_table = defaultdict(list)
+    def discover_columns(self, metadata: Dict) -> List[Tuple[str, str, str]]:
+        print("Discovering columns...")
+        discovered = []
         
         for table_name, columns in metadata.get('columns', {}).items():
             for column_name, column_type in columns.items():
-                if column_type and column_type != 'unknown':
-                    columns_by_table[table_name].append((column_name, column_type))
+                mapped_type = self.identify_column_type(column_name, column_type)
+                if mapped_type:
+                    discovered.append((table_name, column_name, mapped_type))
         
-        print(f"Found {len(columns_by_table)} tables with typed columns\n")
-        return columns_by_table
+        print(f"Discovered {len(discovered)} relevant columns\n")
+        return discovered
     
-    def process_all_parallel(self):
-        print("Starting parallel CMDB processing...\n")
-        start_time = time.time()
-        
-        metadata = self.load_metadata()
-        columns_by_table = self.discover_columns_fast(metadata)
-        
-        if not columns_by_table:
-            print("No processable tables found")
-            return
-        
-        print(f"Processing {len(columns_by_table)} tables in parallel\n")
-        
-        with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
-            futures = {}
-            
-            for table_name, table_columns in columns_by_table.items():
-                future = executor.submit(self.process_table_fast, table_name, table_columns)
-                futures[future] = table_name
-            
-            completed = 0
-            for future in as_completed(futures):
-                completed += 1
-                table_name = futures[future]
-                
-                try:
-                    records = future.result(timeout=300)
-                    print(f"[{completed}/{len(columns_by_table)}] {table_name}: {records:,} records")
-                    self.stats['tables_processed'] += 1
-                    
-                except Exception as e:
-                    print(f"[{completed}/{len(columns_by_table)}] {table_name}: ERROR - {str(e)[:100]}")
-                    self.stats['processing_errors'] += 1
-        
-        self.generate_report()
-        self.export_csv()
-        
-        total_time = time.time() - start_time
-        print(f"\nProcessing complete in {total_time:.2f} seconds ({total_time/60:.1f} minutes)")
-        print(f"Rate: {self.stats['total_records_processed']/max(1, total_time):.0f} records/second")
-    
-    def process_table_fast(self, table_name: str, table_columns: List[Tuple[str, str]]) -> int:
-        hostname_cols = [col for col, ctype in table_columns if ctype == 'hostname']
+    def process_table(self, table_name: str, table_columns: List[Tuple[str, str, str]]) -> int:
+        hostname_cols = [(col, ctype) for _, col, ctype in table_columns if ctype == 'hostname']
+        attribute_cols = [(col, ctype) for _, col, ctype in table_columns if ctype != 'hostname']
         
         if not hostname_cols:
             return 0
         
-        primary_hostname = hostname_cols[0]
-        all_columns = [col for col, _ in table_columns]
-        column_types = {col: ctype for col, ctype in table_columns}
+        primary_hostname_col = hostname_cols[0][0]
+        all_columns = [primary_hostname_col] + [col for col, _ in attribute_cols]
+        attribute_types = [ctype for _, ctype in attribute_cols]
+        
+        print(f"Processing {table_name}: {len(all_columns)} columns")
         
         query = f"""
         SELECT {', '.join(f'`{col}`' for col in all_columns)}
         FROM `{table_name}`
-        WHERE `{primary_hostname}` IS NOT NULL 
-        AND `{primary_hostname}` != ''
-        AND `{primary_hostname}` != '*Undefined'
-        LIMIT 500000
+        WHERE `{primary_hostname_col}` IS NOT NULL 
+        AND `{primary_hostname_col}` != ''
+        AND `{primary_hostname_col}` != '*Undefined'
         """
         
         try:
-            job_config = bigquery.QueryJobConfig()
-            job_config.use_query_cache = True
-            
-            query_job = self.bq_client.query(query, job_config=job_config)
-            return self.process_results_batch(query_job, table_name, all_columns, column_types)
-            
+            query_job = self.bq_client.query(query)
+            return self.process_results(query_job, table_name, attribute_types)
         except Exception as e:
-            raise e
+            print(f"Error processing {table_name}: {str(e)[:100]}")
+            return 0
     
-    def process_results_batch(self, query_job, table_name: str, columns: List[str], column_types: Dict) -> int:
+    def process_results(self, query_job, table_name: str, attribute_types: List[str]) -> int:
         records_processed = 0
         batch_records = []
-        batch_size = 5000
-        duplicates = 0
+        batch_size = 1000
+        duplicates_found = 0
         
-        special_column = self.special_tables.get(table_name)
+        special_tables = {
+            'prj-fisv-p-gcss-sas-dl9dd0f1df.SAS_BI.V_DIM_ENDPOINTAGENT': 'present_in_crowdstrike',
+            'prj-fisv-p-gcss-sas-dl9dd0f1df.SAS_BI.V_DIM_ENDPOINT': 'present_in_cmdb',
+            'prj-fisv-p-gcss-sas-dl9dd0f1df.SAS_BI.V_SPL_ENDPOINT_LOG': 'logging_in_splunk'
+        }
         
-        results = list(query_job.result(timeout=300))
+        special_column = special_tables.get(table_name)
         
-        for row in results:
+        for row in query_job:
             records_processed += 1
             
-            hostname_idx = None
-            for i, col in enumerate(columns):
-                if column_types.get(col) == 'hostname':
-                    hostname_idx = i
-                    break
+            if records_processed % 10000 == 0:
+                print(f"  Processed {records_processed} rows from {table_name}")
             
-            if hostname_idx is None or not row[hostname_idx]:
+            if not row[0] or not self.is_valid_value(row[0]):
                 continue
             
-            normalized_host = self.normalize_hostname_fast(row[hostname_idx])
+            normalized_host = self.normalize_hostname(row[0])
             if not normalized_host:
                 continue
             
             record_data = {
                 'normalized_host': normalized_host,
-                'hostname': str(row[hostname_idx]).strip(),
+                'hostname': str(row[0]).strip(),
                 'table_name': table_name
             }
             
             if special_column:
                 record_data[special_column] = 'yes'
             
-            for i, col in enumerate(columns):
-                if i < len(row) and row[i]:
-                    val = str(row[i]).strip().lower()
-                    if val not in self.invalid_values:
-                        col_type = column_types.get(col)
-                        if col_type and col_type != 'hostname':
-                            if col_type == 'logging_in_splunk' and table_name == 'prj-fisv-p-gcss-sas-dl9dd0f1df.SAS_BI.V_SPL_ENDPOINT_LOG':
-                                record_data[col_type] = 'yes'
-                            else:
-                                record_data[col_type] = str(row[i]).strip()
+            for i, attr_type in enumerate(attribute_types, 1):
+                if i < len(row) and self.is_valid_value(row[i]):
+                    if attr_type == 'logging_in_splunk' and table_name == 'prj-fisv-p-gcss-sas-dl9dd0f1df.SAS_BI.V_SPL_ENDPOINT_LOG':
+                        record_data[attr_type] = 'yes'
+                    else:
+                        record_data[attr_type] = str(row[i]).strip()
             
             batch_records.append(record_data)
             
             if len(batch_records) >= batch_size:
-                dups = self.save_batch_fast(batch_records)
-                duplicates += dups
+                dups = self.save_batch(batch_records)
+                duplicates_found += dups
                 batch_records = []
         
         if batch_records:
-            dups = self.save_batch_fast(batch_records)
-            duplicates += dups
+            dups = self.save_batch(batch_records)
+            duplicates_found += dups
         
+        print(f"  Completed {table_name}: {records_processed} rows, {duplicates_found} duplicates merged")
         self.stats['total_records_processed'] += records_processed
-        self.stats['duplicate_hosts_found'] += duplicates
+        self.stats['duplicate_hosts_found'] += duplicates_found
         
         return records_processed
     
-    def save_batch_fast(self, records: List[Dict]) -> int:
+    def save_batch(self, records: List[Dict]) -> int:
         duplicates = 0
-        new_records = []
-        update_records = []
         
         with self.db_lock:
             for record in records:
@@ -291,132 +321,159 @@ class UltraFastCMDBProcessor:
                 
                 if normalized_host in self.existing_hosts:
                     duplicates += 1
-                    update_records.append(record)
+                    self.update_existing_host(normalized_host, record)
                 else:
-                    new_records.append(record)
-                    self.existing_hosts[normalized_host] = [record['table_name']] + [None] * 22
-            
-            if new_records:
-                self.bulk_insert_fast(new_records)
-            
-            if update_records:
-                self.bulk_update_fast(update_records)
+                    self.insert_new_host(record)
+                    self.existing_hosts[normalized_host] = self.build_host_data(record)
         
         return duplicates
     
-    def bulk_insert_fast(self, records: List[Dict]):
-        if not records:
-            return
+    def build_host_data(self, record: Dict) -> Dict:
+        return {
+            'source_tables': record['table_name'],
+            'hostname': record.get('hostname'),
+            'fqdn': record.get('fqdn'),
+            'domain': record.get('domain'),
+            'infrastructure_type': record.get('infrastructure_type'),
+            'region': record.get('region'),
+            'country': record.get('country'),
+            'data_center': record.get('data_center'),
+            'cloud_region': record.get('cloud_region'),
+            'ip_address': record.get('ip_address'),
+            'class': record.get('class'),
+            'system_classification': record.get('system_classification'),
+            'business_unit': record.get('business_unit'),
+            'apm': record.get('apm'),
+            'cio': record.get('cio'),
+            'edr_coverage': record.get('edr_coverage'),
+            'tanium_coverage': record.get('tanium_coverage'),
+            'dlp_agent_coverage': record.get('dlp_agent_coverage'),
+            'logging_in_splunk': record.get('logging_in_splunk'),
+            'logging_in_gso': record.get('logging_in_gso'),
+            'present_in_crowdstrike': record.get('present_in_crowdstrike'),
+            'present_in_cmdb': record.get('present_in_cmdb'),
+            'source_count': 1
+        }
+    
+    def insert_new_host(self, record: Dict):
+        columns = ['normalized_host', 'source_tables', 'source_count']
+        values = [record['normalized_host'], record['table_name'], 1]
         
-        values_list = []
-        for record in records:
-            values = [
-                record['normalized_host'],
-                record['table_name'],
-                record.get('hostname'),
-                record.get('fqdn'),
-                record.get('domain'),
-                record.get('infrastructure_type'),
-                record.get('region'),
-                record.get('country'),
-                record.get('data_center'),
-                record.get('cloud_region'),
-                record.get('ip_address'),
-                record.get('class'),
-                record.get('system_classification'),
-                record.get('business_unit'),
-                record.get('apm'),
-                record.get('cio'),
-                record.get('edr_coverage'),
-                record.get('tanium_coverage'),
-                record.get('dlp_agent_coverage'),
-                record.get('logging_in_splunk'),
-                record.get('logging_in_gso'),
-                record.get('present_in_crowdstrike'),
-                record.get('present_in_cmdb')
-            ]
-            values_list.append(values)
+        attribute_columns = [
+            'hostname', 'fqdn', 'domain', 'infrastructure_type', 'region', 'country',
+            'data_center', 'cloud_region', 'ip_address', 'class', 'system_classification',
+            'business_unit', 'apm', 'cio', 'edr_coverage', 'tanium_coverage',
+            'dlp_agent_coverage', 'logging_in_splunk', 'logging_in_gso',
+            'present_in_crowdstrike', 'present_in_cmdb'
+        ]
         
-        insert_sql = """
-        INSERT INTO universal_cmdb (
-            normalized_host, source_tables, hostname, fqdn, domain,
-            infrastructure_type, region, country, data_center, cloud_region,
-            ip_address, class, system_classification, business_unit, apm,
-            cio, edr_coverage, tanium_coverage, dlp_agent_coverage,
-            logging_in_splunk, logging_in_gso, present_in_crowdstrike, present_in_cmdb
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """
+        for col in attribute_columns:
+            if col in record and record[col]:
+                columns.append(col)
+                values.append(record[col])
+        
+        placeholders = ', '.join(['?' for _ in values])
+        insert_sql = f"INSERT INTO universal_cmdb ({', '.join(columns)}) VALUES ({placeholders})"
         
         try:
-            self.duck_conn.executemany(insert_sql, values_list)
-            self.stats['hosts_created'] += len(values_list)
-        except:
-            for values in values_list:
-                try:
-                    self.duck_conn.execute(insert_sql, values)
-                    self.stats['hosts_created'] += 1
-                except:
-                    pass
+            self.duck_conn.execute(insert_sql, values)
+            self.stats['hosts_created'] += 1
+        except Exception as e:
+            if "duplicate" not in str(e).lower():
+                print(f"Insert error: {e}")
     
-    def bulk_update_fast(self, records: List[Dict]):
-        for record in records:
-            normalized_host = record['normalized_host']
-            existing = self.existing_hosts.get(normalized_host)
+    def update_existing_host(self, normalized_host: str, record: Dict):
+        existing = self.existing_hosts[normalized_host]
+        updates = []
+        values = []
+        
+        current_tables = existing.get('source_tables', '')
+        table_name = record['table_name']
+        
+        if table_name not in current_tables:
+            new_tables = f"{current_tables}, {table_name}" if current_tables else table_name
+            updates.append("source_tables = ?")
+            values.append(new_tables)
+            existing['source_tables'] = new_tables
             
-            if not existing:
-                continue
-            
-            updates = []
-            values = []
-            
-            current_tables = existing[0] if existing[0] else ""
-            table_name = record['table_name']
-            
-            if table_name not in current_tables:
-                new_tables = f"{current_tables}, {table_name}" if current_tables else table_name
-                updates.append("source_tables = ?")
-                values.append(new_tables)
-                updates.append("source_count = source_count + 1")
-                existing[0] = new_tables
-            
-            attribute_map = {
-                'hostname': 1, 'fqdn': 2, 'domain': 3, 'infrastructure_type': 4,
-                'region': 5, 'country': 6, 'data_center': 7, 'cloud_region': 8,
-                'ip_address': 9, 'class': 10, 'system_classification': 11,
-                'business_unit': 12, 'apm': 13, 'cio': 14, 'edr_coverage': 15,
-                'tanium_coverage': 16, 'dlp_agent_coverage': 17,
-                'logging_in_splunk': 18, 'logging_in_gso': 19,
-                'present_in_crowdstrike': 20, 'present_in_cmdb': 21
-            }
-            
-            for col, idx in attribute_map.items():
-                if col in record and record[col]:
-                    new_value = record[col]
-                    
-                    if col in ['present_in_crowdstrike', 'present_in_cmdb', 'logging_in_splunk'] and new_value == 'yes':
-                        if existing[idx] != 'yes':
-                            updates.append(f"{col} = ?")
-                            values.append('yes')
-                            existing[idx] = 'yes'
-                    elif existing[idx] and new_value not in str(existing[idx]):
-                        merged = f"{existing[idx]} | {new_value}"
-                        updates.append(f"{col} = ?")
-                        values.append(merged)
-                        existing[idx] = merged
-                    elif not existing[idx]:
-                        updates.append(f"{col} = ?")
-                        values.append(new_value)
-                        existing[idx] = new_value
-            
-            if updates:
-                values.append(normalized_host)
-                update_sql = f"UPDATE universal_cmdb SET {', '.join(updates)} WHERE normalized_host = ?"
+            new_count = existing.get('source_count', 0) + 1
+            updates.append("source_count = ?")
+            values.append(new_count)
+            existing['source_count'] = new_count
+        
+        attribute_columns = [
+            'hostname', 'fqdn', 'domain', 'infrastructure_type', 'region', 'country',
+            'data_center', 'cloud_region', 'ip_address', 'class', 'system_classification',
+            'business_unit', 'apm', 'cio', 'edr_coverage', 'tanium_coverage',
+            'dlp_agent_coverage', 'logging_in_splunk', 'logging_in_gso',
+            'present_in_crowdstrike', 'present_in_cmdb'
+        ]
+        
+        for col in attribute_columns:
+            if col in record and record[col]:
+                new_value = record[col]
+                existing_value = existing.get(col)
                 
-                try:
-                    self.duck_conn.execute(update_sql, values)
-                    self.stats['hosts_updated'] += 1
-                except:
-                    pass
+                if col in ['present_in_crowdstrike', 'present_in_cmdb'] and new_value == 'yes':
+                    if existing_value != 'yes':
+                        updates.append(f"{col} = ?")
+                        values.append('yes')
+                        existing[col] = 'yes'
+                elif col == 'logging_in_splunk' and new_value == 'yes':
+                    if existing_value != 'yes':
+                        updates.append(f"{col} = ?")
+                        values.append('yes')
+                        existing[col] = 'yes'
+                elif existing_value and new_value != existing_value:
+                    if new_value not in str(existing_value):
+                        merged_value = f"{existing_value} | {new_value}"
+                        updates.append(f"{col} = ?")
+                        values.append(merged_value)
+                        existing[col] = merged_value
+                elif not existing_value:
+                    updates.append(f"{col} = ?")
+                    values.append(new_value)
+                    existing[col] = new_value
+        
+        if updates:
+            updates.append("last_updated = CURRENT_TIMESTAMP")
+            values.append(normalized_host)
+            
+            update_sql = f"UPDATE universal_cmdb SET {', '.join(updates)} WHERE normalized_host = ?"
+            
+            try:
+                self.duck_conn.execute(update_sql, values)
+                self.stats['hosts_updated'] += 1
+            except Exception as e:
+                print(f"Update error: {e}")
+    
+    def process_all(self):
+        print("Starting CMDB processing...\n")
+        start_time = time.time()
+        
+        metadata = self.load_metadata()
+        discovered_columns = self.discover_columns(metadata)
+        
+        if not discovered_columns:
+            print("No processable columns found")
+            return
+        
+        columns_by_table = defaultdict(list)
+        for table_name, column_name, column_type in discovered_columns:
+            columns_by_table[table_name].append((table_name, column_name, column_type))
+        
+        print(f"Processing {len(columns_by_table)} tables\n")
+        
+        for idx, (table_name, table_columns) in enumerate(columns_by_table.items(), 1):
+            print(f"\n[{idx}/{len(columns_by_table)}] {table_name}")
+            self.process_table(table_name, table_columns)
+            self.stats['tables_processed'] += 1
+        
+        self.generate_report()
+        self.export_csv()
+        
+        total_time = time.time() - start_time
+        print(f"\nProcessing complete in {total_time:.2f} seconds")
     
     def generate_report(self):
         print("\n" + "=" * 60)
@@ -432,15 +489,33 @@ class UltraFastCMDBProcessor:
         print(f"Existing hosts updated: {self.stats['hosts_updated']:,}")
         print(f"Duplicate hosts merged: {self.stats['duplicate_hosts_found']:,}")
         
-        print("\nSpecial coverage:")
+        print("\nColumn coverage:")
         
-        crowdstrike = self.duck_conn.execute("SELECT COUNT(*) FROM universal_cmdb WHERE present_in_crowdstrike = 'yes'").fetchone()[0]
-        cmdb = self.duck_conn.execute("SELECT COUNT(*) FROM universal_cmdb WHERE present_in_cmdb = 'yes'").fetchone()[0]
-        splunk = self.duck_conn.execute("SELECT COUNT(*) FROM universal_cmdb WHERE logging_in_splunk = 'yes'").fetchone()[0]
+        columns = [
+            'hostname', 'fqdn', 'domain', 'business_unit', 'region', 
+            'infrastructure_type', 'country', 'data_center', 'cloud_region',
+            'ip_address', 'class', 'system_classification', 'apm', 'cio',
+            'edr_coverage', 'tanium_coverage', 'dlp_agent_coverage',
+            'logging_in_splunk', 'logging_in_gso', 'present_in_crowdstrike', 
+            'present_in_cmdb'
+        ]
         
-        print(f"  Hosts in CrowdStrike: {crowdstrike:,}")
-        print(f"  Hosts in CMDB: {cmdb:,}")
-        print(f"  Hosts logging to Splunk: {splunk:,}")
+        for col in columns:
+            count_query = f"SELECT COUNT(*) FROM universal_cmdb WHERE {col} IS NOT NULL AND {col} != ''"
+            count = self.duck_conn.execute(count_query).fetchone()[0]
+            if count > 0:
+                percentage = (count / total_hosts * 100) if total_hosts > 0 else 0
+                print(f"  {col}: {count:,} ({percentage:.1f}%)")
+        
+        print("\nSpecial table coverage:")
+        
+        crowdstrike_count = self.duck_conn.execute("SELECT COUNT(*) FROM universal_cmdb WHERE present_in_crowdstrike = 'yes'").fetchone()[0]
+        cmdb_count = self.duck_conn.execute("SELECT COUNT(*) FROM universal_cmdb WHERE present_in_cmdb = 'yes'").fetchone()[0]
+        splunk_log_count = self.duck_conn.execute("SELECT COUNT(*) FROM universal_cmdb WHERE logging_in_splunk = 'yes'").fetchone()[0]
+        
+        print(f"  Hosts in CrowdStrike: {crowdstrike_count:,}")
+        print(f"  Hosts in CMDB: {cmdb_count:,}")
+        print(f"  Hosts logging to Splunk: {splunk_log_count:,}")
     
     def export_csv(self, filename: str = "universal_cmdb_export.csv"):
         print(f"\nExporting to {filename}...")
@@ -462,8 +537,8 @@ if __name__ == "__main__":
     processor = None
     
     try:
-        processor = UltraFastCMDBProcessor("reviewed_labeled_columns.json", "universal_cmdb.db")
-        processor.process_all_parallel()
+        processor = OptimizedCMDBProcessor("reviewed_labeled_columns.json", "universal_cmdb.db")
+        processor.process_all()
         
     except KeyboardInterrupt:
         print("\n\nInterrupted by user")
