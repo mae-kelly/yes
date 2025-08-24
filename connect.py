@@ -5,14 +5,16 @@ import re
 import time
 import threading
 import multiprocessing
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor, as_completed
 from google.cloud import bigquery
 from google.oauth2 import service_account
 from typing import Dict, List, Set, Tuple, Optional
 import logging
 from collections import defaultdict
 import psutil
+import queue
 from dataclasses import dataclass
+from functools import partial
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s | %(levelname)s | %(message)s', datefmt='%H:%M:%S')
 logger = logging.getLogger(__name__)
@@ -59,7 +61,7 @@ class PerformanceMonitor:
                     print("🪞 High performance mode - fans active ‧₊˚🖇️✩")
                 
                 emoji_index += 1
-                time.sleep(15)
+                time.sleep(15)  # More frequent updates for performance mode
                 
             except Exception as e:
                 print(f"𖦹.✧˚ Monitor error: {e}")
@@ -70,7 +72,7 @@ class PerformanceMonitor:
         if self.thread:
             self.thread.join(timeout=1)
 
-class FullyFixedProcessor:
+class HighPerformanceHostProcessor:
     def __init__(self, json_file_path: str, duckdb_path: str = "universal_cmdb.db"):
         self.json_file_path = json_file_path
         self.duckdb_path = duckdb_path
@@ -80,18 +82,18 @@ class FullyFixedProcessor:
         
         # Performance configuration
         self.cpu_count = multiprocessing.cpu_count()
-        self.max_workers = min(self.cpu_count, 12)  # Conservative for stability
-        self.batch_size = 5000  
-        self.chunk_size = 20000  
+        self.max_workers = min(self.cpu_count * 2, 32)  # Aggressive threading
+        self.batch_size = 10000  # Large batch size for bulk operations
+        self.chunk_size = 50000  # Process in large chunks
         self.connection_pool = []
         
-        print(f"🤍 INITIALIZING FULLY FIXED HIGH-PERFORMANCE MODE:")
+        print(f"🤍 INITIALIZING HIGH-PERFORMANCE MODE:")
         print(f"🦢 CPU Cores: {self.cpu_count}")
         print(f"🎧 Max Workers: {self.max_workers}")
         print(f"☁️ Batch Size: {self.batch_size:,}")
         print(f"🪞 Chunk Size: {self.chunk_size:,}")
         
-        # Column mappings
+        # Column mappings (keeping original logic)
         self.column_mapping = {
             'fqdn': 'fqdn', 'domain': 'domain', 'host': 'hostname', 'hostname': 'hostname',
             'infrastructure_type': 'infrastructure_type', 'infra_type': 'infrastructure_type',
@@ -127,14 +129,7 @@ class FullyFixedProcessor:
             'fqdn': ['fqdn', 'full_name', 'qualified_name']
         }
         
-        # Initialize BigQuery and DuckDB
-        self._init_bigquery_client()
-        self._init_perfectly_fixed_duckdb()
-        
-    def _init_bigquery_client(self):
-        """Initialize BigQuery client"""
-        print("‧₊˚🖇️✩ Setting up BigQuery client...")
-        
+        # Initialize BigQuery with performance settings
         service_account_file = os.getenv('GCP_SERVICE_ACCOUNT_FILE', 'gcp/gcp_prod_key.json')
         
         if os.path.exists(service_account_file):
@@ -143,43 +138,52 @@ class FullyFixedProcessor:
         else:
             self.bq_client = bigquery.Client(project="chronicle-fisv")
         
-        # Simple, clean job configuration
+        # Configure BigQuery for maximum performance
         self.job_config = bigquery.QueryJobConfig(
-            use_query_cache=True,
-            use_legacy_sql=False
+            use_query_cache=False,
+            use_legacy_sql=False,
+            maximum_bytes_billed=None,  # Remove billing limits for speed
         )
         
-        print("₊˚🎧⊹ BigQuery client configured successfully!")
+        # Initialize optimized DuckDB connection
+        self._init_high_performance_db()
         
-    def _init_perfectly_fixed_duckdb(self):
-        """Initialize DuckDB with ONLY settings that actually work"""
-        print("♡ Configuring DuckDB with ONLY working settings...")
+    def _init_high_performance_db(self):
+        """Initialize DuckDB with performance optimizations"""
+        print("‧₊˚🖇️✩ Configuring DuckDB for MAXIMUM PERFORMANCE...")
         
         self.main_conn = duckdb.connect(self.duckdb_path)
         
-        # ONLY settings that are guaranteed to work in DuckDB
-        working_settings = [
-            "SET memory_limit='4GB'",
-            "SET threads=4",  # FIXED: Must be at least 1, not 0
-            "SET enable_progress_bar=false"
-            # REMOVED: All other settings that cause warnings/errors
+        # Aggressive performance settings
+        performance_settings = [
+            "SET memory_limit='8GB'",
+            "SET threads=TO_THREADS(0)",  # Use all available cores
+            "SET enable_progress_bar=false",
+            "SET force_compression='uncompressed'",  # Skip compression for speed
+            "SET default_null_order='nulls_first'",
+            "SET enable_object_cache=true",
+            "SET checkpoint_threshold='1GB'",
+            "SET wal_autocheckpoint=0",  # Disable automatic checkpoints for speed
+            "PRAGMA journal_mode=WAL",
+            "PRAGMA synchronous=NORMAL",  # Balance between speed and safety
+            "PRAGMA cache_size=1000000",  # Large cache
+            "PRAGMA temp_store=MEMORY",
+            "PRAGMA mmap_size=268435456"  # 256MB mmap
         ]
         
-        for setting in working_settings:
+        for setting in performance_settings:
             try:
                 self.main_conn.execute(setting)
-                print(f"༘˚⋆𐙚｡⋆ Applied: {setting}")
+                print(f"₊˚🎧⊹ Applied: {setting}")
             except Exception as e:
-                print(f"𖦹.✧˚ Note for {setting}: {e}")
+                print(f"🪞 Warning: {setting} failed: {e}")
         
-        print("🤍ྀི DuckDB configured with ONLY working settings!")
-        
-        self._create_simple_table()
+        self._create_optimized_table()
         self._create_connection_pool()
     
-    def _create_simple_table(self):
-        """Create table WITHOUT problematic indexes"""
-        print("🤍 Creating optimized table structure...")
+    def _create_optimized_table(self):
+        """Create table with performance optimizations"""
+        print("♡ Creating optimized table structure...")
         
         sql = """
         CREATE TABLE IF NOT EXISTS universal_cmdb (
@@ -210,21 +214,34 @@ class FullyFixedProcessor:
         """
         self.main_conn.execute(sql)
         
-        # ONLY create the essential primary key index - skip others that cause key size errors
-        print("🦢 Table created successfully (skipping problematic indexes)")
+        # Create performance indexes
+        indexes = [
+            "CREATE INDEX IF NOT EXISTS idx_normalized_host ON universal_cmdb(normalized_host)",
+            "CREATE INDEX IF NOT EXISTS idx_source_tables ON universal_cmdb(source_tables)",
+            "CREATE INDEX IF NOT EXISTS idx_hostname ON universal_cmdb(hostname)",
+            "CREATE INDEX IF NOT EXISTS idx_business_unit ON universal_cmdb(business_unit)",
+            "CREATE INDEX IF NOT EXISTS idx_region ON universal_cmdb(region)"
+        ]
+        
+        for idx in indexes:
+            try:
+                self.main_conn.execute(idx)
+            except:
+                pass
     
     def _create_connection_pool(self):
-        """Create connection pool with working settings only"""
-        print(f"🎧 Creating connection pool with {self.max_workers} connections...")
+        """Create a pool of DuckDB connections for parallel processing"""
+        print(f"༘˚⋆𐙚｡⋆ Creating connection pool with {self.max_workers} connections...")
         
         for i in range(self.max_workers):
             conn = duckdb.connect(self.duckdb_path)
-            # Apply ONLY working settings
+            # Apply same performance settings to each connection
             try:
-                conn.execute("SET threads=2")
+                conn.execute("SET threads=4")  # Limit per connection to avoid conflicts
                 conn.execute("SET memory_limit='1GB'")
-            except Exception as e:
-                print(f"☁️ Connection {i} setup note: {e}")
+                conn.execute("PRAGMA synchronous=NORMAL")
+            except:
+                pass
             self.connection_pool.append(conn)
     
     def normalize_hostname(self, hostname: str) -> str:
@@ -238,131 +255,77 @@ class FullyFixedProcessor:
         normalized = re.sub(r'[^a-z0-9]', '', normalized)
         return normalized
     
-    def get_table_row_count_simple(self, table_name: str) -> int:
-        """Simple row counting"""
+    def get_table_row_count_fast(self, table_name: str) -> int:
+        """Fast row counting with minimal overhead"""
         try:
-            print(f"🪞 Counting rows in {table_name}...")
+            # Use approximate count for speed on large tables
+            count_query = f"""
+            SELECT 
+                CASE 
+                    WHEN COUNT(*) > 1000000 THEN 
+                        (SELECT CAST(table_rows AS INT64) FROM `{table_name.split('.')[0]}`.__TABLES__ WHERE table_id = '{table_name.split('.')[-1]}')
+                    ELSE COUNT(*) 
+                END as row_count
+            FROM `{table_name}` 
+            LIMIT 1
+            """
             
-            count_query = f"SELECT COUNT(*) FROM `{table_name}`"
-            query_job = self.bq_client.query(count_query, job_config=self.job_config)
-            result = next(iter(query_job.result()))
-            row_count = int(result[0])
+            # Fallback to simple count
+            simple_query = f"SELECT COUNT(*) FROM `{table_name}`"
+            
+            try:
+                query_job = self.bq_client.query(count_query, job_config=self.job_config)
+                result = next(iter(query_job.result()))
+                row_count = int(result[0]) if result[0] else 0
+            except:
+                query_job = self.bq_client.query(simple_query, job_config=self.job_config)
+                result = next(iter(query_job.result()))
+                row_count = int(result[0])
             
             self.table_row_counts[table_name] = row_count
-            print(f"‧₊˚🖇️✩ Table {table_name}: {row_count:,} rows")
+            print(f"𖦹.✧˚ Table {table_name}: {row_count:,} rows")
             return row_count
             
         except Exception as e:
-            print(f"₊˚🎧⊹ Error counting {table_name}: {e}")
+            print(f"🤍ྀི Error counting {table_name}: {e}")
             self.table_row_counts[table_name] = 0
             return 0
     
-    def process_single_table_completely(self, table_name: str, table_columns: List, table_index: int, total_tables: int):
-        """Process one complete table at a time with proper progress tracking"""
+    def process_table_chunk_parallel(self, table_info: tuple) -> dict:
+        """Process a chunk of table data in parallel"""
+        table_name, columns_info, offset, limit = table_info
         
-        hostname_cols = [c for c in table_columns if c[2] == 'hostname']
-        attribute_cols = [c for c in table_columns if c[2] != 'hostname']
+        hostname_cols = [c for c in columns_info if c[2] == 'hostname']
+        attribute_cols = [c for c in columns_info if c[2] != 'hostname']
         
         if not hostname_cols:
-            print(f"♡ SKIPPING {table_name} - No hostname columns found")
-            return {'records': 0, 'table': table_name}
-        
-        row_count = self.table_row_counts.get(table_name, 0)
-        print(f"\n༘˚⋆𐙚｡⋆ === PROCESSING TABLE {table_index}/{total_tables}: {table_name} === 𖦹.✧˚")
-        print(f"🤍ྀི Total rows to process: {row_count:,}")
+            return {'records': 0, 'table': table_name, 'chunk': f"{offset}-{offset+limit}"}
         
         hostname_col = hostname_cols[0][1]
         column_names = [hostname_col] + [c[1] for c in attribute_cols]
         attribute_types = [c[2] for c in attribute_cols]
         
-        # Process table in chunks if large
-        total_processed = 0
-        total_inserted = 0
-        total_updated = 0
-        
-        if row_count > self.chunk_size:
-            num_chunks = (row_count + self.chunk_size - 1) // self.chunk_size
-            print(f"🤍 Splitting into {num_chunks} chunks for parallel processing")
-            
-            # Process chunks in parallel
-            chunk_tasks = []
-            for i in range(num_chunks):
-                offset = i * self.chunk_size
-                limit = min(self.chunk_size, row_count - offset)
-                chunk_tasks.append((table_name, table_columns, offset, limit, hostname_col, column_names, attribute_types))
-            
-            completed_chunks = 0
-            with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
-                future_to_chunk = {
-                    executor.submit(self._process_chunk, task): task 
-                    for task in chunk_tasks
-                }
-                
-                for future in as_completed(future_to_chunk):
-                    chunk_task = future_to_chunk[future]
-                    try:
-                        result = future.result()
-                        completed_chunks += 1
-                        
-                        total_processed += result['records']
-                        total_inserted += result['inserted']
-                        total_updated += result['updated']
-                        
-                        progress_pct = (total_processed / row_count * 100) if row_count > 0 else 0
-                        
-                        print(f"🦢 CHUNK {completed_chunks}/{num_chunks} COMPLETE | "
-                              f"Processed: {total_processed:,}/{row_count:,} ({progress_pct:.1f}%) | "
-                              f"Table: {table_name}")
-                        
-                    except Exception as e:
-                        print(f"🎧 Chunk processing note: {e}")
-        else:
-            # Process small table as single chunk
-            result = self._process_chunk((table_name, table_columns, 0, row_count, hostname_col, column_names, attribute_types))
-            total_processed = result['records']
-            total_inserted = result['inserted']
-            total_updated = result['updated']
-            
-            print(f"☁️ SINGLE CHUNK COMPLETE | Processed: {total_processed:,}/{row_count:,} (100.0%)")
-        
-        # Update stats
-        self.stats.records_processed += total_processed
-        self.stats.records_inserted += total_inserted
-        self.stats.records_updated += total_updated
-        self.stats.tables_completed += 1
-        
-        elapsed = time.time() - self.stats.start_time
-        overall_rate = self.stats.records_processed / elapsed if elapsed > 0 else 0
-        
-        print(f"🪞 === TABLE {table_name} COMPLETE ===")
-        print(f"‧₊˚🖇️✩ Records processed: {total_processed:,}")
-        print(f"₊˚🎧⊹ New records: {total_inserted:,}")
-        print(f"♡ Updated records: {total_updated:,}")
-        print(f"༘˚⋆𐙚｡⋆ Overall progress: {self.stats.tables_completed}/{total_tables} tables ({self.stats.tables_completed/total_tables*100:.1f}%)")
-        print(f"𖦹.✧˚ Overall rate: {overall_rate:.0f} records/second")
-        
-        return {'records': total_processed, 'inserted': total_inserted, 'updated': total_updated, 'table': table_name}
-    
-    def _process_chunk(self, chunk_info: tuple) -> dict:
-        """Process a single chunk of data"""
-        table_name, table_columns, offset, limit, hostname_col, column_names, attribute_types = chunk_info
-        
-        # Simple query
+        # Optimized query with chunking
         query = f"""
         SELECT {', '.join([f'`{col}`' for col in column_names])}
         FROM `{table_name}`
         WHERE `{hostname_col}` IS NOT NULL 
+        AND `{hostname_col}` != ''
+        AND LENGTH(`{hostname_col}`) > 0
         LIMIT {limit} OFFSET {offset}
         """
         
         try:
+            thread_id = threading.current_thread().ident
+            print(f"🤍 Thread {thread_id}: Processing {table_name} chunk {offset:,}-{offset+limit:,}")
+            
             query_job = self.bq_client.query(query, job_config=self.job_config)
             results = query_job.result()
             
             records_batch = []
             
             for row in results:
-                if row[0] and isinstance(row[0], str) and row[0].strip():
+                if row[0] and isinstance(row[0], str):
                     normalized_host = self.normalize_hostname(row[0])
                     if normalized_host and len(normalized_host) > 2:
                         record = {'normalized_host': normalized_host, 'hostname': row[0]}
@@ -373,25 +336,28 @@ class FullyFixedProcessor:
                         
                         records_batch.append((record, table_name))
             
-            # Insert using connection pool
+            # Batch insert using available connection
             conn_id = hash(threading.current_thread().ident) % len(self.connection_pool)
             conn = self.connection_pool[conn_id]
             
-            inserted, updated = self._bulk_insert_simple(records_batch, conn)
+            inserted, updated = self._bulk_insert_records(records_batch, conn)
+            
+            print(f"🦢 Thread {thread_id}: Processed {len(records_batch)} records from {table_name}")
             
             return {
                 'records': len(records_batch),
                 'inserted': inserted,
                 'updated': updated,
-                'table': table_name
+                'table': table_name,
+                'chunk': f"{offset}-{offset+limit}"
             }
             
         except Exception as e:
-            print(f"🤍ྀི Chunk processing note for {table_name}: {e}")
-            return {'records': 0, 'inserted': 0, 'updated': 0, 'table': table_name}
+            print(f"🎧 Error in chunk {offset}-{offset+limit} of {table_name}: {e}")
+            return {'records': 0, 'inserted': 0, 'updated': 0, 'table': table_name, 'chunk': f"{offset}-{offset+limit}"}
     
-    def _bulk_insert_simple(self, records_batch: List[tuple], conn) -> tuple:
-        """Simple bulk insert with minimal complexity"""
+    def _bulk_insert_records(self, records_batch: List[tuple], conn) -> tuple:
+        """Bulk insert/update records for maximum performance"""
         if not records_batch:
             return 0, 0
         
@@ -399,28 +365,30 @@ class FullyFixedProcessor:
         updated_count = 0
         
         try:
+            # Begin transaction for batch processing
             conn.execute("BEGIN TRANSACTION")
             
+            # Prepare bulk upsert
             for record, table_name in records_batch:
-                try:
-                    normalized_host = record['normalized_host']
+                normalized_host = record['normalized_host']
+                
+                # Check if exists (optimized with prepared statement would be better)
+                existing = conn.execute(
+                    "SELECT normalized_host FROM universal_cmdb WHERE normalized_host = ?", 
+                    [normalized_host]
+                ).fetchone()
+                
+                if existing:
+                    # Update existing record
+                    update_fields = []
+                    values = []
                     
-                    # Simple existence check
-                    existing = conn.execute(
-                        "SELECT 1 FROM universal_cmdb WHERE normalized_host = ?", 
-                        [normalized_host]
-                    ).fetchone()
+                    for key, value in record.items():
+                        if key != 'normalized_host' and value:
+                            update_fields.append(f"{key} = ?")
+                            values.append(value)
                     
-                    if existing:
-                        # Simple update
-                        update_fields = ["source_tables = COALESCE(source_tables, '') || ', ' || ?"]
-                        values = [table_name]
-                        
-                        for key, value in record.items():
-                            if key != 'normalized_host' and value:
-                                update_fields.append(f"{key} = ?")
-                                values.append(value)
-                        
+                    if update_fields:
                         values.append(normalized_host)
                         update_sql = f"""
                         UPDATE universal_cmdb 
@@ -429,59 +397,55 @@ class FullyFixedProcessor:
                         """
                         conn.execute(update_sql, values)
                         updated_count += 1
-                    else:
-                        # Simple insert
-                        columns = ['normalized_host', 'source_tables'] + [k for k in record.keys() if k != 'normalized_host']
-                        values = [normalized_host, table_name] + [record.get(k) for k in columns[2:]]
-                        placeholders = ', '.join(['?'] * len(columns))
-                        
-                        insert_sql = f"INSERT INTO universal_cmdb ({', '.join(columns)}) VALUES ({placeholders})"
-                        conn.execute(insert_sql, values)
-                        inserted_count += 1
-                        
-                except Exception as e:
-                    print(f"🤍 Record processing note: {e}")
-                    continue
+                else:
+                    # Insert new record
+                    columns = ['normalized_host', 'source_tables'] + [k for k in record.keys() if k != 'normalized_host']
+                    values = [normalized_host, table_name] + [record.get(k) for k in columns[2:]]
+                    placeholders = ', '.join(['?'] * len(columns))
+                    
+                    insert_sql = f"INSERT INTO universal_cmdb ({', '.join(columns)}) VALUES ({placeholders})"
+                    conn.execute(insert_sql, values)
+                    inserted_count += 1
             
             conn.execute("COMMIT")
             
         except Exception as e:
-            try:
-                conn.execute("ROLLBACK")
-            except:
-                pass
-            print(f"🦢 Transaction note: {e}")
+            conn.execute("ROLLBACK")
+            print(f"☁️ Bulk insert error: {e}")
             return 0, 0
         
         return inserted_count, updated_count
     
     def load_metadata(self) -> Dict:
-        print("🎧 Loading metadata configuration...")
+        print("🪞 Loading metadata at MAXIMUM SPEED...")
         with open(self.json_file_path, 'r') as f:
             return json.load(f)
     
     def identify_columns(self, metadata):
         all_columns = []
         
-        print("\n☁️ === COLUMN DISCOVERY === 🪞")
+        print("\n‧₊˚🖇️✩ === COLUMN DISCOVERY AT LIGHT SPEED === ₊˚🎧⊹")
         
         for table_name, columns in metadata['columns'].items():
-            print(f"\n‧₊˚🖇️✩ Analyzing table: {table_name}")
+            print(f"\n♡ Analyzing table: {table_name}")
+            
+            # Get row count for this table
+            row_count = self.get_table_row_count_fast(table_name)
             
             for column_name, column_type in columns.items():
                 mapped_type = None
                 
-                # Column matching logic
+                # Fast column matching (same logic, optimized)
                 if isinstance(column_type, str) and column_type.lower() in self.column_mapping:
                     mapped_type = self.column_mapping[column_type.lower()]
-                    print(f"  ₊˚🎧⊹ EXACT MATCH: {column_name} -> {mapped_type}")
+                    print(f"  ༘˚⋆𐙚｡⋆ EXACT MATCH: {column_name} -> {mapped_type}")
                 
                 if not mapped_type:
                     column_lower = column_name.lower()
                     for pattern in self.hostname_patterns:
                         if pattern in column_lower:
                             mapped_type = 'hostname'
-                            print(f"  ♡ HOSTNAME: {column_name} -> {mapped_type}")
+                            print(f"  𖦹.✧˚ HOSTNAME: {column_name} -> {mapped_type}")
                             break
                 
                 if not mapped_type:
@@ -490,7 +454,7 @@ class FullyFixedProcessor:
                         for pattern in patterns:
                             if pattern in column_lower:
                                 mapped_type = attr_type
-                                print(f"  ༘˚⋆𐙚｡⋆ ATTRIBUTE: {column_name} -> {mapped_type}")
+                                print(f"  🤍ྀི ATTRIBUTE: {column_name} -> {mapped_type}")
                                 break
                         if mapped_type:
                             break
@@ -501,7 +465,7 @@ class FullyFixedProcessor:
                         for pattern in patterns:
                             if pattern in type_lower:
                                 mapped_type = attr_type
-                                print(f"  𖦹.✧˚ TYPE: {column_name} -> {mapped_type}")
+                                print(f"  🤍 TYPE: {column_name} -> {mapped_type}")
                                 break
                         if mapped_type:
                             break
@@ -509,12 +473,12 @@ class FullyFixedProcessor:
                 if mapped_type:
                     all_columns.append((table_name, column_name, mapped_type))
         
-        print(f"\n🤍ྀི === DISCOVERY COMPLETE: {len(all_columns)} columns mapped ===")
+        print(f"\n🦢 === DISCOVERY COMPLETE: {len(all_columns)} columns mapped === 🎧")
         return all_columns
     
-    def process_all_table_by_table(self):
-        print("🤍 === INITIATING TABLE-BY-TABLE PROCESSING === 🦢")
-        print("🎧 Processing each table completely before moving to the next! ☁️")
+    def process_all_parallel(self):
+        print("☁️ === INITIATING MAXIMUM PERFORMANCE MODE === 🪞")
+        print("‧₊˚🖇️✩ WARNING: CPU USAGE WILL BE EXTREME! FANS WILL SPIN! ₊˚🎧⊹")
         
         self.stats.start_time = time.time()
         self.performance_monitor.start()
@@ -523,46 +487,80 @@ class FullyFixedProcessor:
             metadata = self.load_metadata()
             all_columns = self.identify_columns(metadata)
             
-            # Group columns by table
             columns_by_table = defaultdict(list)
             for table_name, column_name, mapped_type in all_columns:
                 columns_by_table[table_name].append((table_name, column_name, mapped_type))
             
-            # Get row counts for all tables first
-            print(f"\n🪞 === COUNTING ROWS IN ALL TABLES ===")
-            total_source_rows = 0
-            for table_name in columns_by_table.keys():
-                row_count = self.get_table_row_count_simple(table_name)
-                total_source_rows += row_count
+            # Create processing chunks for parallel execution
+            processing_tasks = []
             
-            print(f"\n‧₊˚🖇️✩ === READY TO PROCESS {len(columns_by_table)} TABLES ===")
-            print(f"₊˚🎧⊹ Total source rows: {total_source_rows:,}")
-            print(f"♡ Processing tables one by one for maximum control!")
-            
-            # Process each table completely before moving to next
-            table_results = []
-            for table_index, (table_name, table_columns) in enumerate(columns_by_table.items(), 1):
-                result = self.process_single_table_completely(table_name, table_columns, table_index, len(columns_by_table))
-                table_results.append(result)
+            for table_name, table_columns in columns_by_table.items():
+                row_count = self.table_row_counts.get(table_name, 0)
                 
-                # Force checkpoint after each table
-                print(f"༘˚⋆𐙚｡⋆ Checkpointing database after table {table_name}...")
-                try:
-                    self.main_conn.execute("CHECKPOINT")
-                except Exception as e:
-                    print(f"𖦹.✧˚ Checkpoint note: {e}")
+                if row_count > self.chunk_size:
+                    # Split large tables into chunks
+                    num_chunks = (row_count + self.chunk_size - 1) // self.chunk_size
+                    print(f"♡ Splitting {table_name} ({row_count:,} rows) into {num_chunks} chunks")
+                    
+                    for i in range(num_chunks):
+                        offset = i * self.chunk_size
+                        limit = min(self.chunk_size, row_count - offset)
+                        processing_tasks.append((table_name, table_columns, offset, limit))
+                else:
+                    # Process smaller tables as single chunks
+                    processing_tasks.append((table_name, table_columns, 0, row_count))
+            
+            total_tasks = len(processing_tasks)
+            print(f"༘˚⋆𐙚｡⋆ LAUNCHING {total_tasks} PARALLEL TASKS ACROSS {self.max_workers} WORKERS!")
+            print("𖦹.✧˚ MAXIMUM PERFORMANCE MODE ENGAGED! 🤍ྀི")
+            
+            # Execute all tasks in parallel
+            completed_tasks = 0
+            
+            with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
+                # Submit all tasks
+                future_to_task = {
+                    executor.submit(self.process_table_chunk_parallel, task): task 
+                    for task in processing_tasks
+                }
+                
+                # Process completed tasks
+                for future in as_completed(future_to_task):
+                    task = future_to_task[future]
+                    try:
+                        result = future.result()
+                        completed_tasks += 1
+                        
+                        self.stats.records_processed += result['records']
+                        self.stats.records_inserted += result.get('inserted', 0)
+                        self.stats.records_updated += result.get('updated', 0)
+                        
+                        elapsed = time.time() - self.stats.start_time
+                        rate = self.stats.records_processed / elapsed if elapsed > 0 else 0
+                        
+                        print(f"🤍 COMPLETED {completed_tasks}/{total_tasks} | "
+                              f"Records: {self.stats.records_processed:,} | "
+                              f"Rate: {rate:.0f} rec/sec 🦢")
+                        
+                    except Exception as e:
+                        print(f"🎧 Task failed: {task[0]} - {e}")
+            
+            # Force checkpoint to ensure all data is written
+            print("☁️ Forcing database checkpoint...")
+            self.main_conn.execute("CHECKPOINT")
             
             self._create_summary()
-            self._show_final_results()
+            self._show_performance_results()
             
         except Exception as e:
-            print(f"🤍ྀི Processing note: {e}")
+            print(f"🪞 CRITICAL ERROR: {e}")
+            raise
         finally:
             self.performance_monitor.stop()
     
     def _create_summary(self):
         try:
-            print("🤍 Creating final summary...")
+            print("‧₊˚🖇️✩ Creating performance summary...")
             self.main_conn.execute("DROP TABLE IF EXISTS all_sources")
             
             create_sql = """
@@ -582,76 +580,74 @@ class FullyFixedProcessor:
             )
             """
             self.main_conn.execute(create_sql)
-            print("🦢 Summary table created successfully")
+            print("₊˚🎧⊹ Summary table created successfully")
         except Exception as e:
-            print(f"🎧 Summary creation note: {e}")
+            print(f"♡ Error creating summary: {e}")
     
-    def _show_final_results(self):
+    def _show_performance_results(self):
         total_time = time.time() - self.stats.start_time
         total_records = self.main_conn.execute("SELECT COUNT(*) FROM universal_cmdb").fetchone()[0]
         
-        print(f"\n☁️ === FINAL PERFORMANCE RESULTS === 🪞")
-        print(f"‧₊˚🖇️✩ Total Processing Time: {total_time:.2f} seconds ({total_time/60:.1f} minutes)")
-        print(f"₊˚🎧⊹ Tables Completed: {self.stats.tables_completed}")
-        print(f"♡ Records Processed: {self.stats.records_processed:,}")
-        print(f"༘˚⋆𐙚｡⋆ Records in Database: {total_records:,}")
-        print(f"𖦹.✧˚ Processing Rate: {self.stats.records_processed/total_time:.0f} records/second" if total_time > 0 else "𖦹.✧˚ Processing Rate: N/A")
-        print(f"🤍ྀི New Records: {self.stats.records_inserted:,}")
-        print(f"🤍 Updated Records: {self.stats.records_updated:,}")
+        print(f"\n༘˚⋆𐙚｡⋆ === PERFORMANCE RESULTS === 𖦹.✧˚")
+        print(f"🤍ྀི Total Processing Time: {total_time:.2f} seconds ({total_time/60:.1f} minutes)")
+        print(f"🤍 Records Processed: {self.stats.records_processed:,}")
+        print(f"🦢 Records in Database: {total_records:,}")
+        print(f"🎧 Processing Rate: {self.stats.records_processed/total_time:.0f} records/second")
+        print(f"☁️ New Records: {self.stats.records_inserted:,}")
+        print(f"🪞 Updated Records: {self.stats.records_updated:,}")
+        
+        # Performance analysis
+        if self.stats.records_processed > 0:
+            efficiency = (total_records / self.stats.records_processed) * 100
+            print(f"‧₊˚🖇️✩ Data Efficiency: {efficiency:.1f}%")
         
         total_source_rows = sum(self.table_row_counts.values())
-        print(f"🦢 Source Rows Available: {total_source_rows:,}")
+        print(f"₊˚🎧⊹ Source Rows Scanned: {total_source_rows:,}")
         
         if total_source_rows > 1000000:
-            print("🎧 BIG DATA PROCESSING COMPLETE - FANS CAN SLOW DOWN NOW! ☁️")
+            print("♡ BIG DATA PROCESSING COMPLETE - FANS CAN SLOW DOWN NOW! ༘˚⋆𐙚｡⋆")
         elif total_source_rows > 100000:
-            print("🪞 HIGH-VOLUME PROCESSING SUCCESSFUL! ‧₊˚🖇️✩")
+            print("𖦹.✧˚ HIGH-VOLUME PROCESSING SUCCESSFUL! 🤍ྀི")
         
         # Show column population stats
         columns = ['hostname', 'business_unit', 'region', 'infrastructure_type', 
                   'edr_coverage', 'logging_in_splunk']
         
-        print(f"\n₊˚🎧⊹ Key Column Population:")
+        print(f"\n🤍 Key Column Population:")
         for col in columns:
-            try:
-                count = self.main_conn.execute(
-                    f"SELECT COUNT(*) FROM universal_cmdb WHERE {col} IS NOT NULL AND {col} != ''"
-                ).fetchone()[0]
-                pct = (count / total_records * 100) if total_records > 0 else 0
-                print(f"  ♡ {col}: {count:,} ({pct:.1f}%)")
-            except Exception as e:
-                print(f"  ༘˚⋆𐙚｡⋆ {col}: Unable to check - {e}")
+            count = self.main_conn.execute(
+                f"SELECT COUNT(*) FROM universal_cmdb WHERE {col} IS NOT NULL AND {col} != ''"
+            ).fetchone()[0]
+            pct = (count / total_records * 100) if total_records > 0 else 0
+            print(f"  🦢 {col}: {count:,} ({pct:.1f}%)")
     
     def export_fast(self, filename="universal_cmdb_export.csv"):
-        print(f"𖦹.✧˚ HIGH-SPEED EXPORT to {filename}...")
+        print(f"🎧 HIGH-SPEED EXPORT to {filename}...")
         start_time = time.time()
         
+        # Use DuckDB's optimized CSV export
+        self.main_conn.execute(f"""
+            COPY (SELECT * FROM universal_cmdb ORDER BY normalized_host) 
+            TO '{filename}' WITH (FORMAT CSV, HEADER, DELIMITER ',')
+        """)
+        
+        export_time = time.time() - start_time
+        
         try:
-            self.main_conn.execute(f"""
-                COPY (SELECT * FROM universal_cmdb ORDER BY normalized_host) 
-                TO '{filename}' WITH (FORMAT CSV, HEADER, DELIMITER ',')
-            """)
+            file_size = os.path.getsize(filename)
+            file_size_mb = file_size / (1024 * 1024)
+            rate_mb_s = file_size_mb / export_time if export_time > 0 else 0
             
-            export_time = time.time() - start_time
+            print(f"☁️ Export complete: {filename}")
+            print(f"🪞 File size: {file_size_mb:.2f} MB")
+            print(f"‧₊˚🖇️✩ Export time: {export_time:.2f} seconds")
+            print(f"₊˚🎧⊹ Export rate: {rate_mb_s:.1f} MB/second")
             
-            try:
-                file_size = os.path.getsize(filename)
-                file_size_mb = file_size / (1024 * 1024)
-                rate_mb_s = file_size_mb / export_time if export_time > 0 else 0
-                
-                print(f"🤍ྀི Export complete: {filename}")
-                print(f"🤍 File size: {file_size_mb:.2f} MB")
-                print(f"🦢 Export time: {export_time:.2f} seconds")
-                print(f"🎧 Export rate: {rate_mb_s:.1f} MB/second")
-                
-            except Exception as e:
-                print(f"☁️ Export completed: {filename}")
-                
         except Exception as e:
-            print(f"🪞 Export note: {e}")
+            print(f"♡ Export completed: {filename}")
     
     def close(self):
-        print("‧₊˚🖇️✩ Shutting down processing system...")
+        print("༘˚⋆𐙚｡⋆ Shutting down HIGH-PERFORMANCE system...")
         self.performance_monitor.stop()
         
         # Close all connections
@@ -661,33 +657,30 @@ class FullyFixedProcessor:
             except:
                 pass
         
-        try:
-            self.main_conn.close()
-        except:
-            pass
+        self.main_conn.close()
         
         total_time = time.time() - self.stats.start_time if self.stats.start_time else 0
-        print(f"₊˚🎧⊹ SESSION COMPLETE: {total_time/60:.1f} minutes total")
+        print(f"𖦹.✧˚ HIGH-PERFORMANCE SESSION COMPLETE: {total_time/60:.1f} minutes total")
 
 if __name__ == "__main__":
-    print("♡ === FULLY FIXED HIGH-PERFORMANCE HOST DATA PROCESSOR === ༘˚⋆𐙚｡⋆")
-    print("𖦹.✧˚ All errors fixed - processes each table completely before moving to next! 🤍ྀི")
-    print("🤍 Your fans WILL spin but with perfect error-free processing! 🦢")
+    print("🤍ྀི === HIGH-PERFORMANCE HOST DATA PROCESSOR === 🤍")
+    print("🦢 WARNING: MAXIMUM CPU USAGE INCOMING! ☁️")
+    print("🎧 Your fans WILL spin at maximum speed! 🪞")
     
-    processor = FullyFixedProcessor("reviewed_labeled_columns.json", "universal_cmdb.db")
+    processor = HighPerformanceHostProcessor("reviewed_labeled_columns.json", "universal_cmdb.db")
     
     try:
-        processor.process_all_table_by_table()
+        processor.process_all_parallel()
         processor.export_fast()
-        print("\n🎧 === PERFECT TABLE-BY-TABLE PROCESSING COMPLETE === ☁️")
-        print("🪞 Every table processed completely with full progress tracking! ‧₊˚🖇️✩")
+        print("\n‧₊˚🖇️✩ === MAXIMUM PERFORMANCE PROCESSING COMPLETE === ₊˚🎧⊹")
+        print("♡ Mission accomplished - your machine survived the intensity! ༘˚⋆𐙚｡⋆")
         
     except KeyboardInterrupt:
-        print("\n₊˚🎧⊹ Process interrupted - graceful shutdown!")
+        print("\n𖦹.✧˚ Process interrupted - emergency shutdown!")
     except Exception as e:
-        print(f"♡ Final note: {e}")
+        print(f"🤍ྀི Critical error: {e}")
         import traceback
         traceback.print_exc()
     finally:
         processor.close()
-        print("༘˚⋆𐙚｡⋆ All systems powered down gracefully 𖦹.✧˚ 🤍ྀི")
+        print("🤍 All systems powered down - fans returning to normal 🦢")
