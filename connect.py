@@ -4,105 +4,100 @@ import os
 import re
 import time
 import threading
-import multiprocessing
-from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor, as_completed
 from google.cloud import bigquery
 from google.oauth2 import service_account
-from typing import Dict, List, Set, Tuple, Optional
+from typing import Dict, List, Set, Tuple
 import logging
 from collections import defaultdict
-import psutil
-import queue
-from dataclasses import dataclass
-from functools import partial
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s | %(levelname)s | %(message)s', datefmt='%H:%M:%S')
 logger = logging.getLogger(__name__)
 
-@dataclass
-class ProcessingStats:
-    records_processed: int = 0
-    records_inserted: int = 0
-    records_updated: int = 0
-    tables_completed: int = 0
-    start_time: float = 0
-    
-class PerformanceMonitor:
+class KeepAliveManager:
     def __init__(self):
         self.running = True
         self.thread = None
         self.start_time = time.time()
         
     def start(self):
-        self.running = True
-        self.thread = threading.Thread(target=self._monitor_loop, daemon=True)
-        self.thread.start()
-        print("🤍 PERFORMANCE MONITOR ACTIVATED - MAXIMUM POWER MODE ☁️")
+        """Start the keep-alive thread"""
+        if self.thread is None or not self.thread.is_alive():
+            self.running = True
+            self.thread = threading.Thread(target=self._keep_alive_loop, daemon=True)
+            self.thread.start()
+            print("🤍 Keep-alive system activated - preventing computer sleep ☁️")
     
-    def _monitor_loop(self):
+    def _keep_alive_loop(self):
+        """Keep the system active with periodic updates"""
         emoji_cycle = ["🤍", "🦢", "🎧", "☁️", "🪞", "‧₊˚🖇️✩", "₊˚🎧⊹", "♡", "༘˚⋆𐙚｡⋆", "𖦹.✧˚", "🤍ྀི"]
         emoji_index = 0
         
         while self.running:
+            elapsed = time.time() - self.start_time
+            hours = int(elapsed // 3600)
+            minutes = int((elapsed % 3600) // 60)
+            seconds = int(elapsed % 60)
+            
+            current_emoji = emoji_cycle[emoji_index % len(emoji_cycle)]
+            print(f"{current_emoji} System active - Runtime: {hours:02d}:{minutes:02d}:{seconds:02d} ☁️")
+            
+            # Prevent system sleep by creating tiny file activity
             try:
-                cpu_percent = psutil.cpu_percent(interval=None)
-                memory = psutil.virtual_memory()
-                elapsed = time.time() - self.start_time
-                
-                current_emoji = emoji_cycle[emoji_index % len(emoji_cycle)]
-                
-                print(f"{current_emoji} CPU: {cpu_percent:.1f}% | RAM: {memory.percent:.1f}% | "
-                      f"Runtime: {int(elapsed//3600):02d}:{int((elapsed%3600)//60):02d}:{int(elapsed%60):02d} 🤍")
-                
-                # Fan speed indicator
-                if cpu_percent > 80:
-                    print("🦢 FANS SPINNING AT MAXIMUM! CPU UNDER HEAVY LOAD! ☁️")
-                elif cpu_percent > 60:
-                    print("🪞 High performance mode - fans active ‧₊˚🖇️✩")
-                
-                emoji_index += 1
-                time.sleep(15)  # More frequent updates for performance mode
-                
-            except Exception as e:
-                print(f"𖦹.✧˚ Monitor error: {e}")
-                time.sleep(15)
+                with open('.keep_alive_marker', 'w') as f:
+                    f.write(f"active_{int(time.time())}")
+            except:
+                pass
+            
+            emoji_index += 1
+            time.sleep(30)  # Update every 30 seconds
     
     def stop(self):
+        """Stop the keep-alive system"""
         self.running = False
         if self.thread:
             self.thread.join(timeout=1)
+        
+        # Clean up marker file
+        try:
+            if os.path.exists('.keep_alive_marker'):
+                os.remove('.keep_alive_marker')
+        except:
+            pass
+        
+        elapsed = time.time() - self.start_time
+        hours = int(elapsed // 3600)
+        minutes = int((elapsed % 3600) // 60)
+        print(f"🦢 Keep-alive system deactivated - Total runtime: {hours:02d}:{minutes:02d} 🤍")
 
-class HighPerformanceHostProcessor:
+class HostDataProcessor:
     def __init__(self, json_file_path: str, duckdb_path: str = "universal_cmdb.db"):
         self.json_file_path = json_file_path
         self.duckdb_path = duckdb_path
-        self.performance_monitor = PerformanceMonitor()
-        self.stats = ProcessingStats()
+        self.keep_alive = KeepAliveManager()
         self.table_row_counts = {}
         
-        # Performance configuration
-        self.cpu_count = multiprocessing.cpu_count()
-        self.max_workers = min(self.cpu_count * 2, 32)  # Aggressive threading
-        self.batch_size = 10000  # Large batch size for bulk operations
-        self.chunk_size = 50000  # Process in large chunks
-        self.connection_pool = []
-        
-        print(f"🤍 INITIALIZING HIGH-PERFORMANCE MODE:")
-        print(f"🦢 CPU Cores: {self.cpu_count}")
-        print(f"🎧 Max Workers: {self.max_workers}")
-        print(f"☁️ Batch Size: {self.batch_size:,}")
-        print(f"🪞 Chunk Size: {self.chunk_size:,}")
-        
-        # Column mappings (keeping original logic)
         self.column_mapping = {
-            'fqdn': 'fqdn', 'domain': 'domain', 'host': 'hostname', 'hostname': 'hostname',
-            'infrastructure_type': 'infrastructure_type', 'infra_type': 'infrastructure_type',
-            'region': 'region', 'country': 'country', 'data_center': 'data_center',
-            'cloud_region': 'cloud_region', 'ip_address': 'ip_address', 'class': 'class',
-            'system_classification': 'system_classification', 'business_unit': 'business_unit',
-            'apm': 'apm', 'cio': 'cio', 'edr_coverage': 'edr_coverage',
-            'tanium_coverage': 'tanium_coverage', 'dlp_agent_coverage': 'dlp_agent_coverage',
-            'logging_in_splunk': 'logging_in_splunk', 'logging_in_gso': 'logging_in_gso'
+            'fqdn': 'fqdn',
+            'domain': 'domain',
+            'host': 'hostname',
+            'hostname': 'hostname',
+            'infrastructure_type': 'infrastructure_type',
+            'infra_type': 'infrastructure_type',
+            'region': 'region',
+            'country': 'country',
+            'data_center': 'data_center',
+            'cloud_region': 'cloud_region',
+            'ip_address': 'ip_address',
+            'class': 'class',
+            'system_classification': 'system_classification',
+            'business_unit': 'business_unit',
+            'apm': 'apm',
+            'cio': 'cio',
+            'edr_coverage': 'edr_coverage',
+            'tanium_coverage': 'tanium_coverage',
+            'dlp_agent_coverage': 'dlp_agent_coverage',
+            'logging_in_splunk': 'logging_in_splunk',
+            'logging_in_gso': 'logging_in_gso'
         }
         
         self.hostname_patterns = ['host', 'hostname', 'fqdn', 'server_name', 'node_name', 'device_name', 
@@ -129,7 +124,6 @@ class HighPerformanceHostProcessor:
             'fqdn': ['fqdn', 'full_name', 'qualified_name']
         }
         
-        # Initialize BigQuery with performance settings
         service_account_file = os.getenv('GCP_SERVICE_ACCOUNT_FILE', 'gcp/gcp_prod_key.json')
         
         if os.path.exists(service_account_file):
@@ -138,53 +132,11 @@ class HighPerformanceHostProcessor:
         else:
             self.bq_client = bigquery.Client(project="chronicle-fisv")
         
-        # Configure BigQuery for maximum performance
-        self.job_config = bigquery.QueryJobConfig(
-            use_query_cache=False,
-            use_legacy_sql=False,
-            maximum_bytes_billed=None,  # Remove billing limits for speed
-        )
+        self.duck_conn = duckdb.connect(duckdb_path)
         
-        # Initialize optimized DuckDB connection
-        self._init_high_performance_db()
+        self._create_table()
         
-    def _init_high_performance_db(self):
-        """Initialize DuckDB with performance optimizations"""
-        print("‧₊˚🖇️✩ Configuring DuckDB for MAXIMUM PERFORMANCE...")
-        
-        self.main_conn = duckdb.connect(self.duckdb_path)
-        
-        # Aggressive performance settings
-        performance_settings = [
-            "SET memory_limit='8GB'",
-            "SET threads=TO_THREADS(0)",  # Use all available cores
-            "SET enable_progress_bar=false",
-            "SET force_compression='uncompressed'",  # Skip compression for speed
-            "SET default_null_order='nulls_first'",
-            "SET enable_object_cache=true",
-            "SET checkpoint_threshold='1GB'",
-            "SET wal_autocheckpoint=0",  # Disable automatic checkpoints for speed
-            "PRAGMA journal_mode=WAL",
-            "PRAGMA synchronous=NORMAL",  # Balance between speed and safety
-            "PRAGMA cache_size=1000000",  # Large cache
-            "PRAGMA temp_store=MEMORY",
-            "PRAGMA mmap_size=268435456"  # 256MB mmap
-        ]
-        
-        for setting in performance_settings:
-            try:
-                self.main_conn.execute(setting)
-                print(f"₊˚🎧⊹ Applied: {setting}")
-            except Exception as e:
-                print(f"🪞 Warning: {setting} failed: {e}")
-        
-        self._create_optimized_table()
-        self._create_connection_pool()
-    
-    def _create_optimized_table(self):
-        """Create table with performance optimizations"""
-        print("♡ Creating optimized table structure...")
-        
+    def _create_table(self):
         sql = """
         CREATE TABLE IF NOT EXISTS universal_cmdb (
             normalized_host VARCHAR PRIMARY KEY,
@@ -212,117 +164,153 @@ class HighPerformanceHostProcessor:
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
         """
-        self.main_conn.execute(sql)
+        self.duck_conn.execute(sql)
         
-        # Create performance indexes
-        indexes = [
-            "CREATE INDEX IF NOT EXISTS idx_normalized_host ON universal_cmdb(normalized_host)",
-            "CREATE INDEX IF NOT EXISTS idx_source_tables ON universal_cmdb(source_tables)",
-            "CREATE INDEX IF NOT EXISTS idx_hostname ON universal_cmdb(hostname)",
-            "CREATE INDEX IF NOT EXISTS idx_business_unit ON universal_cmdb(business_unit)",
-            "CREATE INDEX IF NOT EXISTS idx_region ON universal_cmdb(region)"
-        ]
-        
-        for idx in indexes:
-            try:
-                self.main_conn.execute(idx)
-            except:
-                pass
+        try:
+            self.duck_conn.execute("CREATE INDEX IF NOT EXISTS idx_normalized_host ON universal_cmdb(normalized_host)")
+        except:
+            pass
     
-    def _create_connection_pool(self):
-        """Create a pool of DuckDB connections for parallel processing"""
-        print(f"༘˚⋆𐙚｡⋆ Creating connection pool with {self.max_workers} connections...")
-        
-        for i in range(self.max_workers):
-            conn = duckdb.connect(self.duckdb_path)
-            # Apply same performance settings to each connection
-            try:
-                conn.execute("SET threads=4")  # Limit per connection to avoid conflicts
-                conn.execute("SET memory_limit='1GB'")
-                conn.execute("PRAGMA synchronous=NORMAL")
-            except:
-                pass
-            self.connection_pool.append(conn)
-    
+    def get_table_row_count(self, table_name: str) -> int:
+        """Get the row count for a BigQuery table"""
+        try:
+            print(f"🪞 Counting rows in {table_name}...")
+            count_query = f"SELECT COUNT(*) FROM `{table_name}`"
+            query_job = self.bq_client.query(count_query)
+            result = query_job.result()
+            row_count = next(iter(result))[0]
+            self.table_row_counts[table_name] = row_count
+            print(f"‧₊˚🖇️✩ Table {table_name}: {row_count:,} rows")
+            return row_count
+        except Exception as e:
+            print(f"𖦹.✧˚ Error counting rows in {table_name}: {e}")
+            self.table_row_counts[table_name] = 0
+            return 0
+            
     def normalize_hostname(self, hostname: str) -> str:
         if not hostname or not isinstance(hostname, str):
             return ""
         
         normalized = hostname.lower().strip()
+        
         if '.' in normalized:
             normalized = normalized.split('.')[0]
+        
         normalized = normalized.replace('-', '')
         normalized = re.sub(r'[^a-z0-9]', '', normalized)
+        
         return normalized
     
-    def get_table_row_count_fast(self, table_name: str) -> int:
-        """Fast row counting with minimal overhead"""
-        try:
-            # Use approximate count for speed on large tables
-            count_query = f"""
-            SELECT 
-                CASE 
-                    WHEN COUNT(*) > 1000000 THEN 
-                        (SELECT CAST(table_rows AS INT64) FROM `{table_name.split('.')[0]}`.__TABLES__ WHERE table_id = '{table_name.split('.')[-1]}')
-                    ELSE COUNT(*) 
-                END as row_count
-            FROM `{table_name}` 
-            LIMIT 1
-            """
-            
-            # Fallback to simple count
-            simple_query = f"SELECT COUNT(*) FROM `{table_name}`"
-            
-            try:
-                query_job = self.bq_client.query(count_query, job_config=self.job_config)
-                result = next(iter(query_job.result()))
-                row_count = int(result[0]) if result[0] else 0
-            except:
-                query_job = self.bq_client.query(simple_query, job_config=self.job_config)
-                result = next(iter(query_job.result()))
-                row_count = int(result[0])
-            
-            self.table_row_counts[table_name] = row_count
-            print(f"𖦹.✧˚ Table {table_name}: {row_count:,} rows")
-            return row_count
-            
-        except Exception as e:
-            print(f"🤍ྀི Error counting {table_name}: {e}")
-            self.table_row_counts[table_name] = 0
-            return 0
+    def load_metadata(self) -> Dict:
+        print("🤍 Loading metadata configuration...")
+        with open(self.json_file_path, 'r') as f:
+            return json.load(f)
     
-    def process_table_chunk_parallel(self, table_info: tuple) -> dict:
-        """Process a chunk of table data in parallel"""
-        table_name, columns_info, offset, limit = table_info
+    def identify_columns(self, metadata):
+        all_columns = []
         
-        hostname_cols = [c for c in columns_info if c[2] == 'hostname']
-        attribute_cols = [c for c in columns_info if c[2] != 'hostname']
+        print("\n☁️ === COLUMN DISCOVERY ANALYSIS === 🦢")
+        
+        for table_name, columns in metadata['columns'].items():
+            print(f"\n🪞 Analyzing table: {table_name}")
+            
+            # Get row count for this table
+            row_count = self.get_table_row_count(table_name)
+            
+            for column_name, column_type in columns.items():
+                mapped_type = None
+                
+                # First: exact match on column_type
+                if isinstance(column_type, str) and column_type.lower() in self.column_mapping:
+                    mapped_type = self.column_mapping[column_type.lower()]
+                    print(f"  ♡ EXACT TYPE MATCH: {column_name} ({column_type}) -> {mapped_type}")
+                
+                # Second: check hostname patterns
+                if not mapped_type:
+                    column_lower = column_name.lower()
+                    for pattern in self.hostname_patterns:
+                        if pattern in column_lower:
+                            mapped_type = 'hostname'
+                            print(f"  ₊˚🎧⊹ HOSTNAME PATTERN: {column_name} -> {mapped_type}")
+                            break
+                
+                # Third: check ALL attribute patterns
+                if not mapped_type:
+                    column_lower = column_name.lower()
+                    for attr_type, patterns in self.attribute_patterns.items():
+                        for pattern in patterns:
+                            if pattern in column_lower:
+                                mapped_type = attr_type
+                                print(f"  ‧₊˚🖇️✩ ATTRIBUTE PATTERN: {column_name} -> {mapped_type} (matched '{pattern}')")
+                                break
+                        if mapped_type:
+                            break
+                
+                # Fourth: check if column_type itself matches attribute patterns
+                if not mapped_type and isinstance(column_type, str):
+                    type_lower = column_type.lower()
+                    for attr_type, patterns in self.attribute_patterns.items():
+                        for pattern in patterns:
+                            if pattern in type_lower:
+                                mapped_type = attr_type
+                                print(f"  𖦹.✧˚ TYPE PATTERN: {column_name} ({column_type}) -> {mapped_type} (matched '{pattern}')")
+                                break
+                        if mapped_type:
+                            break
+                
+                if mapped_type:
+                    all_columns.append((table_name, column_name, mapped_type))
+                    print(f"  🤍ྀི SUCCESS: {table_name}.{column_name} -> {mapped_type}")
+                else:
+                    print(f"  ༘˚⋆𐙚｡⋆ NO MATCH: {column_name} ({column_type})")
+        
+        print(f"\n🦢 === DISCOVERY SUMMARY: Found {len(all_columns)} mappable columns === ☁️")
+        return all_columns
+    
+    def process_table_completely(self, table_name, all_columns_for_table):
+        hostname_cols = [c for c in all_columns_for_table if c[2] == 'hostname']
+        attribute_cols = [c for c in all_columns_for_table if c[2] != 'hostname']
+        
+        row_count = self.table_row_counts.get(table_name, 0)
+        
+        print(f"\n🪞 === PROCESSING TABLE: {table_name} === 🤍")
+        print(f"‧₊˚🖇️✩ Total rows in table: {row_count:,}")
+        print(f"₊˚🎧⊹ Hostname columns: {len(hostname_cols)}")
+        print(f"♡ Attribute columns: {len(attribute_cols)}")
+        
+        for col in hostname_cols:
+            print(f"  🦢 Hostname: {col[1]} -> {col[2]}")
+        for col in attribute_cols:
+            print(f"  ☁️ Attribute: {col[1]} -> {col[2]}")
         
         if not hostname_cols:
-            return {'records': 0, 'table': table_name, 'chunk': f"{offset}-{offset+limit}"}
+            print(f"  𖦹.✧˚ SKIPPING {table_name} - No hostname columns found")
+            return
         
         hostname_col = hostname_cols[0][1]
+        
         column_names = [hostname_col] + [c[1] for c in attribute_cols]
         attribute_types = [c[2] for c in attribute_cols]
         
-        # Optimized query with chunking
+        print(f"  🤍 Query columns: {column_names}")
+        print(f"  🪞 Target types: ['hostname'] + {attribute_types}")
+        
         query = f"""
         SELECT {', '.join([f'`{col}`' for col in column_names])}
         FROM `{table_name}`
         WHERE `{hostname_col}` IS NOT NULL 
         AND `{hostname_col}` != ''
         AND LENGTH(`{hostname_col}`) > 0
-        LIMIT {limit} OFFSET {offset}
+        LIMIT 50000
         """
         
         try:
-            thread_id = threading.current_thread().ident
-            print(f"🤍 Thread {thread_id}: Processing {table_name} chunk {offset:,}-{offset+limit:,}")
-            
-            query_job = self.bq_client.query(query, job_config=self.job_config)
+            print(f"  ‧₊˚🖇️✩ Executing BigQuery for {table_name}...")
+            query_job = self.bq_client.query(query)
             results = query_job.result()
             
-            records_batch = []
+            records = []
+            attribute_data_found = {attr_type: 0 for attr_type in attribute_types}
             
             for row in results:
                 if row[0] and isinstance(row[0], str):
@@ -333,155 +321,91 @@ class HighPerformanceHostProcessor:
                         for i, attr_type in enumerate(attribute_types, 1):
                             if i < len(row) and row[i] and str(row[i]).strip():
                                 record[attr_type] = str(row[i]).strip()
+                                attribute_data_found[attr_type] += 1
                         
-                        records_batch.append((record, table_name))
+                        records.append(record)
             
-            # Batch insert using available connection
-            conn_id = hash(threading.current_thread().ident) % len(self.connection_pool)
-            conn = self.connection_pool[conn_id]
+            print(f"  ₊˚🎧⊹ Data extraction results:")
+            print(f"    🤍ྀི Total records extracted: {len(records)}")
+            for attr_type, count in attribute_data_found.items():
+                print(f"    ♡ {attr_type}: {count} non-empty values")
             
-            inserted, updated = self._bulk_insert_records(records_batch, conn)
+            records_written = 0
+            for record in records:
+                self._insert_or_update_host(record, table_name)
+                records_written += 1
+                
+            print(f"  🦢 Successfully processed {records_written} records from {table_name}")
             
-            print(f"🦢 Thread {thread_id}: Processed {len(records_batch)} records from {table_name}")
-            
-            return {
-                'records': len(records_batch),
-                'inserted': inserted,
-                'updated': updated,
-                'table': table_name,
-                'chunk': f"{offset}-{offset+limit}"
-            }
+            # VERIFICATION: Check if data actually made it to the database
+            print(f"  ☁️ VERIFICATION - Checking database storage...")
+            for attr_type in attribute_types:
+                count_query = f"SELECT COUNT(*) FROM universal_cmdb WHERE {attr_type} IS NOT NULL AND {attr_type} != ''"
+                db_count = self.duck_conn.execute(count_query).fetchone()[0]
+                print(f"    🪞 {attr_type}: {db_count} records in database")
             
         except Exception as e:
-            print(f"🎧 Error in chunk {offset}-{offset+limit} of {table_name}: {e}")
-            return {'records': 0, 'inserted': 0, 'updated': 0, 'table': table_name, 'chunk': f"{offset}-{offset+limit}"}
+            print(f"  𖦹.✧˚ Error processing {table_name}: {e}")
+            import traceback
+            traceback.print_exc()
     
-    def _bulk_insert_records(self, records_batch: List[tuple], conn) -> tuple:
-        """Bulk insert/update records for maximum performance"""
-        if not records_batch:
-            return 0, 0
+    def _insert_or_update_host(self, record, table_name):
+        normalized_host = record['normalized_host']
         
-        inserted_count = 0
-        updated_count = 0
+        existing_query = "SELECT * FROM universal_cmdb WHERE normalized_host = ?"
+        existing = self.duck_conn.execute(existing_query, [normalized_host]).fetchone()
         
-        try:
-            # Begin transaction for batch processing
-            conn.execute("BEGIN TRANSACTION")
+        if existing:
+            columns_query = "PRAGMA table_info(universal_cmdb)"
+            column_info = self.duck_conn.execute(columns_query).fetchall()
+            column_names = [col[1] for col in column_info]
             
-            # Prepare bulk upsert
-            for record, table_name in records_batch:
-                normalized_host = record['normalized_host']
-                
-                # Check if exists (optimized with prepared statement would be better)
-                existing = conn.execute(
-                    "SELECT normalized_host FROM universal_cmdb WHERE normalized_host = ?", 
-                    [normalized_host]
-                ).fetchone()
-                
-                if existing:
-                    # Update existing record
-                    update_fields = []
-                    values = []
+            updates = []
+            values = []
+            
+            current_tables = existing[1] if existing[1] else ""
+            if table_name not in current_tables:
+                new_tables = f"{current_tables}, {table_name}" if current_tables else table_name
+                updates.append("source_tables = ?")
+                values.append(new_tables)
+            
+            for key, new_value in record.items():
+                if key != 'normalized_host' and new_value and key in column_names:
+                    col_index = column_names.index(key)
+                    existing_value = existing[col_index] if col_index < len(existing) else None
                     
-                    for key, value in record.items():
-                        if key != 'normalized_host' and value:
-                            update_fields.append(f"{key} = ?")
-                            values.append(value)
+                    if existing_value and existing_value.strip():
+                        existing_values = set(v.strip() for v in existing_value.split(' | '))
+                        new_values = existing_values.copy()
+                        new_values.add(new_value.strip())
+                        
+                        if len(new_values) > 1:
+                            final_value = ' | '.join(sorted(new_values))
+                        else:
+                            final_value = new_value.strip()
+                    else:
+                        final_value = new_value.strip()
                     
-                    if update_fields:
-                        values.append(normalized_host)
-                        update_sql = f"""
-                        UPDATE universal_cmdb 
-                        SET {', '.join(update_fields)}, last_updated = CURRENT_TIMESTAMP 
-                        WHERE normalized_host = ?
-                        """
-                        conn.execute(update_sql, values)
-                        updated_count += 1
-                else:
-                    # Insert new record
-                    columns = ['normalized_host', 'source_tables'] + [k for k in record.keys() if k != 'normalized_host']
-                    values = [normalized_host, table_name] + [record.get(k) for k in columns[2:]]
-                    placeholders = ', '.join(['?'] * len(columns))
-                    
-                    insert_sql = f"INSERT INTO universal_cmdb ({', '.join(columns)}) VALUES ({placeholders})"
-                    conn.execute(insert_sql, values)
-                    inserted_count += 1
+                    updates.append(f"{key} = ?")
+                    values.append(final_value)
             
-            conn.execute("COMMIT")
+            if updates:
+                values.append(normalized_host)
+                update_sql = f"UPDATE universal_cmdb SET {', '.join(updates)}, last_updated = CURRENT_TIMESTAMP WHERE normalized_host = ?"
+                self.duck_conn.execute(update_sql, values)
+        else:
+            columns = ['normalized_host', 'source_tables'] + [k for k in record.keys() if k != 'normalized_host']
+            values = [normalized_host, table_name] + [record.get(k) for k in columns[2:]]
+            placeholders = ', '.join(['?'] * len(columns))
             
-        except Exception as e:
-            conn.execute("ROLLBACK")
-            print(f"☁️ Bulk insert error: {e}")
-            return 0, 0
-        
-        return inserted_count, updated_count
+            insert_sql = f"INSERT INTO universal_cmdb ({', '.join(columns)}) VALUES ({placeholders})"
+            self.duck_conn.execute(insert_sql, values)
     
-    def load_metadata(self) -> Dict:
-        print("🪞 Loading metadata at MAXIMUM SPEED...")
-        with open(self.json_file_path, 'r') as f:
-            return json.load(f)
-    
-    def identify_columns(self, metadata):
-        all_columns = []
+    def process_all(self):
+        print("🤍 === STARTING HOST DATA PROCESSING === 🦢")
         
-        print("\n‧₊˚🖇️✩ === COLUMN DISCOVERY AT LIGHT SPEED === ₊˚🎧⊹")
-        
-        for table_name, columns in metadata['columns'].items():
-            print(f"\n♡ Analyzing table: {table_name}")
-            
-            # Get row count for this table
-            row_count = self.get_table_row_count_fast(table_name)
-            
-            for column_name, column_type in columns.items():
-                mapped_type = None
-                
-                # Fast column matching (same logic, optimized)
-                if isinstance(column_type, str) and column_type.lower() in self.column_mapping:
-                    mapped_type = self.column_mapping[column_type.lower()]
-                    print(f"  ༘˚⋆𐙚｡⋆ EXACT MATCH: {column_name} -> {mapped_type}")
-                
-                if not mapped_type:
-                    column_lower = column_name.lower()
-                    for pattern in self.hostname_patterns:
-                        if pattern in column_lower:
-                            mapped_type = 'hostname'
-                            print(f"  𖦹.✧˚ HOSTNAME: {column_name} -> {mapped_type}")
-                            break
-                
-                if not mapped_type:
-                    column_lower = column_name.lower()
-                    for attr_type, patterns in self.attribute_patterns.items():
-                        for pattern in patterns:
-                            if pattern in column_lower:
-                                mapped_type = attr_type
-                                print(f"  🤍ྀི ATTRIBUTE: {column_name} -> {mapped_type}")
-                                break
-                        if mapped_type:
-                            break
-                
-                if not mapped_type and isinstance(column_type, str):
-                    type_lower = column_type.lower()
-                    for attr_type, patterns in self.attribute_patterns.items():
-                        for pattern in patterns:
-                            if pattern in type_lower:
-                                mapped_type = attr_type
-                                print(f"  🤍 TYPE: {column_name} -> {mapped_type}")
-                                break
-                        if mapped_type:
-                            break
-                
-                if mapped_type:
-                    all_columns.append((table_name, column_name, mapped_type))
-        
-        print(f"\n🦢 === DISCOVERY COMPLETE: {len(all_columns)} columns mapped === 🎧")
-        return all_columns
-    
-    def process_all_parallel(self):
-        print("☁️ === INITIATING MAXIMUM PERFORMANCE MODE === 🪞")
-        print("‧₊˚🖇️✩ WARNING: CPU USAGE WILL BE EXTREME! FANS WILL SPIN! ₊˚🎧⊹")
-        
-        self.stats.start_time = time.time()
-        self.performance_monitor.start()
+        # Start keep-alive system
+        self.keep_alive.start()
         
         try:
             metadata = self.load_metadata()
@@ -491,77 +415,26 @@ class HighPerformanceHostProcessor:
             for table_name, column_name, mapped_type in all_columns:
                 columns_by_table[table_name].append((table_name, column_name, mapped_type))
             
-            # Create processing chunks for parallel execution
-            processing_tasks = []
+            print(f"\n☁️ Processing {len(columns_by_table)} tables...")
             
-            for table_name, table_columns in columns_by_table.items():
-                row_count = self.table_row_counts.get(table_name, 0)
-                
-                if row_count > self.chunk_size:
-                    # Split large tables into chunks
-                    num_chunks = (row_count + self.chunk_size - 1) // self.chunk_size
-                    print(f"♡ Splitting {table_name} ({row_count:,} rows) into {num_chunks} chunks")
-                    
-                    for i in range(num_chunks):
-                        offset = i * self.chunk_size
-                        limit = min(self.chunk_size, row_count - offset)
-                        processing_tasks.append((table_name, table_columns, offset, limit))
-                else:
-                    # Process smaller tables as single chunks
-                    processing_tasks.append((table_name, table_columns, 0, row_count))
-            
-            total_tasks = len(processing_tasks)
-            print(f"༘˚⋆𐙚｡⋆ LAUNCHING {total_tasks} PARALLEL TASKS ACROSS {self.max_workers} WORKERS!")
-            print("𖦹.✧˚ MAXIMUM PERFORMANCE MODE ENGAGED! 🤍ྀི")
-            
-            # Execute all tasks in parallel
-            completed_tasks = 0
-            
-            with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
-                # Submit all tasks
-                future_to_task = {
-                    executor.submit(self.process_table_chunk_parallel, task): task 
-                    for task in processing_tasks
-                }
-                
-                # Process completed tasks
-                for future in as_completed(future_to_task):
-                    task = future_to_task[future]
-                    try:
-                        result = future.result()
-                        completed_tasks += 1
-                        
-                        self.stats.records_processed += result['records']
-                        self.stats.records_inserted += result.get('inserted', 0)
-                        self.stats.records_updated += result.get('updated', 0)
-                        
-                        elapsed = time.time() - self.stats.start_time
-                        rate = self.stats.records_processed / elapsed if elapsed > 0 else 0
-                        
-                        print(f"🤍 COMPLETED {completed_tasks}/{total_tasks} | "
-                              f"Records: {self.stats.records_processed:,} | "
-                              f"Rate: {rate:.0f} rec/sec 🦢")
-                        
-                    except Exception as e:
-                        print(f"🎧 Task failed: {task[0]} - {e}")
-            
-            # Force checkpoint to ensure all data is written
-            print("☁️ Forcing database checkpoint...")
-            self.main_conn.execute("CHECKPOINT")
+            for i, (table_name, table_columns) in enumerate(columns_by_table.items(), 1):
+                print(f"\n🪞 Progress: {i}/{len(columns_by_table)} tables")
+                self.process_table_completely(table_name, table_columns)
             
             self._create_summary()
-            self._show_performance_results()
+            self._show_results()
             
         except Exception as e:
-            print(f"🪞 CRITICAL ERROR: {e}")
+            print(f"𖦹.✧˚ Error during processing: {e}")
             raise
         finally:
-            self.performance_monitor.stop()
+            # Stop keep-alive system
+            self.keep_alive.stop()
     
     def _create_summary(self):
         try:
-            print("‧₊˚🖇️✩ Creating performance summary...")
-            self.main_conn.execute("DROP TABLE IF EXISTS all_sources")
+            print("‧₊˚🖇️✩ Creating summary table...")
+            self.duck_conn.execute("DROP TABLE IF EXISTS all_sources")
             
             create_sql = """
             CREATE TABLE all_sources AS (
@@ -579,108 +452,117 @@ class HighPerformanceHostProcessor:
                 ORDER BY source_count DESC, normalized_host
             )
             """
-            self.main_conn.execute(create_sql)
+            self.duck_conn.execute(create_sql)
             print("₊˚🎧⊹ Summary table created successfully")
         except Exception as e:
-            print(f"♡ Error creating summary: {e}")
+            print(f"𖦹.✧˚ Error creating summary: {e}")
     
-    def _show_performance_results(self):
-        total_time = time.time() - self.stats.start_time
-        total_records = self.main_conn.execute("SELECT COUNT(*) FROM universal_cmdb").fetchone()[0]
+    def _show_results(self):
+        total = self.duck_conn.execute("SELECT COUNT(*) FROM universal_cmdb").fetchone()[0]
+        print(f"\n🤍ྀི Total hosts in database: {total:,}")
         
-        print(f"\n༘˚⋆𐙚｡⋆ === PERFORMANCE RESULTS === 𖦹.✧˚")
-        print(f"🤍ྀི Total Processing Time: {total_time:.2f} seconds ({total_time/60:.1f} minutes)")
-        print(f"🤍 Records Processed: {self.stats.records_processed:,}")
-        print(f"🦢 Records in Database: {total_records:,}")
-        print(f"🎧 Processing Rate: {self.stats.records_processed/total_time:.0f} records/second")
-        print(f"☁️ New Records: {self.stats.records_inserted:,}")
-        print(f"🪞 Updated Records: {self.stats.records_updated:,}")
-        
-        # Performance analysis
-        if self.stats.records_processed > 0:
-            efficiency = (total_records / self.stats.records_processed) * 100
-            print(f"‧₊˚🖇️✩ Data Efficiency: {efficiency:.1f}%")
-        
+        # Show table processing summary
+        print(f"\n♡ === TABLE PROCESSING SUMMARY === 🦢")
         total_source_rows = sum(self.table_row_counts.values())
-        print(f"₊˚🎧⊹ Source Rows Scanned: {total_source_rows:,}")
+        print(f"☁️ Total source table rows processed: {total_source_rows:,}")
         
-        if total_source_rows > 1000000:
-            print("♡ BIG DATA PROCESSING COMPLETE - FANS CAN SLOW DOWN NOW! ༘˚⋆𐙚｡⋆")
-        elif total_source_rows > 100000:
-            print("𖦹.✧˚ HIGH-VOLUME PROCESSING SUCCESSFUL! 🤍ྀི")
+        for table_name, row_count in self.table_row_counts.items():
+            print(f"  🪞 {table_name}: {row_count:,} rows")
         
-        # Show column population stats
-        columns = ['hostname', 'business_unit', 'region', 'infrastructure_type', 
-                  'edr_coverage', 'logging_in_splunk']
+        columns = ['hostname', 'fqdn', 'domain', 'infrastructure_type', 'region', 'country',
+                  'data_center', 'cloud_region', 'ip_address', 'class', 'system_classification',
+                  'business_unit', 'apm', 'cio', 'edr_coverage', 'tanium_coverage', 
+                  'dlp_agent_coverage', 'logging_in_splunk', 'logging_in_gso']
         
-        print(f"\n🤍 Key Column Population:")
+        print("\n‧₊˚🖇️✩ === COLUMN VERIFICATION === ₊˚🎧⊹")
+        populated_columns = []
+        empty_columns = []
+        
         for col in columns:
-            count = self.main_conn.execute(
-                f"SELECT COUNT(*) FROM universal_cmdb WHERE {col} IS NOT NULL AND {col} != ''"
-            ).fetchone()[0]
-            pct = (count / total_records * 100) if total_records > 0 else 0
-            print(f"  🦢 {col}: {count:,} ({pct:.1f}%)")
+            count = self.duck_conn.execute(f"SELECT COUNT(*) FROM universal_cmdb WHERE {col} IS NOT NULL AND {col} != ''").fetchone()[0]
+            pct = (count / total * 100) if total > 0 else 0
+            
+            if count > 0:
+                populated_columns.append(col)
+                print(f"🤍ྀི DATA FOUND: {col} has {count:,} records ({pct:.1f}%)")
+                
+                # Show sample values
+                sample_query = f"SELECT DISTINCT {col} FROM universal_cmdb WHERE {col} IS NOT NULL AND {col} != '' LIMIT 3"
+                samples = self.duck_conn.execute(sample_query).fetchall()
+                sample_values = [str(s[0])[:30] for s in samples]
+                print(f"   ♡ Sample values: {', '.join(sample_values)}")
+            else:
+                empty_columns.append(col)
+                print(f"༘˚⋆𐙚｡⋆ EMPTY: {col} has no data")
+        
+        print(f"\n🦢 === VERIFICATION SUMMARY === ☁️")
+        print(f"   🤍 Columns with data: {len(populated_columns)}")
+        print(f"   🪞 Empty columns: {len(empty_columns)}")
+        
+        if populated_columns:
+            print(f"   ‧₊˚🖇️✩ SUCCESS: Data verified in: {', '.join(populated_columns)}")
+        
+        if empty_columns:
+            print(f"   𖦹.✧˚ WARNING: No data found in: {', '.join(empty_columns)}")
+        
+        print("\n₊˚🎧⊹ Sample complete records:")
+        sample_query = """
+        SELECT * FROM universal_cmdb 
+        WHERE normalized_host IS NOT NULL
+        ORDER BY (
+            CASE WHEN hostname IS NOT NULL AND hostname != '' THEN 1 ELSE 0 END +
+            CASE WHEN business_unit IS NOT NULL AND business_unit != '' THEN 1 ELSE 0 END +
+            CASE WHEN region IS NOT NULL AND region != '' THEN 1 ELSE 0 END +
+            CASE WHEN infrastructure_type IS NOT NULL AND infrastructure_type != '' THEN 1 ELSE 0 END
+        ) DESC
+        LIMIT 3
+        """
+        samples = self.duck_conn.execute(sample_query).fetchall()
+        
+        column_names = ['normalized_host', 'source_tables'] + columns + ['last_updated', 'created_at']
+        
+        for i, sample in enumerate(samples, 1):
+            print(f"\n♡ Record {i}: {sample[0]}")
+            fields_with_data = 0
+            for j, col_name in enumerate(column_names[1:], 1):
+                if j < len(sample) and sample[j] and str(sample[j]).strip() and col_name not in ['last_updated', 'created_at']:
+                    print(f"  🤍ྀི {col_name}: {str(sample[j])[:50]}")
+                    fields_with_data += 1
+            print(f"  🦢 Total fields populated: {fields_with_data}")
     
-    def export_fast(self, filename="universal_cmdb_export.csv"):
-        print(f"🎧 HIGH-SPEED EXPORT to {filename}...")
-        start_time = time.time()
+    def export(self, filename="universal_cmdb_export.csv"):
+        print(f"☁️ Exporting data to {filename}...")
+        self.duck_conn.execute(f"COPY (SELECT * FROM universal_cmdb ORDER BY normalized_host) TO '{filename}' WITH (FORMAT CSV, HEADER)")
         
-        # Use DuckDB's optimized CSV export
-        self.main_conn.execute(f"""
-            COPY (SELECT * FROM universal_cmdb ORDER BY normalized_host) 
-            TO '{filename}' WITH (FORMAT CSV, HEADER, DELIMITER ',')
-        """)
-        
-        export_time = time.time() - start_time
-        
+        # Get file size for confirmation
         try:
             file_size = os.path.getsize(filename)
             file_size_mb = file_size / (1024 * 1024)
-            rate_mb_s = file_size_mb / export_time if export_time > 0 else 0
-            
-            print(f"☁️ Export complete: {filename}")
-            print(f"🪞 File size: {file_size_mb:.2f} MB")
-            print(f"‧₊˚🖇️✩ Export time: {export_time:.2f} seconds")
-            print(f"₊˚🎧⊹ Export rate: {rate_mb_s:.1f} MB/second")
-            
-        except Exception as e:
-            print(f"♡ Export completed: {filename}")
+            print(f"🪞 Export completed: {filename} ({file_size_mb:.2f} MB)")
+        except:
+            print(f"🤍 Export completed: {filename}")
     
     def close(self):
-        print("༘˚⋆𐙚｡⋆ Shutting down HIGH-PERFORMANCE system...")
-        self.performance_monitor.stop()
-        
-        # Close all connections
-        for conn in self.connection_pool:
-            try:
-                conn.close()
-            except:
-                pass
-        
-        self.main_conn.close()
-        
-        total_time = time.time() - self.stats.start_time if self.stats.start_time else 0
-        print(f"𖦹.✧˚ HIGH-PERFORMANCE SESSION COMPLETE: {total_time/60:.1f} minutes total")
+        print("‧₊˚🖇️✩ Closing database connections...")
+        self.keep_alive.stop()
+        self.duck_conn.close()
+        print("₊˚🎧⊹ Database connections closed")
 
 if __name__ == "__main__":
-    print("🤍ྀི === HIGH-PERFORMANCE HOST DATA PROCESSOR === 🤍")
-    print("🦢 WARNING: MAXIMUM CPU USAGE INCOMING! ☁️")
-    print("🎧 Your fans WILL spin at maximum speed! 🪞")
-    
-    processor = HighPerformanceHostProcessor("reviewed_labeled_columns.json", "universal_cmdb.db")
+    print("🤍 === HOST DATA PROCESSOR STARTING === 🦢")
+    processor = HostDataProcessor("reviewed_labeled_columns.json", "universal_cmdb.db")
     
     try:
-        processor.process_all_parallel()
-        processor.export_fast()
-        print("\n‧₊˚🖇️✩ === MAXIMUM PERFORMANCE PROCESSING COMPLETE === ₊˚🎧⊹")
-        print("♡ Mission accomplished - your machine survived the intensity! ༘˚⋆𐙚｡⋆")
-        
+        processor.process_all()
+        processor.export()
+        print("\n♡ === PROCESSING COMPLETE === 🤍ྀི")
+        print("☁️ All data has been successfully processed and exported! 🦢")
     except KeyboardInterrupt:
-        print("\n𖦹.✧˚ Process interrupted - emergency shutdown!")
+        print("\n𖦹.✧˚ Process interrupted by user")
     except Exception as e:
-        print(f"🤍ྀི Critical error: {e}")
+        print(f"༘˚⋆𐙚｡⋆ Error: {e}")
         import traceback
         traceback.print_exc()
     finally:
         processor.close()
-        print("🤍 All systems powered down - fans returning to normal 🦢")
+        print("🪞 Session ended gracefully ♡")
