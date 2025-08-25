@@ -69,7 +69,7 @@ class LogVisibilityPredictor(nn.Module):
         return self.softmax(self.output(x))
 
 class AO1VisibilityPredictor:
-    def __init__(self, db_path: str = 'data/universal_cmdb.duckdb'):
+    def __init__(self, db_path: str = 'universal_cmdb.db'):
         self.hostname_net = None
         self.log_visibility_net = None
         self.feature_scaler = StandardScaler()
@@ -188,7 +188,7 @@ class AO1VisibilityPredictor:
             logging_in_splunk, logging_in_gso, present_in_cmdb, 
             edr_coverage, sas_coverage, tanium_coverage, dlp_agent_coverage,
             first_seen_ts, last_updated_ts, data_quality_score, source_count
-        FROM universal_cmdb_copy2
+        FROM universal_cmdb
         WHERE fqdn IS NOT NULL AND fqdn != ''
             AND data_quality_score > 3.0
         ORDER BY data_quality_score DESC
@@ -198,9 +198,15 @@ class AO1VisibilityPredictor:
         try:
             df = conn.execute(query).df()
             conn.close()
+            print(f"Successfully loaded {len(df)} records from universal_cmdb table")
             return df
         except Exception as e:
             print(f"Error fetching CMDB data: {e}")
+            try:
+                tables = conn.execute("SHOW TABLES").df()
+                print(f"Available tables: {tables['name'].tolist() if not tables.empty else 'No tables found'}")
+            except Exception as e2:
+                print(f"Error listing tables: {e2}")
             conn.close()
             return pd.DataFrame()
     
@@ -545,7 +551,7 @@ class AO1VisibilityPredictor:
         return min(base_risk + (existence_prob * 0.3) + (no_visibility_prob * 0.4), 1.0)
 
 app = Flask(__name__)
-ao1_predictor = AO1VisibilityPredictor()
+ao1_predictor = AO1VisibilityPredictor(db_path='universal_cmdb.db')
 
 @app.route('/api/train-visibility-model')
 def train_visibility_model():
