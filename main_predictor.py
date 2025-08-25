@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import torch
+import torch.nn.functional as F
 import duckdb
 import pandas as pd
 import numpy as np
@@ -12,6 +13,7 @@ import os
 import platform
 import time
 from collections import defaultdict
+from typing import List, Dict, Tuple, Optional
 
 from algo1_lstm import LSTMPredictor
 from algo2_gru import GRUPredictor
@@ -24,433 +26,519 @@ from algo8_residual import ResidualPredictor
 from algo9_ensemble_nn import EnsembleNNPredictor
 from algo10_graph_nn import GraphNNPredictor
 
-logging.basicConfig(level=logging.INFO, format='%(asctime)s %(message)s', datefmt='%H:%M:%S')
+logging.basicConfig(level=logging.INFO, format='%(asctime)s %(message)s')
 logger = logging.getLogger(__name__)
 
-if not torch.backends.mps.is_available():
-    if not torch.backends.mps.is_built():
-        logger.error("༻❁༺ MPS not available - PyTorch wasn't built with MPS enabled")
-        logger.error("⋆.˚ Please install PyTorch with MPS support: pip3 install torch torchvision")
-    else:
-        logger.error("𓆉 MPS not available - not running on macOS with Apple Silicon")
-    
-    if torch.cuda.is_available():
-        device = torch.device("cuda")
-        logger.warning("✩ Using CUDA GPU instead of MPS ₊˚")
-    else:
-        logger.error("༻❁༺ No GPU available! This system requires Apple Silicon or CUDA GPU")
-        exit(1)
-else:
-    device = torch.device("mps")
-    logger.info("‧₊˚🖇️✩ Apple Silicon GPU detected and initialized ₊˚")
-    logger.info(f"⋆.˚ Running on: {platform.machine()}")
-    logger.info(f"𓇼 macOS version: {platform.mac_ver()[0]}")
-    
-    os.environ['PYTORCH_MPS_HIGH_WATERMARK_RATIO'] = '0.0'
-    MAX_MEMORY_GB = 18
-    logger.info(f"₊˚🎧⊹♡ GPU Memory limit set to {MAX_MEMORY_GB} GiB")
-
-class MissingAssetPredictor:
+class OptimizedAssetPredictor:
     def __init__(self, db_path='universal_cmdb.db'):
         self.db_path = db_path
+        self.device = self._initialize_mps()
         self.algorithms = []
+        self.pattern_cache = {}
+        self.feature_cache = {}
         self.pattern_threshold = 3
-        self.start_time = time.time()
+        self.confidence_threshold = 0.5
+        self.max_memory_gb = 18
         
-    def load_data(self):
-        logger.info("\n˚ ༘♡ ⋆｡˚ Loading database...")
-        start = time.time()
+    def _initialize_mps(self) -> torch.device:
+        logger.info("\n˚₊· ͟͟͞͞➳❥ initializing neural architecture...")
+        logger.info("⋆｡‧˚ʚ♡ɞ˚‧｡⋆ checking for apple silicon gpu")
         
+        if not torch.backends.mps.is_available():
+            if not torch.backends.mps.is_built():
+                logger.error("✗ pytorch wasn't built with mps support")
+            else:
+                logger.error("✗ not running on macos with apple silicon")
+            
+            if torch.cuda.is_available():
+                logger.warning("⋆.˚ using cuda fallback instead")
+                return torch.device("cuda")
+            else:
+                logger.error("✗ no gpu available - cannot proceed")
+                exit(1)
+        
+        device = torch.device("mps")
+        logger.info(f"✓ ‧₊˚🖇️✩ mps gpu detected on {platform.machine()}")
+        logger.info(f"⋆.˚ 𓆉 macos version: {platform.mac_ver()[0]}")
+        
+        os.environ['PYTORCH_MPS_HIGH_WATERMARK_RATIO'] = '0.0'
+        logger.info("₊˚🎧⊹♡ memory limit enforced at 18 gib")
+        
+        return device
+    
+    def _verify_gpu(self):
+        logger.info("\n༻❁༺ running gpu verification tests...")
         try:
-            conn = duckdb.connect(self.db_path)
-            df = conn.execute("SELECT * FROM universal_cmdb ORDER BY host").df()
-            conn.close()
+            test = torch.randn(1000, 1000, device=self.device)
+            result = torch.matmul(test, test.T)
+            del test, result
             
-            logger.info(f"✧˚ · . Successfully loaded {len(df):,} records in {time.time()-start:.1f}s")
-            logger.info(f"𓆝 Unique hostnames: {df['host'].nunique():,}")
-            logger.info(f"⋆⭒˚｡⋆ Null values per column:")
+            if self.device.type == 'mps':
+                torch.mps.empty_cache()
+                torch.mps.synchronize()
             
-            null_counts = df.isnull().sum()
-            for col, count in null_counts[null_counts > 0].items():
-                logger.info(f"  ✩ {col}: {count:,} nulls ({count/len(df)*100:.1f}%)")
-            
-            return df
-            
+            logger.info("✓ ⋆.˚ gpu computation verified successfully")
         except Exception as e:
-            logger.error(f"༻❁༺ Database error: {e}")
+            logger.error(f"✗ gpu test failed: {e}")
             exit(1)
     
-    def find_patterns(self, df):
-        logger.info("\n⋆｡‧˚ʚ♡ɞ˚‧｡⋆ Starting pattern discovery...")
-        start = time.time()
+    def load_data(self) -> pd.DataFrame:
+        logger.info("\n⊹ ࣪ ˖ loading asset database...")
+        start_time = time.time()
+        
+        conn = duckdb.connect(self.db_path, read_only=True)
+        df = conn.execute("""
+            SELECT * FROM universal_cmdb 
+            WHERE host IS NOT NULL 
+            ORDER BY host
+        """).df()
+        conn.close()
+        
+        logger.info(f"✓ ˚₊· loaded {len(df):,} records in {time.time()-start_time:.2f}s")
+        logger.info(f"  𓇼 unique hostnames: {df['host'].nunique():,}")
+        logger.info(f"  𓆉 business units: {df['business_unit'].nunique()}")
+        logger.info(f"  𓆝 regions: {df['region'].nunique()}")
+        
+        return df
+    
+    def find_patterns_optimized(self, df: pd.DataFrame) -> Dict:
+        logger.info("\n⋆˙⟡♡ discovering hostname patterns...")
+        start_time = time.time()
         
         patterns = defaultdict(list)
-        total_hosts = 0
+        pattern_metadata = {}
         
-        for hostname in df['host'].dropna():
-            total_hosts += 1
-            hostname = hostname.lower().strip()
-            template = ''.join(['X' if c.isdigit() else c for c in hostname])
-            patterns[template].append(hostname)
+        hostnames = df['host'].dropna().str.lower().str.strip()
+        
+        for idx, hostname in enumerate(hostnames):
+            if idx % 50000 == 0 and idx > 0:
+                logger.info(f"  ₊˚⊹ processed {idx:,}/{len(hostnames):,} hostnames")
             
-            if total_hosts % 50000 == 0:
-                logger.info(f"  ₊˚⊹♡ Processed {total_hosts:,} hostnames...")
+            template = self._extract_template(hostname)
+            patterns[template].append(hostname)
         
-        legitimate_patterns = {}
+        legitimate = {}
         for template, hosts in patterns.items():
             if len(hosts) >= self.pattern_threshold:
-                legitimate_patterns[template] = hosts
+                legitimate[template] = hosts
+                pattern_metadata[template] = self._analyze_pattern_metadata(hosts, df)
         
-        logger.info(f"✧˚ · . Found {len(legitimate_patterns)} patterns with {self.pattern_threshold}+ assets")
-        logger.info(f"˚ ༘♡ Pattern discovery took {time.time()-start:.1f}s")
+        logger.info(f"✓ ˚₊· found {len(legitimate)} patterns in {time.time()-start_time:.2f}s")
+        logger.info(f"  ⋆.˚ patterns with 3+ assets: {len(legitimate)}")
+        logger.info(f"  𓆡 largest pattern: {max(len(h) for h in legitimate.values())} hosts")
         
-        top_patterns = sorted(legitimate_patterns.items(), key=lambda x: len(x[1]), reverse=True)[:5]
-        logger.info("𓇼 Top 5 patterns by frequency:")
-        for template, hosts in top_patterns:
-            logger.info(f"  ⋆.˚ {template[:40]}{'...' if len(template) > 40 else ''} ({len(hosts)} hosts)")
-        
-        return legitimate_patterns
+        self.pattern_cache = legitimate
+        return {'patterns': legitimate, 'metadata': pattern_metadata}
     
-    def generate_candidates(self, patterns, existing_hosts):
-        logger.info("\n₊˚🎧⊹♡ Generating missing asset candidates...")
-        start = time.time()
+    def _extract_template(self, hostname: str) -> str:
+        import re
+        
+        template = re.sub(r'\d+', 'NUM', hostname)
+        
+        template = re.sub(r'NUM(NUM)+', 'NUM', template)
+        
+        return template
+    
+    def _analyze_pattern_metadata(self, hosts: List[str], df: pd.DataFrame) -> Dict:
+        sample_data = df[df['host'].str.lower().isin(hosts)]
+        
+        metadata = {
+            'count': len(hosts),
+            'regions': sample_data['region'].mode().iloc[0] if not sample_data['region'].empty else None,
+            'business_units': sample_data['business_unit'].mode().iloc[0] if not sample_data['business_unit'].empty else None,
+            'data_centers': sample_data['data_center'].mode().iloc[0] if not sample_data['data_center'].empty else None,
+            'domains': self._extract_common_domain(hosts),
+            'avg_quality_score': sample_data['data_quality_score'].mean() if 'data_quality_score' in sample_data else 0
+        }
+        
+        return metadata
+    
+    def _extract_common_domain(self, hosts: List[str]) -> Optional[str]:
+        domains = []
+        for host in hosts[:10]:
+            parts = host.split('.')
+            if len(parts) > 1:
+                domains.append('.'.join(parts[1:]))
+        
+        if domains:
+            from collections import Counter
+            most_common = Counter(domains).most_common(1)
+            return most_common[0][0] if most_common else None
+        return None
+    
+    def generate_smart_candidates(self, pattern_data: Dict, existing: set) -> List[Dict]:
+        logger.info("\n༊*·˚ generating intelligent missing asset candidates...")
+        start_time = time.time()
         
         candidates = []
-        existing_set = set(h.lower() for h in existing_hosts)
-        patterns_processed = 0
+        patterns = pattern_data['patterns']
+        metadata = pattern_data['metadata']
         
         for template, hosts in patterns.items():
-            patterns_processed += 1
-            
-            if patterns_processed % 100 == 0:
-                logger.info(f"  ⋆⭒˚｡⋆ Processed {patterns_processed}/{len(patterns)} patterns...")
-            
             if len(hosts) < 2:
                 continue
             
-            numbers_in_pattern = defaultdict(set)
-            for host in hosts:
-                current_numbers = []
-                for i, (t_char, h_char) in enumerate(zip(template, host)):
-                    if t_char == 'X' and h_char.isdigit():
-                        current_numbers.append((i, int(h_char)))
-                
-                if current_numbers:
-                    for pos, num in current_numbers:
-                        numbers_in_pattern[pos].add(num)
+            numbers_found = self._extract_number_sequences(hosts)
             
-            for pos, observed_numbers in numbers_in_pattern.items():
-                if len(observed_numbers) > 1:
-                    min_num = min(observed_numbers)
-                    max_num = max(observed_numbers)
+            for seq_pos, seq_values in numbers_found.items():
+                gaps = self._find_intelligent_gaps(seq_values)
+                
+                for gap in gaps[:50]:
+                    candidate = self._create_candidate(
+                        template, gap, seq_pos, hosts[0], 
+                        metadata.get(template, {}), existing
+                    )
                     
-                    for num in range(max(0, min_num - 5), min(999, max_num + 5)):
-                        if num not in observed_numbers:
-                            candidate_host = list(template)
-                            candidate_host[pos] = str(num % 10)
-                            candidate_str = ''.join(candidate_host)
-                            
-                            if candidate_str not in existing_set:
-                                sample_host = hosts[0]
-                                sample_data = df[df['host'].str.lower() == sample_host].iloc[0] if not df[df['host'].str.lower() == sample_host].empty else {}
-                                
-                                candidates.append({
-                                    'hostname': candidate_str,
-                                    'pattern': template,
-                                    'similar_hosts': hosts[:3],
-                                    'expected_domain': sample_data.get('domain') if sample_data else None,
-                                    'expected_region': sample_data.get('region') if sample_data else None,
-                                    'expected_country': sample_data.get('country') if sample_data else None,
-                                    'expected_data_center': sample_data.get('data_center') if sample_data else None,
-                                    'expected_business_unit': sample_data.get('business_unit') if sample_data else None
-                                })
+                    if candidate and candidate['hostname'] not in existing:
+                        candidates.append(candidate)
         
-        logger.info(f"✧˚ · . Generated {len(candidates):,} candidates in {time.time()-start:.1f}s")
-        logger.info(f"𓆡 Average candidates per pattern: {len(candidates)/len(patterns):.1f}")
+        candidates = self._rank_candidates_by_likelihood(candidates)
         
-        return candidates[:50000]
+        logger.info(f"✓ ⋆.ೃ࿔*:･ generated {len(candidates)} candidates in {time.time()-start_time:.2f}s")
+        logger.info(f"  ˚₊· high probability: {sum(1 for c in candidates if c.get('likelihood', 0) > 0.7)}")
+        
+        return candidates
     
-    def initialize_algorithms(self, input_dim):
-        logger.info("\n˚ ༘♡ ⋆｡˚ Initializing 10 GPU algorithms...")
+    def _extract_number_sequences(self, hosts: List[str]) -> Dict:
+        import re
+        sequences = defaultdict(set)
         
-        algo_names = [
-            "LSTM (Long Short-Term Memory)",
-            "GRU (Gated Recurrent Unit)",
-            "Transformer (Self-Attention)",
-            "CNN (Convolutional Network)",
-            "Autoencoder (Reconstruction)",
-            "VAE (Variational Autoencoder)",
-            "Attention (Multi-Head)",
-            "Residual (Skip Connections)",
-            "Ensemble (Multiple Networks)",
-            "Graph NN (Relationship Modeling)"
-        ]
+        for host in hosts:
+            for match in re.finditer(r'\d+', host):
+                sequences[match.start()].add(int(match.group()))
+        
+        return {k: sorted(v) for k, v in sequences.items()}
+    
+    def _find_intelligent_gaps(self, sequence: List[int]) -> List[int]:
+        if len(sequence) < 2:
+            return []
+        
+        gaps = []
+        
+        for i in range(len(sequence) - 1):
+            if sequence[i+1] - sequence[i] > 1:
+                for missing in range(sequence[i] + 1, min(sequence[i+1], sequence[i] + 10)):
+                    gaps.append(missing)
+        
+        if len(sequence) >= 3:
+            diffs = [sequence[i+1] - sequence[i] for i in range(len(sequence)-1)]
+            common_diff = max(set(diffs), key=diffs.count)
+            
+            if common_diff > 0:
+                next_expected = sequence[-1] + common_diff
+                if next_expected not in sequence and next_expected < 1000:
+                    gaps.append(next_expected)
+                
+                prev_expected = sequence[0] - common_diff
+                if prev_expected > 0 and prev_expected not in sequence:
+                    gaps.append(prev_expected)
+        
+        return gaps
+    
+    def _create_candidate(self, template: str, number: int, position: int, 
+                         sample_host: str, metadata: Dict, existing: set) -> Optional[Dict]:
+        import re
+        
+        candidate_host = template
+        num_str = str(number)
+        
+        if len(str(number)) == len(re.findall(r'\d+', sample_host)[0]) - 1:
+            num_str = num_str.zfill(len(re.findall(r'\d+', sample_host)[0]))
+        
+        candidate_host = re.sub('NUM', num_str, candidate_host, count=1)
+        
+        if candidate_host in existing:
+            return None
+        
+        domain = metadata.get('domains', '')
+        fqdn = f"{candidate_host}.{domain}" if domain else candidate_host
+        
+        return {
+            'hostname': candidate_host,
+            'pattern': template,
+            'expected_fqdn': fqdn,
+            'expected_region': metadata.get('regions'),
+            'expected_business_unit': metadata.get('business_units'),
+            'expected_data_center': metadata.get('data_centers'),
+            'expected_domain': domain,
+            'pattern_strength': metadata.get('count', 0) / 100.0,
+            'quality_score': metadata.get('avg_quality_score', 0),
+            'likelihood': 0.5
+        }
+    
+    def _rank_candidates_by_likelihood(self, candidates: List[Dict]) -> List[Dict]:
+        for candidate in candidates:
+            score = 0.5
+            
+            if candidate.get('pattern_strength', 0) > 0.1:
+                score += 0.2
+            
+            if candidate.get('quality_score', 0) > 7:
+                score += 0.1
+            
+            if candidate.get('expected_region'):
+                score += 0.1
+            
+            if candidate.get('expected_business_unit'):
+                score += 0.1
+            
+            candidate['likelihood'] = min(score, 1.0)
+        
+        return sorted(candidates, key=lambda x: x['likelihood'], reverse=True)
+    
+    def initialize_algorithms(self, input_dim: int):
+        logger.info("\n⋆｡‧˚ʚ initializing 10 neural architectures on gpu ɞ˚‧｡⋆")
         
         self.algorithms = [
-            LSTMPredictor(input_dim).to(device),
-            GRUPredictor(input_dim).to(device),
-            TransformerPredictor(input_dim).to(device),
-            CNNPredictor(input_dim).to(device),
-            AutoencoderPredictor(input_dim).to(device),
-            VAEPredictor(input_dim).to(device),
-            AttentionPredictor(input_dim).to(device),
-            ResidualPredictor(input_dim).to(device),
-            EnsembleNNPredictor(input_dim).to(device),
-            GraphNNPredictor(input_dim).to(device)
+            ('LSTM', LSTMPredictor(input_dim).to(self.device)),
+            ('GRU', GRUPredictor(input_dim).to(self.device)),
+            ('Transformer', TransformerPredictor(input_dim).to(self.device)),
+            ('CNN', CNNPredictor(input_dim).to(self.device)),
+            ('Autoencoder', AutoencoderPredictor(input_dim).to(self.device)),
+            ('VAE', VAEPredictor(input_dim).to(self.device)),
+            ('Attention', AttentionPredictor(input_dim).to(self.device)),
+            ('Residual', ResidualPredictor(input_dim).to(self.device)),
+            ('EnsembleNN', EnsembleNNPredictor(input_dim).to(self.device)),
+            ('GraphNN', GraphNNPredictor(input_dim).to(self.device))
         ]
         
-        for i, (algo, name) in enumerate(zip(self.algorithms, algo_names)):
-            param_count = sum(p.numel() for p in algo.parameters())
-            logger.info(f"  {i+1}. ⋆.˚ {name} - {param_count:,} parameters")
-        
-        return self.algorithms
+        for name, model in self.algorithms:
+            param_count = sum(p.numel() for p in model.parameters())
+            logger.info(f"  ₊˚⊹ {name}: {param_count:,} parameters")
     
-    def train_algorithms(self, df):
-        logger.info("\n₊˚⊹♡ Starting training phase on GPU...")
-        start = time.time()
+    def train_optimized(self, df: pd.DataFrame):
+        logger.info("\n˚ ༘♡ ⋆｡˚ training neural ensemble...")
+        start_time = time.time()
         
-        X, y = self.prepare_training_data(df)
-        logger.info(f"✧˚ · . Prepared {len(X):,} training samples")
+        X, y = self._prepare_efficient_features(df)
         
-        batch_size = min(512, len(X) // 10)
-        chunk_size = min(10000, len(X))
-        
-        if len(X) > chunk_size:
-            logger.info(f"𓇼 Using subset of {chunk_size:,} samples for memory efficiency")
-            indices = np.random.choice(len(X), chunk_size, replace=False)
+        max_samples = 8000
+        if len(X) > max_samples:
+            logger.info(f"  ⋆.˚ sampling {max_samples} from {len(X)} for memory efficiency")
+            indices = np.random.choice(len(X), max_samples, replace=False)
             X = X[indices]
             y = y[indices]
         
-        X_tensor = torch.FloatTensor(X).to(device)
-        y_tensor = torch.FloatTensor(y).to(device)
+        split_idx = int(0.8 * len(X))
+        X_train = torch.FloatTensor(X[:split_idx]).to(self.device)
+        y_train = torch.FloatTensor(y[:split_idx]).to(self.device)
+        X_val = torch.FloatTensor(X[split_idx:]).to(self.device)
+        y_val = torch.FloatTensor(y[split_idx:]).to(self.device)
         
-        split = int(0.8 * len(X))
-        X_train = X_tensor[:split]
-        y_train = y_tensor[:split]
-        X_val = X_tensor[split:]
-        y_val = y_tensor[split:]
-        
-        logger.info(f"⋆⭒˚｡⋆ Training set: {len(X_train):,} samples")
-        logger.info(f"˚ ༘♡ Validation set: {len(X_val):,} samples")
-        
-        for i, algo in enumerate(self.algorithms):
-            algo_start = time.time()
-            logger.info(f"\n  ‧₊˚ Training algorithm {i+1}/10: {algo.__class__.__name__}")
+        for i, (name, model) in enumerate(self.algorithms):
+            logger.info(f"  ₊˚🎧⊹ training {name} ({i+1}/10)...")
             
-            if device.type == 'mps':
+            if self.device.type == 'mps':
                 torch.mps.empty_cache()
-            gc.collect()
             
             try:
-                algo.train_model(X_train, y_train, X_val, y_val)
-                logger.info(f"    ✩ Training completed in {time.time()-algo_start:.1f}s")
+                model.train_model(X_train, y_train, X_val, y_val, epochs=20)
+                logger.info(f"    ✓ {name} converged successfully")
             except RuntimeError as e:
-                if "out of memory" in str(e).lower():
-                    logger.warning(f"    ༻❁༺ Memory issue - using smaller batch")
-                    smaller_batch = X_train[:1000]
-                    smaller_y = y_train[:1000]
-                    algo.train_model(smaller_batch, smaller_y, X_val[:500], y_val[:500])
-                    logger.info(f"    ⋆.˚ Trained with reduced batch in {time.time()-algo_start:.1f}s")
+                if "memory" in str(e).lower():
+                    logger.warning(f"    ⋆ reducing batch for {name}")
+                    model.train_model(X_train[:1000], y_train[:1000], 
+                                    X_val[:200], y_val[:200], epochs=10)
                 else:
                     raise e
             
-            if device.type == 'mps':
-                torch.mps.empty_cache()
+            if self.device.type == 'mps':
                 torch.mps.synchronize()
         
-        logger.info(f"\n✧˚ · . All algorithms trained in {time.time()-start:.1f}s total")
+        logger.info(f"✓ ༊*·˚ ensemble training complete in {time.time()-start_time:.1f}s")
     
-    def prepare_training_data(self, df):
+    def _prepare_efficient_features(self, df: pd.DataFrame) -> Tuple[np.ndarray, np.ndarray]:
+        if 'features' in self.feature_cache:
+            return self.feature_cache['features']
+        
         X = []
         y = []
         
         for idx, row in df.iterrows():
             if idx % 100000 == 0 and idx > 0:
-                logger.info(f"  ₊˚⊹♡ Processed {idx:,} records...")
+                logger.info(f"    ₊˚⊹ feature extraction: {idx:,}/{len(df):,}")
             
-            features = self.extract_features(row)
+            features = self._extract_optimized_features(row)
             X.append(features)
             
-            confidence = 0.0
-            if row.get('present_in_cmdb') == 'yes':
-                confidence += 0.3
-            if row.get('logging_in_splunk') == 'yes':
-                confidence += 0.3
-            if row.get('logging_in_gso') == 'yes':
-                confidence += 0.2
-            if row.get('edr_coverage') and row.get('edr_coverage') != 'none':
-                confidence += 0.2
-                
+            confidence = self._calculate_confidence_score(row)
             y.append(confidence)
         
-        return np.array(X, dtype=np.float32), np.array(y, dtype=np.float32)
+        X = np.array(X, dtype=np.float32)
+        y = np.array(y, dtype=np.float32)
+        
+        self.feature_cache['features'] = (X, y)
+        
+        return X, y
     
-    def extract_features(self, row):
+    def _extract_optimized_features(self, row) -> np.ndarray:
         hostname = str(row.get('host', '')).lower()
         
-        features = [
-            len(hostname),
-            hostname.count('.'),
-            hostname.count('-'),
-            hostname.count('_'),
-            sum(c.isdigit() for c in hostname),
-            sum(c.isalpha() for c in hostname),
-            1 if hostname.startswith('srv') else 0,
-            1 if hostname.startswith('web') else 0,
-            1 if hostname.startswith('db') else 0,
-            1 if hostname.startswith('app') else 0,
-            1 if 'prod' in hostname else 0,
-            1 if 'dev' in hostname else 0,
-            1 if 'test' in hostname else 0,
-            1 if 'stage' in hostname else 0,
-            1 if row.get('region') == 'US' else 0,
-            1 if row.get('region') == 'EU' else 0,
-            1 if row.get('region') == 'APAC' else 0,
-            1 if row.get('data_center') else 0,
-            1 if row.get('cloud_region') else 0,
-            float(row.get('data_quality_score', 0))
-        ]
+        features = np.zeros(20, dtype=np.float32)
+        
+        features[0] = len(hostname) / 50.0
+        features[1] = hostname.count('.') / 5.0
+        features[2] = hostname.count('-') / 5.0
+        features[3] = hostname.count('_') / 5.0
+        features[4] = sum(c.isdigit() for c in hostname) / 10.0
+        features[5] = sum(c.isalpha() for c in hostname) / 30.0
+        
+        prefixes = ['srv', 'web', 'db', 'app', 'fw', 'lb', 'api']
+        for i, prefix in enumerate(prefixes):
+            features[6 + i] = 1.0 if hostname.startswith(prefix) else 0.0
+        
+        envs = ['prod', 'dev', 'test', 'stage']
+        for i, env in enumerate(envs):
+            features[13 + i] = 1.0 if env in hostname else 0.0
+        
+        features[17] = 1.0 if row.get('region') == 'US' else 0.5 if row.get('region') else 0.0
+        features[18] = 1.0 if row.get('data_center') else 0.0
+        features[19] = float(row.get('data_quality_score', 5.0)) / 10.0
         
         return features
     
-    def predict_candidates(self, candidates, df):
-        logger.info(f"\n⋆｡‧˚ʚ♡ɞ˚‧｡⋆ Starting predictions for {len(candidates):,} candidates...")
-        start = time.time()
+    def _calculate_confidence_score(self, row) -> float:
+        score = 0.0
+        
+        weights = {
+            'present_in_cmdb': 0.3,
+            'logging_in_splunk': 0.3,
+            'logging_in_gso': 0.2,
+            'edr_coverage': 0.1,
+            'tanium_coverage': 0.1
+        }
+        
+        if row.get('present_in_cmdb') == 'yes':
+            score += weights['present_in_cmdb']
+        if row.get('logging_in_splunk') == 'yes':
+            score += weights['logging_in_splunk']
+        if row.get('logging_in_gso') == 'yes':
+            score += weights['logging_in_gso']
+        if row.get('edr_coverage') and row.get('edr_coverage') != 'none':
+            score += weights['edr_coverage']
+        if row.get('tanium_coverage') == 'yes':
+            score += weights['tanium_coverage']
+        
+        return min(score, 1.0)
+    
+    def predict_ensemble(self, candidates: List[Dict]) -> List[Dict]:
+        logger.info(f"\n⋆.˚ 𓆉 𓆝 predicting {len(candidates)} candidates with ensemble voting...")
+        start_time = time.time()
         
         predictions = []
-        batch_size = 50
+        batch_size = 32
         
-        for batch_start in range(0, len(candidates), batch_size):
-            batch_end = min(batch_start + batch_size, len(candidates))
-            batch = candidates[batch_start:batch_end]
+        for batch_idx in range(0, len(candidates), batch_size):
+            if batch_idx % 256 == 0 and batch_idx > 0:
+                logger.info(f"  ₊˚⊹ processed {batch_idx:,}/{len(candidates):,} candidates")
             
-            if batch_start % 1000 == 0 and batch_start > 0:
-                progress = batch_start / len(candidates) * 100
-                logger.info(f"  ₊˚⊹♡ Progress: {progress:.1f}% ({batch_start:,}/{len(candidates):,})")
-            
-            if device.type == 'mps':
-                torch.mps.empty_cache()
-            
-            batch_features = []
-            for candidate in batch:
-                mock_row = {
-                    'host': candidate['hostname'],
-                    'region': candidate.get('expected_region'),
-                    'data_center': candidate.get('expected_data_center'),
-                    'data_quality_score': 7.5
-                }
-                batch_features.append(self.extract_features(mock_row))
-            
-            batch_tensor = torch.FloatTensor(batch_features).to(device)
+            batch = candidates[batch_idx:batch_idx + batch_size]
+            batch_features = np.array([self._candidate_to_features(c) for c in batch])
+            batch_tensor = torch.FloatTensor(batch_features).to(self.device)
             
             votes = []
-            for algo in self.algorithms:
-                with torch.no_grad():
-                    algo_predictions = algo.predict(batch_tensor)
-                    votes.append(algo_predictions.cpu().numpy())
+            with torch.no_grad():
+                for name, model in self.algorithms:
+                    model.eval()
+                    pred = model.predict(batch_tensor)
+                    votes.append(pred.cpu().numpy())
             
-            ensemble_predictions = np.mean(votes, axis=0)
+            ensemble_scores = np.mean(votes, axis=0)
             
             for i, candidate in enumerate(batch):
-                confidence = ensemble_predictions[i]
-                
-                if confidence > 0.5:
-                    individual_scores = [float(votes[j][i]) for j in range(len(self.algorithms))]
+                if ensemble_scores[i] > self.confidence_threshold:
+                    prediction = candidate.copy()
+                    prediction['confidence'] = float(ensemble_scores[i])
+                    prediction['algorithm_scores'] = {
+                        name: float(votes[j][i]) 
+                        for j, (name, _) in enumerate(self.algorithms)
+                    }
                     
-                    predictions.append({
-                        'hostname': candidate['hostname'],
-                        'confidence': float(confidence),
-                        'pattern': candidate['pattern'],
-                        'similar_hosts': candidate['similar_hosts'],
-                        'expected_fqdn': f"{candidate['hostname']}.{candidate.get('expected_domain', 'unknown')}",
-                        'expected_domain': candidate.get('expected_domain'),
-                        'expected_region': candidate.get('expected_region'),
-                        'expected_country': candidate.get('expected_country'),
-                        'expected_data_center': candidate.get('expected_data_center'),
-                        'expected_business_unit': candidate.get('expected_business_unit'),
-                        'algorithm_scores': {
-                            'LSTM': individual_scores[0],
-                            'GRU': individual_scores[1],
-                            'Transformer': individual_scores[2],
-                            'CNN': individual_scores[3],
-                            'Autoencoder': individual_scores[4],
-                            'VAE': individual_scores[5],
-                            'Attention': individual_scores[6],
-                            'Residual': individual_scores[7],
-                            'EnsembleNN': individual_scores[8],
-                            'GraphNN': individual_scores[9]
-                        }
-                    })
+                    prediction['unanimous'] = all(v[i] > 0.5 for v in votes)
+                    prediction['agreement'] = sum(v[i] > 0.5 for v in votes) / len(votes)
+                    
+                    predictions.append(prediction)
             
-            del batch_tensor
-            if device.type == 'mps':
+            if self.device.type == 'mps':
                 torch.mps.empty_cache()
-                torch.mps.synchronize()
         
         predictions.sort(key=lambda x: x['confidence'], reverse=True)
         
-        logger.info(f"✧˚ · . Predictions completed in {time.time()-start:.1f}s")
-        logger.info(f"𓆉 Found {len(predictions):,} high-confidence missing assets")
+        logger.info(f"✓ ˚₊· found {len(predictions)} missing assets in {time.time()-start_time:.1f}s")
+        logger.info(f"  ⋆.˚ high confidence (>0.8): {sum(1 for p in predictions if p['confidence'] > 0.8)}")
+        logger.info(f"  𓇼 unanimous agreement: {sum(1 for p in predictions if p.get('unanimous'))}")
         
         return predictions
+    
+    def _candidate_to_features(self, candidate: Dict) -> np.ndarray:
+        mock_row = {
+            'host': candidate['hostname'],
+            'region': candidate.get('expected_region'),
+            'data_center': candidate.get('expected_data_center'),
+            'data_quality_score': candidate.get('quality_score', 7.5)
+        }
+        return self._extract_optimized_features(mock_row)
+    
+    def save_results(self, predictions: List[Dict]):
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        
+        output = {
+            'generated_at': datetime.now().isoformat(),
+            'total_predictions': len(predictions),
+            'high_confidence': sum(1 for p in predictions if p['confidence'] > 0.8),
+            'unanimous': sum(1 for p in predictions if p.get('unanimous')),
+            'predictions': predictions[:100]
+        }
+        
+        filename = f'missing_assets_{timestamp}.json'
+        with open(filename, 'w') as f:
+            json.dump(output, f, indent=2, default=str)
+        
+        logger.info(f"\n✓ ༻❁༺ results saved to {filename}")
+        
+        logger.info("\n⋆｡‧˚ʚ top 10 missing assets ɞ˚‧｡⋆")
+        for i, pred in enumerate(predictions[:10]):
+            logger.info(f"  {i+1}. {pred['hostname']} ({pred['confidence']:.1%} confidence)")
+            logger.info(f"     ₊˚⊹ expected: {pred.get('expected_region')}, {pred.get('expected_data_center')}")
+            logger.info(f"     ⋆.˚ agreement: {pred.get('agreement', 0):.1%} of algorithms")
     
     def run(self):
         logger.info("\n" + "="*60)
-        logger.info("‧₊˚🖇️✩ MISSING ASSET PREDICTOR ₊˚🎧⊹♡")
+        logger.info("˚₊· ͟͟͞͞➳❥ INTELLIGENT MISSING ASSET DISCOVERY SYSTEM")
+        logger.info("⋆｡‧˚ʚ♡ɞ˚‧｡⋆ version 3.0 - optimized for apple silicon")
         logger.info("="*60)
         
-        logger.info("\n˚ ༘♡ ⋆｡˚ Running startup checks...")
-        try:
-            test_tensor = torch.randn(100, 100).to(device)
-            result = test_tensor @ test_tensor.T
-            del test_tensor, result
-            if device.type == 'mps':
-                torch.mps.empty_cache()
-                torch.mps.synchronize()
-            logger.info("✧˚ · . GPU computation test passed")
-        except Exception as e:
-            logger.error(f"༻❁༺ GPU test failed: {e}")
-            exit(1)
+        self._verify_gpu()
         
-        logger.info("⋆⭒˚｡⋆ All checks passed - starting analysis")
+        logger.info("\n༊*·˚ starting comprehensive analysis...")
+        total_start = time.time()
         
         df = self.load_data()
-        patterns = self.find_patterns(df)
-        existing_hosts = df['host'].dropna().tolist()
-        candidates = self.generate_candidates(patterns, existing_hosts)
         
-        input_dim = len(self.extract_features(df.iloc[0]))
-        self.initialize_algorithms(input_dim)
-        self.train_algorithms(df)
-        predictions = self.predict_candidates(candidates, df)
-        self.save_results(predictions)
+        pattern_data = self.find_patterns_optimized(df)
         
-        total_time = time.time() - self.start_time
-        logger.info(f"\n‧₊˚🖇️✩ Total runtime: {total_time:.1f}s ({total_time/60:.1f} minutes)")
+        existing_hosts = set(df['host'].dropna().str.lower())
+        candidates = self.generate_smart_candidates(pattern_data, existing_hosts)
         
-        return predictions
-    
-    def save_results(self, predictions):
-        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-        filename = f'missing_assets_{timestamp}.json'
-        
-        with open(filename, 'w') as f:
-            json.dump(predictions[:100], f, indent=2)
-        
-        logger.info(f"\n𓇼 Results saved to {filename}")
-        
-        logger.info("\n⋆｡‧˚ʚ♡ɞ˚‧｡⋆ Top 10 Missing Assets:")
-        logger.info("-"*60)
-        
-        for i, pred in enumerate(predictions[:10]):
-            logger.info(f"\n{i+1}. ₊˚⊹♡ {pred['hostname']} (confidence: {pred['confidence']:.1%})")
-            logger.info(f"   ⋆.˚ Expected FQDN: {pred['expected_fqdn']}")
-            logger.info(f"   𓆝 Region: {pred['expected_region']}, Data Center: {pred['expected_data_center']}")
-            logger.info(f"   ✩ Similar to: {', '.join(pred['similar_hosts'][:2])}")
+        if candidates:
+            input_dim = 20
+            self.initialize_algorithms(input_dim)
             
-            top_algo = max(pred['algorithm_scores'].items(), key=lambda x: x[1])
-            logger.info(f"   ˚ ༘♡ Highest scoring algorithm: {top_algo[0]} ({top_algo[1]:.1%})")
+            self.train_optimized(df)
+            
+            predictions = self.predict_ensemble(candidates)
+            
+            self.save_results(predictions)
+            
+            total_time = time.time() - total_start
+            logger.info(f"\n✓ ⋆.ೃ࿔*:･ analysis completed in {total_time:.1f} seconds")
+            logger.info(f"  ₊˚🎧⊹ discovered {len(predictions)} missing assets")
+            
+            return predictions
+        else:
+            logger.warning("\n⋆.˚ no candidates generated - all assets may be documented")
+            return []
 
 if __name__ == "__main__":
-    predictor = MissingAssetPredictor()
+    predictor = OptimizedAssetPredictor()
     predictions = predictor.run()
