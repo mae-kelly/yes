@@ -4,16 +4,17 @@
   import { onMount } from 'svelte';
   import { BarChart3, Database, Shield, Settings, TrendingUp, Brain, AlertTriangle, CheckCircle } from 'lucide-svelte';
   
+  export let searchTerm = '';
+  
   let loading = true;
   let error = null;
-  let searchTerm = '';
   let refreshInterval = null;
   
   let overallCoverage = {};
   let domainAnalysis = [];
   let visibilityFactors = [];
   
-  async function fetchOverviewData() {
+  export async function fetchOverviewData() {
     try {
       loading = true;
       
@@ -60,11 +61,11 @@
   function formatNumber(num) {
     return num?.toLocaleString() || '0';
   }
+  
+  export { overallCoverage, domainAnalysis, visibilityFactors, loading, error };
 </script>
 
-<main class="dashboard">
-  <div class="circuit-overlay"></div>
-  
+<main class="dashboard-section">
   {#if loading}
     <div class="loading">
       <div class="cyber-spinner">
@@ -84,27 +85,6 @@
       </div>
     </div>
   {:else}
-    <div class="dashboard-header">
-      <div class="dashboard-title">
-        <div class="icon-circle" style="border-color: var(--status-good); box-shadow: var(--glow-cyan)">
-          <BarChart3 size={20} color="var(--status-good)" />
-        </div>
-        <h1 class="title-main">AO1 LOG VISIBILITY OVERVIEW</h1>
-      </div>
-      <div class="dashboard-controls">
-        <div class="search-container">
-          <input 
-            class="search-input" 
-            bind:value={searchTerm}
-            placeholder="SEARCH ASSETS..."
-          />
-        </div>
-        <div class="status-badge" style="background: {getStatusColor(overallCoverage.splunk_coverage_pct)}; color: black">
-          SPLUNK: {overallCoverage.splunk_coverage_pct}%
-        </div>
-      </div>
-    </div>
-
     <div class="dashboard-content">
       <div class="metrics-row">
         <div class="metric-card" style="border-color: {getStatusColor(overallCoverage.splunk_coverage_pct)}">
@@ -257,6 +237,187 @@
 
 <style>
   @import '../styles/dashboard.css';
+  
+  .dashboard-section {
+    width: 100%;
+    height: 100%;
+  }
+</style>
+
+// /src/components/AO1RegionalDashboard.svelte
+
+<script>
+  import { onMount } from 'svelte';
+  import { Globe, MapPin, Building, Users } from 'lucide-svelte';
+  
+  export let searchTerm = '';
+  
+  let loading = true;
+  let error = null;
+  let refreshInterval = null;
+  
+  let regionalAnalysis = [];
+  let cioAnalysis = [];
+  
+  export async function fetchRegionalData() {
+    try {
+      loading = true;
+      
+      const [regional, cio] = await Promise.all([
+        fetch('/api/regional-analysis').then(r => r.json()),
+        fetch('/api/cio-analysis').then(r => r.json())
+      ]);
+      
+      regionalAnalysis = regional;
+      cioAnalysis = cio;
+      
+    } catch (err) {
+      error = err.message;
+    } finally {
+      loading = false;
+    }
+  }
+  
+  onMount(() => {
+    fetchRegionalData();
+    refreshInterval = setInterval(fetchRegionalData, 300000);
+    
+    return () => {
+      if (refreshInterval) clearInterval(refreshInterval);
+    };
+  });
+  
+  function getStatusColor(percentage) {
+    if (percentage >= 90) return 'var(--status-good)';
+    if (percentage >= 75) return 'var(--status-improving)';
+    if (percentage >= 50) return 'var(--status-warning)';
+    return 'var(--status-critical)';
+  }
+  
+  function formatNumber(num) {
+    return num?.toLocaleString() || '0';
+  }
+  
+  function getRegionIcon(region) {
+    switch(region) {
+      case 'North America': return MapPin;
+      case 'EMEA': return Globe;
+      case 'APAC': return Building;
+      case 'LATAM': return Users;
+      default: return Globe;
+    }
+  }
+  
+  $: filteredRegional = regionalAnalysis.filter(region =>
+    region.standardized_region?.toLowerCase().includes(searchTerm.toLowerCase())
+  );
+  
+  $: filteredCIO = cioAnalysis.filter(cio =>
+    cio.cio?.toLowerCase().includes(searchTerm.toLowerCase())
+  );
+</script>
+
+<main class="dashboard-section">
+  {#if loading}
+    <div class="loading">
+      <div class="cyber-spinner">
+        <div class="spinner-inner"></div>
+      </div>
+      <div class="loading-text">
+        INITIALIZING REGIONAL ANALYSIS
+        <div class="loading-subtext">Mapping global visibility...</div>
+      </div>
+    </div>
+  {:else if error}
+    <div class="error">
+      <div class="error-container">
+        <div class="error-title" style="color: var(--status-critical);">REGIONAL DATA COMPROMISED</div>
+        <div class="error-message">Regional analysis failed: {error}</div>
+        <button class="retry-button" on:click={fetchRegionalData}>RESTORE REGIONAL DATA</button>
+      </div>
+    </div>
+  {:else}
+    <div class="dashboard-content">
+      <div class="data-table card">
+        <div class="table-header">
+          <h2 class="main-header-title">REGIONAL COVERAGE ANALYSIS</h2>
+        </div>
+        <div class="table-container">
+          <table>
+            <thead>
+              <tr>
+                <th class="system-col">REGION</th>
+                <th class="metric-col">TOTAL HOSTS</th>
+                <th class="metric-col">CMDB %</th>
+                <th class="metric-col">SPLUNK %</th>
+                <th class="metric-col">CROWDSTRIKE %</th>
+              </tr>
+            </thead>
+            <tbody>
+              {#each filteredRegional as region}
+                <tr>
+                  <td style="color: var(--text-primary); font-weight: var(--font-weight-bold)">
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                      <svelte:component this={getRegionIcon(region.standardized_region)} size={16} color="var(--accent-cyan)" />
+                      {region.standardized_region}
+                    </div>
+                  </td>
+                  <td class="center" style="color: var(--text-secondary)">{formatNumber(region.total_hosts_region)}</td>
+                  <td class="center" style="color: {getStatusColor(region.cmdb_region_pct)}">{region.cmdb_region_pct}%</td>
+                  <td class="center" style="color: {getStatusColor(region.splunk_region_pct)}">{region.splunk_region_pct}%</td>
+                  <td class="center" style="color: {getStatusColor(region.crowdstrike_region_pct)}">{region.crowdstrike_region_pct}%</td>
+                </tr>
+              {/each}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="data-table card">
+        <div class="table-header">
+          <h2 class="main-header-title">CIO ORGANIZATIONAL COVERAGE</h2>
+        </div>
+        <div class="table-container">
+          <table>
+            <thead>
+              <tr>
+                <th class="system-col">CIO ORGANIZATION</th>
+                <th class="metric-col">TOTAL HOSTS</th>
+                <th class="metric-col">SPLUNK %</th>
+                <th class="metric-col">CMDB %</th>
+                <th class="metric-col">CROWDSTRIKE %</th>
+              </tr>
+            </thead>
+            <tbody>
+              {#each filteredCIO.slice(0, 20) as cio}
+                <tr>
+                  <td style="color: var(--text-primary); font-weight: var(--font-weight-bold)">
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                      <Users size={16} color="var(--accent-blue)" />
+                      {cio.cio}
+                    </div>
+                  </td>
+                  <td class="center" style="color: var(--text-secondary)">{formatNumber(cio.total_hosts_cio)}</td>
+                  <td class="center" style="color: {getStatusColor(cio.splunk_cio_pct)}">{cio.splunk_cio_pct}%</td>
+                  <td class="center" style="color: {getStatusColor(cio.cmdb_cio_pct)}">{cio.cmdb_cio_pct}%</td>
+                  <td class="center" style="color: {getStatusColor(cio.crowdstrike_cio_pct)}">{cio.crowdstrike_cio_pct}%</td>
+                </tr>
+              {/each}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  {/if}
+</main>
+
+<style>
+  @import '../styles/dashboard.css';
+  
+  .dashboard-section {
+    width: 100%;
+    height: 100%;
+  }
 </style>
 
 // /src/components/AO1AIDashboard.svelte
@@ -265,9 +426,10 @@
   import { onMount } from 'svelte';
   import { Brain, Target, AlertTriangle, Zap, Download, Play } from 'lucide-svelte';
   
+  export let searchTerm = '';
+  
   let loading = true;
   let error = null;
-  let searchTerm = '';
   let selectedAsset = null;
   let refreshInterval = null;
   
@@ -275,7 +437,7 @@
   let missingAssets = [];
   let drillDownData = {};
   
-  async function fetchAIData() {
+  export async function fetchAIData() {
     try {
       loading = true;
       
@@ -371,9 +533,7 @@
   );
 </script>
 
-<main class="dashboard">
-  <div class="circuit-overlay"></div>
-  
+<main class="dashboard-section">
   {#if loading}
     <div class="loading">
       <div class="cyber-spinner">
@@ -393,31 +553,6 @@
       </div>
     </div>
   {:else}
-    <div class="dashboard-header">
-      <div class="dashboard-title">
-        <div class="icon-circle animate-pulse" style="background: linear-gradient(45deg, var(--accent-cyan), var(--accent-blue))">
-          <Brain size={20} color="white" />
-        </div>
-        <h1 class="title-main">AO1 AI-POWERED VISIBILITY PREDICTION</h1>
-      </div>
-      <div class="dashboard-controls">
-        <div class="search-container">
-          <input 
-            class="search-input" 
-            bind:value={searchTerm}
-            placeholder="AI ASSET SEARCH..."
-          />
-        </div>
-        <button class="retry-button" on:click={trainAIModel} style="padding: 8px 16px; font-size: 0.9rem;">
-          <Play size={16} style="margin-right: 4px;" />
-          TRAIN AI
-        </button>
-        <div class="status-badge" style="background: var(--accent-cyan); color: black; font-weight: bold;">
-          AI CONFIDENCE: {aiInsights.avg_existence_probability ? (aiInsights.avg_existence_probability * 100).toFixed(1) : 0}%
-        </div>
-      </div>
-    </div>
-
     <div class="dashboard-content">
       <div class="metrics-row">
         <div class="metric-card" style="border-color: {aiInsights.total_predicted_assets > 50 ? 'var(--status-critical)' : 'var(--status-warning)'}">
@@ -480,10 +615,16 @@
       <div class="data-table card">
         <div class="table-header">
           <h2 class="main-header-title">AI-PREDICTED MISSING ASSETS</h2>
-          <button class="retry-button" on:click={exportData} style="padding: 6px 12px; font-size: 0.8rem;">
-            <Download size={14} style="margin-right: 4px;" />
-            EXPORT
-          </button>
+          <div style="display: flex; gap: 8px;">
+            <button class="retry-button" on:click={trainAIModel} style="padding: 6px 12px; font-size: 0.8rem;">
+              <Play size={14} style="margin-right: 4px;" />
+              TRAIN
+            </button>
+            <button class="retry-button" on:click={exportData} style="padding: 6px 12px; font-size: 0.8rem;">
+              <Download size={14} style="margin-right: 4px;" />
+              EXPORT
+            </button>
+          </div>
         </div>
         <div class="table-container">
           <table>
@@ -542,7 +683,7 @@
       </div>
 
       {#if selectedAsset}
-        <div class="card" style="grid-column: span 12; background: rgba(0, 229, 255, 0.05); border: 2px solid var(--accent-cyan);">
+        <div class="card" style="background: rgba(0, 229, 255, 0.05); border: 2px solid var(--accent-cyan); margin-top: 16px;">
           <div class="card-header">
             <h2 class="header-title" style="color: var(--accent-cyan)">DEEP ASSET ANALYSIS: {selectedAsset.predicted_hostname}</h2>
             <button class="retry-button" on:click={() => selectedAsset = null} style="padding: 4px 8px; font-size: 0.8rem;">CLOSE</button>
@@ -591,192 +732,155 @@
 
 <style>
   @import '../styles/dashboard.css';
+  
+  .dashboard-section {
+    width: 100%;
+    height: 100%;
+  }
 </style>
 
-// /src/components/AO1RegionalDashboard.svelte
+// /src/components/AO1MainDashboard.svelte
 
 <script>
   import { onMount } from 'svelte';
-  import { Globe, MapPin, Building, Users } from 'lucide-svelte';
+  import AO1OverviewDashboard from './AO1OverviewDashboard.svelte';
+  import AO1AIDashboard from './AO1AIDashboard.svelte';
+  import AO1RegionalDashboard from './AO1RegionalDashboard.svelte';
+  import AO1BusinessDashboard from './AO1BusinessDashboard.svelte';
+  import AO1SystemClassificationDashboard from './AO1SystemClassificationDashboard.svelte';
+  import { BarChart3, Brain, Globe, Building2, Server, Search } from 'lucide-svelte';
   
-  let loading = true;
-  let error = null;
+  let activeTab = 'overview';
   let searchTerm = '';
-  let refreshInterval = null;
+  let refreshing = false;
   
-  let regionalAnalysis = [];
-  let cioAnalysis = [];
-  
-  async function fetchRegionalData() {
-    try {
-      loading = true;
-      
-      const [regional, cio] = await Promise.all([
-        fetch('/api/regional-analysis').then(r => r.json()),
-        fetch('/api/cio-analysis').then(r => r.json())
-      ]);
-      
-      regionalAnalysis = regional;
-      cioAnalysis = cio;
-      
-    } catch (err) {
-      error = err.message;
-    } finally {
-      loading = false;
-    }
+  function handleTabChange(tab) {
+    activeTab = tab;
   }
   
-  onMount(() => {
-    fetchRegionalData();
-    refreshInterval = setInterval(fetchRegionalData, 300000);
+  async function handleGlobalRefresh() {
+    refreshing = true;
     
-    return () => {
-      if (refreshInterval) clearInterval(refreshInterval);
-    };
-  });
-  
-  function getStatusColor(percentage) {
-    if (percentage >= 90) return 'var(--status-good)';
-    if (percentage >= 75) return 'var(--status-improving)';
-    if (percentage >= 50) return 'var(--status-warning)';
-    return 'var(--status-critical)';
-  }
-  
-  function formatNumber(num) {
-    return num?.toLocaleString() || '0';
-  }
-  
-  function getRegionIcon(region) {
-    switch(region) {
-      case 'North America': return MapPin;
-      case 'EMEA': return Globe;
-      case 'APAC': return Building;
-      case 'LATAM': return Users;
-      default: return Globe;
+    const refreshPromises = [];
+    
+    switch(activeTab) {
+      case 'overview':
+        refreshPromises.push(overviewComponent?.fetchOverviewData());
+        break;
+      case 'ai':
+        refreshPromises.push(aiComponent?.fetchAIData());
+        break;
+      case 'regional':
+        refreshPromises.push(regionalComponent?.fetchRegionalData());
+        break;
+      case 'business':
+        refreshPromises.push(businessComponent?.fetchBusinessData());
+        break;
+      case 'systems':
+        refreshPromises.push(systemsComponent?.fetchSystemData());
+        break;
     }
+    
+    await Promise.all(refreshPromises);
+    refreshing = false;
   }
   
-  $: filteredRegional = regionalAnalysis.filter(region =>
-    region.standardized_region?.toLowerCase().includes(searchTerm.toLowerCase())
-  );
-  
-  $: filteredCIO = cioAnalysis.filter(cio =>
-    cio.cio?.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  let overviewComponent;
+  let aiComponent;
+  let regionalComponent;
+  let businessComponent;
+  let systemsComponent;
 </script>
 
 <main class="dashboard">
   <div class="circuit-overlay"></div>
   
-  {#if loading}
-    <div class="loading">
-      <div class="cyber-spinner">
-        <div class="spinner-inner"></div>
+  <div class="dashboard-header">
+    <div class="dashboard-title">
+      <div class="icon-circle animate-pulse" style="background: linear-gradient(45deg, var(--accent-cyan), var(--accent-blue))">
+        <BarChart3 size={20} color="white" />
       </div>
-      <div class="loading-text">
-        INITIALIZING REGIONAL ANALYSIS
-        <div class="loading-subtext">Mapping global visibility...</div>
-      </div>
+      <h1 class="title-main">AO1 LOG VISIBILITY MEASUREMENT SYSTEM</h1>
     </div>
-  {:else if error}
-    <div class="error">
-      <div class="error-container">
-        <div class="error-title" style="color: var(--status-critical);">REGIONAL DATA COMPROMISED</div>
-        <div class="error-message">Regional analysis failed: {error}</div>
-        <button class="retry-button" on:click={fetchRegionalData}>RESTORE REGIONAL DATA</button>
+    <div class="dashboard-controls">
+      <div class="search-container">
+        <input 
+          class="search-input" 
+          bind:value={searchTerm}
+          placeholder="SEARCH ASSETS..."
+        />
       </div>
+      <button 
+        class="retry-button" 
+        on:click={handleGlobalRefresh} 
+        disabled={refreshing}
+        style="padding: 8px 16px; font-size: 0.9rem;"
+      >
+        <Search size={16} style="margin-right: 4px;" />
+        {refreshing ? 'REFRESHING...' : 'REFRESH'}
+      </button>
     </div>
-  {:else}
-    <div class="dashboard-header">
-      <div class="dashboard-title">
-        <div class="icon-circle" style="border-color: var(--status-good); box-shadow: var(--glow-cyan)">
-          <Globe size={20} color="var(--status-good)" />
-        </div>
-        <h1 class="title-main">AO1 REGIONAL & ORGANIZATIONAL ANALYSIS</h1>
-      </div>
-      <div class="dashboard-controls">
-        <div class="search-container">
-          <input 
-            class="search-input" 
-            bind:value={searchTerm}
-            placeholder="SEARCH REGIONS..."
-          />
-        </div>
-      </div>
-    </div>
+  </div>
 
-    <div class="dashboard-content">
-      <div class="data-table card">
-        <div class="table-header">
-          <h2 class="main-header-title">REGIONAL COVERAGE ANALYSIS</h2>
-        </div>
-        <div class="table-container">
-          <table>
-            <thead>
-              <tr>
-                <th class="system-col">REGION</th>
-                <th class="metric-col">TOTAL HOSTS</th>
-                <th class="metric-col">CMDB %</th>
-                <th class="metric-col">SPLUNK %</th>
-                <th class="metric-col">CROWDSTRIKE %</th>
-              </tr>
-            </thead>
-            <tbody>
-              {#each filteredRegional as region}
-                <tr>
-                  <td style="color: var(--text-primary); font-weight: var(--font-weight-bold)">
-                    <div style="display: flex; align-items: center; gap: 8px;">
-                      <svelte:component this={getRegionIcon(region.standardized_region)} size={16} color="var(--accent-cyan)" />
-                      {region.standardized_region}
-                    </div>
-                  </td>
-                  <td class="center" style="color: var(--text-secondary)">{formatNumber(region.total_hosts_region)}</td>
-                  <td class="center" style="color: {getStatusColor(region.cmdb_region_pct)}">{region.cmdb_region_pct}%</td>
-                  <td class="center" style="color: {getStatusColor(region.splunk_region_pct)}">{region.splunk_region_pct}%</td>
-                  <td class="center" style="color: {getStatusColor(region.crowdstrike_region_pct)}">{region.crowdstrike_region_pct}%</td>
-                </tr>
-              {/each}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      <div class="data-table card">
-        <div class="table-header">
-          <h2 class="main-header-title">CIO ORGANIZATIONAL COVERAGE</h2>
-        </div>
-        <div class="table-container">
-          <table>
-            <thead>
-              <tr>
-                <th class="system-col">CIO ORGANIZATION</th>
-                <th class="metric-col">TOTAL HOSTS</th>
-                <th class="metric-col">SPLUNK %</th>
-                <th class="metric-col">CMDB %</th>
-                <th class="metric-col">CROWDSTRIKE %</th>
-              </tr>
-            </thead>
-            <tbody>
-              {#each filteredCIO.slice(0, 20) as cio}
-                <tr>
-                  <td style="color: var(--text-primary); font-weight: var(--font-weight-bold)">
-                    <div style="display: flex; align-items: center; gap: 8px;">
-                      <Users size={16} color="var(--accent-blue)" />
-                      {cio.cio}
-                    </div>
-                  </td>
-                  <td class="center" style="color: var(--text-secondary)">{formatNumber(cio.total_hosts_cio)}</td>
-                  <td class="center" style="color: {getStatusColor(cio.splunk_cio_pct)}">{cio.splunk_cio_pct}%</td>
-                  <td class="center" style="color: {getStatusColor(cio.cmdb_cio_pct)}">{cio.cmdb_cio_pct}%</td>
-                  <td class="center" style="color: {getStatusColor(cio.crowdstrike_cio_pct)}">{cio.crowdstrike_cio_pct}%</td>
-                </tr>
-              {/each}
-            </tbody>
-          </table>
-        </div>
-      </div>
+  <div class="nav-tabs">
+    <div 
+      class="nav-tab {activeTab === 'overview' ? 'active' : ''}"
+      on:click={() => handleTabChange('overview')}
+    >
+      <span class="nav-tab-icon"><BarChart3 size={16} /></span>
+      OVERVIEW
     </div>
-  {/if}
+    <div 
+      class="nav-tab {activeTab === 'ai' ? 'active' : ''}"
+      on:click={() => handleTabChange('ai')}
+    >
+      <span class="nav-tab-icon"><Brain size={16} /></span>
+      AI PREDICTIONS
+    </div>
+    <div 
+      class="nav-tab {activeTab === 'regional' ? 'active' : ''}"
+      on:click={() => handleTabChange('regional')}
+    >
+      <span class="nav-tab-icon"><Globe size={16} /></span>
+      REGIONAL
+    </div>
+    <div 
+      class="nav-tab {activeTab === 'business' ? 'active' : ''}"
+      on:click={() => handleTabChange('business')}
+    >
+      <span class="nav-tab-icon"><Building2 size={16} /></span>
+      BUSINESS UNITS
+    </div>
+    <div 
+      class="nav-tab {activeTab === 'systems' ? 'active' : ''}"
+      on:click={() => handleTabChange('systems')}
+    >
+      <span class="nav-tab-icon"><Server size={16} /></span>
+      SYSTEMS
+    </div>
+  </div>
+
+  <div class="dashboard-content">
+    {#if activeTab === 'overview'}
+      <AO1OverviewDashboard bind:this={overviewComponent} {searchTerm} />
+    {/if}
+
+    {#if activeTab === 'ai'}
+      <AO1AIDashboard bind:this={aiComponent} {searchTerm} />
+    {/if}
+
+    {#if activeTab === 'regional'}
+      <AO1RegionalDashboard bind:this={regionalComponent} {searchTerm} />
+    {/if}
+
+    {#if activeTab === 'business'}
+      <AO1BusinessDashboard bind:this={businessComponent} {searchTerm} />
+    {/if}
+
+    {#if activeTab === 'systems'}
+      <AO1SystemClassificationDashboard bind:this={systemsComponent} {searchTerm} />
+    {/if}
+  </div>
 </main>
 
 <style>
