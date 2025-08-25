@@ -1,5 +1,5 @@
-# /src/ml/ao1_visibility_intelligence.py
-# AO1 Log Visibility Measurement - AI-Powered Cybersecurity Visibility Intelligence
+# /src/ml/ao1_missing_asset_predictor.py
+# AO1 Missing Asset Discovery - AI-Powered Asset Gap Detection
 
 import torch
 import torch.nn as nn
@@ -10,143 +10,81 @@ import re
 import duckdb
 from sklearn.preprocessing import StandardScaler
 from sklearn.model_selection import train_test_split
-from flask import Flask, jsonify, request
+from flask import Flask, jsonify
 import threading
 from datetime import datetime
 import os
 import pickle
 import gc
-from typing import List, Dict, Optional, Tuple
+from typing import List, Dict, Optional, Tuple, Set
 from collections import Counter, defaultdict
-import json
+import itertools
 
 if torch.backends.mps.is_available():
     device = torch.device("mps")
-    print("🚀 AO1 Visibility Intelligence - Using Apple Silicon GPU (MPS)")
+    print("🚀 AO1 Missing Asset Discovery - Using Apple Silicon GPU")
 else:
-    print("❌ ERROR: GPU acceleration required for AO1 Visibility Intelligence")
+    print("❌ ERROR: GPU required for AO1 Missing Asset Discovery")
     exit(1)
 
-# AO1 ROLE-BASED LOG TYPE MAPPINGS (FROM PROJECT REQUIREMENTS)
-AO1_ROLE_LOG_MAPPING = {
-    'Network': {
-        'log_types': ['Firewall Traffic', 'IDS/IPS', 'NDR', 'Proxy', 'DNS', 'WAF'],
-        'data_fields': ['IP (source, target)', 'Protocol', 'Detection Signature', 'Port', 'DNS record/FQDN', 'HTTP Headers'],
-        'visibility_factors': ['URL/FQDN coverage', 'CMDB Asset Visibility', 'Network Zones/spans', 'IPAM Public IP Coverage', 'Geolocation', 'VPC', '%log ingest volume'],
-        'critical_for_detection': True,
-        'compliance_weight': 0.9
-    },
-    'Endpoint': {
-        'log_types': ['OS logs (WinEVT, Linux syslog)', 'EDR', 'DLP', 'FIM'],
-        'data_fields': ['system name', 'IP', 'filename'],
-        'visibility_factors': ['CMDB Asset Visibility', 'Crowdstrike Agent Coverage', '%log ingest volume'],
-        'critical_for_detection': True,
-        'compliance_weight': 0.85
-    },
-    'Cloud': {
-        'log_types': ['Cloud Event', 'Cloud Load Balancer', 'Cloud Config', 'Theom', 'Wiz', 'Cloud Security'],
-        'data_fields': ['VPC', 'IPAM Public IP Coverage', 'URL/FQDN coverage'],
-        'visibility_factors': ['VPC', 'IPAM Public IP Coverage', 'URL/FQDN coverage', 'Crowdstrike Agent Coverage'],
-        'critical_for_detection': True,
-        'compliance_weight': 0.8
-    },
-    'Application': {
-        'log_types': ['Web Logs (HTTP Access)', 'API Gateway'],
-        'data_fields': ['URL/FQDN coverage', 'Control Coverage'],
-        'visibility_factors': ['URL/FQDN coverage', 'Control Coverage'],
-        'critical_for_detection': False,
-        'compliance_weight': 0.7
-    },
-    'Identity_Auth': {
-        'log_types': ['Authentication attempts', 'Privilege escalation', 'Identity create/modify/destroy'],
-        'data_fields': ['Domain', 'Internal', 'External', 'Controls'],
-        'visibility_factors': ['Domain', 'Internal', 'External', 'Controls'],
-        'critical_for_detection': True,
-        'compliance_weight': 0.95
-    }
-}
-
-# AO1 INFRASTRUCTURE TYPE CLASSIFICATIONS
-AO1_INFRASTRUCTURE_TYPES = ['On-Prem', 'Cloud', 'SaaS', 'API']
-
-# AO1 SYSTEM CLASSIFICATIONS  
-AO1_SYSTEM_CLASSIFICATIONS = ['Web Server', 'Windows Server', 'Linux Server', '*Nix (AIX, Solaris, etc)', 
-                              'Mainframe', 'Database', 'Network Appliance (FW, NDR, switch, router, etc)']
-
-class AO1VisibilityIntelligenceNet(nn.Module):
+class HostnamePatternNet(nn.Module):
+    """Neural network that learns hostname patterns and predicts missing assets"""
     def __init__(self, input_size: int):
         super().__init__()
-        # Specialized architecture for cybersecurity visibility prediction
-        self.role_classifier = nn.Sequential(
-            nn.Linear(input_size, 256),
+        self.pattern_encoder = nn.Sequential(
+            nn.Linear(input_size, 512),
             nn.ReLU(),
-            nn.Dropout(0.3),
-            nn.Linear(256, 128),
+            nn.Dropout(0.2),
+            nn.Linear(512, 256),
             nn.ReLU(),
-            nn.Linear(128, len(AO1_ROLE_LOG_MAPPING)),
-            nn.Softmax(dim=1)
-        )
-        
-        self.visibility_predictor = nn.Sequential(
-            nn.Linear(input_size + len(AO1_ROLE_LOG_MAPPING), 256),
-            nn.ReLU(), 
             nn.Dropout(0.2),
             nn.Linear(256, 128),
-            nn.ReLU(),
+            nn.ReLU()
+        )
+        
+        # Existence predictor - does this hostname pattern exist?
+        self.existence_predictor = nn.Sequential(
             nn.Linear(128, 64),
             nn.ReLU(),
-            nn.Linear(64, 7),  # Splunk, GSO, Chronicle, EDR, Tanium, DLP, CMDB
+            nn.Linear(64, 32),
+            nn.ReLU(), 
+            nn.Linear(32, 1),
             nn.Sigmoid()
         )
         
-        self.risk_assessor = nn.Sequential(
-            nn.Linear(input_size + len(AO1_ROLE_LOG_MAPPING) + 7, 128),
+        # Logging predictor - is this asset being logged?
+        self.logging_predictor = nn.Sequential(
+            nn.Linear(128, 64),
             nn.ReLU(),
-            nn.Linear(128, 64), 
+            nn.Linear(64, 32),
             nn.ReLU(),
-            nn.Linear(64, 1),
+            nn.Linear(32, 6),  # Splunk, GSO, Chronicle, EDR, Tanium, CMDB
             nn.Sigmoid()
         )
         
     def forward(self, x):
-        role_probs = self.role_classifier(x)
-        
-        # Concatenate role predictions with original features
-        visibility_input = torch.cat([x, role_probs], dim=1)
-        visibility_probs = self.visibility_predictor(visibility_input)
-        
-        # Risk assessment using all features
-        risk_input = torch.cat([x, role_probs, visibility_probs], dim=1)
-        risk_score = self.risk_assessor(risk_input)
-        
-        return role_probs, visibility_probs, risk_score
+        encoded = self.pattern_encoder(x)
+        existence_prob = self.existence_predictor(encoded)
+        logging_probs = self.logging_predictor(encoded)
+        return existence_prob, logging_probs
 
-class AO1VisibilityIntelligenceSystem:
+class AO1MissingAssetDiscovery:
     def __init__(self, db_path: str = 'universal_cmdb.db'):
         self.model = None
         self.feature_scaler = StandardScaler()
         self.trained = False
         self.db_path = db_path
-        self.model_version = "AO1-2025.1"
-        self.training_metrics = {}
+        self.model_version = "AO1-Asset-Discovery-2025.1"
         self.model_dir = 'models'
         
-        # AO1-specific configuration
-        self.ao1_config = {
-            'min_confidence_threshold': 0.75,
-            'critical_roles_weight': 1.5,
-            'compliance_threshold': 0.8,
-            'visibility_gap_threshold': 0.6
-        }
+        # Pattern discovery settings
+        self.min_pattern_frequency = 3  # Need at least 3 hosts to establish pattern
+        self.max_gap_size = 1000       # Don't check beyond 1000 missing numbers
+        self.confidence_threshold = 0.85  # 85% confidence required
         
         os.makedirs(self.model_dir, exist_ok=True)
-        print("🔒 AO1 Log Visibility Intelligence System Initialized")
+        print("🔍 AO1 Missing Asset Discovery System Initialized")
         
-    @property
-    def models_exist(self) -> bool:
-        required_files = [f'{self.model_dir}/ao1_visibility_model.pth', f'{self.model_dir}/ao1_scaler.pkl']
-        return all(os.path.exists(f) for f in required_files)
-
     def get_db_connection(self):
         try:
             return duckdb.connect(self.db_path)
@@ -154,246 +92,288 @@ class AO1VisibilityIntelligenceSystem:
             print(f"❌ Database connection error: {e}")
             return None
 
-    def extract_ao1_features(self, host: str, cmdb_data: pd.Series) -> np.ndarray:
-        """Extract AO1-specific cybersecurity visibility features"""
-        if not host:
-            host = ""
+    def extract_hostname_patterns(self, hostname: str) -> Dict:
+        """Extract detailed hostname pattern features"""
+        if not hostname:
+            hostname = ""
         
-        host = str(host).lower().strip()
-        features = []
+        hostname = str(hostname).lower().strip()
         
-        # Basic hostname analysis
-        features.extend([
-            len(host),
-            host.count('.'),
-            host.count('-'),
-            len(re.findall(r'\d', host)),
-            len(re.findall(r'[a-z]', host))
-        ])
+        # Basic structure analysis
+        features = {
+            'length': len(hostname),
+            'dots': hostname.count('.'),
+            'dashes': hostname.count('-'),
+            'underscores': hostname.count('_'),
+            'digits': len(re.findall(r'\d', hostname)),
+            'letters': len(re.findall(r'[a-z]', hostname))
+        }
         
-        # AO1 Infrastructure Type Classification
-        infra_type = str(cmdb_data.get('infrastructure_type', '')).lower()
-        for ao1_type in AO1_INFRASTRUCTURE_TYPES:
-            features.append(1 if ao1_type.lower() in infra_type else 0)
+        # Extract number patterns
+        numbers = re.findall(r'\d+', hostname)
+        if numbers:
+            features['has_numbers'] = 1
+            features['num_count'] = len(numbers)
+            features['max_number'] = max([int(n) for n in numbers])
+            features['min_number'] = min([int(n) for n in numbers])
+            features['number_positions'] = [hostname.find(n) for n in numbers]
+        else:
+            features['has_numbers'] = 0
+            features['num_count'] = 0
+            features['max_number'] = 0
+            features['min_number'] = 0
+            features['number_positions'] = []
         
-        # AO1 System Classification Detection
-        sys_class = str(cmdb_data.get('system_classification', '')).lower()
-        for ao1_sys in AO1_SYSTEM_CLASSIFICATIONS:
-            key_words = ao1_sys.lower().split()
-            features.append(1 if any(word in sys_class or word in host for word in key_words) else 0)
+        # Pattern template (replace numbers with XXX)
+        features['pattern_template'] = re.sub(r'\d+', 'XXX', hostname)
         
-        # AO1 Role-based Detection Patterns
-        network_indicators = ['fw', 'firewall', 'proxy', 'dns', 'waf', 'ids', 'ips', 'ndr']
-        endpoint_indicators = ['srv', 'server', 'desktop', 'laptop', 'workstation']
-        cloud_indicators = ['aws', 'azure', 'gcp', 'cloud', 'ec2', 'vm']
-        app_indicators = ['web', 'www', 'app', 'api', 'gateway']
-        auth_indicators = ['ad', 'ldap', 'auth', 'sso', 'identity']
+        # Domain/suffix analysis
+        parts = hostname.split('.')
+        features['subdomain_count'] = len(parts) - 1 if len(parts) > 1 else 0
+        features['tld'] = parts[-1] if len(parts) > 1 else ''
         
-        features.extend([
-            1 if any(ind in host for ind in network_indicators) else 0,
-            1 if any(ind in host for ind in endpoint_indicators) else 0,
-            1 if any(ind in host for ind in cloud_indicators) else 0,
-            1 if any(ind in host for ind in app_indicators) else 0,
-            1 if any(ind in host for ind in auth_indicators) else 0
-        ])
+        # Environment indicators
+        env_indicators = ['prod', 'dev', 'test', 'stage', 'uat', 'qa']
+        features['environment'] = next((env for env in env_indicators if env in hostname), 'unknown')
         
-        # AO1 Business Context
-        features.extend([
-            1 if pd.notna(cmdb_data.get('business_unit')) else 0,
-            1 if pd.notna(cmdb_data.get('cio')) else 0,
-            1 if pd.notna(cmdb_data.get('apm')) else 0,
-            float(cmdb_data.get('data_quality_score', 0)) / 10.0,  # Normalize to 0-1
-            min(int(cmdb_data.get('source_count', 0)) / 10.0, 1.0)  # Cap at 1.0
-        ])
+        # Infrastructure indicators
+        infra_types = ['srv', 'server', 'web', 'app', 'db', 'fw', 'lb', 'proxy']
+        features['infra_type'] = next((infra for infra in infra_types if infra in hostname), 'unknown')
         
-        # AO1 Geographic/Regional Indicators
-        region = str(cmdb_data.get('region', '')).lower()
-        country = str(cmdb_data.get('country', '')).lower()
-        dc = str(cmdb_data.get('data_center', '')).lower()
+        return features
+
+    def discover_hostname_patterns(self, df: pd.DataFrame) -> List[Dict]:
+        """Discover hostname patterns and identify sequence gaps"""
+        print("🔍 Discovering hostname patterns...")
         
-        features.extend([
-            1 if any(geo in region or geo in country for geo in ['us', 'america', 'north']) else 0,
-            1 if any(geo in region or geo in country for geo in ['eu', 'europe', 'emea']) else 0,
-            1 if any(geo in region or geo in country for geo in ['apac', 'asia']) else 0,
-            1 if 'prod' in host or 'production' in str(cmdb_data.get('infrastructure_type', '')).lower() else 0
-        ])
+        # Group hostnames by pattern template
+        pattern_groups = defaultdict(list)
+        
+        for hostname in df['host'].dropna():
+            hostname = str(hostname).lower().strip()
+            if hostname and re.search(r'\d', hostname):  # Only hostnames with numbers
+                pattern_template = re.sub(r'\d+', 'XXX', hostname)
+                
+                # Extract numbers and their positions
+                numbers = []
+                for match in re.finditer(r'\d+', hostname):
+                    numbers.append({
+                        'value': int(match.group()),
+                        'position': match.start(),
+                        'original': match.group()
+                    })
+                
+                pattern_groups[pattern_template].append({
+                    'hostname': hostname,
+                    'template': pattern_template,
+                    'numbers': numbers
+                })
+        
+        # Find patterns with sufficient frequency
+        discovered_patterns = []
+        
+        for template, hostnames in pattern_groups.items():
+            if len(hostnames) >= self.min_pattern_frequency:
+                print(f"   Pattern: {template} ({len(hostnames)} hosts)")
+                
+                # Analyze number sequences for each number position
+                number_sequences = defaultdict(list)
+                
+                for host_data in hostnames:
+                    for i, num_data in enumerate(host_data['numbers']):
+                        number_sequences[i].append(num_data['value'])
+                
+                # Find gaps in sequences
+                pattern_info = {
+                    'template': template,
+                    'host_count': len(hostnames),
+                    'sample_hosts': [h['hostname'] for h in hostnames[:5]],
+                    'number_sequences': {},
+                    'potential_gaps': []
+                }
+                
+                for pos, values in number_sequences.items():
+                    values = sorted(set(values))
+                    if len(values) > 2:  # Need at least 3 different values
+                        min_val, max_val = min(values), max(values)
+                        
+                        # Find missing numbers in range
+                        missing = []
+                        for i in range(min_val, min(max_val + 1, min_val + self.max_gap_size)):
+                            if i not in values:
+                                missing.append(i)
+                        
+                        pattern_info['number_sequences'][pos] = {
+                            'existing_values': values,
+                            'range': (min_val, max_val),
+                            'missing_values': missing[:100],  # Limit missing values
+                            'density': len(values) / (max_val - min_val + 1) if max_val > min_val else 1.0
+                        }
+                
+                if pattern_info['number_sequences']:
+                    discovered_patterns.append(pattern_info)
+        
+        print(f"✅ Discovered {len(discovered_patterns)} viable hostname patterns")
+        return discovered_patterns
+
+    def generate_missing_hostnames(self, patterns: List[Dict]) -> List[Dict]:
+        """Generate potential missing hostnames based on discovered patterns"""
+        print("🎯 Generating potential missing hostnames...")
+        
+        missing_candidates = []
+        
+        for pattern in patterns:
+            template = pattern['template']
+            
+            # Generate combinations of missing numbers
+            if len(pattern['number_sequences']) == 1:
+                # Single number sequence
+                pos = list(pattern['number_sequences'].keys())[0]
+                seq_info = pattern['number_sequences'][pos]
+                
+                for missing_num in seq_info['missing_values'][:50]:  # Limit candidates
+                    candidate_hostname = template.replace('XXX', str(missing_num), 1)
+                    
+                    missing_candidates.append({
+                        'hostname': candidate_hostname,
+                        'pattern_template': template,
+                        'missing_numbers': [missing_num],
+                        'pattern_density': seq_info['density'],
+                        'existing_hosts_count': pattern['host_count'],
+                        'sample_existing': pattern['sample_hosts'][:3]
+                    })
+            
+            elif len(pattern['number_sequences']) == 2:
+                # Two number sequences - generate combinations
+                positions = list(pattern['number_sequences'].keys())
+                seq1 = pattern['number_sequences'][positions[0]]
+                seq2 = pattern['number_sequences'][positions[1]]
+                
+                # Limit combinations to prevent explosion
+                missing1 = seq1['missing_values'][:20]
+                missing2 = seq2['missing_values'][:20] 
+                
+                for num1 in missing1:
+                    for num2 in missing2:
+                        candidate_hostname = template
+                        replacements = [str(num1), str(num2)]
+                        
+                        for replacement in replacements:
+                            candidate_hostname = candidate_hostname.replace('XXX', replacement, 1)
+                        
+                        missing_candidates.append({
+                            'hostname': candidate_hostname,
+                            'pattern_template': template,
+                            'missing_numbers': [num1, num2],
+                            'pattern_density': (seq1['density'] + seq2['density']) / 2,
+                            'existing_hosts_count': pattern['host_count'],
+                            'sample_existing': pattern['sample_hosts'][:3]
+                        })
+        
+        print(f"🎲 Generated {len(missing_candidates)} missing hostname candidates")
+        return missing_candidates
+
+    def extract_features_for_hostname(self, hostname: str) -> np.ndarray:
+        """Extract features for a hostname to feed into neural network"""
+        pattern_data = self.extract_hostname_patterns(hostname)
+        
+        features = [
+            pattern_data['length'],
+            pattern_data['dots'],
+            pattern_data['dashes'],
+            pattern_data['underscores'],
+            pattern_data['digits'],
+            pattern_data['letters'],
+            pattern_data['has_numbers'],
+            pattern_data['num_count'],
+            pattern_data['max_number'] / 10000.0,  # Normalize large numbers
+            pattern_data['min_number'] / 1000.0,   # Normalize
+            pattern_data['subdomain_count'],
+        ]
+        
+        # Environment one-hot encoding
+        envs = ['prod', 'dev', 'test', 'stage', 'uat', 'qa', 'unknown']
+        for env in envs:
+            features.append(1 if pattern_data['environment'] == env else 0)
+        
+        # Infrastructure type one-hot encoding
+        infra_types = ['srv', 'server', 'web', 'app', 'db', 'fw', 'lb', 'proxy', 'unknown']
+        for infra in infra_types:
+            features.append(1 if pattern_data['infra_type'] == infra else 0)
+        
+        # TLD encoding (top common ones)
+        common_tlds = ['com', 'local', 'net', 'org', 'unknown']
+        for tld in common_tlds:
+            features.append(1 if pattern_data['tld'] == tld else 0)
         
         return np.array(features, dtype=np.float32)
 
-    def get_cmdb_data(self) -> pd.DataFrame:
-        conn = self.get_db_connection()
-        if not conn:
-            return pd.DataFrame()
+    def prepare_training_data(self, df: pd.DataFrame) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+        """Prepare training data from existing assets"""
+        print(f"🔄 Preparing training data from {len(df)} assets...")
         
-        query = """
-        SELECT 
-            host, business_unit, region, country, data_center, cloud_region,
-            system_classification, infrastructure_type, cio, apm,
-            logging_in_splunk, logging_in_gso, present_in_cmdb, 
-            edr_coverage, tanium_coverage, dlp_agent_coverage,
-            first_seen, last_updated, data_quality_score, source_count
-        FROM universal_cmdb
-        LIMIT 400000
-        """
-        
-        try:
-            df = conn.execute(query).df()
-            print(f"📊 Loaded {len(df):,} assets for AO1 visibility analysis")
-            return df
-        except Exception as e:
-            print(f"❌ Error loading CMDB data: {e}")
-            return pd.DataFrame()
-        finally:
-            conn.close()
-
-    def prepare_ao1_training_data(self, df: pd.DataFrame) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
-        """Prepare training data specifically for AO1 visibility intelligence"""
         features = []
-        role_labels = []
-        visibility_labels = []
-        risk_labels = []
-        
-        print(f"🔄 Processing {len(df):,} assets for AO1 training...")
-        
-        role_mapping = {role: idx for idx, role in enumerate(AO1_ROLE_LOG_MAPPING.keys())}
+        existence_labels = []
+        logging_labels = []
         
         for idx, row in df.iterrows():
-            if idx % 50000 == 0:
+            if idx % 50000 == 0 and idx > 0:
                 print(f"   Processed {idx:,} assets...")
             
-            # Extract AO1-specific features
-            ao1_features = self.extract_ao1_features(row['host'], row)
-            features.append(ao1_features)
-            
-            # Determine primary role based on AO1 classification
-            role = self.classify_ao1_role(row['host'], row)
-            role_label = np.zeros(len(AO1_ROLE_LOG_MAPPING))
-            if role in role_mapping:
-                role_label[role_mapping[role]] = 1.0
-            role_labels.append(role_label)
-            
-            # AO1 Visibility Assessment (7 categories)
-            visibility = self.assess_ao1_visibility(row)
-            visibility_labels.append(visibility)
-            
-            # AO1 Risk Assessment
-            risk_score = self.calculate_ao1_risk(row['host'], row, role, visibility)
-            risk_labels.append(risk_score)
+            hostname = row['host']
+            if pd.notna(hostname) and hostname.strip():
+                # Extract features
+                host_features = self.extract_features_for_hostname(hostname)
+                features.append(host_features)
+                
+                # Existence label (1.0 since it exists in CMDB)
+                existence_labels.append(1.0)
+                
+                # Logging labels (6 platforms: Splunk, GSO, Chronicle, EDR, Tanium, CMDB)
+                logging = [
+                    1.0 if row.get('logging_in_splunk') == 'yes' else 0.0,
+                    1.0 if row.get('logging_in_gso') == 'yes' else 0.0,
+                    0.8 if (row.get('logging_in_splunk') == 'yes' and row.get('logging_in_gso') == 'yes') else 0.0,  # Chronicle
+                    1.0 if 'crowdstrike' in str(row.get('edr_coverage', '')).lower() else 0.0,
+                    1.0 if row.get('tanium_coverage') == 'yes' else 0.0,
+                    1.0 if row.get('present_in_cmdb') == 'yes' else 0.0
+                ]
+                logging_labels.append(logging)
         
-        print(f"✅ Prepared {len(features):,} training samples for AO1 Intelligence")
+        print(f"✅ Prepared {len(features):,} training samples")
         return (np.array(features, dtype=np.float32), 
-                np.array(role_labels, dtype=np.float32),
-                np.array(visibility_labels, dtype=np.float32), 
-                np.array(risk_labels, dtype=np.float32))
+                np.array(existence_labels, dtype=np.float32),
+                np.array(logging_labels, dtype=np.float32))
 
-    def classify_ao1_role(self, host: str, cmdb_data: pd.Series) -> str:
-        """Classify asset role according to AO1 requirements"""
-        host = str(host).lower()
-        sys_class = str(cmdb_data.get('system_classification', '')).lower()
-        infra_type = str(cmdb_data.get('infrastructure_type', '')).lower()
+    def train_missing_asset_model(self):
+        """Train the missing asset discovery model"""
+        print("🚀 Training AO1 Missing Asset Discovery Model...")
         
-        # Network role detection (highest priority for security)
-        if any(indicator in host or indicator in sys_class for indicator in 
-               ['firewall', 'fw', 'proxy', 'dns', 'waf', 'ids', 'ips', 'ndr', 'router', 'switch']):
-            return 'Network'
-        
-        # Identity & Authentication
-        if any(indicator in host for indicator in ['ad', 'ldap', 'auth', 'sso', 'identity']):
-            return 'Identity_Auth'
-        
-        # Cloud detection
-        if ('cloud' in infra_type or 
-            any(indicator in host for indicator in ['aws', 'azure', 'gcp', 'cloud', 'ec2'])):
-            return 'Cloud'
-        
-        # Application detection
-        if any(indicator in host for indicator in ['web', 'www', 'app', 'api', 'gateway']):
-            return 'Application'
-        
-        # Default to Endpoint
-        return 'Endpoint'
-
-    def assess_ao1_visibility(self, row: pd.Series) -> np.ndarray:
-        """Assess current visibility across AO1 platforms"""
-        visibility = np.zeros(7, dtype=np.float32)
-        
-        # Splunk visibility
-        visibility[0] = 1.0 if row.get('logging_in_splunk') == 'yes' else 0.0
-        
-        # GSO visibility  
-        visibility[1] = 1.0 if row.get('logging_in_gso') == 'yes' else 0.0
-        
-        # Chronicle (inferred from modern logging practices)
-        visibility[2] = 0.8 if (row.get('logging_in_splunk') == 'yes' and 
-                               row.get('logging_in_gso') == 'yes') else 0.0
-        
-        # EDR Coverage (Crowdstrike)
-        edr = str(row.get('edr_coverage', '')).lower()
-        visibility[3] = 1.0 if 'crowdstrike' in edr or 'agent' in edr else 0.0
-        
-        # Tanium Coverage
-        visibility[4] = 1.0 if row.get('tanium_coverage') == 'yes' else 0.0
-        
-        # DLP Coverage  
-        visibility[5] = 1.0 if row.get('dlp_agent_coverage') == 'yes' else 0.0
-        
-        # CMDB Presence
-        visibility[6] = 1.0 if row.get('present_in_cmdb') == 'yes' else 0.0
-        
-        return visibility
-
-    def calculate_ao1_risk(self, host: str, cmdb_data: pd.Series, role: str, visibility: np.ndarray) -> float:
-        """Calculate cybersecurity risk based on AO1 methodology"""
-        base_risk = 0.0
-        
-        # Role-based risk weighting (from AO1 requirements)
-        role_weights = {
-            'Network': 0.95,      # Critical for detection
-            'Identity_Auth': 0.9, # Critical for detection  
-            'Endpoint': 0.85,     # Critical for detection
-            'Cloud': 0.8,         # Critical for detection
-            'Application': 0.7    # Less critical
-        }
-        
-        base_risk = role_weights.get(role, 0.5)
-        
-        # Visibility gap penalty
-        expected_visibility = AO1_ROLE_LOG_MAPPING.get(role, {}).get('compliance_weight', 0.8)
-        actual_visibility = np.mean(visibility)
-        visibility_gap = max(0, expected_visibility - actual_visibility)
-        
-        # Production environment multiplier
-        prod_multiplier = 1.3 if 'prod' in str(host).lower() else 1.0
-        
-        # Data quality factor
-        quality_factor = float(cmdb_data.get('data_quality_score', 5)) / 10.0
-        
-        final_risk = min(base_risk + (visibility_gap * 0.4) * prod_multiplier * quality_factor, 1.0)
-        return final_risk
-
-    def train_ao1_intelligence(self):
-        """Train the AO1 Visibility Intelligence model"""
-        print("🚀 Starting AO1 Visibility Intelligence Training...")
-        
-        df = self.get_cmdb_data()
-        if df.empty:
-            print("❌ No data available for training!")
+        # Load data
+        conn = self.get_db_connection()
+        if not conn:
             return
         
-        X, role_y, visibility_y, risk_y = self.prepare_ao1_training_data(df)
+        df = conn.execute("SELECT * FROM universal_cmdb LIMIT 300000").df()
+        conn.close()
+        
+        if df.empty:
+            print("❌ No data available!")
+            return
+        
+        print(f"📊 Loaded {len(df):,} assets from CMDB")
+        
+        # Prepare training data
+        X, existence_y, logging_y = self.prepare_training_data(df)
         
         if len(X) == 0:
             print("❌ No features extracted!")
             return
         
-        # Split data for training
-        X_train, X_val, role_y_train, role_y_val, vis_y_train, vis_y_val, risk_y_train, risk_y_val = train_test_split(
-            X, role_y, visibility_y, risk_y, test_size=0.15, random_state=42, stratify=risk_y > 0.7
+        # Train/validation split
+        X_train, X_val, exist_y_train, exist_y_val, log_y_train, log_y_val = train_test_split(
+            X, existence_y, logging_y, test_size=0.15, random_state=42
         )
-        
-        # Memory cleanup
-        del X, role_y, visibility_y, risk_y, df
-        gc.collect()
         
         # Scale features
         X_train_scaled = self.feature_scaler.fit_transform(X_train)
@@ -401,315 +381,235 @@ class AO1VisibilityIntelligenceSystem:
         
         # Initialize model
         input_size = X_train_scaled.shape[1]
-        self.model = AO1VisibilityIntelligenceNet(input_size).to(device)
+        self.model = HostnamePatternNet(input_size).to(device)
         
         optimizer = optim.AdamW(self.model.parameters(), lr=0.001, weight_decay=1e-4)
-        
-        role_criterion = nn.BCELoss()
-        visibility_criterion = nn.BCELoss() 
-        risk_criterion = nn.BCELoss()
+        existence_criterion = nn.BCELoss()
+        logging_criterion = nn.BCELoss()
         
         batch_size = 4096
-        epochs = 150
+        epochs = 100
         
-        print(f"🔥 Training AO1 model: {len(X_train_scaled):,} samples, batch size {batch_size}")
+        print(f"🔥 Training model: {len(X_train_scaled):,} samples, {epochs} epochs")
         
         for epoch in range(epochs):
             self.model.train()
             total_loss = 0.0
             
-            # Training batches
             for i in range(0, len(X_train_scaled), batch_size):
                 batch_end = min(i + batch_size, len(X_train_scaled))
                 
                 X_batch = torch.FloatTensor(X_train_scaled[i:batch_end]).to(device)
-                role_batch = torch.FloatTensor(role_y_train[i:batch_end]).to(device)
-                vis_batch = torch.FloatTensor(vis_y_train[i:batch_end]).to(device)
-                risk_batch = torch.FloatTensor(risk_y_train[i:batch_end]).reshape(-1, 1).to(device)
+                exist_batch = torch.FloatTensor(exist_y_train[i:batch_end]).reshape(-1, 1).to(device)
+                log_batch = torch.FloatTensor(log_y_train[i:batch_end]).to(device)
                 
                 optimizer.zero_grad()
                 
-                role_pred, vis_pred, risk_pred = self.model(X_batch)
+                exist_pred, log_pred = self.model(X_batch)
                 
-                loss_role = role_criterion(role_pred, role_batch)
-                loss_vis = visibility_criterion(vis_pred, vis_batch)
-                loss_risk = risk_criterion(risk_pred, risk_batch)
+                loss_exist = existence_criterion(exist_pred, exist_batch)
+                loss_log = logging_criterion(log_pred, log_batch)
                 
-                # Weighted loss (prioritize risk assessment)
-                total_loss_batch = loss_role + 2.0 * loss_vis + 3.0 * loss_risk
-                
+                total_loss_batch = loss_exist + 2.0 * loss_log  # Weight logging prediction more
                 total_loss_batch.backward()
+                
                 torch.nn.utils.clip_grad_norm_(self.model.parameters(), 1.0)
                 optimizer.step()
                 
                 total_loss += total_loss_batch.item()
                 
-                del X_batch, role_batch, vis_batch, risk_batch
-                
-                if i % (batch_size * 20) == 0:
-                    gc.collect()
+                del X_batch, exist_batch, log_batch
             
-            if epoch % 25 == 0:
-                print(f"🎯 Epoch {epoch}/{epochs}, Loss: {total_loss/len(X_train_scaled)*batch_size:.4f}")
+            if epoch % 20 == 0:
+                avg_loss = total_loss / (len(X_train_scaled) / batch_size)
+                print(f"🎯 Epoch {epoch}/{epochs}, Loss: {avg_loss:.4f}")
+                gc.collect()
         
         self.trained = True
-        self.save_ao1_models()
-        print("✅ AO1 Visibility Intelligence training completed!")
+        self.save_models()
+        print("✅ Missing Asset Discovery model training completed!")
 
-    def save_ao1_models(self):
+    def save_models(self):
         try:
-            torch.save(self.model.state_dict(), f'{self.model_dir}/ao1_visibility_model.pth')
-            with open(f'{self.model_dir}/ao1_scaler.pkl', 'wb') as f:
+            torch.save(self.model.state_dict(), f'{self.model_dir}/missing_asset_model.pth')
+            with open(f'{self.model_dir}/missing_asset_scaler.pkl', 'wb') as f:
                 pickle.dump(self.feature_scaler, f)
-            print("💾 AO1 models saved successfully!")
+            print("💾 Models saved successfully!")
         except Exception as e:
             print(f"❌ Error saving models: {e}")
 
-    def load_ao1_models(self):
+    def load_models(self):
         try:
-            if not self.models_exist:
+            if not (os.path.exists(f'{self.model_dir}/missing_asset_model.pth') and 
+                    os.path.exists(f'{self.model_dir}/missing_asset_scaler.pkl')):
                 return False
             
-            # Determine input size
-            sample_series = pd.Series({'host': 'sample', 'infrastructure_type': '', 'system_classification': ''})
-            sample_features = self.extract_ao1_features('sample', sample_series)
+            # Determine input size from sample
+            sample_features = self.extract_features_for_hostname("sample-host-01.example.com")
             input_size = len(sample_features)
             
-            self.model = AO1VisibilityIntelligenceNet(input_size).to(device)
-            self.model.load_state_dict(torch.load(f'{self.model_dir}/ao1_visibility_model.pth', map_location=device))
+            self.model = HostnamePatternNet(input_size).to(device)
+            self.model.load_state_dict(torch.load(f'{self.model_dir}/missing_asset_model.pth', map_location=device))
             
-            with open(f'{self.model_dir}/ao1_scaler.pkl', 'rb') as f:
+            with open(f'{self.model_dir}/missing_asset_scaler.pkl', 'rb') as f:
                 self.feature_scaler = pickle.load(f)
             
             self.trained = True
-            print("✅ AO1 models loaded successfully!")
+            print("✅ Missing asset models loaded!")
             return True
-            
         except Exception as e:
             print(f"❌ Error loading models: {e}")
             return False
 
-    def generate_ao1_visibility_report(self) -> Dict:
-        """Generate comprehensive AO1 visibility analysis report"""
+    def discover_missing_assets(self, limit: int = 1000) -> List[Dict]:
+        """Main function to discover missing assets"""
         if not self.trained:
-            if not self.load_ao1_models():
-                return {'error': 'AO1 models not available'}
+            if not self.load_models():
+                print("❌ Models not trained! Training now...")
+                self.train_missing_asset_model()
         
-        print("📈 Generating AO1 Comprehensive Visibility Report...")
+        print("🔍 Discovering Missing Assets...")
         
-        df = self.get_cmdb_data()
-        if df.empty:
-            return {'error': 'No data available'}
+        # Load existing assets
+        conn = self.get_db_connection()
+        if not conn:
+            return []
         
-        report = {
-            'ao1_executive_summary': {},
-            'visibility_by_role': {},
-            'infrastructure_coverage': {},
-            'regional_visibility': {},
-            'security_control_gaps': {},
-            'business_unit_analysis': {},
-            'compliance_assessment': {},
-            'remediation_priorities': [],
-            'generated_timestamp': datetime.now().isoformat()
-        }
+        df = conn.execute("SELECT host FROM universal_cmdb WHERE host IS NOT NULL").df()
+        conn.close()
         
-        # Process all assets
-        predictions = []
-        for _, row in df.iterrows():
-            features = self.extract_ao1_features(row['host'], row)
-            features_scaled = self.feature_scaler.transform([features])
-            
-            with torch.no_grad():
+        existing_hosts = set(df['host'].str.lower())
+        print(f"📊 Found {len(existing_hosts):,} existing hosts")
+        
+        # Discover patterns
+        patterns = self.discover_hostname_patterns(df)
+        
+        # Generate missing hostname candidates
+        candidates = self.generate_missing_hostnames(patterns)
+        
+        # Filter out existing hosts
+        new_candidates = [c for c in candidates if c['hostname'] not in existing_hosts]
+        print(f"🎯 {len(new_candidates):,} potential missing assets identified")
+        
+        # Predict existence and logging for candidates
+        missing_assets = []
+        self.model.eval()
+        
+        print("🤖 AI analyzing missing asset candidates...")
+        
+        with torch.no_grad():
+            for i, candidate in enumerate(new_candidates[:limit * 3]):  # Process more to get top results
+                if i % 1000 == 0 and i > 0:
+                    print(f"   Analyzed {i:,} candidates...")
+                
+                features = self.extract_features_for_hostname(candidate['hostname'])
+                features_scaled = self.feature_scaler.transform([features])
                 features_tensor = torch.FloatTensor(features_scaled).to(device)
-                role_pred, vis_pred, risk_pred = self.model(features_tensor)
                 
-                role_probs = role_pred.cpu().numpy()[0]
-                vis_probs = vis_pred.cpu().numpy()[0]
-                risk_score = risk_pred.cpu().item()
+                existence_prob, logging_probs = self.model(features_tensor)
                 
-            predictions.append({
-                'host': row['host'],
-                'role': list(AO1_ROLE_LOG_MAPPING.keys())[np.argmax(role_probs)],
-                'role_confidence': float(np.max(role_probs)),
-                'visibility_scores': {
-                    'Splunk': float(vis_probs[0]),
-                    'GSO': float(vis_probs[1]), 
-                    'Chronicle': float(vis_probs[2]),
-                    'EDR': float(vis_probs[3]),
-                    'Tanium': float(vis_probs[4]),
-                    'DLP': float(vis_probs[5]),
-                    'CMDB': float(vis_probs[6])
-                },
-                'risk_score': float(risk_score),
-                'business_unit': row.get('business_unit', 'Unknown'),
-                'infrastructure_type': row.get('infrastructure_type', 'Unknown'),
-                'region': row.get('region', 'Unknown'),
-                'actual_logging_in_splunk': row.get('logging_in_splunk', 'unknown'),
-                'actual_logging_in_gso': row.get('logging_in_gso', 'unknown')
-            })
-        
-        # Executive Summary
-        total_assets = len(predictions)
-        high_risk_assets = len([p for p in predictions if p['risk_score'] > 0.8])
-        avg_visibility = np.mean([np.mean(list(p['visibility_scores'].values())) for p in predictions])
-        
-        report['ao1_executive_summary'] = {
-            'total_assets_analyzed': total_assets,
-            'high_risk_visibility_gaps': high_risk_assets,
-            'overall_visibility_score': f"{avg_visibility:.1%}",
-            'critical_findings': high_risk_assets,
-            'compliance_status': 'NEEDS_ATTENTION' if avg_visibility < 0.8 else 'GOOD'
-        }
-        
-        # Role-based Analysis
-        role_stats = defaultdict(list)
-        for pred in predictions:
-            role_stats[pred['role']].append(pred)
-        
-        for role, role_preds in role_stats.items():
-            role_config = AO1_ROLE_LOG_MAPPING[role]
-            avg_vis = np.mean([np.mean(list(p['visibility_scores'].values())) for p in role_preds])
-            high_risk_count = len([p for p in role_preds if p['risk_score'] > 0.8])
-            
-            report['visibility_by_role'][role] = {
-                'asset_count': len(role_preds),
-                'average_visibility': f"{avg_vis:.1%}",
-                'high_risk_assets': high_risk_count,
-                'expected_log_types': role_config['log_types'],
-                'compliance_weight': role_config['compliance_weight'],
-                'visibility_gap': f"{max(0, role_config['compliance_weight'] - avg_vis):.1%}"
-            }
-        
-        # Security Control Gaps
-        platform_gaps = {
-            'Splunk': len([p for p in predictions if p['visibility_scores']['Splunk'] < 0.5]),
-            'GSO': len([p for p in predictions if p['visibility_scores']['GSO'] < 0.5]),
-            'EDR': len([p for p in predictions if p['visibility_scores']['EDR'] < 0.5]),
-            'Tanium': len([p for p in predictions if p['visibility_scores']['Tanium'] < 0.5])
-        }
-        
-        report['security_control_gaps'] = {
-            'platform_coverage_gaps': platform_gaps,
-            'total_gap_percentage': f"{sum(platform_gaps.values()) / (total_assets * 4):.1%}",
-            'priority_platforms': sorted(platform_gaps.items(), key=lambda x: x[1], reverse=True)[:2]
-        }
-        
-        # Business Unit Analysis
-        bu_stats = defaultdict(list)
-        for pred in predictions:
-            bu_stats[pred['business_unit']].append(pred)
-        
-        for bu, bu_preds in bu_stats.items():
-            if len(bu_preds) > 10:  # Only include BUs with significant asset count
-                avg_vis = np.mean([np.mean(list(p['visibility_scores'].values())) for p in bu_preds])
-                high_risk = len([p for p in bu_preds if p['risk_score'] > 0.8])
+                existence_confidence = existence_prob.cpu().item()
+                logging_scores = logging_probs.cpu().numpy()[0]
                 
-                report['business_unit_analysis'][bu] = {
-                    'asset_count': len(bu_preds),
-                    'visibility_score': f"{avg_vis:.1%}",
-                    'high_risk_assets': high_risk,
-                    'needs_attention': high_risk > len(bu_preds) * 0.2
-                }
+                if existence_confidence >= self.confidence_threshold:
+                    missing_assets.append({
+                        'hostname': candidate['hostname'],
+                        'existence_confidence': f"{existence_confidence:.1%}",
+                        'pattern_template': candidate['pattern_template'],
+                        'similar_existing_hosts': candidate['sample_existing'],
+                        'pattern_density': f"{candidate['pattern_density']:.1%}",
+                        'existing_pattern_count': candidate['existing_hosts_count'],
+                        'logging_predictions': {
+                            'splunk_likely': f"{logging_scores[0]:.1%}",
+                            'gso_likely': f"{logging_scores[1]:.1%}",
+                            'chronicle_likely': f"{logging_scores[2]:.1%}",
+                            'edr_likely': f"{logging_scores[3]:.1%}",
+                            'tanium_likely': f"{logging_scores[4]:.1%}",
+                            'cmdb_likely': f"{logging_scores[5]:.1%}"
+                        },
+                        'visibility_gap_risk': f"{1.0 - np.mean(logging_scores):.1%}",
+                        'recommended_actions': self.get_remediation_actions(candidate['hostname'], logging_scores)
+                    })
         
-        # Top Remediation Priorities
-        high_risk_assets = sorted([p for p in predictions if p['risk_score'] > 0.7], 
-                                key=lambda x: x['risk_score'], reverse=True)[:20]
+        # Sort by existence confidence
+        missing_assets.sort(key=lambda x: float(x['existence_confidence'].rstrip('%')), reverse=True)
         
-        for asset in high_risk_assets:
-            gaps = []
-            for platform, score in asset['visibility_scores'].items():
-                if score < 0.5:
-                    gaps.append(platform)
-            
-            report['remediation_priorities'].append({
-                'hostname': asset['host'],
-                'role': asset['role'],
-                'risk_score': f"{asset['risk_score']:.1%}",
-                'business_unit': asset['business_unit'],
-                'visibility_gaps': gaps,
-                'recommended_actions': self.get_ao1_recommendations(asset['role'], gaps)
-            })
+        result = missing_assets[:limit]
+        print(f"✅ Identified {len(result)} high-confidence missing assets!")
         
-        print("✅ AO1 Comprehensive Visibility Report Generated!")
-        return report
+        return result
 
-    def get_ao1_recommendations(self, role: str, gaps: List[str]) -> List[str]:
-        """Generate specific remediation recommendations based on AO1 requirements"""
-        recommendations = []
+    def get_remediation_actions(self, hostname: str, logging_scores: np.ndarray) -> List[str]:
+        """Generate specific remediation actions for missing assets"""
+        actions = [f"Verify if {hostname} actually exists in your environment"]
         
-        role_config = AO1_ROLE_LOG_MAPPING.get(role, {})
-        expected_logs = role_config.get('log_types', [])
+        # Check which logging platforms are unlikely
+        platform_names = ['Splunk', 'GSO', 'Chronicle', 'EDR', 'Tanium', 'CMDB']
         
-        if 'Splunk' in gaps:
-            recommendations.append(f"Configure {', '.join(expected_logs)} forwarding to Splunk")
+        for i, (platform, score) in enumerate(zip(platform_names, logging_scores)):
+            if score < 0.5:
+                if platform == 'Splunk':
+                    actions.append(f"Configure log forwarding to Splunk for {hostname}")
+                elif platform == 'GSO':
+                    actions.append(f"Enable GSO logging collection for {hostname}")
+                elif platform == 'EDR':
+                    actions.append(f"Deploy EDR agent on {hostname}")
+                elif platform == 'CMDB':
+                    actions.append(f"Add {hostname} to CMDB inventory")
         
-        if 'GSO' in gaps:
-            recommendations.append("Enable GSO logging collection for this asset")
-        
-        if 'EDR' in gaps and role in ['Endpoint', 'Network']:
-            recommendations.append("Deploy Crowdstrike EDR agent")
-        
-        if 'Tanium' in gaps:
-            recommendations.append("Install Tanium agent for enhanced visibility")
-        
-        if not recommendations:
-            recommendations.append("Review log source configuration and data ingestion")
-        
-        return recommendations
+        return actions
 
 # Flask Application
 app = Flask(__name__)
-ao1_system = AO1VisibilityIntelligenceSystem()
+discovery_system = AO1MissingAssetDiscovery()
 
-@app.route('/api/ao1/train-intelligence')
-def train_ao1_intelligence():
+@app.route('/api/ao1/train-discovery')
+def train_discovery():
     try:
         def train_async():
-            ao1_system.train_ao1_intelligence()
+            discovery_system.train_missing_asset_model()
         
         threading.Thread(target=train_async, daemon=True).start()
         return jsonify({
             'status': 'training_started',
-            'message': 'AO1 Visibility Intelligence training initiated',
-            'model_version': ao1_system.model_version,
-            'device': str(device)
+            'message': 'AO1 Missing Asset Discovery training initiated',
+            'version': discovery_system.model_version
         })
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
-@app.route('/api/ao1/visibility-report')
-def generate_ao1_report():
+@app.route('/api/ao1/discover-missing-assets')
+def discover_missing_assets():
     try:
-        report = ao1_system.generate_ao1_visibility_report()
-        return jsonify(report)
+        limit = int(request.args.get('limit', 100))
+        missing_assets = discovery_system.discover_missing_assets(limit=limit)
+        
+        return jsonify({
+            'total_missing_assets_found': len(missing_assets),
+            'confidence_threshold': f"{discovery_system.confidence_threshold:.0%}",
+            'missing_assets': missing_assets,
+            'generated_at': datetime.now().isoformat()
+        })
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
-@app.route('/api/ao1/status')
-def ao1_status():
+@app.route('/api/ao1/discovery-status')
+def discovery_status():
     return jsonify({
-        'system': 'AO1 Log Visibility Intelligence',
-        'version': ao1_system.model_version,
-        'trained': ao1_system.trained,
-        'device': str(device),
-        'supported_roles': list(AO1_ROLE_LOG_MAPPING.keys()),
-        'infrastructure_types': AO1_INFRASTRUCTURE_TYPES,
-        'system_classifications': AO1_SYSTEM_CLASSIFICATIONS
+        'system': 'AO1 Missing Asset Discovery',
+        'version': discovery_system.model_version,
+        'trained': discovery_system.trained,
+        'confidence_threshold': discovery_system.confidence_threshold,
+        'max_gap_size': discovery_system.max_gap_size,
+        'device': str(device)
     })
 
-@app.route('/api/ao1/role-requirements')
-def ao1_role_requirements():
-    return jsonify(AO1_ROLE_LOG_MAPPING)
-
 if __name__ == '__main__':
-    print("🔐 Starting AO1 Log Visibility Intelligence System...")
+    print("🔍 Starting AO1 Missing Asset Discovery System...")
     
-    if ao1_system.models_exist:
-        ao1_system.load_ao1_models()
-    
-    if not ao1_system.trained:
-        print("⚠️  AO1 models not ready. Use /api/ao1/train-intelligence to train.")
+    if discovery_system.load_models():
+        print("✅ AO1 Discovery System Ready!")
     else:
-        print("✅ AO1 Visibility Intelligence System Ready!")
+        print("⚠️  Models not ready. Use /api/ao1/train-discovery to train.")
     
     app.run(debug=True, port=5001, host='0.0.0.0')
