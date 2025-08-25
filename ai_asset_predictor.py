@@ -160,7 +160,6 @@ class AO1MissingAssetPredictor:
             edr_coverage, tanium_coverage, dlp_agent_coverage,
             first_seen, last_updated, data_quality_score, source_count
         FROM universal_cmdb
-        LIMIT 400000
         """
         
         try:
