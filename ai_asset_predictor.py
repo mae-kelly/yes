@@ -6,7 +6,7 @@ import numpy as np
 import pandas as pd
 import re
 import duckdb
-from sklearn.preprocessing import StandardScaler, RobustScaler
+from sklearn.preprocessing import RobustScaler
 from sklearn.model_selection import StratifiedKFold
 from flask import Flask, jsonify
 import threading
@@ -21,319 +21,430 @@ from functools import lru_cache
 import gc
 import time
 import traceback
-import psutil
 
 if torch.backends.mps.is_available():
     device = torch.device("mps")
-    print(f"[INIT] Using Apple Silicon GPU (MPS)")
-    print(f"[INIT] MPS Memory: {torch.mps.driver_allocated_memory() / 1e9:.2f} GB allocated")
+    torch.mps.empty_cache()
+    torch.mps.set_per_process_memory_fraction(0.95)
+    print(f"[GPU] Using Apple Silicon GPU (MPS) - FULL GPU MODE")
+    print(f"[GPU] Maximum memory: 18.13 GB available")
+    print(f"[GPU] Target usage: 17.0 GB (leaving 1GB buffer)")
 else:
     print("[ERROR] MPS not available!")
     exit(1)
 
-def log_memory(tag=""):
-    if device.type == 'mps':
-        allocated = torch.mps.driver_allocated_memory() / 1e9
-        print(f"[MEMORY] {tag} - MPS: {allocated:.2f} GB allocated")
-    
-    process = psutil.Process(os.getpid())
-    ram = process.memory_info().rss / 1e9
-    print(f"[MEMORY] {tag} - RAM: {ram:.2f} GB")
-    
-def clear_memory():
-    gc.collect()
-    if device.type == 'mps':
+def log_gpu_memory(tag=""):
+    allocated = torch.mps.driver_allocated_memory() / 1e9
+    cached = torch.mps.current_allocated_memory() / 1e9 if hasattr(torch.mps, 'current_allocated_memory') else 0
+    remaining = 18.13 - allocated
+    print(f"[GPU-MEM] {tag}: {allocated:.2f}GB used | {remaining:.2f}GB free | Cache: {cached:.2f}GB")
+    if allocated > 16.0:
+        print(f"[WARNING] GPU memory high: {allocated:.2f}GB - clearing cache")
         torch.mps.empty_cache()
         torch.mps.synchronize()
-    print("[MEMORY] Cleared caches")
+    return allocated
+
+def aggressive_gpu_cleanup():
+    torch.mps.empty_cache()
+    torch.mps.synchronize()
+    gc.collect()
+    time.sleep(0.1)
+    allocated = torch.mps.driver_allocated_memory() / 1e9
+    print(f"[GPU-CLEANUP] Memory after cleanup: {allocated:.2f}GB")
 
 @dataclass
 class ModelConfig:
     hidden_dims: List[int] = None
     dropout_rates: List[float] = None
-    activation: str = 'gelu'
-    use_batch_norm: bool = False
-    use_layer_norm: bool = True
-    residual_connections: bool = True
-    attention_heads: int = 2
-    batch_size: int = 16
+    batch_size: int = 128
+    accumulation_steps: int = 4
+    mixed_precision: bool = True
+    num_workers: int = 0
+    pin_memory: bool = False
     
     def __post_init__(self):
         if self.hidden_dims is None:
-            self.hidden_dims = [256, 128, 64]
+            self.hidden_dims = [1024, 768, 512, 384, 256, 128]
         if self.dropout_rates is None:
-            self.dropout_rates = [0.2, 0.25, 0.3]
+            self.dropout_rates = [0.1, 0.15, 0.2, 0.25, 0.3, 0.35]
 
-class SimplifiedAttention(nn.Module):
-    def __init__(self, embed_dim: int):
+class GPUOptimizedAttention(nn.Module):
+    def __init__(self, embed_dim: int, num_heads: int = 8):
         super().__init__()
-        self.embed_dim = embed_dim
-        self.qkv = nn.Linear(embed_dim, embed_dim * 3, bias=False)
-        self.o = nn.Linear(embed_dim, embed_dim)
-        self.scale = embed_dim ** -0.5
+        self.num_heads = num_heads
+        self.head_dim = embed_dim // num_heads
+        
+        self.qkv = nn.Linear(embed_dim, embed_dim * 3, bias=False, device=device)
+        self.proj = nn.Linear(embed_dim, embed_dim, device=device)
+        self.dropout = nn.Dropout(0.1)
         
     def forward(self, x):
-        B = x.shape[0]
-        qkv = self.qkv(x).reshape(B, 3, self.embed_dim)
-        q, k, v = qkv[:, 0], qkv[:, 1], qkv[:, 2]
+        B, N, C = x.shape
+        qkv = self.qkv(x).reshape(B, N, 3, self.num_heads, C // self.num_heads).permute(2, 0, 3, 1, 4)
+        q, k, v = qkv.unbind(0)
         
-        attn = (q @ k.T) * self.scale
-        attn = F.softmax(attn, dim=-1)
+        attn = (q @ k.transpose(-2, -1)) * (self.head_dim ** -0.5)
+        attn = attn.softmax(dim=-1)
+        attn = self.dropout(attn)
         
-        x = attn @ v
-        return self.o(x)
+        x = (attn @ v).transpose(1, 2).reshape(B, N, C)
+        x = self.proj(x)
+        return x
 
-class LightweightBlock(nn.Module):
-    def __init__(self, in_dim: int, out_dim: int, dropout: float = 0.2):
+class GPUResidualBlock(nn.Module):
+    def __init__(self, in_features: int, out_features: int, dropout: float = 0.2):
         super().__init__()
-        self.fc = nn.Linear(in_dim, out_dim)
-        self.norm = nn.LayerNorm(out_dim)
-        self.dropout = nn.Dropout(dropout)
+        self.net = nn.Sequential(
+            nn.Linear(in_features, out_features * 2, device=device),
+            nn.LayerNorm(out_features * 2, device=device),
+            nn.GELU(),
+            nn.Dropout(dropout),
+            nn.Linear(out_features * 2, out_features, device=device),
+            nn.LayerNorm(out_features, device=device)
+        )
+        self.shortcut = nn.Linear(in_features, out_features, device=device) if in_features != out_features else nn.Identity()
         self.activation = nn.GELU()
         
     def forward(self, x):
-        x = self.fc(x)
-        x = self.norm(x)
-        x = self.activation(x)
-        x = self.dropout(x)
-        return x
+        return self.activation(self.net(x) + self.shortcut(x))
 
-class CompactTransformer(nn.Module):
+class DeepGPUTransformer(nn.Module):
     def __init__(self, input_dim: int, config: ModelConfig, output_dim: int = 1):
         super().__init__()
-        print(f"[MODEL] Building CompactTransformer: input={input_dim}, output={output_dim}")
-        self.config = config
+        print(f"[MODEL] Building DeepGPUTransformer on MPS")
+        print(f"[MODEL] Architecture: {input_dim} -> {config.hidden_dims} -> {output_dim}")
         
-        self.input_projection = nn.Sequential(
-            nn.Linear(input_dim, config.hidden_dims[0]),
-            nn.LayerNorm(config.hidden_dims[0]),
-            nn.GELU(),
-            nn.Dropout(0.1)
-        )
+        layers = []
+        current_dim = input_dim
         
-        self.attention = SimplifiedAttention(config.hidden_dims[0])
+        layers.append(nn.Linear(current_dim, config.hidden_dims[0], device=device))
+        layers.append(nn.LayerNorm(config.hidden_dims[0], device=device))
+        layers.append(nn.GELU())
         
-        self.blocks = nn.ModuleList()
+        self.attention_layers = nn.ModuleList([
+            GPUOptimizedAttention(config.hidden_dims[0], num_heads=8),
+            GPUOptimizedAttention(config.hidden_dims[0], num_heads=8),
+            GPUOptimizedAttention(config.hidden_dims[0], num_heads=8)
+        ])
+        
+        self.residual_blocks = nn.ModuleList()
         for i in range(len(config.hidden_dims) - 1):
-            self.blocks.append(
-                LightweightBlock(
+            self.residual_blocks.append(
+                GPUResidualBlock(
                     config.hidden_dims[i],
                     config.hidden_dims[i + 1],
                     config.dropout_rates[i]
                 )
             )
         
-        self.output_head = nn.Linear(config.hidden_dims[-1], output_dim)
+        self.input_layers = nn.Sequential(*layers)
         
+        self.output_head = nn.Sequential(
+            nn.Linear(config.hidden_dims[-1], config.hidden_dims[-1] // 2, device=device),
+            nn.GELU(),
+            nn.Dropout(0.1),
+            nn.Linear(config.hidden_dims[-1] // 2, output_dim, device=device)
+        )
+        
+        self.to(device)
         self._init_weights()
-        print(f"[MODEL] Total parameters: {sum(p.numel() for p in self.parameters()):,}")
+        
+        total_params = sum(p.numel() for p in self.parameters())
+        print(f"[MODEL] Total parameters: {total_params:,} ({total_params * 4 / 1e9:.2f}GB FP32)")
+        log_gpu_memory("Model initialized")
     
     def _init_weights(self):
         for m in self.modules():
             if isinstance(m, nn.Linear):
-                nn.init.xavier_uniform_(m.weight, gain=0.5)
+                nn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='relu')
                 if m.bias is not None:
-                    nn.init.constant_(m.bias, 0)
+                    nn.init.zeros_(m.bias)
     
     def forward(self, x):
-        x = self.input_projection(x)
-        x = x + self.attention(x)
+        x = self.input_layers(x)
         
-        for block in self.blocks:
+        if x.dim() == 2:
+            x = x.unsqueeze(1)
+        
+        for attn_layer in self.attention_layers:
+            residual = x
+            x = attn_layer(x) + residual
+        
+        x = x.squeeze(1) if x.size(1) == 1 else x.mean(dim=1)
+        
+        for block in self.residual_blocks:
             x = block(x)
         
         return self.output_head(x)
 
-class SimpleMoE(nn.Module):
-    def __init__(self, input_dim: int, num_experts: int = 2, output_dim: int = 5):
+class GPUMixtureOfExperts(nn.Module):
+    def __init__(self, input_dim: int, num_experts: int = 8, hidden_dim: int = 512, output_dim: int = 5):
         super().__init__()
-        print(f"[MODEL] Building SimpleMoE: input={input_dim}, experts={num_experts}, output={output_dim}")
+        print(f"[MODEL] Building GPU MoE: {num_experts} experts")
         self.num_experts = num_experts
         
         self.experts = nn.ModuleList([
             nn.Sequential(
-                nn.Linear(input_dim, 128),
+                nn.Linear(input_dim, hidden_dim, device=device),
+                nn.LayerNorm(hidden_dim, device=device),
                 nn.GELU(),
                 nn.Dropout(0.2),
-                nn.Linear(128, output_dim)
+                nn.Linear(hidden_dim, hidden_dim // 2, device=device),
+                nn.GELU(),
+                nn.Linear(hidden_dim // 2, output_dim, device=device)
             ) for _ in range(num_experts)
         ])
         
-        self.gating = nn.Sequential(
-            nn.Linear(input_dim, num_experts),
-            nn.Softmax(dim=-1)
+        self.router = nn.Sequential(
+            nn.Linear(input_dim, hidden_dim, device=device),
+            nn.GELU(),
+            nn.Linear(hidden_dim, num_experts, device=device)
         )
         
-        print(f"[MODEL] MoE parameters: {sum(p.numel() for p in self.parameters()):,}")
+        self.to(device)
+        total_params = sum(p.numel() for p in self.parameters())
+        print(f"[MODEL] MoE parameters: {total_params:,} ({total_params * 4 / 1e9:.2f}GB FP32)")
+        log_gpu_memory("MoE initialized")
     
     def forward(self, x):
-        gates = self.gating(x)
-        expert_outputs = torch.stack([expert(x) for expert in self.experts], dim=1)
-        return torch.sum(gates.unsqueeze(-1) * expert_outputs, dim=1)
-
-class FeatureEngineering:
-    def __init__(self):
-        self.pattern_cache = {}
-        self.entropy_cache = {}
-        print("[FEATURES] Feature engineering initialized")
+        router_logits = self.router(x)
+        router_probs = F.softmax(router_logits, dim=-1)
         
-    @lru_cache(maxsize=10000)
-    def extract_advanced_features(self, hostname: str) -> np.ndarray:
+        expert_outputs = torch.stack([expert(x) for expert in self.experts], dim=1)
+        output = torch.einsum('bn,bnd->bd', router_probs, expert_outputs)
+        
+        return output
+
+class AdvancedFeatureEngineering:
+    def __init__(self):
+        self.feature_dim = 256
+        self.cache = {}
+        print(f"[FEATURES] Advanced feature engineering: {self.feature_dim} dimensions")
+        
+    @lru_cache(maxsize=50000)
+    def extract_features(self, hostname: str) -> np.ndarray:
         if not hostname:
-            return np.zeros(96)
+            return np.zeros(self.feature_dim)
         
         hostname = hostname.lower().strip()
         
-        structural_features = self._extract_structural_features(hostname)
-        semantic_features = self._extract_semantic_features(hostname)
-        statistical_features = self._extract_statistical_features(hostname)
+        features = []
         
-        return np.concatenate([
-            structural_features,
-            semantic_features,
-            statistical_features
-        ])[:96]
+        features.extend(self._structural_features(hostname))
+        features.extend(self._semantic_embeddings(hostname))
+        features.extend(self._statistical_features(hostname))
+        features.extend(self._pattern_features(hostname))
+        features.extend(self._ngram_features(hostname))
+        features.extend(self._positional_encoding(hostname))
+        
+        feature_array = np.array(features[:self.feature_dim])
+        if len(feature_array) < self.feature_dim:
+            feature_array = np.pad(feature_array, (0, self.feature_dim - len(feature_array)))
+        
+        return feature_array
     
-    def _extract_structural_features(self, hostname: str) -> np.ndarray:
-        features = [
-            len(hostname),
-            len(hostname.split('.')),
-            len(hostname.split('-')),
-            len(re.findall(r'\d+', hostname)),
-            len(re.findall(r'[a-z]+', hostname)),
-            len(set(hostname)),
+    def _structural_features(self, hostname: str) -> List[float]:
+        return [
+            len(hostname) / 100.0,
+            hostname.count('.') / 10.0,
+            hostname.count('-') / 10.0,
+            hostname.count('_') / 10.0,
+            len(re.findall(r'\d+', hostname)) / 10.0,
+            len(re.findall(r'[a-z]+', hostname)) / 10.0,
+            len(set(hostname)) / len(hostname) if hostname else 0,
             self._calculate_entropy(hostname),
-            max([len(x) for x in hostname.split('.')]) if '.' in hostname else len(hostname),
-            min([len(x) for x in hostname.split('.')]) if '.' in hostname else len(hostname),
-            hostname.count('.'),
-            hostname.count('-'),
-            hostname.count('_'),
-            len(re.findall(r'\d', hostname)),
-            len(re.findall(r'[a-z]', hostname)),
-            1 if hostname.startswith('srv') else 0,
-            1 if hostname.startswith('web') else 0,
-            1 if hostname.startswith('db') else 0,
-            1 if hostname.startswith('app') else 0,
-            1 if '.com' in hostname else 0,
-            1 if '.local' in hostname else 0
+            max([len(p) for p in hostname.split('.')]) / 50.0 if '.' in hostname else len(hostname) / 50.0,
+            min([len(p) for p in hostname.split('.')]) / 50.0 if '.' in hostname else len(hostname) / 50.0,
+            np.std([len(p) for p in hostname.split('.')]) / 10.0 if '.' in hostname and len(hostname.split('.')) > 1 else 0,
+            1.0 if hostname.startswith(('srv', 'server')) else 0.0,
+            1.0 if hostname.startswith(('web', 'www')) else 0.0,
+            1.0 if hostname.startswith(('db', 'database')) else 0.0,
+            1.0 if hostname.startswith(('app', 'api')) else 0.0,
+            1.0 if 'prod' in hostname else 0.0,
+            1.0 if 'dev' in hostname else 0.0,
+            1.0 if 'test' in hostname else 0.0,
+            1.0 if any(cloud in hostname for cloud in ['aws', 'azure', 'gcp']) else 0.0,
+            1.0 if any(dc in hostname for dc in ['dc', '1dc', 'fead']) else 0.0,
         ]
-        
-        return np.array(features[:32])
     
-    def _extract_semantic_features(self, hostname: str) -> np.ndarray:
-        semantic_patterns = {
-            'infrastructure': ['srv', 'server', 'host', 'node'],
-            'network': ['fw', 'firewall', 'router', 'switch', 'gateway'],
-            'database': ['db', 'sql', 'mongo', 'redis'],
-            'application': ['app', 'api', 'web', 'www'],
-            'security': ['ids', 'ips', 'ndr', 'waf'],
-            'environment': ['prod', 'dev', 'test', 'staging'],
-            'cloud': ['aws', 'azure', 'gcp', 'cloud'],
-            'datacenter': ['dc', '1dc', 'fead', 'fiserv']
+    def _semantic_embeddings(self, hostname: str) -> List[float]:
+        embeddings = []
+        
+        semantic_groups = {
+            'infrastructure': ['srv', 'server', 'host', 'node', 'instance', 'machine', 'vm', 'virtual'],
+            'network': ['fw', 'firewall', 'router', 'switch', 'gateway', 'proxy', 'lb', 'loadbalancer'],
+            'database': ['db', 'database', 'sql', 'mongo', 'redis', 'postgres', 'mysql', 'oracle'],
+            'application': ['app', 'api', 'web', 'www', 'service', 'microservice', 'backend', 'frontend'],
+            'security': ['ids', 'ips', 'ndr', 'waf', 'scanner', 'defender', 'guard', 'shield'],
+            'monitoring': ['monitor', 'metric', 'log', 'trace', 'observ', 'telemetry', 'apm', 'siem'],
+            'storage': ['storage', 'nas', 'san', 'backup', 'archive', 'vault', 'repo', 'registry'],
+            'compute': ['compute', 'worker', 'executor', 'processor', 'calculator', 'solver', 'runner']
         }
         
-        features = []
-        for category, patterns in semantic_patterns.items():
-            score = sum([1.0 if p in hostname else 0 for p in patterns])
-            features.append(score)
+        for category, keywords in semantic_groups.items():
+            scores = [2.0 / (1.0 + hostname.find(kw)) if kw in hostname else 0.0 for kw in keywords]
+            embeddings.extend([
+                max(scores) if scores else 0.0,
+                sum(scores) / len(scores) if scores else 0.0,
+                len([s for s in scores if s > 0]) / len(keywords)
+            ])
         
-        while len(features) < 32:
-            features.append(0)
-        
-        return np.array(features[:32])
+        return embeddings
     
-    def _extract_statistical_features(self, hostname: str) -> np.ndarray:
+    def _statistical_features(self, hostname: str) -> List[float]:
         features = []
         
-        numeric_sequences = re.findall(r'\d+', hostname)
-        if numeric_sequences:
-            numbers = [int(x) for x in numeric_sequences]
+        numbers = re.findall(r'\d+', hostname)
+        if numbers:
+            nums = [float(n) for n in numbers]
             features.extend([
-                np.mean(numbers),
-                np.std(numbers) if len(numbers) > 1 else 0,
-                np.min(numbers),
-                np.max(numbers),
-                len(numbers)
+                np.mean(nums) / 1000.0,
+                np.std(nums) / 1000.0 if len(nums) > 1 else 0.0,
+                np.min(nums) / 1000.0,
+                np.max(nums) / 1000.0,
+                np.median(nums) / 1000.0,
+                len(nums) / 10.0
             ])
         else:
-            features.extend([0, 0, 0, 0, 0])
+            features.extend([0.0] * 6)
         
-        alpha_sequences = re.findall(r'[a-z]+', hostname)
-        if alpha_sequences:
-            lengths = [len(x) for x in alpha_sequences]
+        alpha_parts = re.findall(r'[a-z]+', hostname)
+        if alpha_parts:
+            lengths = [len(p) for p in alpha_parts]
             features.extend([
-                np.mean(lengths),
-                np.std(lengths) if len(lengths) > 1 else 0,
-                np.min(lengths),
-                np.max(lengths),
-                len(alpha_sequences)
+                np.mean(lengths) / 20.0,
+                np.std(lengths) / 10.0 if len(lengths) > 1 else 0.0,
+                np.min(lengths) / 20.0,
+                np.max(lengths) / 20.0,
+                len(alpha_parts) / 10.0
             ])
         else:
-            features.extend([0, 0, 0, 0, 0])
+            features.extend([0.0] * 5)
         
-        pattern_hash = hashlib.md5(re.sub(r'\d+', 'X', hostname).encode()).hexdigest()
-        features.extend([int(pattern_hash[i:i+2], 16) / 255.0 for i in range(0, 16, 2)])
+        char_freq = Counter(hostname)
+        total_chars = len(hostname)
+        for char in 'abcdefghijklmnopqrstuvwxyz0123456789.-_':
+            features.append(char_freq.get(char, 0) / total_chars if total_chars > 0 else 0.0)
         
-        while len(features) < 32:
-            features.append(0)
+        return features
+    
+    def _pattern_features(self, hostname: str) -> List[float]:
+        pattern_sig = re.sub(r'\d+', 'NUM', hostname)
+        pattern_sig = re.sub(r'[a-z]{3,}', 'ALPHA', pattern_sig)
         
-        return np.array(features[:32])
+        pattern_hash = hashlib.sha256(pattern_sig.encode()).digest()
+        features = [float(b) / 255.0 for b in pattern_hash[:32]]
+        
+        pattern_types = {
+            'sequential': r'.*\d{2,}.*',
+            'hierarchical': r'.*\..*\..*',
+            'segmented': r'.*-.*-.*',
+            'mixed': r'.*[a-z]+\d+[a-z]+.*',
+            'prefixed': r'^[a-z]{2,5}\d+.*',
+            'suffixed': r'.*\d+[a-z]{2,5}$'
+        }
+        
+        for ptype, regex in pattern_types.items():
+            features.append(1.0 if re.match(regex, hostname) else 0.0)
+        
+        return features
+    
+    def _ngram_features(self, hostname: str, n_values=[2, 3, 4]) -> List[float]:
+        features = []
+        
+        for n in n_values:
+            if len(hostname) >= n:
+                ngrams = [hostname[i:i+n] for i in range(len(hostname) - n + 1)]
+                ngram_counts = Counter(ngrams)
+                
+                top_ngrams = ngram_counts.most_common(10)
+                for ngram, count in top_ngrams:
+                    features.append(count / len(ngrams))
+                
+                for _ in range(10 - len(top_ngrams)):
+                    features.append(0.0)
+            else:
+                features.extend([0.0] * 10)
+        
+        return features
+    
+    def _positional_encoding(self, hostname: str, d_model: int = 64) -> List[float]:
+        features = []
+        max_len = 100
+        
+        for pos in range(min(len(hostname), max_len)):
+            for i in range(d_model // 2):
+                angle = pos / (10000 ** (2 * i / d_model))
+                features.append(np.sin(angle))
+                features.append(np.cos(angle))
+                
+                if len(features) >= d_model:
+                    break
+            
+            if len(features) >= d_model:
+                break
+        
+        while len(features) < d_model:
+            features.append(0.0)
+        
+        return features[:d_model]
     
     def _calculate_entropy(self, s: str) -> float:
-        if s in self.entropy_cache:
-            return self.entropy_cache[s]
-        
         if not s:
-            return 0
-        
+            return 0.0
         prob = [float(s.count(c)) / len(s) for c in set(s)]
-        entropy = -sum([p * np.log2(p) for p in prob if p > 0])
-        self.entropy_cache[s] = entropy
-        return entropy
+        return -sum([p * np.log2(p) for p in prob if p > 0])
 
 class AO1VisibilityPredictor:
     def __init__(self, db_path: str = 'universal_cmdb.db'):
-        print("\n" + "="*60)
-        print("[INIT] AO1 Visibility Predictor v2.0")
-        print("="*60)
+        print("\n" + "="*80)
+        print("AO1 VISIBILITY PREDICTOR - FULL GPU MODE")
+        print("="*80)
+        
+        self.db_path = db_path
+        self.model_dir = 'models'
+        self.model_version = "3.0-GPU"
+        self.trained = False
+        self.training_metrics = {}
+        
+        self.config = ModelConfig()
+        self.feature_engineer = AdvancedFeatureEngineering()
+        self.feature_scaler = RobustScaler()
         
         self.existence_model = None
         self.visibility_model = None
-        self.feature_engineer = FeatureEngineering()
-        self.feature_scaler = RobustScaler()
-        self.trained = False
-        self.db_path = db_path
-        self.model_version = "2.0.0"
-        self.training_metrics = {}
-        self.model_dir = 'models'
-        self.config = ModelConfig()
         
         os.makedirs(self.model_dir, exist_ok=True)
-        log_memory("Initialization")
         
+        log_gpu_memory("Initialization")
+        print(f"[INIT] Feature dimensions: {self.feature_engineer.feature_dim}")
+        print(f"[INIT] Batch size: {self.config.batch_size}")
+        print(f"[INIT] Model directory: {self.model_dir}")
+    
     @property
     def models_exist(self) -> bool:
-        required_files = [
+        required = [
             f'{self.model_dir}/existence_model.pth',
             f'{self.model_dir}/visibility_model.pth',
             f'{self.model_dir}/feature_scaler.pkl',
             f'{self.model_dir}/feature_engineer.pkl'
         ]
-        exists = all(os.path.exists(f) for f in required_files)
-        print(f"[CHECK] Models exist: {exists}")
+        exists = all(os.path.exists(f) for f in required)
+        print(f"[CHECK] Model files exist: {exists}")
         return exists
     
     def initialize_models(self):
-        print("\n[INIT] Starting model initialization...")
+        print("\n[INIT] Initializing models...")
+        log_gpu_memory("Before model init")
         
         if self.models_exist:
-            print("[INIT] Found existing models, attempting to load...")
+            print("[INIT] Found saved models, loading...")
             if self.load_models():
-                print("[SUCCESS] Models loaded successfully!")
+                print("[SUCCESS] Models loaded from disk")
                 return True
-            print("[WARNING] Failed to load models, will train new ones...")
+            print("[WARNING] Failed to load, will train new models")
         
-        print("[INIT] Training new models from scratch...")
+        print("[INIT] Training new models...")
         self.train_models()
         return self.trained
     
@@ -347,126 +458,106 @@ class AO1VisibilityPredictor:
             return None
     
     def get_cmdb_data(self) -> pd.DataFrame:
-        print("[DATA] Fetching CMDB data...")
+        print("\n[DATA] Loading CMDB data...")
         conn = self.get_db_connection()
         if not conn:
             return pd.DataFrame()
         
         query = """
-        SELECT 
-            host, business_unit, region, country, data_center, cloud_region,
-            system_classification, infrastructure_type, cio, apm,
-            logging_in_splunk, logging_in_gso, present_in_cmdb, 
-            edr_coverage, tanium_coverage, dlp_agent_coverage,
-            first_seen, last_updated, data_quality_score, source_count
+        SELECT host, business_unit, region, country, data_center, cloud_region,
+               system_classification, infrastructure_type, cio, apm,
+               logging_in_splunk, logging_in_gso, present_in_cmdb,
+               edr_coverage, tanium_coverage, dlp_agent_coverage,
+               first_seen, last_updated, data_quality_score, source_count
         FROM universal_cmdb
         """
         
         try:
             df = conn.execute(query).df()
-            print(f"[DATA] Loaded {len(df)} records from universal_cmdb")
-            print(f"[DATA] Columns: {', '.join(df.columns[:5])}...")
+            print(f"[DATA] Loaded {len(df)} records")
             print(f"[DATA] Memory usage: {df.memory_usage(deep=True).sum() / 1e6:.2f} MB")
             return df
         except Exception as e:
-            print(f"[ERROR] Failed to fetch CMDB data: {e}")
+            print(f"[ERROR] Query failed: {e}")
             traceback.print_exc()
             return pd.DataFrame()
         finally:
             conn.close()
-            print("[DB] Connection closed")
     
     def prepare_training_data(self, df: pd.DataFrame) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
-        print(f"[PREP] Preparing training data from {len(df)} records...")
+        print(f"\n[PREP] Preparing {len(df)} records for training...")
         start_time = time.time()
         
-        features, existence_labels, visibility_labels = [], [], []
+        features = []
+        existence_labels = []
+        visibility_labels = []
         
-        for idx, (_, row) in enumerate(df.iterrows()):
-            if idx % 100 == 0:
-                print(f"[PREP] Processing record {idx}/{len(df)}...")
+        for idx, row in df.iterrows():
+            if idx % 500 == 0:
+                print(f"[PREP] Processing {idx}/{len(df)} records...")
+                log_gpu_memory(f"Record {idx}")
             
-            hostname_features = self.feature_engineer.extract_advanced_features(row['host'])
+            hostname_features = self.feature_engineer.extract_features(row['host'])
+            context_features = self._extract_context_features(row)
             
-            contextual_features = self._extract_contextual_features(row)
-            combined_features = np.concatenate([hostname_features, contextual_features])
+            combined = np.concatenate([hostname_features, context_features])
+            features.append(combined)
             
-            features.append(combined_features)
-            
-            existence_score = self._calculate_existence_score(row)
-            existence_labels.append(existence_score)
-            
-            visibility_class = self._calculate_visibility_class(row)
-            visibility_labels.append(visibility_class)
+            existence_labels.append(self._calculate_existence_score(row))
+            visibility_labels.append(self._calculate_visibility_class(row))
         
-        print(f"[PREP] Data preparation completed in {time.time() - start_time:.2f}s")
-        print(f"[PREP] Feature shape: {len(features)} x {len(features[0])}")
-        print(f"[PREP] Existence scores - Mean: {np.mean(existence_labels):.3f}, Std: {np.std(existence_labels):.3f}")
-        print(f"[PREP] Visibility classes - Distribution: {Counter(visibility_labels)}")
+        X = np.array(features, dtype=np.float32)
+        y_exist = np.array(existence_labels, dtype=np.float32)
+        y_vis = np.array(visibility_labels, dtype=np.int64)
         
-        return np.array(features), np.array(existence_labels), np.array(visibility_labels)
+        print(f"[PREP] Completed in {time.time() - start_time:.1f}s")
+        print(f"[PREP] Features shape: {X.shape}")
+        print(f"[PREP] Existence distribution: mean={y_exist.mean():.3f}, std={y_exist.std():.3f}")
+        print(f"[PREP] Visibility distribution: {Counter(y_vis)}")
+        
+        return X, y_exist, y_vis
     
-    def _extract_contextual_features(self, row) -> np.ndarray:
+    def _extract_context_features(self, row) -> np.ndarray:
         features = []
         
-        categorical_mappings = {
-            'business_unit': self._encode_categorical(row.get('business_unit', ''), 4),
-            'region': self._encode_categorical(row.get('region', ''), 4),
-            'infrastructure_type': self._encode_categorical(row.get('infrastructure_type', ''), 4),
-            'system_classification': self._encode_categorical(row.get('system_classification', ''), 4)
-        }
+        for col in ['business_unit', 'region', 'infrastructure_type', 'system_classification']:
+            val = str(row.get(col, '')).lower() if pd.notna(row.get(col)) else ''
+            hash_val = int(hashlib.md5(val.encode()).hexdigest()[:8], 16)
+            for i in range(8):
+                features.append(np.sin(hash_val / (10000 ** (2 * i / 8))))
         
-        for key, encoded in categorical_mappings.items():
-            features.extend(encoded)
-        
-        numerical_features = [
-            float(row.get('data_quality_score', 0)),
-            np.log1p(float(row.get('source_count', 0))),
+        features.extend([
+            float(row.get('data_quality_score', 0)) / 10.0,
+            np.log1p(float(row.get('source_count', 0))) / 10.0,
             1.0 if pd.notna(row.get('cio')) else 0.0,
             1.0 if pd.notna(row.get('apm')) else 0.0,
-            self._calculate_temporal_feature(row.get('first_seen')),
-            self._calculate_temporal_feature(row.get('last_updated'))
-        ]
+        ])
         
-        features.extend(numerical_features)
-        
-        while len(features) < 32:
-            features.append(0)
-        
-        return np.array(features[:32])
-    
-    def _encode_categorical(self, value: str, dim: int) -> np.ndarray:
-        if pd.isna(value) or value == '':
-            return np.zeros(dim)
-        
-        hash_val = int(hashlib.md5(str(value).encode()).hexdigest()[:8], 16)
-        encoding = np.zeros(dim)
-        for i in range(dim):
-            encoding[i] = np.sin(hash_val / (10000 ** (2 * i / dim)))
-        return encoding
-    
-    def _calculate_temporal_feature(self, date_val) -> float:
-        if pd.isna(date_val):
-            return 0.0
-        try:
-            if isinstance(date_val, str):
-                date_obj = datetime.fromisoformat(date_val)
+        for col in ['first_seen', 'last_updated']:
+            if pd.notna(row.get(col)):
+                try:
+                    date = datetime.fromisoformat(str(row.get(col)))
+                    days_ago = (datetime.now() - date).days
+                    features.append(1.0 / (1.0 + np.log1p(days_ago)))
+                except:
+                    features.append(0.0)
             else:
-                date_obj = date_val
-            days_ago = (datetime.now() - date_obj).days
-            return 1.0 / (1.0 + np.log1p(days_ago))
-        except:
-            return 0.0
+                features.append(0.0)
+        
+        while len(features) < 64:
+            features.append(0.0)
+        
+        return np.array(features[:64], dtype=np.float32)
     
     def _calculate_existence_score(self, row) -> float:
+        score = 0.0
         weights = {
-            'logging_in_splunk': 0.4,
-            'present_in_cmdb': 0.3,
+            'logging_in_splunk': 0.35,
+            'present_in_cmdb': 0.35,
             'edr_coverage': 0.2,
             'tanium_coverage': 0.1
         }
         
-        score = 0.0
         for key, weight in weights.items():
             if key == 'edr_coverage':
                 if pd.notna(row.get(key)) and 'crowdstrike' in str(row.get(key)).lower():
@@ -488,190 +579,183 @@ class AO1VisibilityPredictor:
         return 0
     
     def train_models(self):
-        print("\n" + "="*60)
-        print("[TRAIN] Starting model training")
-        print("="*60)
+        print("\n" + "="*80)
+        print("TRAINING PHASE - FULL GPU UTILIZATION")
+        print("="*80)
         
-        print("[TRAIN] Loading CMDB data...")
+        aggressive_gpu_cleanup()
+        log_gpu_memory("Training start")
+        
         df = self.get_cmdb_data()
-        
         if df.empty:
-            print("[ERROR] No data available for training!")
+            print("[ERROR] No training data available")
             return
         
-        print(f"[TRAIN] Preparing features from {len(df)} records...")
-        X, existence_y, visibility_y = self.prepare_training_data(df)
+        X, y_exist, y_vis = self.prepare_training_data(df)
         
-        if len(X) == 0:
-            print("[ERROR] No features extracted!")
-            return
-        
-        print("[TRAIN] Scaling features...")
+        print("\n[SCALE] Scaling features...")
         X_scaled = self.feature_scaler.fit_transform(X)
-        print(f"[TRAIN] Scaled feature stats - Mean: {X_scaled.mean():.3f}, Std: {X_scaled.std():.3f}")
+        X_scaled = X_scaled.astype(np.float32)
         
-        input_size = X_scaled.shape[1]
-        print(f"[TRAIN] Input dimension: {input_size}")
+        input_dim = X_scaled.shape[1]
+        print(f"[MODEL] Input dimension: {input_dim}")
         
-        print("[TRAIN] Building models...")
-        self.existence_model = CompactTransformer(input_size, self.config, output_dim=1).to(device)
-        self.visibility_model = SimpleMoE(input_size, num_experts=2, output_dim=5).to(device)
+        print("\n[BUILD] Creating GPU models...")
+        self.existence_model = DeepGPUTransformer(input_dim, self.config, output_dim=1).to(device)
+        self.visibility_model = GPUMixtureOfExperts(input_dim, num_experts=8, hidden_dim=512, output_dim=5).to(device)
         
-        log_memory("Models created")
+        log_gpu_memory("Models created")
         
-        self._train_with_cross_validation(X_scaled, existence_y, visibility_y)
+        self._train_with_gpu_optimization(X_scaled, y_exist, y_vis)
         
         self.trained = True
         print("\n[SUCCESS] Training completed!")
-        log_memory("Training completed")
+        log_gpu_memory("Training finished")
     
-    def _train_with_cross_validation(self, X: np.ndarray, existence_y: np.ndarray, visibility_y: np.ndarray):
-        print(f"\n[CV] Starting 3-fold cross-validation...")
-        kfold = StratifiedKFold(n_splits=3, shuffle=True, random_state=42)
+    def _train_with_gpu_optimization(self, X: np.ndarray, y_exist: np.ndarray, y_vis: np.ndarray):
+        print("\n[TRAIN] GPU-optimized training starting...")
         
-        best_existence_loss = float('inf')
-        best_visibility_loss = float('inf')
+        X_tensor = torch.tensor(X, dtype=torch.float32, device=device)
+        y_exist_tensor = torch.tensor(y_exist.reshape(-1, 1), dtype=torch.float32, device=device)
+        y_vis_tensor = torch.tensor(y_vis, dtype=torch.long, device=device)
         
-        for fold, (train_idx, val_idx) in enumerate(kfold.split(X, visibility_y)):
-            print(f"\n[CV] Training fold {fold + 1}/3")
-            print(f"[CV] Train size: {len(train_idx)}, Val size: {len(val_idx)}")
+        log_gpu_memory("Data on GPU")
+        
+        dataset = torch.utils.data.TensorDataset(X_tensor, y_exist_tensor, y_vis_tensor)
+        
+        train_size = int(0.8 * len(dataset))
+        val_size = len(dataset) - train_size
+        train_dataset, val_dataset = torch.utils.data.random_split(dataset, [train_size, val_size])
+        
+        train_loader = torch.utils.data.DataLoader(
+            train_dataset,
+            batch_size=self.config.batch_size,
+            shuffle=True,
+            num_workers=0,
+            pin_memory=False
+        )
+        
+        val_loader = torch.utils.data.DataLoader(
+            val_dataset,
+            batch_size=self.config.batch_size * 2,
+            shuffle=False,
+            num_workers=0,
+            pin_memory=False
+        )
+        
+        print(f"[TRAIN] Train batches: {len(train_loader)}, Val batches: {len(val_loader)}")
+        
+        optimizer1 = optim.AdamW(self.existence_model.parameters(), lr=0.0003, weight_decay=1e-5, betas=(0.9, 0.999))
+        optimizer2 = optim.AdamW(self.visibility_model.parameters(), lr=0.0003, weight_decay=1e-5, betas=(0.9, 0.999))
+        
+        scheduler1 = optim.lr_scheduler.OneCycleLR(
+            optimizer1,
+            max_lr=0.001,
+            total_steps=len(train_loader) * 100,
+            pct_start=0.1,
+            anneal_strategy='cos'
+        )
+        scheduler2 = optim.lr_scheduler.OneCycleLR(
+            optimizer2,
+            max_lr=0.001,
+            total_steps=len(train_loader) * 100,
+            pct_start=0.1,
+            anneal_strategy='cos'
+        )
+        
+        criterion1 = nn.BCEWithLogitsLoss().to(device)
+        criterion2 = nn.CrossEntropyLoss(label_smoothing=0.1).to(device)
+        
+        best_val_loss = float('inf')
+        patience = 0
+        max_patience = 20
+        
+        print("\n[TRAIN] Starting training epochs...")
+        
+        for epoch in range(100):
+            epoch_start = time.time()
             
-            clear_memory()
-            log_memory(f"Fold {fold + 1} start")
+            self.existence_model.train()
+            self.visibility_model.train()
             
-            X_train, X_val = X[train_idx], X[val_idx]
-            existence_y_train, existence_y_val = existence_y[train_idx], existence_y[val_idx]
-            visibility_y_train, visibility_y_val = visibility_y[train_idx], visibility_y[val_idx]
+            train_loss1_total = 0
+            train_loss2_total = 0
             
-            train_dataset = torch.utils.data.TensorDataset(
-                torch.FloatTensor(X_train),
-                torch.FloatTensor(existence_y_train.reshape(-1, 1)),
-                torch.LongTensor(visibility_y_train)
-            )
-            
-            val_dataset = torch.utils.data.TensorDataset(
-                torch.FloatTensor(X_val),
-                torch.FloatTensor(existence_y_val.reshape(-1, 1)),
-                torch.LongTensor(visibility_y_val)
-            )
-            
-            train_loader = torch.utils.data.DataLoader(
-                train_dataset, batch_size=self.config.batch_size, shuffle=True, pin_memory=False
-            )
-            
-            val_loader = torch.utils.data.DataLoader(
-                val_dataset, batch_size=self.config.batch_size, shuffle=False, pin_memory=False
-            )
-            
-            print(f"[CV] Batches - Train: {len(train_loader)}, Val: {len(val_loader)}")
-            
-            optimizer1 = optim.AdamW(self.existence_model.parameters(), lr=0.001, weight_decay=1e-4)
-            optimizer2 = optim.AdamW(self.visibility_model.parameters(), lr=0.001, weight_decay=1e-4)
-            
-            scheduler1 = optim.lr_scheduler.CosineAnnealingLR(optimizer1, T_max=30)
-            scheduler2 = optim.lr_scheduler.CosineAnnealingLR(optimizer2, T_max=30)
-            
-            criterion1 = nn.BCEWithLogitsLoss()
-            criterion2 = nn.CrossEntropyLoss(label_smoothing=0.1)
-            
-            for epoch in range(30):
-                epoch_start = time.time()
-                
-                self.existence_model.train()
-                self.visibility_model.train()
-                
-                train_loss1, train_loss2 = 0, 0
-                batch_count = 0
-                
-                for batch_idx, (batch_x, batch_exist_y, batch_vis_y) in enumerate(train_loader):
-                    batch_x = batch_x.to(device)
-                    batch_exist_y = batch_exist_y.to(device)
-                    batch_vis_y = batch_vis_y.to(device)
-                    
-                    optimizer1.zero_grad(set_to_none=True)
-                    exist_outputs = self.existence_model(batch_x)
-                    loss1 = criterion1(exist_outputs, batch_exist_y)
-                    loss1.backward()
-                    torch.nn.utils.clip_grad_norm_(self.existence_model.parameters(), 1.0)
-                    optimizer1.step()
-                    train_loss1 += loss1.item()
-                    
-                    optimizer2.zero_grad(set_to_none=True)
-                    vis_outputs = self.visibility_model(batch_x)
-                    loss2 = criterion2(vis_outputs, batch_vis_y)
-                    loss2.backward()
-                    torch.nn.utils.clip_grad_norm_(self.visibility_model.parameters(), 1.0)
-                    optimizer2.step()
-                    train_loss2 += loss2.item()
-                    
-                    batch_count += 1
-                    
-                    del batch_x, batch_exist_y, batch_vis_y, exist_outputs, vis_outputs
-                    
-                    if batch_idx % 10 == 0:
-                        clear_memory()
-                
-                avg_train_loss1 = train_loss1 / batch_count
-                avg_train_loss2 = train_loss2 / batch_count
-                
+            for batch_idx, (batch_x, batch_y_exist, batch_y_vis) in enumerate(train_loader):
+                optimizer1.zero_grad(set_to_none=True)
+                exist_out = self.existence_model(batch_x)
+                loss1 = criterion1(exist_out, batch_y_exist)
+                loss1.backward()
+                torch.nn.utils.clip_grad_norm_(self.existence_model.parameters(), 1.0)
+                optimizer1.step()
                 scheduler1.step()
+                train_loss1_total += loss1.item()
+                
+                optimizer2.zero_grad(set_to_none=True)
+                vis_out = self.visibility_model(batch_x)
+                loss2 = criterion2(vis_out, batch_y_vis)
+                loss2.backward()
+                torch.nn.utils.clip_grad_norm_(self.visibility_model.parameters(), 1.0)
+                optimizer2.step()
                 scheduler2.step()
+                train_loss2_total += loss2.item()
                 
-                if epoch % 5 == 0:
-                    val_loss1, val_loss2 = self._validate(val_loader, criterion1, criterion2)
-                    
-                    print(f"[EPOCH {epoch:2d}] Time: {time.time() - epoch_start:.1f}s | "
-                          f"Train Loss: {avg_train_loss1:.4f}/{avg_train_loss2:.4f} | "
-                          f"Val Loss: {val_loss1:.4f}/{val_loss2:.4f} | "
-                          f"LR: {scheduler1.get_last_lr()[0]:.6f}")
-                    
-                    if val_loss1 < best_existence_loss:
-                        best_existence_loss = val_loss1
-                        print(f"[SAVE] New best existence model (loss: {val_loss1:.4f})")
-                        self.save_models()
-                    
-                    if val_loss2 < best_visibility_loss:
-                        best_visibility_loss = val_loss2
-                        print(f"[SAVE] New best visibility model (loss: {val_loss2:.4f})")
-                    
-                    log_memory(f"Epoch {epoch}")
-                
-                clear_memory()
+                if batch_idx % 20 == 0 and batch_idx > 0:
+                    mem = log_gpu_memory(f"Epoch {epoch}, Batch {batch_idx}")
+                    if mem > 16.5:
+                        aggressive_gpu_cleanup()
             
-            print(f"[CV] Fold {fold + 1} completed")
-            log_memory(f"Fold {fold + 1} completed")
+            avg_train_loss1 = train_loss1_total / len(train_loader)
+            avg_train_loss2 = train_loss2_total / len(train_loader)
+            
+            if epoch % 5 == 0:
+                val_loss1, val_loss2 = self._validate_gpu(val_loader, criterion1, criterion2)
+                total_val_loss = val_loss1 + val_loss2
+                
+                current_lr = scheduler1.get_last_lr()[0]
+                epoch_time = time.time() - epoch_start
+                
+                print(f"[EPOCH {epoch:3d}] Time: {epoch_time:.1f}s | "
+                      f"Train: {avg_train_loss1:.4f}/{avg_train_loss2:.4f} | "
+                      f"Val: {val_loss1:.4f}/{val_loss2:.4f} | "
+                      f"LR: {current_lr:.6f}")
+                
+                if total_val_loss < best_val_loss:
+                    best_val_loss = total_val_loss
+                    patience = 0
+                    print(f"[SAVE] New best model (val_loss: {total_val_loss:.4f})")
+                    self.save_models()
+                else:
+                    patience += 1
+                
+                if patience >= max_patience:
+                    print(f"[STOP] Early stopping at epoch {epoch}")
+                    break
+                
+                aggressive_gpu_cleanup()
         
-        print(f"\n[CV] Cross-validation completed")
-        print(f"[CV] Best losses - Existence: {best_existence_loss:.4f}, Visibility: {best_visibility_loss:.4f}")
+        print(f"\n[TRAIN] Completed - Best validation loss: {best_val_loss:.4f}")
     
-    def _validate(self, val_loader, criterion1, criterion2) -> Tuple[float, float]:
+    def _validate_gpu(self, val_loader, criterion1, criterion2) -> Tuple[float, float]:
         self.existence_model.eval()
         self.visibility_model.eval()
         
-        total_loss1, total_loss2 = 0.0, 0.0
-        batch_count = 0
+        total_loss1 = 0
+        total_loss2 = 0
         
         with torch.no_grad():
-            for batch_x, batch_exist_y, batch_vis_y in val_loader:
-                batch_x = batch_x.to(device)
-                batch_exist_y = batch_exist_y.to(device)
-                batch_vis_y = batch_vis_y.to(device)
+            for batch_x, batch_y_exist, batch_y_vis in val_loader:
+                exist_out = self.existence_model(batch_x)
+                vis_out = self.visibility_model(batch_x)
                 
-                exist_outputs = self.existence_model(batch_x)
-                vis_outputs = self.visibility_model(batch_x)
-                
-                total_loss1 += criterion1(exist_outputs, batch_exist_y).item()
-                total_loss2 += criterion2(vis_outputs, batch_vis_y).item()
-                batch_count += 1
-                
-                del batch_x, batch_exist_y, batch_vis_y, exist_outputs, vis_outputs
+                total_loss1 += criterion1(exist_out, batch_y_exist).item()
+                total_loss2 += criterion2(vis_out, batch_y_vis).item()
         
-        clear_memory()
-        return total_loss1 / batch_count, total_loss2 / batch_count
+        return total_loss1 / len(val_loader), total_loss2 / len(val_loader)
     
     def save_models(self):
         try:
-            print(f"[SAVE] Saving models to {self.model_dir}/...")
+            print(f"[SAVE] Saving models to {self.model_dir}/")
             torch.save(self.existence_model.state_dict(), f'{self.model_dir}/existence_model.pth')
             torch.save(self.visibility_model.state_dict(), f'{self.model_dir}/visibility_model.pth')
             with open(f'{self.model_dir}/feature_scaler.pkl', 'wb') as f:
@@ -680,172 +764,175 @@ class AO1VisibilityPredictor:
                 pickle.dump(self.feature_engineer, f)
             print("[SAVE] Models saved successfully")
         except Exception as e:
-            print(f"[ERROR] Failed to save models: {e}")
-            traceback.print_exc()
+            print(f"[ERROR] Save failed: {e}")
     
     def load_models(self) -> bool:
         try:
-            print(f"[LOAD] Loading models from {self.model_dir}/...")
+            print("[LOAD] Loading models from disk...")
             
-            if not self.models_exist:
-                print("[ERROR] Model files not found")
-                return False
-            
-            sample_features = self.feature_engineer.extract_advanced_features("sample-host")
-            contextual_features = np.zeros(32)
-            input_size = len(np.concatenate([sample_features, contextual_features]))
-            
-            print(f"[LOAD] Initializing models with input size: {input_size}")
-            
-            self.existence_model = CompactTransformer(input_size, self.config, output_dim=1).to(device)
-            self.visibility_model = SimpleMoE(input_size, num_experts=2, output_dim=5).to(device)
-            
-            print("[LOAD] Loading model weights...")
-            self.existence_model.load_state_dict(torch.load(f'{self.model_dir}/existence_model.pth', map_location=device))
-            self.visibility_model.load_state_dict(torch.load(f'{self.model_dir}/visibility_model.pth', map_location=device))
-            
-            print("[LOAD] Loading scalers and encoders...")
             with open(f'{self.model_dir}/feature_scaler.pkl', 'rb') as f:
                 self.feature_scaler = pickle.load(f)
             with open(f'{self.model_dir}/feature_engineer.pkl', 'rb') as f:
                 self.feature_engineer = pickle.load(f)
             
+            sample = self.feature_engineer.extract_features("test")
+            context = np.zeros(64)
+            input_dim = len(np.concatenate([sample, context]))
+            
+            self.existence_model = DeepGPUTransformer(input_dim, self.config, output_dim=1).to(device)
+            self.visibility_model = GPUMixtureOfExperts(input_dim, num_experts=8, hidden_dim=512, output_dim=5).to(device)
+            
+            self.existence_model.load_state_dict(
+                torch.load(f'{self.model_dir}/existence_model.pth', map_location=device)
+            )
+            self.visibility_model.load_state_dict(
+                torch.load(f'{self.model_dir}/visibility_model.pth', map_location=device)
+            )
+            
             self.trained = True
-            print("[SUCCESS] Models loaded successfully")
-            log_memory("Models loaded")
+            print("[LOAD] Models loaded successfully")
+            log_gpu_memory("Models loaded")
             return True
             
         except Exception as e:
-            print(f"[ERROR] Failed to load models: {e}")
+            print(f"[ERROR] Load failed: {e}")
             traceback.print_exc()
             return False
     
     def predict_missing_assets(self, business_unit_filter: Optional[str] = None) -> List[Dict]:
-        print(f"\n[PREDICT] Starting prediction (filter: {business_unit_filter or 'None'})")
+        print(f"\n[PREDICT] Starting prediction (BU filter: {business_unit_filter or 'None'})")
         
         if not self.trained:
-            print("[PREDICT] Models not trained, attempting to initialize...")
+            print("[PREDICT] Models not ready, initializing...")
             self.initialize_models()
             if not self.trained:
-                print("[ERROR] Unable to initialize models")
                 return []
         
-        print("[PREDICT] Fetching CMDB data...")
+        aggressive_gpu_cleanup()
+        log_gpu_memory("Prediction start")
+        
         df = self.get_cmdb_data()
         if df.empty:
-            print("[ERROR] No CMDB data available")
             return []
         
         if business_unit_filter:
             df = df[df['business_unit'] == business_unit_filter]
-            print(f"[PREDICT] Filtered to {len(df)} records for BU: {business_unit_filter}")
         
-        print("[PREDICT] Analyzing hostname patterns...")
-        hostname_patterns = self._analyze_advanced_patterns(df)
-        print(f"[PREDICT] Found {len(hostname_patterns)} patterns")
-        
-        predicted_assets = []
-        existing_hostnames = set(df['host'].values)
+        patterns = self._analyze_patterns(df)
+        existing = set(df['host'].values)
+        predictions = []
         
         self.existence_model.eval()
         self.visibility_model.eval()
         
-        pattern_limit = min(10, len(hostname_patterns))
-        print(f"[PREDICT] Processing top {pattern_limit} patterns...")
+        print(f"[PREDICT] Processing {min(20, len(patterns))} patterns...")
         
         with torch.no_grad():
-            for pattern_idx, pattern in enumerate(hostname_patterns[:pattern_limit]):
-                if pattern_idx % 5 == 0:
-                    print(f"[PREDICT] Processing pattern {pattern_idx + 1}/{pattern_limit}")
-                    clear_memory()
+            for idx, pattern in enumerate(patterns[:20]):
+                if idx % 5 == 0:
+                    log_gpu_memory(f"Pattern {idx}")
                 
-                candidates = self._generate_candidates(pattern, existing_hostnames)
+                candidates = self._generate_candidates(pattern, existing)
                 
-                for candidate in candidates[:30]:
-                    features = self._prepare_prediction_features(candidate, business_unit_filter)
-                    features_scaled = self.feature_scaler.transform([features])
-                    features_tensor = torch.FloatTensor(features_scaled).to(device)
+                batch_features = []
+                batch_candidates = []
+                
+                for candidate in candidates[:50]:
+                    features = self._prepare_features(candidate, business_unit_filter)
+                    batch_features.append(features)
+                    batch_candidates.append(candidate)
                     
-                    exist_logits = self.existence_model(features_tensor)
-                    existence_prob = torch.sigmoid(exist_logits).cpu().item()
-                    
-                    vis_outputs = self.visibility_model(features_tensor)
-                    visibility_probs = F.softmax(vis_outputs, dim=-1).cpu().numpy()[0]
-                    
-                    if existence_prob > 0.65:
-                        predicted_assets.append(self._create_prediction_entry(
-                            candidate, existence_prob, visibility_probs, pattern, business_unit_filter
-                        ))
-                    
-                    del features_tensor, exist_logits, vis_outputs
+                    if len(batch_features) >= 32:
+                        self._process_batch(
+                            batch_features, batch_candidates, predictions,
+                            pattern, business_unit_filter
+                        )
+                        batch_features = []
+                        batch_candidates = []
+                
+                if batch_features:
+                    self._process_batch(
+                        batch_features, batch_candidates, predictions,
+                        pattern, business_unit_filter
+                    )
         
-        clear_memory()
-        print(f"[PREDICT] Generated {len(predicted_assets)} predictions")
+        aggressive_gpu_cleanup()
         
-        sorted_assets = sorted(predicted_assets, key=lambda x: x['existence_probability'] * x['visibility_risk_score'], reverse=True)[:75]
-        print(f"[PREDICT] Returning top {len(sorted_assets)} predictions")
+        sorted_predictions = sorted(
+            predictions,
+            key=lambda x: x['existence_probability'] * x['visibility_risk_score'],
+            reverse=True
+        )[:100]
         
-        return sorted_assets
+        print(f"[PREDICT] Returning {len(sorted_predictions)} predictions")
+        return sorted_predictions
     
-    def _analyze_advanced_patterns(self, df: pd.DataFrame) -> List[Dict]:
-        pattern_clusters = defaultdict(list)
+    def _process_batch(self, features, candidates, predictions, pattern, bu_filter):
+        features_array = np.array(features, dtype=np.float32)
+        features_scaled = self.feature_scaler.transform(features_array)
+        features_tensor = torch.tensor(features_scaled, dtype=torch.float32, device=device)
+        
+        exist_logits = self.existence_model(features_tensor)
+        exist_probs = torch.sigmoid(exist_logits).cpu().numpy()
+        
+        vis_outputs = self.visibility_model(features_tensor)
+        vis_probs = F.softmax(vis_outputs, dim=-1).cpu().numpy()
+        
+        for i, candidate in enumerate(candidates):
+            if exist_probs[i] > 0.6:
+                predictions.append(self._create_prediction(
+                    candidate, exist_probs[i].item(), vis_probs[i],
+                    pattern, bu_filter
+                ))
+    
+    def _analyze_patterns(self, df: pd.DataFrame) -> List[Dict]:
+        patterns = defaultdict(list)
         
         for hostname in df['host'].dropna():
-            pattern_sig = self._extract_pattern_signature(hostname)
-            pattern_clusters[pattern_sig].append(hostname)
+            sig = re.sub(r'\d+', 'NUM', hostname.lower())
+            sig = re.sub(r'[a-z]{3,}', 'ALPHA', sig)
+            patterns[sig].append(hostname)
         
-        patterns = []
-        for sig, hostnames in pattern_clusters.items():
-            if len(hostnames) >= 2:
-                patterns.append({
+        result = []
+        for sig, hosts in patterns.items():
+            if len(hosts) >= 2:
+                result.append({
                     'signature': sig,
-                    'pattern': self._reconstruct_pattern(sig),
-                    'examples': hostnames[:5],
-                    'count': len(hostnames),
-                    'entropy': np.mean([self.feature_engineer._calculate_entropy(h) for h in hostnames])
+                    'pattern': sig.replace('NUM', 'XXX').replace('ALPHA', 'name'),
+                    'count': len(hosts),
+                    'examples': hosts[:3]
                 })
         
-        return sorted(patterns, key=lambda x: x['count'] * max(x['entropy'], 0.1), reverse=True)
-    
-    def _extract_pattern_signature(self, hostname: str) -> str:
-        sig = re.sub(r'\d+', 'NUM', hostname.lower())
-        sig = re.sub(r'[a-z]{3,}', 'ALPHA', sig)
-        return sig
-    
-    def _reconstruct_pattern(self, signature: str) -> str:
-        return signature.replace('NUM', 'XXX').replace('ALPHA', 'name')
+        return sorted(result, key=lambda x: x['count'], reverse=True)
     
     def _generate_candidates(self, pattern: Dict, existing: set) -> List[str]:
         candidates = []
-        base_pattern = pattern['pattern']
+        base = pattern['pattern']
         
-        for i in range(1, 50):
-            for padding in [2, 3]:
-                candidate = base_pattern.replace('XXX', str(i).zfill(padding))
-                candidate = candidate.replace('name', self._generate_name_variant())
+        for i in range(1, 100):
+            for pad in [2, 3]:
+                candidate = base.replace('XXX', str(i).zfill(pad))
+                candidate = candidate.replace('name', np.random.choice(['srv', 'app', 'db', 'web']))
                 
                 if candidate not in existing:
                     candidates.append(candidate)
         
-        return candidates
+        return candidates[:50]
     
-    def _generate_name_variant(self) -> str:
-        variants = ['srv', 'app', 'db', 'web', 'api', 'node']
-        return np.random.choice(variants)
-    
-    def _prepare_prediction_features(self, hostname: str, business_unit: Optional[str]) -> np.ndarray:
-        hostname_features = self.feature_engineer.extract_advanced_features(hostname)
+    def _prepare_features(self, hostname: str, bu: Optional[str]) -> np.ndarray:
+        host_features = self.feature_engineer.extract_features(hostname)
+        context_features = np.zeros(64, dtype=np.float32)
         
-        contextual_features = np.zeros(32)
-        if business_unit:
-            contextual_features[:4] = self._encode_categorical(business_unit, 4)
-        contextual_features[16:22] = [0.7, 1.6, 0.8, 0.5, 0.9, 0.3]
+        if bu:
+            hash_val = int(hashlib.md5(bu.encode()).hexdigest()[:8], 16)
+            for i in range(8):
+                context_features[i] = np.sin(hash_val / (10000 ** (2 * i / 8)))
         
-        return np.concatenate([hostname_features, contextual_features])
+        return np.concatenate([host_features, context_features])
     
-    def _create_prediction_entry(self, hostname: str, exist_prob: float, 
-                                 vis_probs: np.ndarray, pattern: Dict, 
-                                 business_unit: Optional[str]) -> Dict:
+    def _create_prediction(self, hostname: str, exist_prob: float,
+                          vis_probs: np.ndarray, pattern: Dict,
+                          bu: Optional[str]) -> Dict:
         return {
             'predicted_hostname': hostname,
             'existence_probability': float(exist_prob),
@@ -853,220 +940,149 @@ class AO1VisibilityPredictor:
             'gso_probability': float(vis_probs[2] + vis_probs[4]),
             'cmdb_probability': float(sum(vis_probs[1:])),
             'pattern_signature': pattern['signature'],
-            'business_unit': business_unit or 'Unknown',
-            'predicted_role': self._classify_advanced_role(hostname),
-            'predicted_log_types': self._predict_advanced_log_types(hostname),
-            'visibility_risk_score': self._calculate_advanced_risk(hostname, exist_prob, vis_probs),
-            'confidence_interval': self._calculate_confidence_interval(exist_prob, vis_probs)
+            'business_unit': bu or 'Unknown',
+            'predicted_role': self._classify_role(hostname),
+            'visibility_risk_score': self._calculate_risk(hostname, exist_prob, vis_probs)
         }
     
-    def _classify_advanced_role(self, hostname: str) -> str:
-        hostname_lower = hostname.lower()
-        
-        role_scores = {}
-        role_patterns = {
-            'Database Server': ['db', 'sql', 'mongo', 'redis'],
-            'Web Server': ['web', 'www', 'nginx', 'apache'],
-            'Application Server': ['app', 'api', 'service'],
-            'Security Infrastructure': ['fw', 'firewall', 'ids', 'ips'],
-            'Network Infrastructure': ['router', 'switch', 'gateway'],
-            'Compute Node': ['node', 'compute', 'worker']
-        }
-        
-        for role, patterns in role_patterns.items():
-            score = sum([1.0 if p in hostname_lower else 0 for p in patterns])
-            role_scores[role] = score
-        
-        return max(role_scores, key=role_scores.get) if max(role_scores.values()) > 0 else 'General Server'
+    def _classify_role(self, hostname: str) -> str:
+        h = hostname.lower()
+        if any(x in h for x in ['db', 'sql', 'mongo']):
+            return 'Database'
+        elif any(x in h for x in ['web', 'www', 'nginx']):
+            return 'Web Server'
+        elif any(x in h for x in ['app', 'api']):
+            return 'Application'
+        elif any(x in h for x in ['fw', 'firewall']):
+            return 'Security'
+        return 'Server'
     
-    def _predict_advanced_log_types(self, hostname: str) -> List[str]:
-        role = self._classify_advanced_role(hostname)
+    def _calculate_risk(self, hostname: str, exist_prob: float, vis_probs: np.ndarray) -> float:
+        h = hostname.lower()
+        risk = 0.0
         
-        log_mapping = {
-            'Database Server': ['Database Audit', 'Query Logs', 'Transaction Logs'],
-            'Web Server': ['Access Logs', 'Error Logs', 'SSL/TLS Logs'],
-            'Application Server': ['Application Logs', 'Performance Metrics', 'API Logs'],
-            'Security Infrastructure': ['Security Events', 'Threat Intelligence', 'Flow Logs'],
-            'Network Infrastructure': ['Network Flow', 'SNMP Traps', 'Routing Logs'],
-            'Compute Node': ['System Logs', 'Resource Metrics', 'Job Logs']
-        }
+        if 'prod' in h:
+            risk += 0.3
+        if any(x in h for x in ['db', 'database']):
+            risk += 0.25
+        if any(x in h for x in ['fw', 'security']):
+            risk += 0.2
         
-        return log_mapping.get(role, ['System Logs', 'Security Events'])
-    
-    def _calculate_advanced_risk(self, hostname: str, exist_prob: float, vis_probs: np.ndarray) -> float:
-        hostname_lower = hostname.lower()
+        risk += exist_prob * 0.2
+        risk += vis_probs[0] * 0.3
         
-        risk_weights = {
-            'prod': 0.8,
-            'database': 0.7,
-            'security': 0.75,
-            'critical': 0.9
-        }
-        
-        base_risk = sum([weight for keyword, weight in risk_weights.items() if keyword in hostname_lower])
-        base_risk = min(base_risk, 1.0)
-        
-        visibility_gap = vis_probs[0]
-        
-        combined_risk = (base_risk * 0.4 + exist_prob * 0.3 + visibility_gap * 0.3)
-        
-        return min(combined_risk, 1.0)
-    
-    def _calculate_confidence_interval(self, exist_prob: float, vis_probs: np.ndarray) -> Tuple[float, float]:
-        std_dev = np.std(vis_probs) * 0.1
-        lower = max(0, exist_prob - 1.96 * std_dev)
-        upper = min(1, exist_prob + 1.96 * std_dev)
-        return (float(lower), float(upper))
+        return min(risk, 1.0)
 
-print("\n" + "="*60)
-print("STARTING AO1 VISIBILITY PREDICTOR SERVICE")
-print("="*60)
+print("\n" + "="*80)
+print("AO1 VISIBILITY PREDICTOR - GPU SERVICE")
+print("="*80)
 
 app = Flask(__name__)
-ao1_predictor = AO1VisibilityPredictor()
+predictor = AO1VisibilityPredictor()
 
 @app.route('/api/train-visibility-model')
 def train_visibility_model():
     try:
-        print(f"\n[API] /train-visibility-model called")
-        threading.Thread(target=ao1_predictor.train_models, daemon=True).start()
+        print(f"\n[API] Training requested")
+        log_gpu_memory("API call")
+        threading.Thread(target=predictor.train_models, daemon=True).start()
         return jsonify({
             'status': 'training_started',
-            'message': 'Advanced AO1 visibility model training initiated',
-            'device': str(device),
-            'model_version': ao1_predictor.model_version
+            'device': 'MPS GPU',
+            'model_version': predictor.model_version
         })
     except Exception as e:
-        print(f"[ERROR] Training failed: {e}")
-        traceback.print_exc()
+        print(f"[ERROR] {e}")
         return jsonify({'error': str(e)}), 500
 
 @app.route('/api/predict-missing-visibility')
 def predict_missing_visibility():
     try:
-        print(f"\n[API] /predict-missing-visibility called")
-        if not ao1_predictor.trained:
-            return jsonify({
-                'error': 'Models not trained yet',
-                'message': 'Please train the models first using /api/train-visibility-model'
-            }), 503
-            
-        predictions = ao1_predictor.predict_missing_assets()
-        print(f"[API] Returning {len(predictions)} predictions")
+        print(f"\n[API] Prediction requested")
+        if not predictor.trained:
+            return jsonify({'error': 'Models not trained'}), 503
+        predictions = predictor.predict_missing_assets()
         return jsonify(predictions)
     except Exception as e:
-        print(f"[ERROR] Prediction failed: {e}")
-        traceback.print_exc()
+        print(f"[ERROR] {e}")
         return jsonify({'error': str(e)}), 500
 
 @app.route('/api/predict-missing-visibility/<business_unit>')
 def predict_missing_visibility_bu(business_unit):
     try:
-        print(f"\n[API] /predict-missing-visibility/{business_unit} called")
-        if not ao1_predictor.trained:
-            return jsonify({
-                'error': 'Models not trained yet',
-                'message': 'Please train the models first using /api/train-visibility-model'
-            }), 503
-            
-        predictions = ao1_predictor.predict_missing_assets(business_unit)
-        print(f"[API] Returning {len(predictions)} predictions for BU: {business_unit}")
+        print(f"\n[API] Prediction for BU: {business_unit}")
+        if not predictor.trained:
+            return jsonify({'error': 'Models not trained'}), 503
+        predictions = predictor.predict_missing_assets(business_unit)
         return jsonify(predictions)
     except Exception as e:
-        print(f"[ERROR] Prediction failed: {e}")
-        traceback.print_exc()
+        print(f"[ERROR] {e}")
         return jsonify({'error': str(e)}), 500
 
 @app.route('/api/visibility-model-status')
 def visibility_model_status():
-    print(f"\n[API] /visibility-model-status called")
-    log_memory("Status check")
+    mem = torch.mps.driver_allocated_memory() / 1e9
     return jsonify({
-        'trained': ao1_predictor.trained,
-        'device': str(device),
-        'model_version': ao1_predictor.model_version,
-        'training_metrics': ao1_predictor.training_metrics,
-        'architecture': 'Compact Transformer + Simple MoE',
-        'feature_dimensions': 128,
-        'memory_allocated_gb': torch.mps.driver_allocated_memory() / 1e9 if device.type == 'mps' else 0,
-        'last_training': datetime.now().isoformat() if ao1_predictor.trained else None
+        'trained': predictor.trained,
+        'device': 'Apple Silicon GPU (MPS)',
+        'gpu_memory_gb': mem,
+        'gpu_memory_free_gb': 18.13 - mem,
+        'model_version': predictor.model_version,
+        'architecture': 'DeepGPUTransformer + MoE'
     })
 
 @app.route('/api/visibility-gap-analysis')
 def visibility_gap_analysis():
     try:
-        print(f"\n[API] /visibility-gap-analysis called")
-        if not ao1_predictor.trained:
-            return jsonify({
-                'error': 'Models not trained yet',
-                'message': 'Please initialize models first'
-            }), 503
+        print(f"\n[API] Gap analysis requested")
+        if not predictor.trained:
+            return jsonify({'error': 'Models not trained'}), 503
             
-        predictions = ao1_predictor.predict_missing_assets()
-        
-        if not predictions:
-            return jsonify({'error': 'No predictions available'}), 204
+        predictions = predictor.predict_missing_assets()
         
         analysis = {
-            'critical_visibility_gaps': [p for p in predictions if p['visibility_risk_score'] > 0.8][:20],
-            'high_confidence_predictions': [p for p in predictions if p['existence_probability'] > 0.85][:20],
-            'security_infrastructure_gaps': [p for p in predictions if 'Security' in p['predicted_role']][:15],
-            'database_gaps': [p for p in predictions if 'Database' in p['predicted_role']][:15],
-            'total_predicted_assets': len(predictions),
-            'avg_existence_probability': float(np.mean([p['existence_probability'] for p in predictions])),
-            'risk_distribution': {
-                'critical': len([p for p in predictions if p['visibility_risk_score'] > 0.8]),
-                'high': len([p for p in predictions if 0.6 < p['visibility_risk_score'] <= 0.8]),
-                'medium': len([p for p in predictions if 0.4 < p['visibility_risk_score'] <= 0.6]),
-                'low': len([p for p in predictions if p['visibility_risk_score'] <= 0.4])
-            },
-            'role_distribution': dict(Counter([p['predicted_role'] for p in predictions]).most_common()),
-            'pattern_diversity': len(set([p['pattern_signature'] for p in predictions]))
+            'critical_gaps': [p for p in predictions if p['visibility_risk_score'] > 0.7][:25],
+            'high_confidence': [p for p in predictions if p['existence_probability'] > 0.8][:25],
+            'total_predicted': len(predictions),
+            'avg_confidence': np.mean([p['existence_probability'] for p in predictions]) if predictions else 0
         }
         
-        print(f"[API] Analysis complete - {analysis['total_predicted_assets']} assets analyzed")
         return jsonify(analysis)
     except Exception as e:
-        print(f"[ERROR] Analysis failed: {e}")
-        traceback.print_exc()
+        print(f"[ERROR] {e}")
         return jsonify({'error': str(e)}), 500
 
 @app.route('/api/load-models')
 def load_models():
     try:
-        print(f"\n[API] /load-models called")
-        success = ao1_predictor.load_models()
+        print(f"\n[API] Model loading requested")
+        success = predictor.load_models()
         return jsonify({
             'status': 'success' if success else 'failed',
-            'message': 'Models loaded successfully' if success else 'Failed to load models',
-            'architecture': 'Compact Transformer + Simple MoE' if success else None
+            'message': 'Models loaded' if success else 'Load failed'
         })
     except Exception as e:
-        print(f"[ERROR] Model loading failed: {e}")
-        traceback.print_exc()
+        print(f"[ERROR] {e}")
         return jsonify({'error': str(e)}), 500
 
 if __name__ == '__main__':
-    print("\n" + "="*60)
-    print("INITIALIZING AO1 VISIBILITY PREDICTOR")
-    print(f"Version: {ao1_predictor.model_version}")
-    print(f"Device: {device}")
-    print(f"Architecture: Compact Transformer + Simple MoE")
-    print("="*60 + "\n")
+    print("\n[START] Initializing service...")
+    print(f"[START] GPU Memory Limit: 18.13 GB")
+    print(f"[START] Target Usage: 17.0 GB")
     
-    log_memory("Startup")
+    log_gpu_memory("Startup")
     
-    print("[INIT] Attempting to initialize models...")
-    ao1_predictor.initialize_models()
+    predictor.initialize_models()
     
-    if not ao1_predictor.trained:
-        print("\n[WARNING] AI models not ready. Training required.")
-        print("[WARNING] Use /api/train-visibility-model endpoint to start training")
+    if predictor.trained:
+        print("\n[READY] Models loaded and ready")
     else:
-        print("\n[SUCCESS] AI models ready! Advanced inference available.")
+        print("\n[READY] Service ready - models need training")
+        print("[READY] Use /api/train-visibility-model to train")
     
-    print("\n[SERVER] Starting Flask application...")
-    print("[SERVER] Listening on http://0.0.0.0:5001")
-    print("="*60 + "\n")
+    log_gpu_memory("Ready")
+    
+    print("\n[SERVER] Starting on http://0.0.0.0:5001")
+    print("="*80 + "\n")
     
     app.run(debug=True, port=5001, host='0.0.0.0')
