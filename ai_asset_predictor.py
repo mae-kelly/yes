@@ -103,7 +103,9 @@ class AO1VisibilityPredictor:
         
     def get_db_connection(self) -> Optional[duckdb.DuckDBPyConnection]:
         try:
-            return duckdb.connect(self.db_path)
+            conn = duckdb.connect()
+            conn.execute(f"ATTACH '{self.db_path}' AS universal_cmdb")
+            return conn
         except Exception as e:
             print(f"Database connection error: {e}")
             return None
@@ -186,9 +188,9 @@ class AO1VisibilityPredictor:
             fqdn, business_unit, region, country, data_center, cloud_region,
             system_classification, infrastructure_type, cio, apm,
             logging_in_splunk, logging_in_gso, present_in_cmdb, 
-            edr_coverage, sas_coverage, tanium_coverage, dlp_agent_coverage,
+            edr_coverage, tanium_coverage, dlp_agent_coverage,
             first_seen, last_updated, data_quality_score, source_count
-        FROM "universal_cmdb"."main"."universal_cmdb"
+        FROM universal_cmdb.main.universal_cmdb
         WHERE fqdn IS NOT NULL AND fqdn != ''
             AND data_quality_score > 3.0
         ORDER BY data_quality_score DESC
@@ -203,8 +205,10 @@ class AO1VisibilityPredictor:
         except Exception as e:
             print(f"Error fetching CMDB data: {e}")
             try:
-                tables = conn.execute("SHOW TABLES").df()
-                print(f"Available tables: {tables['name'].tolist() if not tables.empty else 'No tables found'}")
+                tables = conn.execute("SHOW ALL TABLES").df()
+                print(f"Available tables: {tables}")
+                schemas = conn.execute("SELECT * FROM information_schema.schemata").df()
+                print(f"Available schemas: {schemas}")
             except Exception as e2:
                 print(f"Error listing tables: {e2}")
             conn.close()
