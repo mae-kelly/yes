@@ -1,4 +1,4 @@
-# /src/ml/ai_asset_predictor.py
+# /src/ml/ao1_missing_asset_predictor.py
 
 import torch
 import torch.nn as nn
@@ -9,13 +9,14 @@ import re
 import duckdb
 from sklearn.preprocessing import StandardScaler
 from sklearn.model_selection import train_test_split
-from flask import Flask, jsonify
+from flask import Flask, jsonify, request
 import threading
 from datetime import datetime
 import os
 import pickle
-from typing import List, Dict, Optional
-from collections import Counter
+import gc
+from typing import List, Dict, Optional, Tuple
+from collections import Counter, defaultdict
 
 if torch.backends.mps.is_available():
     device = torch.device("mps")
@@ -67,16 +68,21 @@ class LogVisibilityPredictor(nn.Module):
     def forward(self, x):
         return self.layers(x)
 
-class AO1VisibilityPredictor:
+class AO1MissingAssetPredictor:
     def __init__(self, db_path: str = 'universal_cmdb.db'):
         self.hostname_net = None
         self.log_visibility_net = None
         self.feature_scaler = StandardScaler()
         self.trained = False
         self.db_path = db_path
-        self.model_version = "1.0.1"
+        self.model_version = "AO1-Missing-Asset-2025.1"
         self.training_metrics = {}
         self.model_dir = 'models'
+        
+        # Pattern discovery settings
+        self.min_pattern_frequency = 3
+        self.max_gap_size = 1000
+        self.confidence_threshold = 0.75
         
         os.makedirs(self.model_dir, exist_ok=True)
         
@@ -154,6 +160,7 @@ class AO1VisibilityPredictor:
             edr_coverage, tanium_coverage, dlp_agent_coverage,
             first_seen, last_updated, data_quality_score, source_count
         FROM universal_cmdb
+        LIMIT 400000
         """
         
         try:
@@ -165,6 +172,125 @@ class AO1VisibilityPredictor:
             return pd.DataFrame()
         finally:
             conn.close()
+
+    def discover_hostname_patterns(self, df: pd.DataFrame) -> List[Dict]:
+        print("Discovering hostname patterns...")
+        
+        pattern_groups = defaultdict(list)
+        
+        for hostname in df['host'].dropna():
+            hostname = str(hostname).lower().strip()
+            if hostname and re.search(r'\d', hostname):
+                pattern_template = re.sub(r'\d+', 'XXX', hostname)
+                
+                numbers = []
+                for match in re.finditer(r'\d+', hostname):
+                    numbers.append({
+                        'value': int(match.group()),
+                        'position': match.start(),
+                        'original': match.group()
+                    })
+                
+                pattern_groups[pattern_template].append({
+                    'hostname': hostname,
+                    'template': pattern_template,
+                    'numbers': numbers
+                })
+        
+        discovered_patterns = []
+        
+        for template, hostnames in pattern_groups.items():
+            if len(hostnames) >= self.min_pattern_frequency:
+                print(f"   Pattern: {template} ({len(hostnames)} hosts)")
+                
+                number_sequences = defaultdict(list)
+                
+                for host_data in hostnames:
+                    for i, num_data in enumerate(host_data['numbers']):
+                        number_sequences[i].append(num_data['value'])
+                
+                pattern_info = {
+                    'template': template,
+                    'host_count': len(hostnames),
+                    'sample_hosts': [h['hostname'] for h in hostnames[:5]],
+                    'number_sequences': {},
+                    'potential_gaps': []
+                }
+                
+                for pos, values in number_sequences.items():
+                    values = sorted(set(values))
+                    if len(values) > 2:
+                        min_val, max_val = min(values), max(values)
+                        
+                        missing = []
+                        for i in range(min_val, min(max_val + 1, min_val + self.max_gap_size)):
+                            if i not in values:
+                                missing.append(i)
+                        
+                        pattern_info['number_sequences'][pos] = {
+                            'existing_values': values,
+                            'range': (min_val, max_val),
+                            'missing_values': missing[:100],
+                            'density': len(values) / (max_val - min_val + 1) if max_val > min_val else 1.0
+                        }
+                
+                if pattern_info['number_sequences']:
+                    discovered_patterns.append(pattern_info)
+        
+        print(f"Discovered {len(discovered_patterns)} viable hostname patterns")
+        return discovered_patterns
+
+    def generate_missing_hostnames(self, patterns: List[Dict]) -> List[Dict]:
+        print("Generating potential missing hostnames...")
+        
+        missing_candidates = []
+        
+        for pattern in patterns:
+            template = pattern['template']
+            
+            if len(pattern['number_sequences']) == 1:
+                pos = list(pattern['number_sequences'].keys())[0]
+                seq_info = pattern['number_sequences'][pos]
+                
+                for missing_num in seq_info['missing_values'][:50]:
+                    candidate_hostname = template.replace('XXX', str(missing_num), 1)
+                    
+                    missing_candidates.append({
+                        'hostname': candidate_hostname,
+                        'pattern_template': template,
+                        'missing_numbers': [missing_num],
+                        'pattern_density': seq_info['density'],
+                        'existing_hosts_count': pattern['host_count'],
+                        'sample_existing': pattern['sample_hosts'][:3]
+                    })
+            
+            elif len(pattern['number_sequences']) == 2:
+                positions = list(pattern['number_sequences'].keys())
+                seq1 = pattern['number_sequences'][positions[0]]
+                seq2 = pattern['number_sequences'][positions[1]]
+                
+                missing1 = seq1['missing_values'][:20]
+                missing2 = seq2['missing_values'][:20] 
+                
+                for num1 in missing1:
+                    for num2 in missing2:
+                        candidate_hostname = template
+                        replacements = [str(num1), str(num2)]
+                        
+                        for replacement in replacements:
+                            candidate_hostname = candidate_hostname.replace('XXX', replacement, 1)
+                        
+                        missing_candidates.append({
+                            'hostname': candidate_hostname,
+                            'pattern_template': template,
+                            'missing_numbers': [num1, num2],
+                            'pattern_density': (seq1['density'] + seq2['density']) / 2,
+                            'existing_hosts_count': pattern['host_count'],
+                            'sample_existing': pattern['sample_hosts'][:3]
+                        })
+        
+        print(f"Generated {len(missing_candidates)} missing hostname candidates")
+        return missing_candidates
     
     def prepare_training_data(self, df: pd.DataFrame) -> tuple:
         features, existence_labels, visibility_labels = [], [], []
@@ -172,7 +298,7 @@ class AO1VisibilityPredictor:
         print(f"Processing {len(df)} records...")
         
         for idx, row in df.iterrows():
-            if idx % 10000 == 0:
+            if idx % 50000 == 0:
                 print(f"Processed {idx} records...")
                 
             hostname_features = self.extract_hostname_features(row['host']) if pd.notna(row['host']) else self.extract_hostname_features("")
@@ -238,18 +364,14 @@ class AO1VisibilityPredictor:
             return
         
         X_train, X_val, existence_y_train, existence_y_val, visibility_y_train, visibility_y_val = train_test_split(
-            X, existence_y, visibility_y, test_size=0.2, random_state=42
+            X, existence_y, visibility_y, test_size=0.15, random_state=42
         )
+        
+        del X, existence_y, visibility_y
+        gc.collect()
         
         X_train_scaled = self.feature_scaler.fit_transform(X_train)
         X_val_scaled = self.feature_scaler.transform(X_val)
-        
-        X_train_tensor = torch.FloatTensor(X_train_scaled).to(device)
-        X_val_tensor = torch.FloatTensor(X_val_scaled).to(device)
-        existence_y_train_tensor = torch.FloatTensor(existence_y_train.reshape(-1, 1)).to(device)
-        existence_y_val_tensor = torch.FloatTensor(existence_y_val.reshape(-1, 1)).to(device)
-        visibility_y_train_tensor = torch.LongTensor(visibility_y_train).to(device)
-        visibility_y_val_tensor = torch.LongTensor(visibility_y_val).to(device)
         
         input_size = X_train_scaled.shape[1]
         self.hostname_net = HostnamePatternNet(input_size).to(device)
@@ -261,71 +383,93 @@ class AO1VisibilityPredictor:
         criterion1 = nn.BCELoss()
         criterion2 = nn.CrossEntropyLoss()
         
-        scheduler1 = optim.lr_scheduler.ReduceLROnPlateau(optimizer1, patience=15, factor=0.7)
-        scheduler2 = optim.lr_scheduler.ReduceLROnPlateau(optimizer2, patience=15, factor=0.7)
+        batch_size = 8192
+        epochs = 150
         
         print(f"Training models on {device}...")
+        print(f"Training: {len(X_train_scaled):,} samples, Validation: {len(X_val_scaled):,} samples")
+        print(f"Batch size: {batch_size}, Epochs: {epochs}")
         
-        best_val_loss = float('inf')
-        patience_counter = 0
-        
-        for epoch in range(300):
+        for epoch in range(epochs):
             self.hostname_net.train()
             self.log_visibility_net.train()
             
-            optimizer1.zero_grad()
-            existence_outputs = self.hostname_net(X_train_tensor)
-            loss1 = criterion1(existence_outputs, existence_y_train_tensor)
-            loss1.backward()
-            torch.nn.utils.clip_grad_norm_(self.hostname_net.parameters(), 1.0)
-            optimizer1.step()
+            total_loss = 0.0
             
-            optimizer2.zero_grad()
-            visibility_outputs = self.log_visibility_net(X_train_tensor)
-            loss2 = criterion2(visibility_outputs, visibility_y_train_tensor)
-            loss2.backward()
-            torch.nn.utils.clip_grad_norm_(self.log_visibility_net.parameters(), 1.0)
-            optimizer2.step()
+            for i in range(0, len(X_train_scaled), batch_size):
+                batch_end = min(i + batch_size, len(X_train_scaled))
+                
+                X_batch = torch.FloatTensor(X_train_scaled[i:batch_end]).to(device)
+                existence_y_batch = torch.FloatTensor(existence_y_train[i:batch_end]).reshape(-1, 1).to(device)
+                visibility_y_batch = torch.LongTensor(visibility_y_train[i:batch_end]).to(device)
+                
+                optimizer1.zero_grad()
+                existence_outputs = self.hostname_net(X_batch)
+                loss1 = criterion1(existence_outputs, existence_y_batch)
+                loss1.backward()
+                torch.nn.utils.clip_grad_norm_(self.hostname_net.parameters(), 1.0)
+                optimizer1.step()
+                
+                optimizer2.zero_grad()
+                visibility_outputs = self.log_visibility_net(X_batch)
+                loss2 = criterion2(visibility_outputs, visibility_y_batch)
+                loss2.backward()
+                torch.nn.utils.clip_grad_norm_(self.log_visibility_net.parameters(), 1.0)
+                optimizer2.step()
+                
+                total_loss += loss1.item() + loss2.item()
+                
+                del X_batch, existence_y_batch, visibility_y_batch
+                
+                if i % (batch_size * 20) == 0:
+                    gc.collect()
             
-            if epoch % 10 == 0:
+            if epoch % 25 == 0:
                 self.hostname_net.eval()
                 self.log_visibility_net.eval()
                 
-                with torch.no_grad():
-                    val_existence_outputs = self.hostname_net(X_val_tensor)
-                    val_loss1 = criterion1(val_existence_outputs, existence_y_val_tensor)
-                    
-                    val_visibility_outputs = self.log_visibility_net(X_val_tensor)
-                    val_loss2 = criterion2(val_visibility_outputs, visibility_y_val_tensor)
-                    
-                    total_val_loss = val_loss1 + val_loss2
-                    
-                    print(f'Epoch {epoch}, Train: {loss1.item():.4f}/{loss2.item():.4f}, Val: {val_loss1.item():.4f}/{val_loss2.item():.4f}')
-                    
-                    if total_val_loss < best_val_loss:
-                        best_val_loss = total_val_loss
-                        patience_counter = 0
-                        self.save_models()
-                    else:
-                        patience_counter += 1
-                    
-                    if patience_counter >= 25:
-                        print("Early stopping triggered!")
-                        break
+                val_loss1_total, val_loss2_total = 0.0, 0.0
+                val_batches = 0
                 
-                scheduler1.step(val_loss1)
-                scheduler2.step(val_loss2)
+                with torch.no_grad():
+                    for i in range(0, len(X_val_scaled), batch_size):
+                        batch_end = min(i + batch_size, len(X_val_scaled))
+                        
+                        X_val_batch = torch.FloatTensor(X_val_scaled[i:batch_end]).to(device)
+                        existence_y_val_batch = torch.FloatTensor(existence_y_val[i:batch_end]).reshape(-1, 1).to(device)
+                        visibility_y_val_batch = torch.LongTensor(visibility_y_val[i:batch_end]).to(device)
+                        
+                        val_existence_outputs = self.hostname_net(X_val_batch)
+                        val_loss1 = criterion1(val_existence_outputs, existence_y_val_batch)
+                        
+                        val_visibility_outputs = self.log_visibility_net(X_val_batch)
+                        val_loss2 = criterion2(val_visibility_outputs, visibility_y_val_batch)
+                        
+                        val_loss1_total += val_loss1.item()
+                        val_loss2_total += val_loss2.item()
+                        val_batches += 1
+                        
+                        del X_val_batch, existence_y_val_batch, visibility_y_val_batch
+                
+                avg_train_loss = total_loss / (len(X_train_scaled) / batch_size)
+                avg_val_loss1 = val_loss1_total / val_batches
+                avg_val_loss2 = val_loss2_total / val_batches
+                
+                print(f'Epoch {epoch}/{epochs}, Train Loss: {avg_train_loss:.4f}, Val Loss: {avg_val_loss1:.4f}/{avg_val_loss2:.4f}')
+                gc.collect()
         
         self.trained = True
+        self.save_models()
+        
         self.training_metrics = {
-            'final_losses': [loss1.item(), loss2.item(), val_loss1.item(), val_loss2.item()],
-            'training_records': len(X_train),
-            'validation_records': len(X_val),
-            'epochs_trained': epoch + 1,
+            'final_losses': [avg_train_loss, avg_val_loss1, avg_val_loss2],
+            'training_records': len(X_train_scaled),
+            'validation_records': len(X_val_scaled),
+            'epochs_trained': epochs,
             'device': str(device)
         }
         
-        print(f"Training completed! Final losses - Existence: {loss1.item():.4f}, Visibility: {loss2.item():.4f}")
+        print(f"Training completed! Final train loss: {avg_train_loss:.4f}")
     
     def save_models(self):
         try:
@@ -333,6 +477,7 @@ class AO1VisibilityPredictor:
             torch.save(self.log_visibility_net.state_dict(), f'{self.model_dir}/log_visibility_net.pth')
             with open(f'{self.model_dir}/feature_scaler.pkl', 'wb') as f:
                 pickle.dump(self.feature_scaler, f)
+            print("Models saved successfully!")
         except Exception as e:
             print(f"Error saving models: {e}")
     
@@ -369,53 +514,78 @@ class AO1VisibilityPredictor:
                 print("Unable to train models - no data available or training failed")
                 return []
         
+        print("Starting missing asset discovery...")
         df = self.get_cmdb_data()
         if df.empty:
+            print("No CMDB data available!")
             return []
         
         if business_unit_filter:
             df = df[df['business_unit'] == business_unit_filter]
+            print(f"Filtered to business unit: {business_unit_filter} ({len(df)} records)")
         
-        hostname_patterns = self.analyze_naming_patterns(df)
+        existing_hostnames = set(df['host'].dropna().str.lower())
+        print(f"Found {len(existing_hostnames):,} existing hosts")
+        
+        hostname_patterns = self.discover_hostname_patterns(df)
+        if not hostname_patterns:
+            print("No hostname patterns discovered!")
+            return []
+        
+        missing_candidates = self.generate_missing_hostnames(hostname_patterns)
+        if not missing_candidates:
+            print("No missing hostname candidates generated!")
+            return []
+        
+        new_candidates = [c for c in missing_candidates if c['hostname'] not in existing_hostnames]
+        print(f"{len(new_candidates):,} potential missing assets identified")
+        
         predicted_assets = []
-        existing_hostnames = set(df['host'].values)
+        self.hostname_net.eval()
+        self.log_visibility_net.eval()
         
-        for pattern in hostname_patterns[:15]:
-            for i in range(1, 150):
-                for padding in [2, 3, 4]:
-                    potential_hostname = pattern['pattern'].replace('XXX', str(i).zfill(padding))
-                    
-                    if potential_hostname not in existing_hostnames:
-                        features = self.extract_hostname_features(potential_hostname)
-                        additional_features = [
-                            1 if business_unit_filter else 0,
-                            1, 1, 0, 1, 0,
-                            7.5, 3, 1
-                        ]
-                        combined_features = np.concatenate([features, additional_features])
-                        combined_features_scaled = self.feature_scaler.transform([combined_features])
-                        
-                        with torch.no_grad():
-                            features_tensor = torch.FloatTensor(combined_features_scaled).to(device)
-                            existence_prob = self.hostname_net(features_tensor).cpu().item()
-                            visibility_probs = self.log_visibility_net(features_tensor).cpu().numpy()[0]
-                        
-                        if existence_prob > 0.7:
-                            predicted_assets.append({
-                                'predicted_hostname': potential_hostname,
-                                'existence_probability': float(existence_prob),
-                                'splunk_probability': float(visibility_probs[3] + visibility_probs[4]),
-                                'gso_probability': float(visibility_probs[2] + visibility_probs[4]),
-                                'cmdb_probability': float(sum(visibility_probs[1:])),
-                                'pattern_family': pattern['base_pattern'],
-                                'business_unit': business_unit_filter or pattern.get('business_unit', 'Unknown'),
-                                'predicted_role': self.classify_role(potential_hostname),
-                                'predicted_log_types': self.predict_log_types(potential_hostname),
-                                'visibility_risk_score': self.calculate_visibility_risk(potential_hostname, existence_prob, visibility_probs)
-                            })
+        print("AI analyzing missing asset candidates...")
         
-        return sorted(predicted_assets, key=lambda x: x['existence_probability'], reverse=True)[:75]
-    
+        with torch.no_grad():
+            for i, candidate in enumerate(new_candidates[:1000]):
+                if i % 250 == 0 and i > 0:
+                    print(f"   Analyzed {i:,} candidates...")
+                
+                features = self.extract_hostname_features(candidate['hostname'])
+                additional_features = [
+                    1 if business_unit_filter else 0,
+                    1, 1, 0, 1, 0,
+                    7.5, 3, 1
+                ]
+                combined_features = np.concatenate([features, additional_features])
+                combined_features_scaled = self.feature_scaler.transform([combined_features])
+                
+                features_tensor = torch.FloatTensor(combined_features_scaled).to(device)
+                existence_prob = self.hostname_net(features_tensor).cpu().item()
+                visibility_probs = self.log_visibility_net(features_tensor).cpu().numpy()[0]
+                
+                if existence_prob > self.confidence_threshold:
+                    predicted_assets.append({
+                        'predicted_hostname': candidate['hostname'],
+                        'existence_probability': float(existence_prob),
+                        'splunk_probability': float(visibility_probs[3] + visibility_probs[4]),
+                        'gso_probability': float(visibility_probs[2] + visibility_probs[4]),
+                        'cmdb_probability': float(sum(visibility_probs[1:])),
+                        'pattern_family': candidate['pattern_template'],
+                        'business_unit': business_unit_filter or 'Unknown',
+                        'predicted_role': self.classify_role(candidate['hostname']),
+                        'predicted_log_types': self.predict_log_types(candidate['hostname']),
+                        'visibility_risk_score': self.calculate_visibility_risk(candidate['hostname'], existence_prob, visibility_probs),
+                        'similar_existing_hosts': candidate['sample_existing'],
+                        'pattern_density': f"{candidate['pattern_density']:.1%}",
+                        'existing_pattern_count': candidate['existing_hosts_count']
+                    })
+        
+        result = sorted(predicted_assets, key=lambda x: x['existence_probability'], reverse=True)[:100]
+        print(f"Identified {len(result)} high-confidence missing assets!")
+        
+        return result
+
     def analyze_naming_patterns(self, df: pd.DataFrame) -> List[Dict]:
         patterns = []
         
@@ -487,7 +657,7 @@ class AO1VisibilityPredictor:
         return min(base_risk + (existence_prob * 0.3) + (no_visibility_prob * 0.4), 1.0)
 
 app = Flask(__name__)
-ao1_predictor = AO1VisibilityPredictor()
+ao1_predictor = AO1MissingAssetPredictor()
 
 @app.route('/api/train-visibility-model')
 def train_visibility_model():
@@ -495,14 +665,14 @@ def train_visibility_model():
         threading.Thread(target=ao1_predictor.train_models, daemon=True).start()
         return jsonify({
             'status': 'training_started', 
-            'message': 'AO1 visibility model training initiated',
+            'message': 'AO1 missing asset predictor training initiated',
             'device': str(device)
         })
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
-@app.route('/api/predict-missing-visibility')
-def predict_missing_visibility():
+@app.route('/api/predict-missing-assets')
+def predict_missing_assets():
     try:
         if not ao1_predictor.trained:
             return jsonify({
@@ -511,12 +681,17 @@ def predict_missing_visibility():
             }), 503
             
         predictions = ao1_predictor.predict_missing_assets()
-        return jsonify(predictions)
+        return jsonify({
+            'total_missing_assets': len(predictions),
+            'confidence_threshold': f"{ao1_predictor.confidence_threshold:.0%}",
+            'missing_assets': predictions,
+            'generated_at': datetime.now().isoformat()
+        })
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
-@app.route('/api/predict-missing-visibility/<business_unit>')
-def predict_missing_visibility_bu(business_unit):
+@app.route('/api/predict-missing-assets/<business_unit>')
+def predict_missing_assets_bu(business_unit):
     try:
         if not ao1_predictor.trained:
             return jsonify({
@@ -525,7 +700,13 @@ def predict_missing_visibility_bu(business_unit):
             }), 503
             
         predictions = ao1_predictor.predict_missing_assets(business_unit)
-        return jsonify(predictions)
+        return jsonify({
+            'total_missing_assets': len(predictions),
+            'business_unit': business_unit,
+            'confidence_threshold': f"{ao1_predictor.confidence_threshold:.0%}",
+            'missing_assets': predictions,
+            'generated_at': datetime.now().isoformat()
+        })
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
@@ -536,43 +717,9 @@ def visibility_model_status():
         'device': str(device),
         'model_version': ao1_predictor.model_version,
         'training_metrics': ao1_predictor.training_metrics,
+        'confidence_threshold': ao1_predictor.confidence_threshold,
         'last_training': datetime.now().isoformat() if ao1_predictor.trained else None
     })
-
-@app.route('/api/visibility-gap-analysis')
-def visibility_gap_analysis():
-    try:
-        if not ao1_predictor.trained:
-            return jsonify({
-                'error': 'Models not trained yet',
-                'critical_visibility_gaps': [],
-                'high_value_targets': [],
-                'splunk_gaps': [],
-                'gso_gaps': [],
-                'total_predicted_assets': 0,
-                'avg_existence_probability': 0,
-                'pattern_coverage': 0,
-                'business_unit_distribution': {},
-                'role_distribution': {}
-            })
-            
-        predictions = ao1_predictor.predict_missing_assets()
-        
-        analysis = {
-            'critical_visibility_gaps': [p for p in predictions if p['visibility_risk_score'] > 0.8],
-            'high_value_targets': [p for p in predictions if p['predicted_role'] in ['Server', 'Database', 'Security']],
-            'splunk_gaps': [p for p in predictions if p['splunk_probability'] < 0.5],
-            'gso_gaps': [p for p in predictions if p['gso_probability'] < 0.5],
-            'total_predicted_assets': len(predictions),
-            'avg_existence_probability': float(np.mean([p['existence_probability'] for p in predictions])) if predictions else 0,
-            'pattern_coverage': len(set([p['pattern_family'] for p in predictions])),
-            'business_unit_distribution': dict(Counter([p['business_unit'] for p in predictions]).most_common(10)) if predictions else {},
-            'role_distribution': dict(Counter([p['predicted_role'] for p in predictions])) if predictions else {}
-        }
-        
-        return jsonify(analysis)
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
 
 @app.route('/api/load-models')
 def load_models():
@@ -586,7 +733,7 @@ def load_models():
         return jsonify({'error': str(e)}), 500
 
 if __name__ == '__main__':
-    print("Initializing AO1 Visibility Predictor...")
+    print("Initializing AO1 Missing Asset Predictor...")
     ao1_predictor.initialize_models()
     
     if not ao1_predictor.trained:
