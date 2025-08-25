@@ -195,7 +195,7 @@ class FeatureExtractor:
 class AO1Predictor:
     def __init__(self, db_path: str = 'universal_cmdb.db'):
         print("\n" + "="*60)
-        print("AO1 PREDICTOR v4.0 - ULTRA FAST GPU")
+        print("AO1 VISIBILITY PREDICTOR v4.0 - SELF-CONTAINED")
         print("="*60)
         
         self.db_path = db_path
@@ -212,6 +212,9 @@ class AO1Predictor:
         
         os.makedirs(self.model_dir, exist_ok=True)
         self._log_memory("Init")
+        
+        # AUTO-INITIALIZE ON CREATION
+        self.initialize()
     
     def _log_memory(self, tag=""):
         if device.type == 'mps':
@@ -221,6 +224,22 @@ class AO1Predictor:
             if used > 16:
                 torch.mps.empty_cache()
                 print("[MEM] Cache cleared")
+    
+    def initialize(self):
+        """Auto-initialize: Load existing models or train new ones"""
+        print("\n[INIT] Initializing AO1 Predictor...")
+        
+        model_path = f'{self.model_dir}/models.pth'
+        if os.path.exists(model_path):
+            print("[INIT] Found existing models, loading...")
+            if self.load_models():
+                print("[INIT] Models loaded successfully!")
+                return
+            else:
+                print("[INIT] Load failed, will train new models...")
+        
+        print("[INIT] No models found, starting training...")
+        self.train()
     
     def get_data(self) -> pd.DataFrame:
         print("[DATA] Loading from database...")
@@ -236,7 +255,7 @@ class AO1Predictor:
             print(f"[DATA] Loaded {len(df)} records")
             return df
         except Exception as e:
-            print(f"[ERROR] {e}")
+            print(f"[ERROR] Database error: {e}")
             return pd.DataFrame()
     
     def prepare_data(self, df: pd.DataFrame) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
@@ -298,12 +317,13 @@ class AO1Predictor:
         return X, y_exist, y_vis
     
     def train(self):
-        print("\n[TRAIN] Starting fast training...")
+        print("\n[TRAIN] Starting training...")
         start = time.time()
         
         df = self.get_data()
         if df.empty:
-            return
+            print("[ERROR] No data to train on!")
+            return False
         
         X, y_exist, y_vis = self.prepare_data(df)
         X = self.scaler.fit_transform(X)
@@ -350,7 +370,7 @@ class AO1Predictor:
         best_loss = float('inf')
         patience = 0
         
-        print(f"[TRAIN] Training for {self.config.epochs} epochs...")
+        print(f"[TRAIN] Training for up to {self.config.epochs} epochs...")
         
         for epoch in range(self.config.epochs):
             epoch_start = time.time()
@@ -391,7 +411,7 @@ class AO1Predictor:
                 else:
                     patience += 1
                     if patience > 5:
-                        print("[TRAIN] Early stopping")
+                        print("[TRAIN] Early stopping triggered")
                         break
                 
                 self._log_memory(f"Epoch {epoch}")
@@ -399,6 +419,8 @@ class AO1Predictor:
         self.trained = True
         self.training_time = time.time() - start
         print(f"\n[SUCCESS] Training completed in {self.training_time:.1f}s")
+        print(f"[SUCCESS] Best validation loss: {best_loss:.4f}")
+        return True
     
     def _validate(self, loader, crit1, crit2):
         self.existence_model.eval()
@@ -423,7 +445,8 @@ class AO1Predictor:
             'visibility': self.visibility_model.state_dict(),
             'scaler': self.scaler,
             'config': self.config,
-            'feature_extractor': self.feature_extractor
+            'feature_extractor': self.feature_extractor,
+            'timestamp': datetime.now().isoformat()
         }, f'{self.model_dir}/models.pth')
     
     def load_models(self):
@@ -444,22 +467,20 @@ class AO1Predictor:
             self.visibility_model.load_state_dict(checkpoint['visibility'])
             
             self.trained = True
-            print("[LOAD] Models loaded successfully")
+            print(f"[LOAD] Models from {checkpoint.get('timestamp', 'unknown')} loaded successfully")
             return True
         except Exception as e:
             print(f"[ERROR] Load failed: {e}")
             return False
     
-    def predict(self, business_unit: Optional[str] = None) -> List[Dict]:
+    def predict_missing_assets(self, business_unit: Optional[str] = None, limit: int = 75) -> List[Dict]:
+        """Main prediction method - finds missing assets"""
+        if not self.trained:
+            print("[ERROR] Models not trained!")
+            return []
+        
         print(f"\n[PREDICT] Generating predictions...")
         start = time.time()
-        
-        if not self.trained:
-            if os.path.exists(f'{self.model_dir}/models.pth'):
-                self.load_models()
-            else:
-                print("[PREDICT] Training models first...")
-                self.train()
         
         df = self.get_data()
         if df.empty:
@@ -467,6 +488,7 @@ class AO1Predictor:
         
         if business_unit:
             df = df[df['business_unit'] == business_unit]
+            print(f"[PREDICT] Filtered to {len(df)} records for BU: {business_unit}")
         
         existing = set(df['host'].values)
         patterns = self._get_patterns(df)
@@ -475,8 +497,13 @@ class AO1Predictor:
         self.existence_model.eval()
         self.visibility_model.eval()
         
+        print(f"[PREDICT] Analyzing {len(patterns)} patterns...")
+        
         with torch.no_grad():
-            for pattern in patterns[:10]:
+            for pattern_idx, pattern in enumerate(patterns[:15]):
+                if pattern_idx % 5 == 0:
+                    print(f"[PREDICT] Processing pattern {pattern_idx+1}/{min(15, len(patterns))}")
+                
                 candidates = self._generate_candidates(pattern, existing)
                 
                 features = []
@@ -502,15 +529,19 @@ class AO1Predictor:
                     for i, hostname in enumerate(hostnames):
                         if exist_probs[i] > 0.6:
                             predictions.append({
-                                'hostname': hostname,
-                                'existence_prob': float(exist_probs[i]),
-                                'splunk_prob': float(vis_probs[i][3] + vis_probs[i][4]),
-                                'gso_prob': float(vis_probs[i][2] + vis_probs[i][4]),
-                                'risk_score': self._risk_score(hostname, exist_probs[i], vis_probs[i]),
-                                'role': self._classify_role(hostname)
+                                'predicted_hostname': hostname,
+                                'existence_probability': float(exist_probs[i]),
+                                'splunk_probability': float(vis_probs[i][3] + vis_probs[i][4]),
+                                'gso_probability': float(vis_probs[i][2] + vis_probs[i][4]),
+                                'cmdb_probability': float(1 - vis_probs[i][0]),
+                                'visibility_risk_score': self._risk_score(hostname, exist_probs[i], vis_probs[i]),
+                                'predicted_role': self._classify_role(hostname),
+                                'predicted_log_types': self._get_log_types(hostname),
+                                'business_unit': business_unit or 'Unknown',
+                                'pattern_family': pattern
                             })
         
-        predictions = sorted(predictions, key=lambda x: x['risk_score'], reverse=True)[:75]
+        predictions = sorted(predictions, key=lambda x: x['visibility_risk_score'], reverse=True)[:limit]
         
         print(f"[PREDICT] Generated {len(predictions)} predictions in {time.time() - start:.1f}s")
         return predictions
@@ -533,81 +564,176 @@ class AO1Predictor:
     
     def _risk_score(self, hostname, exist_prob, vis_probs):
         score = exist_prob * 0.3
-        score += vis_probs[0] * 0.3
-        if 'prod' in hostname.lower():
+        score += vis_probs[0] * 0.3  # No visibility weight
+        
+        h = hostname.lower()
+        if 'prod' in h:
             score += 0.2
-        if any(x in hostname.lower() for x in ['db', 'database', 'sql']):
-            score += 0.2
+        if any(x in h for x in ['db', 'database', 'sql']):
+            score += 0.15
+        if any(x in h for x in ['fw', 'firewall', 'security']):
+            score += 0.1
+        
         return min(score, 1.0)
     
     def _classify_role(self, hostname):
         h = hostname.lower()
-        if any(x in h for x in ['db', 'sql', 'mongo']):
-            return 'Database'
-        elif any(x in h for x in ['web', 'www']):
-            return 'Web'
-        elif any(x in h for x in ['app', 'api']):
-            return 'Application'
-        elif any(x in h for x in ['fw', 'firewall']):
-            return 'Security'
-        return 'Server'
+        if any(x in h for x in ['db', 'sql', 'mongo', 'redis']):
+            return 'Database Server'
+        elif any(x in h for x in ['web', 'www', 'nginx']):
+            return 'Web Server'
+        elif any(x in h for x in ['app', 'api', 'service']):
+            return 'Application Server'
+        elif any(x in h for x in ['fw', 'firewall', 'ids', 'ips']):
+            return 'Security Infrastructure'
+        elif any(x in h for x in ['srv', 'server']):
+            return 'General Server'
+        return 'Endpoint'
+    
+    def _get_log_types(self, hostname):
+        role = self._classify_role(hostname)
+        log_map = {
+            'Database Server': ['Database Audit', 'Query Logs', 'Transaction Logs'],
+            'Web Server': ['Access Logs', 'Error Logs', 'SSL Logs'],
+            'Application Server': ['Application Logs', 'API Logs', 'Performance Metrics'],
+            'Security Infrastructure': ['Security Events', 'Threat Logs', 'Network Flow'],
+            'General Server': ['System Logs', 'Security Events', 'Performance Metrics'],
+            'Endpoint': ['OS Logs', 'EDR Telemetry']
+        }
+        return log_map.get(role, ['System Logs'])
+    
+    def get_visibility_gap_analysis(self) -> Dict:
+        """Analyze visibility gaps across all predicted assets"""
+        predictions = self.predict_missing_assets()
+        
+        if not predictions:
+            return {'error': 'No predictions available'}
+        
+        analysis = {
+            'summary': {
+                'total_predicted_assets': len(predictions),
+                'avg_existence_probability': np.mean([p['existence_probability'] for p in predictions]),
+                'avg_risk_score': np.mean([p['visibility_risk_score'] for p in predictions])
+            },
+            'critical_gaps': [p for p in predictions if p['visibility_risk_score'] > 0.8][:20],
+            'high_confidence_missing': [p for p in predictions if p['existence_probability'] > 0.85][:20],
+            'by_role': {},
+            'by_business_unit': {},
+            'splunk_gaps': [p for p in predictions if p['splunk_probability'] < 0.3][:15],
+            'gso_gaps': [p for p in predictions if p['gso_probability'] < 0.3][:15],
+            'cmdb_gaps': [p for p in predictions if p['cmdb_probability'] < 0.5][:15]
+        }
+        
+        # Group by role
+        from collections import Counter
+        role_counts = Counter([p['predicted_role'] for p in predictions])
+        analysis['by_role'] = dict(role_counts.most_common())
+        
+        # Group by business unit
+        bu_counts = Counter([p['business_unit'] for p in predictions])
+        analysis['by_business_unit'] = dict(bu_counts.most_common())
+        
+        return analysis
 
-app = Flask(__name__)
+# Create global predictor instance
+print("\n" + "="*60)
+print("INITIALIZING AO1 VISIBILITY PREDICTOR")
+print("="*60)
+
 predictor = AO1Predictor()
 
-@app.route('/api/train')
-def train():
-    print(f"\n[API] Training requested")
-    threading.Thread(target=predictor.train, daemon=True).start()
-    return jsonify({'status': 'training_started'})
+# Flask API
+app = Flask(__name__)
 
-@app.route('/api/predict')
-def predict():
-    print(f"\n[API] Prediction requested")
-    predictions = predictor.predict()
+@app.route('/api/train-visibility-model')
+def train_endpoint():
+    """Force retrain the models"""
+    print("\n[API] Training requested")
+    success = predictor.train()
+    return jsonify({'status': 'success' if success else 'failed'})
+
+@app.route('/api/predict-missing-visibility')
+def predict_endpoint():
+    """Get predictions for missing assets"""
+    print("\n[API] Prediction requested")
+    predictions = predictor.predict_missing_assets()
     return jsonify(predictions)
 
-@app.route('/api/predict/<business_unit>')
-def predict_bu(business_unit):
-    print(f"\n[API] Prediction for {business_unit}")
-    predictions = predictor.predict(business_unit)
+@app.route('/api/predict-missing-visibility/<business_unit>')
+def predict_bu_endpoint(business_unit):
+    """Get predictions filtered by business unit"""
+    print(f"\n[API] Prediction for BU: {business_unit}")
+    predictions = predictor.predict_missing_assets(business_unit=business_unit)
     return jsonify(predictions)
 
-@app.route('/api/status')
-def status():
+@app.route('/api/visibility-model-status')
+def status_endpoint():
+    """Get model status"""
     used = torch.mps.driver_allocated_memory() / 1e9 if device.type == 'mps' else 0
     return jsonify({
         'trained': predictor.trained,
         'device': str(device),
-        'gpu_memory_gb': used,
-        'training_time_seconds': predictor.training_time,
+        'gpu_memory_gb': round(used, 2),
+        'model_version': '4.0',
+        'training_time_seconds': round(predictor.training_time, 1),
         'cache_exists': os.path.exists('cache/processed_data.pkl')
     })
 
-@app.route('/api/clear-cache')
-def clear_cache():
-    print(f"\n[API] Clearing cache")
-    import shutil
-    if os.path.exists('cache'):
-        shutil.rmtree('cache')
-        os.makedirs('cache')
-    torch.mps.empty_cache() if device.type == 'mps' else None
-    return jsonify({'status': 'cache_cleared'})
+@app.route('/api/visibility-gap-analysis')
+def gap_analysis_endpoint():
+    """Get comprehensive gap analysis"""
+    print("\n[API] Gap analysis requested")
+    analysis = predictor.get_visibility_gap_analysis()
+    return jsonify(analysis)
+
+@app.route('/api/load-models')
+def load_endpoint():
+    """Reload models from disk"""
+    success = predictor.load_models()
+    return jsonify({'status': 'success' if success else 'failed'})
 
 if __name__ == '__main__':
     print("\n" + "="*60)
-    print("AO1 ULTRA-FAST PREDICTOR")
+    print("AO1 PREDICTOR READY")
     print("="*60)
-    print(f"Device: {device}")
-    print(f"Cache: {'Enabled' if os.path.exists('cache') else 'Empty'}")
     
-    if os.path.exists(f'{predictor.model_dir}/models.pth'):
-        predictor.load_models()
-        print("[READY] Models loaded from disk")
+    if predictor.trained:
+        print("\n[READY] Models trained and loaded")
+        print("[READY] Making initial predictions...")
+        
+        # Automatically generate predictions
+        predictions = predictor.predict_missing_assets(limit=10)
+        
+        if predictions:
+            print(f"\n[RESULTS] Top 10 Missing Assets with Highest Risk:")
+            print("-" * 60)
+            for i, pred in enumerate(predictions, 1):
+                print(f"{i:2d}. {pred['predicted_hostname']:<30} "
+                      f"Risk: {pred['visibility_risk_score']:.2%} "
+                      f"Exists: {pred['existence_probability']:.2%} "
+                      f"Role: {pred['predicted_role']}")
+            print("-" * 60)
+        
+        # Show gap analysis summary
+        analysis = predictor.get_visibility_gap_analysis()
+        print(f"\n[ANALYSIS] Visibility Gap Summary:")
+        print(f"  Total Predicted Missing: {analysis['summary']['total_predicted_assets']}")
+        print(f"  Average Risk Score: {analysis['summary']['avg_risk_score']:.2%}")
+        print(f"  Critical Gaps: {len(analysis['critical_gaps'])}")
+        print(f"  High Confidence Missing: {len(analysis['high_confidence_missing'])}")
+        
+        print("\n[ANALYSIS] Missing Assets by Role:")
+        for role, count in analysis['by_role'].items():
+            print(f"  {role}: {count}")
     else:
-        print("[READY] Models need training - use /api/train")
+        print("\n[ERROR] Models failed to train/load")
     
-    print("\n[SERVER] Starting on http://0.0.0.0:5001")
+    print("\n[SERVER] Starting Flask API on http://0.0.0.0:5001")
+    print("[SERVER] Endpoints:")
+    print("  GET /api/predict-missing-visibility")
+    print("  GET /api/predict-missing-visibility/<business_unit>")
+    print("  GET /api/visibility-gap-analysis")
+    print("  GET /api/visibility-model-status")
     print("="*60 + "\n")
     
     app.run(debug=True, port=5001, host='0.0.0.0')
