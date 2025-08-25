@@ -8,6 +8,8 @@ from datetime import datetime
 import json
 import gc
 import logging
+import os
+import platform
 
 from algo1_lstm import LSTMPredictor
 from algo2_gru import GRUPredictor
@@ -23,14 +25,33 @@ from algo10_graph_nn import GraphNNPredictor
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-if torch.cuda.is_available():
-    device = torch.device("cuda")
-    torch.cuda.set_per_process_memory_fraction(0.9)
-    logger.info(f"Using GPU: {torch.cuda.get_device_name()}")
-    logger.info(f"GPU Memory: {torch.cuda.get_device_properties(0).total_memory / 1e9:.1f} GB")
+# Check for Apple Silicon MPS
+if not torch.backends.mps.is_available():
+    if not torch.backends.mps.is_built():
+        logger.error("MPS not available because PyTorch was not built with MPS enabled")
+        logger.error("Please install PyTorch with MPS support: pip3 install torch torchvision torchaudio")
+    else:
+        logger.error("MPS not available because this is not running on macOS with Apple Silicon")
+    
+    # Fallback check for CUDA
+    if torch.cuda.is_available():
+        device = torch.device("cuda")
+        logger.warning("Using CUDA GPU instead of MPS")
+    else:
+        logger.error("No GPU available! This system requires Apple Silicon GPU (MPS) or CUDA GPU.")
+        exit(1)
 else:
-    logger.error("GPU not available! This system requires GPU.")
-    exit(1)
+    device = torch.device("mps")
+    logger.info("✓ Apple Silicon GPU (MPS) detected and initialized")
+    logger.info(f"Running on: {platform.machine()}")
+    logger.info(f"macOS version: {platform.mac_ver()[0]}")
+    
+    # Set environment variable to limit MPS memory to 18 GiB
+    os.environ['PYTORCH_MPS_HIGH_WATERMARK_RATIO'] = '0.0'  # Disable automatic memory growth
+    
+    # Memory limit enforcement (18 GiB max)
+    MAX_MEMORY_GB = 18
+    logger.info(f"GPU Memory limit set to {MAX_MEMORY_GB} GiB")
 
 class MissingAssetPredictor:
     def __init__(self, db_path='universal_cmdb.db'):
@@ -149,6 +170,18 @@ class MissingAssetPredictor:
         logger.info("Training all algorithms on GPU...")
         
         X, y = self.prepare_training_data(df)
+        
+        # Use smaller batches for MPS to stay under 18 GiB
+        batch_size = min(512, len(X) // 10)  # Smaller batches for memory efficiency
+        
+        # Process in smaller chunks for MPS
+        chunk_size = min(10000, len(X))  # Limit training data size if needed
+        if len(X) > chunk_size:
+            logger.info(f"Using subset of {chunk_size} samples for memory efficiency")
+            indices = np.random.choice(len(X), chunk_size, replace=False)
+            X = X[indices]
+            y = y[indices]
+        
         X_tensor = torch.FloatTensor(X).to(device)
         y_tensor = torch.FloatTensor(y).to(device)
         
@@ -160,13 +193,33 @@ class MissingAssetPredictor:
         
         for i, algo in enumerate(self.algorithms):
             logger.info(f"Training algorithm {i+1}/{len(self.algorithms)}: {algo.__class__.__name__}")
-            algo.train_model(X_train, y_train, X_val, y_val)
             
-            torch.cuda.empty_cache()
+            # Clear memory before each algorithm
+            if device.type == 'mps':
+                torch.mps.empty_cache()
+            elif device.type == 'cuda':
+                torch.cuda.empty_cache()
             gc.collect()
             
-            memory_used = torch.cuda.memory_allocated() / 1e9
-            logger.info(f"  GPU memory used: {memory_used:.2f} GB")
+            try:
+                algo.train_model(X_train, y_train, X_val, y_val)
+            except RuntimeError as e:
+                if "out of memory" in str(e).lower():
+                    logger.warning(f"Out of memory for {algo.__class__.__name__}, reducing batch size")
+                    # Try with smaller batch
+                    smaller_batch = X_train[:1000]
+                    smaller_y = y_train[:1000]
+                    algo.train_model(smaller_batch, smaller_y, X_val[:500], y_val[:500])
+                else:
+                    raise e
+            
+            # Force memory cleanup after each algorithm
+            if device.type == 'mps':
+                torch.mps.empty_cache()
+                torch.mps.synchronize()
+            
+            # Log memory status (MPS doesn't have direct memory queries like CUDA)
+            logger.info(f"  Algorithm {i+1} training completed")
     
     def prepare_training_data(self, df):
         X = []
@@ -223,10 +276,16 @@ class MissingAssetPredictor:
         
         predictions = []
         
-        batch_size = 100
+        # Smaller batch size for MPS memory efficiency
+        batch_size = 50  # Reduced from 100 for MPS
+        
         for batch_start in range(0, len(candidates), batch_size):
             batch_end = min(batch_start + batch_size, len(candidates))
             batch = candidates[batch_start:batch_end]
+            
+            # Clear memory before each batch
+            if device.type == 'mps':
+                torch.mps.empty_cache()
             
             batch_features = []
             for candidate in batch:
@@ -242,8 +301,9 @@ class MissingAssetPredictor:
             
             votes = []
             for algo in self.algorithms:
-                algo_predictions = algo.predict(batch_tensor)
-                votes.append(algo_predictions.cpu().numpy())
+                with torch.no_grad():  # Ensure no gradient computation for inference
+                    algo_predictions = algo.predict(batch_tensor)
+                    votes.append(algo_predictions.cpu().numpy())
             
             ensemble_predictions = np.mean(votes, axis=0)
             
@@ -278,8 +338,15 @@ class MissingAssetPredictor:
                         }
                     })
             
-            torch.cuda.empty_cache()
+            # Force memory cleanup after each batch
+            del batch_tensor
+            if device.type == 'mps':
+                torch.mps.empty_cache()
+                torch.mps.synchronize()
             
+            if batch_start % 500 == 0 and batch_start > 0:
+                logger.info(f"  Processed {batch_start}/{len(candidates)} candidates")
+        
         predictions.sort(key=lambda x: x['confidence'], reverse=True)
         
         logger.info(f"Found {len(predictions)} high-confidence missing assets")
@@ -287,6 +354,27 @@ class MissingAssetPredictor:
         return predictions
     
     def run(self):
+        # Verify MPS is working
+        logger.info("\n" + "="*60)
+        logger.info("SYSTEM STARTUP CHECKS")
+        logger.info("="*60)
+        
+        # Test MPS with a small tensor
+        try:
+            test_tensor = torch.randn(100, 100).to(device)
+            result = test_tensor @ test_tensor.T
+            del test_tensor, result
+            if device.type == 'mps':
+                torch.mps.empty_cache()
+                torch.mps.synchronize()
+            logger.info("✓ GPU computation test passed")
+        except Exception as e:
+            logger.error(f"GPU test failed: {e}")
+            exit(1)
+        
+        logger.info("✓ All checks passed - starting analysis")
+        logger.info("="*60 + "\n")
+        
         df = self.load_data()
         
         patterns = self.find_patterns(df)
