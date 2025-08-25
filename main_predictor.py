@@ -13,6 +13,7 @@ import os
 import platform
 import time
 import traceback
+import sys
 from collections import defaultdict, Counter
 from typing import List, Dict, Tuple, Optional
 
@@ -28,7 +29,12 @@ from algo8_residual import ResidualPredictor
 from algo9_ensemble_nn import EnsembleNNPredictor
 from algo10_graph_nn import GraphNNPredictor
 
-logging.basicConfig(level=logging.INFO, format='%(asctime)s %(message)s')
+# Configure logging with optional debug mode
+DEBUG_MODE = os.environ.get('DEBUG_MODE', 'FALSE').upper() == 'TRUE'
+logging.basicConfig(
+    level=logging.DEBUG if DEBUG_MODE else logging.INFO,
+    format='%(asctime)s [%(levelname)s] %(message)s'
+)
 logger = logging.getLogger(__name__)
 
 class OptimizedAssetPredictor:
@@ -130,27 +136,47 @@ class OptimizedAssetPredictor:
             raise
     
     def find_patterns_optimized(self, df: pd.DataFrame) -> Dict:
-        """Find patterns with defensive programming."""
+        """Find patterns with defensive programming - COMPLETELY SAFE VERSION."""
         logger.info("\n⋆˙⟡♡ discovering hostname patterns...")
         start_time = time.time()
         
         patterns = defaultdict(list)
         pattern_metadata = {}
         
-        # Safely handle hostnames
-        hostnames = df['host'].dropna().astype(str).str.lower().str.strip()
-        
-        if hostnames.empty:
-            logger.warning("⚠ No valid hostnames found")
+        # Extra safe hostname extraction
+        try:
+            if 'host' not in df.columns:
+                logger.error("'host' column not found in dataframe")
+                return {'patterns': {}, 'metadata': {}}
+            
+            # Convert to string first, then process
+            host_series = df['host'].fillna('').astype(str)
+            hostnames = host_series[host_series != ''].str.lower().str.strip()
+            
+            if len(hostnames) == 0:
+                logger.warning("⚠ No valid hostnames found")
+                return {'patterns': {}, 'metadata': {}}
+                
+        except Exception as e:
+            logger.error(f"Failed to extract hostnames: {e}")
             return {'patterns': {}, 'metadata': {}}
         
-        for idx, hostname in enumerate(hostnames):
-            if idx % 50000 == 0 and idx > 0:
-                logger.info(f"  ₊˚⊹ processed {idx:,}/{len(hostnames):,} hostnames")
-            
-            if hostname:  # Skip empty strings
-                template = self._extract_template(hostname)
-                patterns[template].append(hostname)
+        # Process hostnames
+        for idx in range(len(hostnames)):
+            try:
+                if idx % 50000 == 0 and idx > 0:
+                    logger.info(f"  ₊˚⊹ processed {idx:,}/{len(hostnames):,} hostnames")
+                
+                # Use .values to avoid index issues
+                hostname = hostnames.values[idx] if idx < len(hostnames.values) else None
+                
+                if hostname and isinstance(hostname, str) and hostname.strip():
+                    template = self._extract_template(hostname)
+                    patterns[template].append(hostname)
+                    
+            except Exception as e:
+                logger.debug(f"Skipping hostname at index {idx}: {e}")
+                continue
         
         legitimate = {}
         for template, hosts in patterns.items():
@@ -165,9 +191,12 @@ class OptimizedAssetPredictor:
         logger.info(f"✓ ˚₊· found {len(legitimate)} patterns in {time.time()-start_time:.2f}s")
         
         if legitimate:
-            max_pattern_size = max(len(h) for h in legitimate.values())
-            logger.info(f"  ⋆.˚ patterns with 3+ assets: {len(legitimate)}")
-            logger.info(f"  𓆡 largest pattern: {max_pattern_size} hosts")
+            try:
+                max_pattern_size = max(len(h) for h in legitimate.values())
+                logger.info(f"  ⋆.˚ patterns with 3+ assets: {len(legitimate)}")
+                logger.info(f"  𓆡 largest pattern: {max_pattern_size} hosts")
+            except Exception:
+                pass
         
         self.pattern_cache = legitimate
         return {'patterns': legitimate, 'metadata': pattern_metadata}
@@ -186,54 +215,110 @@ class OptimizedAssetPredictor:
     
     def _analyze_pattern_metadata(self, hosts: List[str], df: pd.DataFrame) -> Dict:
         """Safely analyze pattern metadata with defensive programming."""
-        sample_data = df[df['host'].str.lower().isin([h.lower() for h in hosts])]
+        # Ensure hosts is lowercase for matching
+        hosts_lower = [h.lower() for h in hosts if h]
         
-        # Helper function to safely get mode
-        def safe_mode(series):
-            if isinstance(series, pd.Series):
-                if series.empty or series.isna().all():
+        # Safe filtering
+        try:
+            if 'host' in df.columns:
+                sample_data = df[df['host'].astype(str).str.lower().isin(hosts_lower)]
+            else:
+                sample_data = pd.DataFrame()
+        except Exception as e:
+            logger.warning(f"Failed to filter data: {e}")
+            sample_data = pd.DataFrame()
+        
+        # Helper function to safely get mode - COMPLETELY SAFE VERSION
+        def safe_mode(column_name):
+            try:
+                if column_name not in df.columns or sample_data.empty:
                     return None
-                mode_result = series.dropna().mode()
-                return mode_result.iloc[0] if not mode_result.empty else None
-            return None
+                    
+                series = sample_data[column_name]
+                if series is None or len(series) == 0:
+                    return None
+                    
+                # Drop NaN values first
+                clean_series = series.dropna()
+                if len(clean_series) == 0:
+                    return None
+                
+                # Calculate mode
+                mode_result = clean_series.mode()
+                
+                # Check if mode_result has any values
+                if isinstance(mode_result, pd.Series) and len(mode_result) > 0:
+                    return mode_result.values[0]  # Use .values[0] instead of .iloc[0]
+                elif hasattr(mode_result, '__len__') and len(mode_result) > 0:
+                    return mode_result[0]
+                else:
+                    return None
+                    
+            except Exception as e:
+                logger.debug(f"safe_mode failed for {column_name}: {e}")
+                return None
         
-        # Helper function to safely get mean
-        def safe_mean(series, default=0):
-            if isinstance(series, pd.Series):
-                if series.empty or series.isna().all():
+        # Helper function to safely get mean - COMPLETELY SAFE VERSION
+        def safe_mean(column_name, default=7.5):
+            try:
+                if column_name not in df.columns or sample_data.empty:
                     return default
-                return series.dropna().mean()
-            return default
+                    
+                series = sample_data[column_name]
+                if series is None or len(series) == 0:
+                    return default
+                    
+                clean_series = series.dropna()
+                if len(clean_series) == 0:
+                    return default
+                    
+                return float(clean_series.mean())
+                
+            except Exception as e:
+                logger.debug(f"safe_mean failed for {column_name}: {e}")
+                return default
         
         metadata = {
             'count': len(hosts),
-            'regions': safe_mode(sample_data.get('region', pd.Series())),
-            'business_units': safe_mode(sample_data.get('business_unit', pd.Series())),
-            'data_centers': safe_mode(sample_data.get('data_center', pd.Series())),
+            'regions': safe_mode('region'),
+            'business_units': safe_mode('business_unit'),
+            'data_centers': safe_mode('data_center'),
             'domains': self._extract_common_domain(hosts),
-            'avg_quality_score': safe_mean(sample_data.get('data_quality_score', pd.Series()), default=7.5)
+            'avg_quality_score': safe_mean('data_quality_score', default=7.5)
         }
         
         return metadata
     
     def _extract_common_domain(self, hosts: List[str]) -> Optional[str]:
-        """Safely extract common domain from hosts."""
+        """Safely extract common domain from hosts - COMPLETELY SAFE VERSION."""
         if not hosts:
             return None
-            
-        domains = []
-        # Limit to first 10 hosts or available hosts
-        for host in hosts[:min(10, len(hosts))]:
-            if not host:  # Skip empty hosts
-                continue
-            parts = host.split('.')
-            if len(parts) > 1:
-                domains.append('.'.join(parts[1:]))
         
-        if domains:
-            most_common = Counter(domains).most_common(1)
-            return most_common[0][0] if most_common else None
-        return None
+        try:
+            domains = []
+            # Limit to first 10 hosts or available hosts
+            for host in hosts[:min(10, len(hosts))]:
+                if not host or not isinstance(host, str):
+                    continue
+                parts = host.split('.')
+                if len(parts) > 1:
+                    domains.append('.'.join(parts[1:]))
+            
+            if not domains:
+                return None
+                
+            # Safe Counter usage without .iloc
+            domain_counts = Counter(domains)
+            if domain_counts:
+                # Get most common using items() instead of most_common to avoid index issues
+                most_common_domain = max(domain_counts.items(), key=lambda x: x[1])[0]
+                return most_common_domain
+            
+            return None
+            
+        except Exception as e:
+            logger.debug(f"Failed to extract domain: {e}")
+            return None
     
     def generate_smart_candidates(self, pattern_data: Dict, existing: set) -> List[Dict]:
         """Generate intelligent missing asset candidates."""
