@@ -14,9 +14,11 @@ import threading
 from datetime import datetime
 import os
 import pickle
+import gc
 from typing import List, Dict, Optional
 from collections import Counter
 
+torch.backends.mps.empty_cache()
 if torch.backends.mps.is_available():
     device = torch.device("mps")
     print("Using Apple Silicon GPU (MPS)")
@@ -29,14 +31,12 @@ class HostnamePatternNet(nn.Module):
     def __init__(self, input_size: int):
         super().__init__()
         self.layers = nn.Sequential(
-            nn.Linear(input_size, 512),
-            nn.ReLU(),
-            nn.Dropout(0.3),
-            nn.Linear(512, 256),
+            nn.Linear(input_size, 256),
             nn.ReLU(),
             nn.Dropout(0.3),
             nn.Linear(256, 128),
             nn.ReLU(),
+            nn.Dropout(0.3),
             nn.Linear(128, 64),
             nn.ReLU(),
             nn.Linear(64, 1),
@@ -50,14 +50,12 @@ class LogVisibilityPredictor(nn.Module):
     def __init__(self, input_size: int):
         super().__init__()
         self.layers = nn.Sequential(
-            nn.Linear(input_size, 256),
-            nn.ReLU(),
-            nn.Dropout(0.2),
-            nn.Linear(256, 128),
+            nn.Linear(input_size, 128),
             nn.ReLU(),
             nn.Dropout(0.2),
             nn.Linear(128, 64),
             nn.ReLU(),
+            nn.Dropout(0.2),
             nn.Linear(64, 32),
             nn.ReLU(),
             nn.Linear(32, 5),
@@ -154,11 +152,12 @@ class AO1VisibilityPredictor:
             edr_coverage, tanium_coverage, dlp_agent_coverage,
             first_seen, last_updated, data_quality_score, source_count
         FROM universal_cmdb
+        LIMIT 500000
         """
         
         try:
             df = conn.execute(query).df()
-            print(f"Successfully loaded {len(df)} records from universal_cmdb table")
+            print(f"Successfully loaded {len(df)} records from universal_cmdb table (memory limited)")
             return df
         except Exception as e:
             print(f"Error fetching CMDB data: {e}")
@@ -238,18 +237,19 @@ class AO1VisibilityPredictor:
             return
         
         X_train, X_val, existence_y_train, existence_y_val, visibility_y_train, visibility_y_val = train_test_split(
-            X, existence_y, visibility_y, test_size=0.2, random_state=42
+            X, existence_y, visibility_y, test_size=0.15, random_state=42
         )
+        
+        # Clear memory
+        del X, existence_y, visibility_y
+        gc.collect()
+        torch.backends.mps.empty_cache()
         
         X_train_scaled = self.feature_scaler.fit_transform(X_train)
         X_val_scaled = self.feature_scaler.transform(X_val)
         
-        X_train_tensor = torch.FloatTensor(X_train_scaled).to(device)
-        X_val_tensor = torch.FloatTensor(X_val_scaled).to(device)
-        existence_y_train_tensor = torch.FloatTensor(existence_y_train.reshape(-1, 1)).to(device)
-        existence_y_val_tensor = torch.FloatTensor(existence_y_val.reshape(-1, 1)).to(device)
-        visibility_y_train_tensor = torch.LongTensor(visibility_y_train).to(device)
-        visibility_y_val_tensor = torch.LongTensor(visibility_y_val).to(device)
+        # Process in smaller batches to save memory
+        batch_size = 8192
         
         input_size = X_train_scaled.shape[1]
         self.hostname_net = HostnamePatternNet(input_size).to(device)
@@ -261,60 +261,75 @@ class AO1VisibilityPredictor:
         criterion1 = nn.BCELoss()
         criterion2 = nn.CrossEntropyLoss()
         
-        scheduler1 = optim.lr_scheduler.ReduceLROnPlateau(optimizer1, patience=15, factor=0.7)
-        scheduler2 = optim.lr_scheduler.ReduceLROnPlateau(optimizer2, patience=15, factor=0.7)
+        print(f"Training with batch size {batch_size} to manage memory...")
+        print(f"Training records: {len(X_train_scaled):,}, Validation: {len(X_val_scaled):,}")
         
-        print(f"Training models on {device}...")
-        
-        best_val_loss = float('inf')
-        patience_counter = 0
-        
-        for epoch in range(300):
+        for epoch in range(200):  # Reduced epochs
             self.hostname_net.train()
             self.log_visibility_net.train()
             
-            optimizer1.zero_grad()
-            existence_outputs = self.hostname_net(X_train_tensor)
-            loss1 = criterion1(existence_outputs, existence_y_train_tensor)
-            loss1.backward()
-            torch.nn.utils.clip_grad_norm_(self.hostname_net.parameters(), 1.0)
-            optimizer1.step()
+            # Training in batches
+            for i in range(0, len(X_train_scaled), batch_size):
+                batch_end = min(i + batch_size, len(X_train_scaled))
+                
+                X_batch = torch.FloatTensor(X_train_scaled[i:batch_end]).to(device)
+                existence_y_batch = torch.FloatTensor(existence_y_train[i:batch_end].reshape(-1, 1)).to(device)
+                visibility_y_batch = torch.LongTensor(visibility_y_train[i:batch_end]).to(device)
+                
+                # Train hostname net
+                optimizer1.zero_grad()
+                existence_outputs = self.hostname_net(X_batch)
+                loss1 = criterion1(existence_outputs, existence_y_batch)
+                loss1.backward()
+                torch.nn.utils.clip_grad_norm_(self.hostname_net.parameters(), 1.0)
+                optimizer1.step()
+                
+                # Train visibility net  
+                optimizer2.zero_grad()
+                visibility_outputs = self.log_visibility_net(X_batch)
+                loss2 = criterion2(visibility_outputs, visibility_y_batch)
+                loss2.backward()
+                torch.nn.utils.clip_grad_norm_(self.log_visibility_net.parameters(), 1.0)
+                optimizer2.step()
+                
+                # Clear batch from memory
+                del X_batch, existence_y_batch, visibility_y_batch
+                if i % (batch_size * 10) == 0:
+                    torch.backends.mps.empty_cache()
             
-            optimizer2.zero_grad()
-            visibility_outputs = self.log_visibility_net(X_train_tensor)
-            loss2 = criterion2(visibility_outputs, visibility_y_train_tensor)
-            loss2.backward()
-            torch.nn.utils.clip_grad_norm_(self.log_visibility_net.parameters(), 1.0)
-            optimizer2.step()
-            
-            if epoch % 10 == 0:
+            if epoch % 20 == 0:
+                # Validation in batches
                 self.hostname_net.eval()
                 self.log_visibility_net.eval()
                 
-                with torch.no_grad():
-                    val_existence_outputs = self.hostname_net(X_val_tensor)
-                    val_loss1 = criterion1(val_existence_outputs, existence_y_val_tensor)
-                    
-                    val_visibility_outputs = self.log_visibility_net(X_val_tensor)
-                    val_loss2 = criterion2(val_visibility_outputs, visibility_y_val_tensor)
-                    
-                    total_val_loss = val_loss1 + val_loss2
-                    
-                    print(f'Epoch {epoch}, Train: {loss1.item():.4f}/{loss2.item():.4f}, Val: {val_loss1.item():.4f}/{val_loss2.item():.4f}')
-                    
-                    if total_val_loss < best_val_loss:
-                        best_val_loss = total_val_loss
-                        patience_counter = 0
-                        self.save_models()
-                    else:
-                        patience_counter += 1
-                    
-                    if patience_counter >= 25:
-                        print("Early stopping triggered!")
-                        break
+                val_loss1_total, val_loss2_total = 0.0, 0.0
+                val_batches = 0
                 
-                scheduler1.step(val_loss1)
-                scheduler2.step(val_loss2)
+                with torch.no_grad():
+                    for i in range(0, len(X_val_scaled), batch_size):
+                        batch_end = min(i + batch_size, len(X_val_scaled))
+                        
+                        X_val_batch = torch.FloatTensor(X_val_scaled[i:batch_end]).to(device)
+                        existence_y_val_batch = torch.FloatTensor(existence_y_val[i:batch_end].reshape(-1, 1)).to(device)
+                        visibility_y_val_batch = torch.LongTensor(visibility_y_val[i:batch_end]).to(device)
+                        
+                        val_existence_outputs = self.hostname_net(X_val_batch)
+                        val_loss1 = criterion1(val_existence_outputs, existence_y_val_batch)
+                        
+                        val_visibility_outputs = self.log_visibility_net(X_val_batch)
+                        val_loss2 = criterion2(val_visibility_outputs, visibility_y_val_batch)
+                        
+                        val_loss1_total += val_loss1.item()
+                        val_loss2_total += val_loss2.item()
+                        val_batches += 1
+                        
+                        del X_val_batch, existence_y_val_batch, visibility_y_val_batch
+                
+                avg_val_loss1 = val_loss1_total / val_batches
+                avg_val_loss2 = val_loss2_total / val_batches
+                
+                print(f'Epoch {epoch}, Train: {loss1.item():.4f}/{loss2.item():.4f}, Val: {avg_val_loss1:.4f}/{avg_val_loss2:.4f}')
+                torch.backends.mps.empty_cache()
         
         self.trained = True
         self.training_metrics = {
