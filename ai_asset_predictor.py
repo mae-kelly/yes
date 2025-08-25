@@ -1,5 +1,4 @@
-# /src/ml/ao1_missing_asset_predictor.py
-# AO1 Missing Asset Discovery - AI-Powered Asset Gap Detection
+# /src/ml/ao1_missing_asset_discovery.py
 
 import torch
 import torch.nn as nn
@@ -10,7 +9,7 @@ import re
 import duckdb
 from sklearn.preprocessing import StandardScaler
 from sklearn.model_selection import train_test_split
-from flask import Flask, jsonify
+from flask import Flask, jsonify, request
 import threading
 from datetime import datetime
 import os
@@ -22,13 +21,12 @@ import itertools
 
 if torch.backends.mps.is_available():
     device = torch.device("mps")
-    print("🚀 AO1 Missing Asset Discovery - Using Apple Silicon GPU")
+    print("AO1 Missing Asset Discovery - Using Apple Silicon GPU")
 else:
-    print("❌ ERROR: GPU required for AO1 Missing Asset Discovery")
+    print("ERROR: GPU required for AO1 Missing Asset Discovery")
     exit(1)
 
 class HostnamePatternNet(nn.Module):
-    """Neural network that learns hostname patterns and predicts missing assets"""
     def __init__(self, input_size: int):
         super().__init__()
         self.pattern_encoder = nn.Sequential(
@@ -42,7 +40,6 @@ class HostnamePatternNet(nn.Module):
             nn.ReLU()
         )
         
-        # Existence predictor - does this hostname pattern exist?
         self.existence_predictor = nn.Sequential(
             nn.Linear(128, 64),
             nn.ReLU(),
@@ -52,13 +49,12 @@ class HostnamePatternNet(nn.Module):
             nn.Sigmoid()
         )
         
-        # Logging predictor - is this asset being logged?
         self.logging_predictor = nn.Sequential(
             nn.Linear(128, 64),
             nn.ReLU(),
             nn.Linear(64, 32),
             nn.ReLU(),
-            nn.Linear(32, 6),  # Splunk, GSO, Chronicle, EDR, Tanium, CMDB
+            nn.Linear(32, 6),
             nn.Sigmoid()
         )
         
@@ -77,29 +73,29 @@ class AO1MissingAssetDiscovery:
         self.model_version = "AO1-Asset-Discovery-2025.1"
         self.model_dir = 'models'
         
-        # Pattern discovery settings
-        self.min_pattern_frequency = 3  # Need at least 3 hosts to establish pattern
-        self.max_gap_size = 1000       # Don't check beyond 1000 missing numbers
-        self.confidence_threshold = 0.85  # 85% confidence required
+        self.min_pattern_frequency = 3
+        self.max_gap_size = 1000
+        self.confidence_threshold = 0.85
         
         os.makedirs(self.model_dir, exist_ok=True)
-        print("🔍 AO1 Missing Asset Discovery System Initialized")
+        print("AO1 Missing Asset Discovery System Initialized")
+        
+        # Auto-initialize on startup
+        self.initialize_system()
         
     def get_db_connection(self):
         try:
             return duckdb.connect(self.db_path)
         except Exception as e:
-            print(f"❌ Database connection error: {e}")
+            print(f"Database connection error: {e}")
             return None
 
     def extract_hostname_patterns(self, hostname: str) -> Dict:
-        """Extract detailed hostname pattern features"""
         if not hostname:
             hostname = ""
         
         hostname = str(hostname).lower().strip()
         
-        # Basic structure analysis
         features = {
             'length': len(hostname),
             'dots': hostname.count('.'),
@@ -109,7 +105,6 @@ class AO1MissingAssetDiscovery:
             'letters': len(re.findall(r'[a-z]', hostname))
         }
         
-        # Extract number patterns
         numbers = re.findall(r'\d+', hostname)
         if numbers:
             features['has_numbers'] = 1
@@ -124,37 +119,30 @@ class AO1MissingAssetDiscovery:
             features['min_number'] = 0
             features['number_positions'] = []
         
-        # Pattern template (replace numbers with XXX)
         features['pattern_template'] = re.sub(r'\d+', 'XXX', hostname)
         
-        # Domain/suffix analysis
         parts = hostname.split('.')
         features['subdomain_count'] = len(parts) - 1 if len(parts) > 1 else 0
         features['tld'] = parts[-1] if len(parts) > 1 else ''
         
-        # Environment indicators
         env_indicators = ['prod', 'dev', 'test', 'stage', 'uat', 'qa']
         features['environment'] = next((env for env in env_indicators if env in hostname), 'unknown')
         
-        # Infrastructure indicators
         infra_types = ['srv', 'server', 'web', 'app', 'db', 'fw', 'lb', 'proxy']
         features['infra_type'] = next((infra for infra in infra_types if infra in hostname), 'unknown')
         
         return features
 
     def discover_hostname_patterns(self, df: pd.DataFrame) -> List[Dict]:
-        """Discover hostname patterns and identify sequence gaps"""
-        print("🔍 Discovering hostname patterns...")
+        print("Discovering hostname patterns...")
         
-        # Group hostnames by pattern template
         pattern_groups = defaultdict(list)
         
         for hostname in df['host'].dropna():
             hostname = str(hostname).lower().strip()
-            if hostname and re.search(r'\d', hostname):  # Only hostnames with numbers
+            if hostname and re.search(r'\d', hostname):
                 pattern_template = re.sub(r'\d+', 'XXX', hostname)
                 
-                # Extract numbers and their positions
                 numbers = []
                 for match in re.finditer(r'\d+', hostname):
                     numbers.append({
@@ -169,21 +157,18 @@ class AO1MissingAssetDiscovery:
                     'numbers': numbers
                 })
         
-        # Find patterns with sufficient frequency
         discovered_patterns = []
         
         for template, hostnames in pattern_groups.items():
             if len(hostnames) >= self.min_pattern_frequency:
                 print(f"   Pattern: {template} ({len(hostnames)} hosts)")
                 
-                # Analyze number sequences for each number position
                 number_sequences = defaultdict(list)
                 
                 for host_data in hostnames:
                     for i, num_data in enumerate(host_data['numbers']):
                         number_sequences[i].append(num_data['value'])
                 
-                # Find gaps in sequences
                 pattern_info = {
                     'template': template,
                     'host_count': len(hostnames),
@@ -194,10 +179,9 @@ class AO1MissingAssetDiscovery:
                 
                 for pos, values in number_sequences.items():
                     values = sorted(set(values))
-                    if len(values) > 2:  # Need at least 3 different values
+                    if len(values) > 2:
                         min_val, max_val = min(values), max(values)
                         
-                        # Find missing numbers in range
                         missing = []
                         for i in range(min_val, min(max_val + 1, min_val + self.max_gap_size)):
                             if i not in values:
@@ -206,32 +190,29 @@ class AO1MissingAssetDiscovery:
                         pattern_info['number_sequences'][pos] = {
                             'existing_values': values,
                             'range': (min_val, max_val),
-                            'missing_values': missing[:100],  # Limit missing values
+                            'missing_values': missing[:100],
                             'density': len(values) / (max_val - min_val + 1) if max_val > min_val else 1.0
                         }
                 
                 if pattern_info['number_sequences']:
                     discovered_patterns.append(pattern_info)
         
-        print(f"✅ Discovered {len(discovered_patterns)} viable hostname patterns")
+        print(f"Discovered {len(discovered_patterns)} viable hostname patterns")
         return discovered_patterns
 
     def generate_missing_hostnames(self, patterns: List[Dict]) -> List[Dict]:
-        """Generate potential missing hostnames based on discovered patterns"""
-        print("🎯 Generating potential missing hostnames...")
+        print("Generating potential missing hostnames...")
         
         missing_candidates = []
         
         for pattern in patterns:
             template = pattern['template']
             
-            # Generate combinations of missing numbers
             if len(pattern['number_sequences']) == 1:
-                # Single number sequence
                 pos = list(pattern['number_sequences'].keys())[0]
                 seq_info = pattern['number_sequences'][pos]
                 
-                for missing_num in seq_info['missing_values'][:50]:  # Limit candidates
+                for missing_num in seq_info['missing_values'][:50]:
                     candidate_hostname = template.replace('XXX', str(missing_num), 1)
                     
                     missing_candidates.append({
@@ -244,12 +225,10 @@ class AO1MissingAssetDiscovery:
                     })
             
             elif len(pattern['number_sequences']) == 2:
-                # Two number sequences - generate combinations
                 positions = list(pattern['number_sequences'].keys())
                 seq1 = pattern['number_sequences'][positions[0]]
                 seq2 = pattern['number_sequences'][positions[1]]
                 
-                # Limit combinations to prevent explosion
                 missing1 = seq1['missing_values'][:20]
                 missing2 = seq2['missing_values'][:20] 
                 
@@ -270,11 +249,10 @@ class AO1MissingAssetDiscovery:
                             'sample_existing': pattern['sample_hosts'][:3]
                         })
         
-        print(f"🎲 Generated {len(missing_candidates)} missing hostname candidates")
+        print(f"Generated {len(missing_candidates)} missing hostname candidates")
         return missing_candidates
 
     def extract_features_for_hostname(self, hostname: str) -> np.ndarray:
-        """Extract features for a hostname to feed into neural network"""
         pattern_data = self.extract_hostname_patterns(hostname)
         
         features = [
@@ -286,22 +264,19 @@ class AO1MissingAssetDiscovery:
             pattern_data['letters'],
             pattern_data['has_numbers'],
             pattern_data['num_count'],
-            pattern_data['max_number'] / 10000.0,  # Normalize large numbers
-            pattern_data['min_number'] / 1000.0,   # Normalize
+            pattern_data['max_number'] / 10000.0,
+            pattern_data['min_number'] / 1000.0,
             pattern_data['subdomain_count'],
         ]
         
-        # Environment one-hot encoding
         envs = ['prod', 'dev', 'test', 'stage', 'uat', 'qa', 'unknown']
         for env in envs:
             features.append(1 if pattern_data['environment'] == env else 0)
         
-        # Infrastructure type one-hot encoding
         infra_types = ['srv', 'server', 'web', 'app', 'db', 'fw', 'lb', 'proxy', 'unknown']
         for infra in infra_types:
             features.append(1 if pattern_data['infra_type'] == infra else 0)
         
-        # TLD encoding (top common ones)
         common_tlds = ['com', 'local', 'net', 'org', 'unknown']
         for tld in common_tlds:
             features.append(1 if pattern_data['tld'] == tld else 0)
@@ -309,8 +284,7 @@ class AO1MissingAssetDiscovery:
         return np.array(features, dtype=np.float32)
 
     def prepare_training_data(self, df: pd.DataFrame) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
-        """Prepare training data from existing assets"""
-        print(f"🔄 Preparing training data from {len(df)} assets...")
+        print(f"Preparing training data from {len(df)} assets...")
         
         features = []
         existence_labels = []
@@ -322,34 +296,29 @@ class AO1MissingAssetDiscovery:
             
             hostname = row['host']
             if pd.notna(hostname) and hostname.strip():
-                # Extract features
                 host_features = self.extract_features_for_hostname(hostname)
                 features.append(host_features)
                 
-                # Existence label (1.0 since it exists in CMDB)
                 existence_labels.append(1.0)
                 
-                # Logging labels (6 platforms: Splunk, GSO, Chronicle, EDR, Tanium, CMDB)
                 logging = [
                     1.0 if row.get('logging_in_splunk') == 'yes' else 0.0,
                     1.0 if row.get('logging_in_gso') == 'yes' else 0.0,
-                    0.8 if (row.get('logging_in_splunk') == 'yes' and row.get('logging_in_gso') == 'yes') else 0.0,  # Chronicle
+                    0.8 if (row.get('logging_in_splunk') == 'yes' and row.get('logging_in_gso') == 'yes') else 0.0,
                     1.0 if 'crowdstrike' in str(row.get('edr_coverage', '')).lower() else 0.0,
                     1.0 if row.get('tanium_coverage') == 'yes' else 0.0,
                     1.0 if row.get('present_in_cmdb') == 'yes' else 0.0
                 ]
                 logging_labels.append(logging)
         
-        print(f"✅ Prepared {len(features):,} training samples")
+        print(f"Prepared {len(features):,} training samples")
         return (np.array(features, dtype=np.float32), 
                 np.array(existence_labels, dtype=np.float32),
                 np.array(logging_labels, dtype=np.float32))
 
     def train_missing_asset_model(self):
-        """Train the missing asset discovery model"""
-        print("🚀 Training AO1 Missing Asset Discovery Model...")
+        print("Training AO1 Missing Asset Discovery Model...")
         
-        # Load data
         conn = self.get_db_connection()
         if not conn:
             return
@@ -358,28 +327,24 @@ class AO1MissingAssetDiscovery:
         conn.close()
         
         if df.empty:
-            print("❌ No data available!")
+            print("No data available!")
             return
         
-        print(f"📊 Loaded {len(df):,} assets from CMDB")
+        print(f"Loaded {len(df):,} assets from CMDB")
         
-        # Prepare training data
         X, existence_y, logging_y = self.prepare_training_data(df)
         
         if len(X) == 0:
-            print("❌ No features extracted!")
+            print("No features extracted!")
             return
         
-        # Train/validation split
         X_train, X_val, exist_y_train, exist_y_val, log_y_train, log_y_val = train_test_split(
             X, existence_y, logging_y, test_size=0.15, random_state=42
         )
         
-        # Scale features
         X_train_scaled = self.feature_scaler.fit_transform(X_train)
         X_val_scaled = self.feature_scaler.transform(X_val)
         
-        # Initialize model
         input_size = X_train_scaled.shape[1]
         self.model = HostnamePatternNet(input_size).to(device)
         
@@ -390,7 +355,7 @@ class AO1MissingAssetDiscovery:
         batch_size = 4096
         epochs = 100
         
-        print(f"🔥 Training model: {len(X_train_scaled):,} samples, {epochs} epochs")
+        print(f"Training model: {len(X_train_scaled):,} samples, {epochs} epochs")
         
         for epoch in range(epochs):
             self.model.train()
@@ -410,7 +375,7 @@ class AO1MissingAssetDiscovery:
                 loss_exist = existence_criterion(exist_pred, exist_batch)
                 loss_log = logging_criterion(log_pred, log_batch)
                 
-                total_loss_batch = loss_exist + 2.0 * loss_log  # Weight logging prediction more
+                total_loss_batch = loss_exist + 2.0 * loss_log
                 total_loss_batch.backward()
                 
                 torch.nn.utils.clip_grad_norm_(self.model.parameters(), 1.0)
@@ -422,21 +387,21 @@ class AO1MissingAssetDiscovery:
             
             if epoch % 20 == 0:
                 avg_loss = total_loss / (len(X_train_scaled) / batch_size)
-                print(f"🎯 Epoch {epoch}/{epochs}, Loss: {avg_loss:.4f}")
+                print(f"Epoch {epoch}/{epochs}, Loss: {avg_loss:.4f}")
                 gc.collect()
         
         self.trained = True
         self.save_models()
-        print("✅ Missing Asset Discovery model training completed!")
+        print("Missing Asset Discovery model training completed!")
 
     def save_models(self):
         try:
             torch.save(self.model.state_dict(), f'{self.model_dir}/missing_asset_model.pth')
             with open(f'{self.model_dir}/missing_asset_scaler.pkl', 'wb') as f:
                 pickle.dump(self.feature_scaler, f)
-            print("💾 Models saved successfully!")
+            print("Models saved successfully!")
         except Exception as e:
-            print(f"❌ Error saving models: {e}")
+            print(f"Error saving models: {e}")
 
     def load_models(self):
         try:
@@ -444,7 +409,6 @@ class AO1MissingAssetDiscovery:
                     os.path.exists(f'{self.model_dir}/missing_asset_scaler.pkl')):
                 return False
             
-            # Determine input size from sample
             sample_features = self.extract_features_for_hostname("sample-host-01.example.com")
             input_size = len(sample_features)
             
@@ -455,22 +419,28 @@ class AO1MissingAssetDiscovery:
                 self.feature_scaler = pickle.load(f)
             
             self.trained = True
-            print("✅ Missing asset models loaded!")
+            print("Missing asset models loaded!")
             return True
         except Exception as e:
-            print(f"❌ Error loading models: {e}")
+            print(f"Error loading models: {e}")
             return False
 
-    def discover_missing_assets(self, limit: int = 1000) -> List[Dict]:
-        """Main function to discover missing assets"""
+    def initialize_system(self):
+        print("Initializing AO1 Missing Asset Discovery System...")
+        
+        if self.load_models():
+            print("Existing models loaded successfully!")
+        else:
+            print("No existing models found. Training new models...")
+            self.train_missing_asset_model()
+
+    def discover_missing_assets(self, limit: int = 500) -> List[Dict]:
         if not self.trained:
-            if not self.load_models():
-                print("❌ Models not trained! Training now...")
-                self.train_missing_asset_model()
+            print("Models not trained! Training now...")
+            self.train_missing_asset_model()
         
-        print("🔍 Discovering Missing Assets...")
+        print("Discovering Missing Assets...")
         
-        # Load existing assets
         conn = self.get_db_connection()
         if not conn:
             return []
@@ -479,26 +449,22 @@ class AO1MissingAssetDiscovery:
         conn.close()
         
         existing_hosts = set(df['host'].str.lower())
-        print(f"📊 Found {len(existing_hosts):,} existing hosts")
+        print(f"Found {len(existing_hosts):,} existing hosts")
         
-        # Discover patterns
         patterns = self.discover_hostname_patterns(df)
         
-        # Generate missing hostname candidates
         candidates = self.generate_missing_hostnames(patterns)
         
-        # Filter out existing hosts
         new_candidates = [c for c in candidates if c['hostname'] not in existing_hosts]
-        print(f"🎯 {len(new_candidates):,} potential missing assets identified")
+        print(f"{len(new_candidates):,} potential missing assets identified")
         
-        # Predict existence and logging for candidates
         missing_assets = []
         self.model.eval()
         
-        print("🤖 AI analyzing missing asset candidates...")
+        print("AI analyzing missing asset candidates...")
         
         with torch.no_grad():
-            for i, candidate in enumerate(new_candidates[:limit * 3]):  # Process more to get top results
+            for i, candidate in enumerate(new_candidates[:limit * 3]):
                 if i % 1000 == 0 and i > 0:
                     print(f"   Analyzed {i:,} candidates...")
                 
@@ -531,19 +497,16 @@ class AO1MissingAssetDiscovery:
                         'recommended_actions': self.get_remediation_actions(candidate['hostname'], logging_scores)
                     })
         
-        # Sort by existence confidence
         missing_assets.sort(key=lambda x: float(x['existence_confidence'].rstrip('%')), reverse=True)
         
         result = missing_assets[:limit]
-        print(f"✅ Identified {len(result)} high-confidence missing assets!")
+        print(f"Identified {len(result)} high-confidence missing assets!")
         
         return result
 
     def get_remediation_actions(self, hostname: str, logging_scores: np.ndarray) -> List[str]:
-        """Generate specific remediation actions for missing assets"""
         actions = [f"Verify if {hostname} actually exists in your environment"]
         
-        # Check which logging platforms are unlikely
         platform_names = ['Splunk', 'GSO', 'Chronicle', 'EDR', 'Tanium', 'CMDB']
         
         for i, (platform, score) in enumerate(zip(platform_names, logging_scores)):
@@ -559,24 +522,51 @@ class AO1MissingAssetDiscovery:
         
         return actions
 
-# Flask Application
+    def generate_executive_report(self) -> Dict:
+        print("Generating Executive Missing Asset Report...")
+        
+        missing_assets = self.discover_missing_assets(limit=200)
+        
+        if not missing_assets:
+            return {
+                'error': 'No missing assets discovered',
+                'total_missing_assets': 0
+            }
+        
+        high_confidence = [a for a in missing_assets if float(a['existence_confidence'].rstrip('%')) > 90]
+        high_risk = [a for a in missing_assets if float(a['visibility_gap_risk'].rstrip('%')) > 70]
+        
+        pattern_analysis = defaultdict(int)
+        for asset in missing_assets:
+            pattern_analysis[asset['pattern_template']] += 1
+        
+        top_patterns = sorted(pattern_analysis.items(), key=lambda x: x[1], reverse=True)[:10]
+        
+        report = {
+            'executive_summary': {
+                'total_missing_assets_discovered': len(missing_assets),
+                'high_confidence_assets': len(high_confidence),
+                'high_risk_visibility_gaps': len(high_risk),
+                'top_missing_patterns': [{'pattern': p[0], 'missing_count': p[1]} for p in top_patterns[:5]],
+                'generated_timestamp': datetime.now().isoformat()
+            },
+            'detailed_findings': missing_assets[:50],
+            'pattern_analysis': {
+                'total_patterns_analyzed': len(pattern_analysis),
+                'pattern_breakdown': [{'pattern': p[0], 'missing_assets': p[1]} for p in top_patterns]
+            },
+            'remediation_summary': {
+                'immediate_verification_needed': len([a for a in missing_assets if float(a['existence_confidence'].rstrip('%')) > 95]),
+                'splunk_integration_needed': len([a for a in missing_assets if float(a['logging_predictions']['splunk_likely'].rstrip('%')) < 50]),
+                'edr_deployment_needed': len([a for a in missing_assets if float(a['logging_predictions']['edr_likely'].rstrip('%')) < 50])
+            }
+        }
+        
+        print("Executive report generated successfully!")
+        return report
+
 app = Flask(__name__)
 discovery_system = AO1MissingAssetDiscovery()
-
-@app.route('/api/ao1/train-discovery')
-def train_discovery():
-    try:
-        def train_async():
-            discovery_system.train_missing_asset_model()
-        
-        threading.Thread(target=train_async, daemon=True).start()
-        return jsonify({
-            'status': 'training_started',
-            'message': 'AO1 Missing Asset Discovery training initiated',
-            'version': discovery_system.model_version
-        })
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
 
 @app.route('/api/ao1/discover-missing-assets')
 def discover_missing_assets():
@@ -593,6 +583,14 @@ def discover_missing_assets():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
+@app.route('/api/ao1/executive-report')
+def executive_report():
+    try:
+        report = discovery_system.generate_executive_report()
+        return jsonify(report)
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
 @app.route('/api/ao1/discovery-status')
 def discovery_status():
     return jsonify({
@@ -605,11 +603,7 @@ def discovery_status():
     })
 
 if __name__ == '__main__':
-    print("🔍 Starting AO1 Missing Asset Discovery System...")
-    
-    if discovery_system.load_models():
-        print("✅ AO1 Discovery System Ready!")
-    else:
-        print("⚠️  Models not ready. Use /api/ao1/train-discovery to train.")
+    print("Starting AO1 Missing Asset Discovery System...")
+    print("System initialized and ready!")
     
     app.run(debug=True, port=5001, host='0.0.0.0')
