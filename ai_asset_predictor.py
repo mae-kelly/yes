@@ -1,5 +1,3 @@
-# /src/ml/ao1_missing_asset_predictor.py
-
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -18,15 +16,19 @@ import gc
 from typing import List, Dict, Optional, Tuple
 from collections import Counter, defaultdict
 
-if torch.backends.mps.is_available():
+# Device configuration - support for GPU acceleration
+if torch.cuda.is_available():
+    device = torch.device("cuda")
+    print("Using NVIDIA GPU (CUDA)")
+elif torch.backends.mps.is_available():
     device = torch.device("mps")
     print("Using Apple Silicon GPU (MPS)")
 else:
-    print("ERROR: MPS (Apple Silicon GPU) not available! This application requires GPU acceleration.")
-    print("Make sure you're running on Apple Silicon Mac with PyTorch MPS support.")
-    exit(1)
+    device = torch.device("cpu")
+    print("Using CPU - Training will be slower")
 
 class HostnamePatternNet(nn.Module):
+    """Neural network for predicting asset existence based on hostname patterns"""
     def __init__(self, input_size: int):
         super().__init__()
         self.layers = nn.Sequential(
@@ -48,6 +50,7 @@ class HostnamePatternNet(nn.Module):
         return self.layers(x)
 
 class LogVisibilityPredictor(nn.Module):
+    """Neural network for predicting logging visibility across different systems"""
     def __init__(self, input_size: int):
         super().__init__()
         self.layers = nn.Sequential(
@@ -68,26 +71,33 @@ class LogVisibilityPredictor(nn.Module):
     def forward(self, x):
         return self.layers(x)
 
-class AO1MissingAssetPredictor:
+class AIAssetPredictor:
+    """
+    AI-powered missing IT asset discovery system using ML pattern recognition.
+    Combines neural networks, pattern mining, and anomaly detection.
+    """
+    
     def __init__(self, db_path: str = 'universal_cmdb.db'):
         self.hostname_net = None
         self.log_visibility_net = None
         self.feature_scaler = StandardScaler()
         self.trained = False
         self.db_path = db_path
-        self.model_version = "AO1-Missing-Asset-2025.1"
+        self.model_version = "AI-Asset-Predictor-2025.1"
         self.training_metrics = {}
         self.model_dir = 'models'
         
-        # Pattern discovery settings
+        # Pattern discovery configuration
         self.min_pattern_frequency = 3
         self.max_gap_size = 1000
         self.confidence_threshold = 0.75
         
+        # Create model directory
         os.makedirs(self.model_dir, exist_ok=True)
         
     @property
     def models_exist(self) -> bool:
+        """Check if trained models exist on disk"""
         required_files = [
             f'{self.model_dir}/hostname_net.pth',
             f'{self.model_dir}/log_visibility_net.pth', 
@@ -96,6 +106,7 @@ class AO1MissingAssetPredictor:
         return all(os.path.exists(f) for f in required_files)
 
     def initialize_models(self):
+        """Initialize models - load existing or train new ones"""
         if self.models_exist:
             print("Loading existing models...")
             if self.load_models():
@@ -108,6 +119,7 @@ class AO1MissingAssetPredictor:
         return self.trained
         
     def get_db_connection(self):
+        """Get DuckDB connection"""
         try:
             return duckdb.connect(self.db_path)
         except Exception as e:
@@ -115,11 +127,13 @@ class AO1MissingAssetPredictor:
             return None
     
     def extract_hostname_features(self, hostname: str) -> np.ndarray:
+        """Extract ML features from hostname string"""
         if not hostname:
             return np.zeros(35)
         
         hostname = hostname.lower().strip()
         
+        # Basic string features
         features = [
             len(hostname),
             hostname.count('.'),
@@ -129,6 +143,7 @@ class AO1MissingAssetPredictor:
             len(re.findall(r'[a-z]', hostname))
         ]
         
+        # Keyword-based features for common infrastructure patterns
         keywords = [
             ['srv', 'server'], ['web', 'www'], ['db', 'database', 'sql'], 
             ['app', 'application'], ['dc', 'datacenter'], ['prod', 'production'],
@@ -148,6 +163,7 @@ class AO1MissingAssetPredictor:
         return np.array(features[:35])
     
     def get_cmdb_data(self) -> pd.DataFrame:
+        """Fetch CMDB data from database"""
         conn = self.get_db_connection()
         if not conn:
             return pd.DataFrame()
@@ -173,15 +189,19 @@ class AO1MissingAssetPredictor:
             conn.close()
 
     def discover_hostname_patterns(self, df: pd.DataFrame) -> List[Dict]:
+        """Discover sequential patterns in hostnames for gap detection"""
         print("Discovering hostname patterns...")
         
         pattern_groups = defaultdict(list)
         
+        # Group hostnames by pattern template
         for hostname in df['host'].dropna():
             hostname = str(hostname).lower().strip()
             if hostname and re.search(r'\d', hostname):
+                # Replace numbers with placeholder
                 pattern_template = re.sub(r'\d+', 'XXX', hostname)
                 
+                # Extract number positions and values
                 numbers = []
                 for match in re.finditer(r'\d+', hostname):
                     numbers.append({
@@ -198,10 +218,12 @@ class AO1MissingAssetPredictor:
         
         discovered_patterns = []
         
+        # Analyze patterns with sufficient frequency
         for template, hostnames in pattern_groups.items():
             if len(hostnames) >= self.min_pattern_frequency:
                 print(f"   Pattern: {template} ({len(hostnames)} hosts)")
                 
+                # Analyze number sequences at each position
                 number_sequences = defaultdict(list)
                 
                 for host_data in hostnames:
@@ -216,11 +238,13 @@ class AO1MissingAssetPredictor:
                     'potential_gaps': []
                 }
                 
+                # Find gaps in number sequences
                 for pos, values in number_sequences.items():
                     values = sorted(set(values))
                     if len(values) > 2:
                         min_val, max_val = min(values), max(values)
                         
+                        # Identify missing values in sequence
                         missing = []
                         for i in range(min_val, min(max_val + 1, min_val + self.max_gap_size)):
                             if i not in values:
@@ -240,6 +264,7 @@ class AO1MissingAssetPredictor:
         return discovered_patterns
 
     def generate_missing_hostnames(self, patterns: List[Dict]) -> List[Dict]:
+        """Generate potential missing hostnames based on discovered patterns"""
         print("Generating potential missing hostnames...")
         
         missing_candidates = []
@@ -247,6 +272,7 @@ class AO1MissingAssetPredictor:
         for pattern in patterns:
             template = pattern['template']
             
+            # Handle single number sequence patterns
             if len(pattern['number_sequences']) == 1:
                 pos = list(pattern['number_sequences'].keys())[0]
                 seq_info = pattern['number_sequences'][pos]
@@ -263,6 +289,7 @@ class AO1MissingAssetPredictor:
                         'sample_existing': pattern['sample_hosts'][:3]
                     })
             
+            # Handle dual number sequence patterns
             elif len(pattern['number_sequences']) == 2:
                 positions = list(pattern['number_sequences'].keys())
                 seq1 = pattern['number_sequences'][positions[0]]
@@ -292,6 +319,7 @@ class AO1MissingAssetPredictor:
         return missing_candidates
     
     def prepare_training_data(self, df: pd.DataFrame) -> tuple:
+        """Prepare features and labels for model training"""
         features, existence_labels, visibility_labels = [], [], []
         
         print(f"Processing {len(df)} records...")
@@ -300,8 +328,10 @@ class AO1MissingAssetPredictor:
             if idx % 50000 == 0:
                 print(f"Processed {idx} records...")
                 
+            # Extract hostname features
             hostname_features = self.extract_hostname_features(row['host']) if pd.notna(row['host']) else self.extract_hostname_features("")
             
+            # Additional context features
             additional_features = [
                 1 if pd.notna(row['business_unit']) else 0,
                 1 if pd.notna(row['region']) else 0,
@@ -317,6 +347,7 @@ class AO1MissingAssetPredictor:
             combined_features = np.concatenate([hostname_features, additional_features])
             features.append(combined_features)
             
+            # Calculate existence score
             existence_score = min(sum([
                 1 if pd.notna(row['logging_in_splunk']) and row['logging_in_splunk'] == 'yes' else 0,
                 1 if pd.notna(row['present_in_cmdb']) and row['present_in_cmdb'] == 'yes' else 0,
@@ -325,16 +356,17 @@ class AO1MissingAssetPredictor:
             
             existence_labels.append(existence_score)
             
+            # Determine visibility level
             visibility_type = 0
             if (pd.notna(row['logging_in_splunk']) and row['logging_in_splunk'] == 'yes' and 
                 pd.notna(row['logging_in_gso']) and row['logging_in_gso'] == 'yes'):
-                visibility_type = 4
+                visibility_type = 4  # Full visibility
             elif pd.notna(row['logging_in_splunk']) and row['logging_in_splunk'] == 'yes':
-                visibility_type = 3
+                visibility_type = 3  # Splunk only
             elif pd.notna(row['logging_in_gso']) and row['logging_in_gso'] == 'yes':
-                visibility_type = 2
+                visibility_type = 2  # GSO only
             elif pd.notna(row['present_in_cmdb']) and row['present_in_cmdb'] == 'yes':
-                visibility_type = 1
+                visibility_type = 1  # CMDB only
             
             visibility_labels.append(visibility_type)
         
@@ -342,6 +374,7 @@ class AO1MissingAssetPredictor:
         return np.array(features), np.array(existence_labels), np.array(visibility_labels)
     
     def train_models(self):
+        """Train neural networks for asset prediction"""
         print("Loading CMDB data...")
         df = self.get_cmdb_data()
         
@@ -354,35 +387,40 @@ class AO1MissingAssetPredictor:
             X, existence_y, visibility_y = self.prepare_training_data(df)
         except ValueError as e:
             print(f"Error in prepare_training_data: {e}")
-            print(f"DataFrame shape: {df.shape}")
-            print(f"DataFrame columns: {list(df.columns)}")
             return
         
         if len(X) == 0:
             print("No features extracted!")
             return
         
+        # Split data
         X_train, X_val, existence_y_train, existence_y_val, visibility_y_train, visibility_y_val = train_test_split(
             X, existence_y, visibility_y, test_size=0.15, random_state=42
         )
         
+        # Clean up memory
         del X, existence_y, visibility_y
         gc.collect()
         
+        # Scale features
         X_train_scaled = self.feature_scaler.fit_transform(X_train)
         X_val_scaled = self.feature_scaler.transform(X_val)
         
+        # Initialize networks
         input_size = X_train_scaled.shape[1]
         self.hostname_net = HostnamePatternNet(input_size).to(device)
         self.log_visibility_net = LogVisibilityPredictor(input_size).to(device)
         
+        # Optimizers
         optimizer1 = optim.AdamW(self.hostname_net.parameters(), lr=0.001, weight_decay=1e-4)
         optimizer2 = optim.AdamW(self.log_visibility_net.parameters(), lr=0.001, weight_decay=1e-4)
         
+        # Loss functions
         criterion1 = nn.BCELoss()
         criterion2 = nn.CrossEntropyLoss()
         
-        batch_size = 8192
+        # Training configuration
+        batch_size = 8192 if device.type != 'cpu' else 1024
         epochs = 150
         
         print(f"Training models on {device}...")
@@ -395,6 +433,7 @@ class AO1MissingAssetPredictor:
             
             total_loss = 0.0
             
+            # Training loop
             for i in range(0, len(X_train_scaled), batch_size):
                 batch_end = min(i + batch_size, len(X_train_scaled))
                 
@@ -402,6 +441,7 @@ class AO1MissingAssetPredictor:
                 existence_y_batch = torch.FloatTensor(existence_y_train[i:batch_end]).reshape(-1, 1).to(device)
                 visibility_y_batch = torch.LongTensor(visibility_y_train[i:batch_end]).to(device)
                 
+                # Train existence predictor
                 optimizer1.zero_grad()
                 existence_outputs = self.hostname_net(X_batch)
                 loss1 = criterion1(existence_outputs, existence_y_batch)
@@ -409,6 +449,7 @@ class AO1MissingAssetPredictor:
                 torch.nn.utils.clip_grad_norm_(self.hostname_net.parameters(), 1.0)
                 optimizer1.step()
                 
+                # Train visibility predictor
                 optimizer2.zero_grad()
                 visibility_outputs = self.log_visibility_net(X_batch)
                 loss2 = criterion2(visibility_outputs, visibility_y_batch)
@@ -423,6 +464,7 @@ class AO1MissingAssetPredictor:
                 if i % (batch_size * 20) == 0:
                     gc.collect()
             
+            # Validation every 25 epochs
             if epoch % 25 == 0:
                 self.hostname_net.eval()
                 self.log_visibility_net.eval()
@@ -460,6 +502,7 @@ class AO1MissingAssetPredictor:
         self.trained = True
         self.save_models()
         
+        # Store training metrics
         self.training_metrics = {
             'final_losses': [avg_train_loss, avg_val_loss1, avg_val_loss2],
             'training_records': len(X_train_scaled),
@@ -471,6 +514,7 @@ class AO1MissingAssetPredictor:
         print(f"Training completed! Final train loss: {avg_train_loss:.4f}")
     
     def save_models(self):
+        """Save trained models to disk"""
         try:
             torch.save(self.hostname_net.state_dict(), f'{self.model_dir}/hostname_net.pth')
             torch.save(self.log_visibility_net.state_dict(), f'{self.model_dir}/log_visibility_net.pth')
@@ -481,20 +525,25 @@ class AO1MissingAssetPredictor:
             print(f"Error saving models: {e}")
     
     def load_models(self):
+        """Load trained models from disk"""
         try:
             if not self.models_exist:
                 return False
             
+            # Determine input size
             sample_features = self.extract_hostname_features("sample-host-01.example.com")
             additional_features = [0] * 9
             input_size = len(np.concatenate([sample_features, additional_features]))
             
+            # Initialize networks
             self.hostname_net = HostnamePatternNet(input_size).to(device)
             self.log_visibility_net = LogVisibilityPredictor(input_size).to(device)
             
+            # Load state dicts
             self.hostname_net.load_state_dict(torch.load(f'{self.model_dir}/hostname_net.pth', map_location=device))
             self.log_visibility_net.load_state_dict(torch.load(f'{self.model_dir}/log_visibility_net.pth', map_location=device))
             
+            # Load scaler
             with open(f'{self.model_dir}/feature_scaler.pkl', 'rb') as f:
                 self.feature_scaler = pickle.load(f)
             
@@ -506,6 +555,7 @@ class AO1MissingAssetPredictor:
             return False
     
     def predict_missing_assets(self, business_unit_filter: Optional[str] = None) -> List[Dict]:
+        """Predict missing assets using trained models"""
         if not self.trained:
             print("Models not trained yet! Attempting to initialize...")
             self.initialize_models()
@@ -519,26 +569,32 @@ class AO1MissingAssetPredictor:
             print("No CMDB data available!")
             return []
         
+        # Apply business unit filter if specified
         if business_unit_filter:
             df = df[df['business_unit'] == business_unit_filter]
             print(f"Filtered to business unit: {business_unit_filter} ({len(df)} records)")
         
+        # Get existing hostnames
         existing_hostnames = set(df['host'].dropna().str.lower())
         print(f"Found {len(existing_hostnames):,} existing hosts")
         
+        # Discover patterns
         hostname_patterns = self.discover_hostname_patterns(df)
         if not hostname_patterns:
             print("No hostname patterns discovered!")
             return []
         
+        # Generate missing candidates
         missing_candidates = self.generate_missing_hostnames(hostname_patterns)
         if not missing_candidates:
             print("No missing hostname candidates generated!")
             return []
         
+        # Filter out existing hostnames
         new_candidates = [c for c in missing_candidates if c['hostname'] not in existing_hostnames]
         print(f"{len(new_candidates):,} potential missing assets identified")
         
+        # Predict using neural networks
         predicted_assets = []
         self.hostname_net.eval()
         self.log_visibility_net.eval()
@@ -550,6 +606,7 @@ class AO1MissingAssetPredictor:
                 if i % 250 == 0 and i > 0:
                     print(f"   Analyzed {i:,} candidates...")
                 
+                # Prepare features
                 features = self.extract_hostname_features(candidate['hostname'])
                 additional_features = [
                     1 if business_unit_filter else 0,
@@ -559,10 +616,12 @@ class AO1MissingAssetPredictor:
                 combined_features = np.concatenate([features, additional_features])
                 combined_features_scaled = self.feature_scaler.transform([combined_features])
                 
+                # Make predictions
                 features_tensor = torch.FloatTensor(combined_features_scaled).to(device)
                 existence_prob = self.hostname_net(features_tensor).cpu().item()
                 visibility_probs = self.log_visibility_net(features_tensor).cpu().numpy()[0]
                 
+                # Filter by confidence threshold
                 if existence_prob > self.confidence_threshold:
                     predicted_assets.append({
                         'predicted_hostname': candidate['hostname'],
@@ -580,43 +639,22 @@ class AO1MissingAssetPredictor:
                         'existing_pattern_count': candidate['existing_hosts_count']
                     })
         
+        # Sort by probability and return top results
         result = sorted(predicted_assets, key=lambda x: x['existence_probability'], reverse=True)[:100]
         print(f"Identified {len(result)} high-confidence missing assets!")
         
         return result
-
-    def analyze_naming_patterns(self, df: pd.DataFrame) -> List[Dict]:
-        patterns = []
-        
-        for bu in df['business_unit'].dropna().unique()[:8]:
-            bu_df = df[df['business_unit'] == bu]
-            pattern_counts = {}
-            
-            for hostname in bu_df['host']:
-                if hostname:
-                    base_pattern = re.sub(r'\d+', 'XXX', hostname.lower())
-                    pattern_counts[base_pattern] = pattern_counts.get(base_pattern, 0) + 1
-            
-            for pattern, count in pattern_counts.items():
-                if count >= 2:
-                    patterns.append({
-                        'pattern': pattern,
-                        'base_pattern': pattern,
-                        'business_unit': bu,
-                        'count': count
-                    })
-        
-        return sorted(patterns, key=lambda x: x['count'], reverse=True)
     
     def classify_role(self, hostname: str) -> str:
+        """Classify asset role based on hostname"""
         hostname_lower = hostname.lower()
         role_keywords = {
             'Server': ['srv', 'server'],
             'Web Server': ['web', 'www'],
             'Database': ['db', 'database', 'sql'],
             'Application': ['app', 'application'],
-            'Network': ['fw', 'firewall'],
-            'Security': ['ids', 'ips', 'ndr']
+            'Network': ['fw', 'firewall', 'router', 'switch'],
+            'Security': ['ids', 'ips', 'ndr', 'siem']
         }
         
         for role, keywords in role_keywords.items():
@@ -625,12 +663,13 @@ class AO1MissingAssetPredictor:
         return 'Endpoint'
     
     def predict_log_types(self, hostname: str) -> List[str]:
+        """Predict log types based on hostname"""
         hostname_lower = hostname.lower()
         
         log_type_map = {
             ['fw', 'firewall']: ['Firewall Traffic', 'IDS/IPS', 'NDR'],
             ['web', 'www', 'app']: ['Web Logs', 'HTTP Access', 'Application Logs'],
-            ['db', 'database', 'sql']: ['OS logs', 'Theom', 'Database Audit'],
+            ['db', 'database', 'sql']: ['OS logs', 'Database Audit', 'Query Logs'],
             ['srv', 'server']: ['OS logs', 'EDR', 'System Events']
         }
         
@@ -641,8 +680,10 @@ class AO1MissingAssetPredictor:
         return ['OS logs', 'EDR']
     
     def calculate_visibility_risk(self, hostname: str, existence_prob: float, visibility_probs: np.ndarray) -> float:
+        """Calculate visibility risk score for missing asset"""
         hostname_lower = hostname.lower()
         
+        # Risk factors based on hostname patterns
         risk_factors = [
             0.4 if 'prod' in hostname_lower else 0,
             0.3 if any(kw in hostname_lower for kw in ['srv', 'server', 'db']) else 0,
@@ -655,16 +696,18 @@ class AO1MissingAssetPredictor:
         
         return min(base_risk + (existence_prob * 0.3) + (no_visibility_prob * 0.4), 1.0)
 
+# Flask API Application
 app = Flask(__name__)
-ao1_predictor = AO1MissingAssetPredictor()
+ai_predictor = AIAssetPredictor()
 
-@app.route('/api/train-visibility-model')
-def train_visibility_model():
+@app.route('/api/train-model')
+def train_model():
+    """Endpoint to train the AI models"""
     try:
-        threading.Thread(target=ao1_predictor.train_models, daemon=True).start()
+        threading.Thread(target=ai_predictor.train_models, daemon=True).start()
         return jsonify({
             'status': 'training_started', 
-            'message': 'AO1 missing asset predictor training initiated',
+            'message': 'AI asset predictor training initiated',
             'device': str(device)
         })
     except Exception as e:
@@ -672,17 +715,18 @@ def train_visibility_model():
 
 @app.route('/api/predict-missing-assets')
 def predict_missing_assets():
+    """Endpoint to predict missing assets"""
     try:
-        if not ao1_predictor.trained:
+        if not ai_predictor.trained:
             return jsonify({
                 'error': 'Models not trained yet',
-                'message': 'Please train the models first using /api/train-visibility-model'
+                'message': 'Please train the models first using /api/train-model'
             }), 503
             
-        predictions = ao1_predictor.predict_missing_assets()
+        predictions = ai_predictor.predict_missing_assets()
         return jsonify({
             'total_missing_assets': len(predictions),
-            'confidence_threshold': f"{ao1_predictor.confidence_threshold:.0%}",
+            'confidence_threshold': f"{ai_predictor.confidence_threshold:.0%}",
             'missing_assets': predictions,
             'generated_at': datetime.now().isoformat()
         })
@@ -691,39 +735,42 @@ def predict_missing_assets():
 
 @app.route('/api/predict-missing-assets/<business_unit>')
 def predict_missing_assets_bu(business_unit):
+    """Endpoint to predict missing assets for specific business unit"""
     try:
-        if not ao1_predictor.trained:
+        if not ai_predictor.trained:
             return jsonify({
                 'error': 'Models not trained yet', 
-                'message': 'Please train the models first using /api/train-visibility-model'
+                'message': 'Please train the models first using /api/train-model'
             }), 503
             
-        predictions = ao1_predictor.predict_missing_assets(business_unit)
+        predictions = ai_predictor.predict_missing_assets(business_unit)
         return jsonify({
             'total_missing_assets': len(predictions),
             'business_unit': business_unit,
-            'confidence_threshold': f"{ao1_predictor.confidence_threshold:.0%}",
+            'confidence_threshold': f"{ai_predictor.confidence_threshold:.0%}",
             'missing_assets': predictions,
             'generated_at': datetime.now().isoformat()
         })
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
-@app.route('/api/visibility-model-status')
-def visibility_model_status():
+@app.route('/api/model-status')
+def model_status():
+    """Endpoint to check model status"""
     return jsonify({
-        'trained': ao1_predictor.trained,
+        'trained': ai_predictor.trained,
         'device': str(device),
-        'model_version': ao1_predictor.model_version,
-        'training_metrics': ao1_predictor.training_metrics,
-        'confidence_threshold': ao1_predictor.confidence_threshold,
-        'last_training': datetime.now().isoformat() if ao1_predictor.trained else None
+        'model_version': ai_predictor.model_version,
+        'training_metrics': ai_predictor.training_metrics,
+        'confidence_threshold': ai_predictor.confidence_threshold,
+        'models_exist': ai_predictor.models_exist
     })
 
 @app.route('/api/load-models')
 def load_models():
+    """Endpoint to load existing models"""
     try:
-        success = ao1_predictor.load_models()
+        success = ai_predictor.load_models()
         return jsonify({
             'status': 'success' if success else 'failed',
             'message': 'Models loaded successfully' if success else 'Failed to load models'
@@ -732,12 +779,29 @@ def load_models():
         return jsonify({'error': str(e)}), 500
 
 if __name__ == '__main__':
-    print("Initializing AO1 Missing Asset Predictor...")
-    ao1_predictor.initialize_models()
+    print("=" * 60)
+    print("AI Asset Predictor - Missing IT Asset Discovery System")
+    print("=" * 60)
+    print(f"Device: {device}")
+    print(f"Model Version: {ai_predictor.model_version}")
     
-    if not ao1_predictor.trained:
-        print("WARNING: AI models not ready. Some endpoints may not work.")
+    # Attempt to initialize models
+    print("\nInitializing AI models...")
+    ai_predictor.initialize_models()
+    
+    if not ai_predictor.trained:
+        print("\nWARNING: AI models not ready. Some endpoints may not work.")
+        print("Use /api/train-model endpoint to train the models.")
     else:
-        print("AI models ready!")
+        print("\nAI models ready!")
+    
+    print("\nStarting Flask API server...")
+    print("API Endpoints:")
+    print("  - GET  /api/model-status")
+    print("  - GET  /api/train-model")
+    print("  - GET  /api/load-models")
+    print("  - GET  /api/predict-missing-assets")
+    print("  - GET  /api/predict-missing-assets/<business_unit>")
+    print("\n" + "=" * 60)
     
     app.run(debug=True, port=5001, host='0.0.0.0')
