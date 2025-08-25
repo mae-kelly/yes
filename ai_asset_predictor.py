@@ -187,8 +187,8 @@ class AO1VisibilityPredictor:
             system_classification, infrastructure_type, cio, apm,
             logging_in_splunk, logging_in_gso, present_in_cmdb, 
             edr_coverage, sas_coverage, tanium_coverage, dlp_agent_coverage,
-            first_seen_ts, last_updated_ts, data_quality_score, source_count
-        FROM universal_cmdb
+            first_seen, last_updated, data_quality_score, source_count
+        FROM "universal_cmdb"."main"."universal_cmdb"
         WHERE fqdn IS NOT NULL AND fqdn != ''
             AND data_quality_score > 3.0
         ORDER BY data_quality_score DESC
@@ -198,7 +198,7 @@ class AO1VisibilityPredictor:
         try:
             df = conn.execute(query).df()
             conn.close()
-            print(f"Successfully loaded {len(df)} records from universal_cmdb table")
+            print(f"Successfully loaded {len(df)} records from main.universal_cmdb table")
             return df
         except Exception as e:
             print(f"Error fetching CMDB data: {e}")
