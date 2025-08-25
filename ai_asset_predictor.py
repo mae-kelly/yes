@@ -17,7 +17,13 @@ import pickle
 from typing import List, Dict, Optional
 from collections import Counter
 
-device = torch.device("mps") if torch.backends.mps.is_available() else torch.device("cpu")
+if torch.backends.mps.is_available():
+    device = torch.device("mps")
+    print("Using Apple Silicon GPU (MPS)")
+else:
+    print("ERROR: MPS (Apple Silicon GPU) not available! This application requires GPU acceleration.")
+    print("Make sure you're running on Apple Silicon Mac with PyTorch MPS support.")
+    exit(1)
 
 class HostnamePatternNet(nn.Module):
     def __init__(self, input_size: int):
