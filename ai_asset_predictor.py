@@ -37,26 +37,36 @@ def log_gpu_memory(tag=""):
     allocated = torch.mps.driver_allocated_memory() / 1e9
     cached = torch.mps.current_allocated_memory() / 1e9 if hasattr(torch.mps, 'current_allocated_memory') else 0
     remaining = 18.13 - allocated
-    print(f"[GPU-MEM] {tag}: {allocated:.2f}GB used | {remaining:.2f}GB free | Cache: {cached:.2f}GB")
-    if allocated > 16.0:
-        print(f"[WARNING] GPU memory high: {allocated:.2f}GB - clearing cache")
+    print(f"[GPU-MEM] {tag}: {allocated:.2f}GB used | {remaining:.2f}GB free")
+    
+    # Only clear if we're really close to the limit
+    if allocated > 17.0:
+        print(f"[WARNING] GPU memory critical: {allocated:.2f}GB - emergency cleanup")
         torch.mps.empty_cache()
         torch.mps.synchronize()
+        new_allocated = torch.mps.driver_allocated_memory() / 1e9
+        print(f"[GPU-MEM] After cleanup: {new_allocated:.2f}GB")
+    elif tag.startswith("CLEANUP"):
+        # Explicit cleanup request
+        torch.mps.empty_cache()
+        torch.mps.synchronize()
+    
     return allocated
 
-def aggressive_gpu_cleanup():
-    torch.mps.empty_cache()
-    torch.mps.synchronize()
-    gc.collect()
-    time.sleep(0.1)
-    allocated = torch.mps.driver_allocated_memory() / 1e9
-    print(f"[GPU-CLEANUP] Memory after cleanup: {allocated:.2f}GB")
+def periodic_cleanup(epoch, batch_idx):
+    # Only cleanup every 50 batches or at epoch boundaries
+    if batch_idx % 50 == 0 or batch_idx == 0:
+        torch.mps.empty_cache()
+        if batch_idx == 0:
+            print(f"[GPU-MEM] Epoch {epoch} cleanup")
+        return True
+    return False
 
 @dataclass
 class ModelConfig:
     hidden_dims: List[int] = None
     dropout_rates: List[float] = None
-    batch_size: int = 128
+    batch_size: int = 64
     accumulation_steps: int = 4
     mixed_precision: bool = True
     num_workers: int = 0
@@ -64,12 +74,12 @@ class ModelConfig:
     
     def __post_init__(self):
         if self.hidden_dims is None:
-            self.hidden_dims = [1024, 768, 512, 384, 256, 128]
+            self.hidden_dims = [512, 384, 256, 192, 128, 64]
         if self.dropout_rates is None:
             self.dropout_rates = [0.1, 0.15, 0.2, 0.25, 0.3, 0.35]
 
 class GPUOptimizedAttention(nn.Module):
-    def __init__(self, embed_dim: int, num_heads: int = 8):
+    def __init__(self, embed_dim: int, num_heads: int = 4):
         super().__init__()
         self.num_heads = num_heads
         self.head_dim = embed_dim // num_heads
@@ -122,9 +132,8 @@ class DeepGPUTransformer(nn.Module):
         layers.append(nn.GELU())
         
         self.attention_layers = nn.ModuleList([
-            GPUOptimizedAttention(config.hidden_dims[0], num_heads=8),
-            GPUOptimizedAttention(config.hidden_dims[0], num_heads=8),
-            GPUOptimizedAttention(config.hidden_dims[0], num_heads=8)
+            GPUOptimizedAttention(config.hidden_dims[0], num_heads=4),
+            GPUOptimizedAttention(config.hidden_dims[0], num_heads=4)
         ])
         
         self.residual_blocks = nn.ModuleList()
@@ -178,7 +187,7 @@ class DeepGPUTransformer(nn.Module):
         return self.output_head(x)
 
 class GPUMixtureOfExperts(nn.Module):
-    def __init__(self, input_dim: int, num_experts: int = 8, hidden_dim: int = 512, output_dim: int = 5):
+    def __init__(self, input_dim: int, num_experts: int = 4, hidden_dim: int = 256, output_dim: int = 5):
         super().__init__()
         print(f"[MODEL] Building GPU MoE: {num_experts} experts")
         self.num_experts = num_experts
@@ -217,7 +226,7 @@ class GPUMixtureOfExperts(nn.Module):
 
 class AdvancedFeatureEngineering:
     def __init__(self):
-        self.feature_dim = 256
+        self.feature_dim = 128
         self.cache = {}
         print(f"[FEATURES] Advanced feature engineering: {self.feature_dim} dimensions")
         
@@ -580,10 +589,12 @@ class AO1VisibilityPredictor:
     
     def train_models(self):
         print("\n" + "="*80)
-        print("TRAINING PHASE - FULL GPU UTILIZATION")
+        print("TRAINING PHASE - GPU OPTIMIZED")
         print("="*80)
         
-        aggressive_gpu_cleanup()
+        # Clean start
+        torch.mps.empty_cache()
+        torch.mps.synchronize()
         log_gpu_memory("Training start")
         
         df = self.get_cmdb_data()
@@ -602,7 +613,7 @@ class AO1VisibilityPredictor:
         
         print("\n[BUILD] Creating GPU models...")
         self.existence_model = DeepGPUTransformer(input_dim, self.config, output_dim=1).to(device)
-        self.visibility_model = GPUMixtureOfExperts(input_dim, num_experts=8, hidden_dim=512, output_dim=5).to(device)
+        self.visibility_model = GPUMixtureOfExperts(input_dim, num_experts=4, hidden_dim=256, output_dim=5).to(device)
         
         log_gpu_memory("Models created")
         
@@ -700,10 +711,9 @@ class AO1VisibilityPredictor:
                 scheduler2.step()
                 train_loss2_total += loss2.item()
                 
-                if batch_idx % 20 == 0 and batch_idx > 0:
-                    mem = log_gpu_memory(f"Epoch {epoch}, Batch {batch_idx}")
-                    if mem > 16.5:
-                        aggressive_gpu_cleanup()
+                # Only cleanup periodically, not every batch
+                if periodic_cleanup(epoch, batch_idx):
+                    pass  # Cleanup handled in function
             
             avg_train_loss1 = train_loss1_total / len(train_loader)
             avg_train_loss2 = train_loss2_total / len(train_loader)
@@ -732,7 +742,9 @@ class AO1VisibilityPredictor:
                     print(f"[STOP] Early stopping at epoch {epoch}")
                     break
                 
-                aggressive_gpu_cleanup()
+                # Only cleanup at validation intervals
+                if epoch % 10 == 0:
+                    torch.mps.empty_cache()
         
         print(f"\n[TRAIN] Completed - Best validation loss: {best_val_loss:.4f}")
     
@@ -780,7 +792,7 @@ class AO1VisibilityPredictor:
             input_dim = len(np.concatenate([sample, context]))
             
             self.existence_model = DeepGPUTransformer(input_dim, self.config, output_dim=1).to(device)
-            self.visibility_model = GPUMixtureOfExperts(input_dim, num_experts=8, hidden_dim=512, output_dim=5).to(device)
+            self.visibility_model = GPUMixtureOfExperts(input_dim, num_experts=4, hidden_dim=256, output_dim=5).to(device)
             
             self.existence_model.load_state_dict(
                 torch.load(f'{self.model_dir}/existence_model.pth', map_location=device)
@@ -808,7 +820,8 @@ class AO1VisibilityPredictor:
             if not self.trained:
                 return []
         
-        aggressive_gpu_cleanup()
+        # Single cleanup at start
+        torch.mps.empty_cache()
         log_gpu_memory("Prediction start")
         
         df = self.get_cmdb_data()
@@ -829,7 +842,8 @@ class AO1VisibilityPredictor:
         
         with torch.no_grad():
             for idx, pattern in enumerate(patterns[:20]):
-                if idx % 5 == 0:
+                if idx % 10 == 0 and idx > 0:
+                    # Only log memory occasionally
                     log_gpu_memory(f"Pattern {idx}")
                 
                 candidates = self._generate_candidates(pattern, existing)
@@ -856,7 +870,8 @@ class AO1VisibilityPredictor:
                         pattern, business_unit_filter
                     )
         
-        aggressive_gpu_cleanup()
+        # Final cleanup
+        torch.mps.empty_cache()
         
         sorted_predictions = sorted(
             predictions,
