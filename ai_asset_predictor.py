@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-AI Asset Predictor - Automated Missing IT Asset Discovery
-Standalone console application that automatically trains and predicts missing assets
+AI Asset Predictor - Automated Comprehensive Missing IT Asset Discovery
+Runs full analysis automatically without user interaction
 """
 
 import torch
@@ -13,17 +13,18 @@ import re
 import duckdb
 from sklearn.preprocessing import StandardScaler
 from sklearn.model_selection import train_test_split
+from sklearn.ensemble import IsolationForest
 from datetime import datetime
 import os
 import pickle
 import gc
 import json
-from typing import List, Dict, Optional, Tuple
+from typing import List, Dict, Optional, Tuple, Set
 from collections import Counter, defaultdict
 import warnings
 warnings.filterwarnings('ignore')
 
-# Device configuration - support for GPU acceleration
+# Device configuration
 if torch.cuda.is_available():
     device = torch.device("cuda")
     print("🚀 Using NVIDIA GPU (CUDA)")
@@ -35,21 +36,27 @@ else:
     print("⚠️  Using CPU - Training will be slower")
 
 class HostnamePatternNet(nn.Module):
-    """Neural network for predicting asset existence based on hostname patterns"""
+    """Enhanced neural network for hostname pattern analysis"""
     def __init__(self, input_size: int):
         super().__init__()
         self.layers = nn.Sequential(
             nn.Linear(input_size, 512),
+            nn.BatchNorm1d(512),
             nn.ReLU(),
             nn.Dropout(0.3),
             nn.Linear(512, 256),
+            nn.BatchNorm1d(256),
             nn.ReLU(),
             nn.Dropout(0.3),
             nn.Linear(256, 128),
+            nn.BatchNorm1d(128),
             nn.ReLU(),
+            nn.Dropout(0.2),
             nn.Linear(128, 64),
             nn.ReLU(),
-            nn.Linear(64, 1),
+            nn.Linear(64, 32),
+            nn.ReLU(),
+            nn.Linear(32, 1),
             nn.Sigmoid()
         )
         
@@ -57,14 +64,16 @@ class HostnamePatternNet(nn.Module):
         return self.layers(x)
 
 class LogVisibilityPredictor(nn.Module):
-    """Neural network for predicting logging visibility across different systems"""
+    """Multi-class predictor for system visibility"""
     def __init__(self, input_size: int):
         super().__init__()
         self.layers = nn.Sequential(
             nn.Linear(input_size, 256),
+            nn.BatchNorm1d(256),
             nn.ReLU(),
             nn.Dropout(0.2),
             nn.Linear(256, 128),
+            nn.BatchNorm1d(128),
             nn.ReLU(),
             nn.Dropout(0.2),
             nn.Linear(128, 64),
@@ -78,39 +87,42 @@ class LogVisibilityPredictor(nn.Module):
     def forward(self, x):
         return self.layers(x)
 
-class AIAssetPredictor:
+class ComprehensiveAssetPredictor:
     """
-    AI-powered missing IT asset discovery system using ML pattern recognition.
-    Combines neural networks, pattern mining, and anomaly detection.
+    Fully automated ML system for missing asset discovery
     """
     
     def __init__(self, db_path: str = 'universal_cmdb.db'):
         self.hostname_net = None
         self.log_visibility_net = None
         self.feature_scaler = StandardScaler()
+        self.isolation_forest = None
         self.trained = False
         self.db_path = db_path
-        self.model_version = "AI-Asset-Predictor-2025.1"
+        self.model_version = "Auto-Asset-Predictor-v3.0"
         self.training_metrics = {}
         self.model_dir = 'models'
         
-        # Pattern discovery configuration
-        self.min_pattern_frequency = 3
-        self.max_gap_size = 1000
-        self.confidence_threshold = 0.75
+        # Comprehensive scan configuration
+        self.min_pattern_frequency = 2
+        self.max_gap_size = 10000
+        self.max_candidates_to_analyze = 10000  # Analyze many more
+        self.batch_size_prediction = 500
         
-        # Create model directory
+        # Multi-level thresholds for comprehensive results
+        self.confidence_levels = {
+            'critical': 0.85,
+            'high': 0.70,
+            'medium': 0.50,
+            'low': 0.30,
+            'experimental': 0.15
+        }
+        
+        # Statistics
+        self.analysis_stats = defaultdict(int)
+        
         os.makedirs(self.model_dir, exist_ok=True)
-        
-    @property
-    def models_exist(self) -> bool:
-        """Check if trained models exist on disk"""
-        required_files = [
-            f'{self.model_dir}/hostname_net.pth',
-            f'{self.model_dir}/log_visibility_net.pth', 
-            f'{self.model_dir}/feature_scaler.pkl'
-        ]
-        return all(os.path.exists(f) for f in required_files)
+        os.makedirs('reports', exist_ok=True)
         
     def get_db_connection(self):
         """Get DuckDB connection"""
@@ -121,43 +133,63 @@ class AIAssetPredictor:
             return None
     
     def extract_hostname_features(self, hostname: str) -> np.ndarray:
-        """Extract ML features from hostname string"""
+        """Extract comprehensive features from hostname"""
         if not hostname:
-            return np.zeros(35)
+            return np.zeros(65)
         
         hostname = hostname.lower().strip()
         
-        # Basic string features
+        # Enhanced feature extraction
         features = [
             len(hostname),
             hostname.count('.'),
             hostname.count('-'),
             hostname.count('_'),
             len(re.findall(r'\d', hostname)),
-            len(re.findall(r'[a-z]', hostname))
+            len(re.findall(r'[a-z]', hostname)),
+            len(re.findall(r'[A-Z]', hostname.upper())),
+            1 if hostname[0].isdigit() else 0,
+            1 if hostname[-1].isdigit() else 0,
+            len(hostname.split('.')),
+            len(hostname.split('-')),
+            len(hostname.split('_')),
+            1 if re.match(r'^[a-z]{2,4}\d{2,4}', hostname) else 0,
+            1 if re.search(r'\d{2,4}$', hostname) else 0,
+            1 if re.search(r'^\d', hostname) else 0
         ]
         
-        # Keyword-based features for common infrastructure patterns
+        # Comprehensive keyword features
         keywords = [
-            ['srv', 'server'], ['web', 'www'], ['db', 'database', 'sql'], 
-            ['app', 'application'], ['dc', 'datacenter'], ['prod', 'production'],
-            ['dev', 'development'], ['test', 'testing'], ['stage', 'staging'],
-            ['uat', 'preprod'], ['.com'], ['.local'], ['.net'],
-            ['1dc'], ['fead'], ['fiserv'], ['firewall', 'fw'], 
-            ['ids', 'ips'], ['ndr', 'detection'], ['proxy', 'px'],
-            ['dns', 'domain'], ['waf', 'gateway'], ['north', 'south', 'east', 'west'],
-            ['us', 'usa', 'america'], ['eu', 'emea', 'europe'], 
-            ['apac', 'asia'], ['vm', 'virtual'], ['docker', 'container'],
-            ['aws', 'azure', 'gcp', 'cloud']
+            ['srv', 'server'], ['web', 'www'], ['db', 'database', 'sql', 'mysql', 'postgres', 'oracle'],
+            ['app', 'application'], ['dc', 'datacenter'], ['prod', 'production', 'prd'],
+            ['dev', 'development'], ['test', 'testing', 'tst'], ['stage', 'staging', 'stg'],
+            ['uat', 'preprod', 'pre-prod'], ['.com'], ['.local'], ['.net'], ['.org'],
+            ['1dc'], ['2dc'], ['3dc'], ['fead'], ['fiserv'], ['firewall', 'fw'],
+            ['ids', 'ips'], ['ndr', 'detection'], ['proxy', 'px', 'prx'],
+            ['dns', 'domain', 'ns'], ['waf', 'gateway', 'gw'], 
+            ['north', 'south', 'east', 'west', 'central'],
+            ['us', 'usa', 'america'], ['eu', 'emea', 'europe'], ['uk', 'london'],
+            ['apac', 'asia', 'pacific'], ['vm', 'virtual', 'virt'], ['docker', 'container', 'k8s'],
+            ['aws', 'ec2', 'lambda', 's3'], ['azure', 'az'], ['gcp', 'google'], ['cloud'],
+            ['backup', 'bkp', 'bak'], ['monitor', 'mon', 'nagios'], ['log', 'logging', 'syslog'],
+            ['cache', 'redis', 'memcache'], ['queue', 'mq', 'rabbit', 'kafka', 'sqs'],
+            ['lb', 'loadbalancer', 'haproxy', 'f5'], ['vpn', 'ipsec', 'openvpn'],
+            ['mail', 'smtp', 'imap', 'exchange'], ['ntp', 'time'], ['ldap', 'ad', 'activedirectory'],
+            ['jenkins', 'ci', 'cd', 'build'], ['git', 'svn', 'repo'], ['elastic', 'elk', 'kibana'],
+            ['switch', 'sw', 'nexus'], ['router', 'rt', 'rtr'], ['san', 'storage', 'nas']
         ]
         
         for keyword_group in keywords:
             features.append(1 if any(kw in hostname for kw in keyword_group) else 0)
         
-        return np.array(features[:35])
+        # Pad to 65 features
+        while len(features) < 65:
+            features.append(0)
+        
+        return np.array(features[:65])
     
     def get_cmdb_data(self) -> pd.DataFrame:
-        """Fetch CMDB data from database"""
+        """Fetch CMDB data"""
         conn = self.get_db_connection()
         if not conn:
             return pd.DataFrame()
@@ -174,34 +206,32 @@ class AIAssetPredictor:
         
         try:
             df = conn.execute(query).df()
-            print(f"✅ Successfully loaded {len(df):,} records from universal_cmdb")
+            print(f"✅ Loaded {len(df):,} records from database")
             return df
         except Exception as e:
-            print(f"❌ Error fetching CMDB data: {e}")
+            print(f"❌ Error: {e}")
             return pd.DataFrame()
         finally:
             conn.close()
 
-    def discover_hostname_patterns(self, df: pd.DataFrame) -> List[Dict]:
-        """Discover sequential patterns in hostnames for gap detection"""
+    def discover_all_patterns(self, df: pd.DataFrame) -> List[Dict]:
+        """Discover ALL hostname patterns aggressively"""
         print("\n🔍 Discovering hostname patterns...")
         
         pattern_groups = defaultdict(list)
         
-        # Group hostnames by pattern template
         for hostname in df['host'].dropna():
             hostname = str(hostname).lower().strip()
             if hostname and re.search(r'\d', hostname):
-                # Replace numbers with placeholder
                 pattern_template = re.sub(r'\d+', 'XXX', hostname)
                 
-                # Extract number positions and values
                 numbers = []
                 for match in re.finditer(r'\d+', hostname):
                     numbers.append({
                         'value': int(match.group()),
                         'position': match.start(),
-                        'original': match.group()
+                        'length': len(match.group()),
+                        'padded': match.group()[0] == '0' and len(match.group()) > 1
                     })
                 
                 pattern_groups[pattern_template].append({
@@ -212,226 +242,237 @@ class AIAssetPredictor:
         
         discovered_patterns = []
         
-        # Analyze patterns with sufficient frequency
         for template, hostnames in pattern_groups.items():
             if len(hostnames) >= self.min_pattern_frequency:
-                # Analyze number sequences at each position
                 number_sequences = defaultdict(list)
                 
                 for host_data in hostnames:
                     for i, num_data in enumerate(host_data['numbers']):
-                        number_sequences[i].append(num_data['value'])
+                        number_sequences[i].append(num_data)
                 
                 pattern_info = {
                     'template': template,
                     'host_count': len(hostnames),
-                    'sample_hosts': [h['hostname'] for h in hostnames[:5]],
-                    'number_sequences': {},
-                    'potential_gaps': []
+                    'sample_hosts': [h['hostname'] for h in hostnames[:10]],
+                    'number_sequences': {}
                 }
                 
-                # Find gaps in number sequences
-                for pos, values in number_sequences.items():
-                    values = sorted(set(values))
-                    if len(values) > 2:
-                        min_val, max_val = min(values), max(values)
+                for pos, num_list in number_sequences.items():
+                    values = [n['value'] for n in num_list]
+                    unique_values = sorted(set(values))
+                    
+                    if len(unique_values) > 1:
+                        min_val, max_val = min(unique_values), max(unique_values)
                         
-                        # Identify missing values in sequence
                         missing = []
                         for i in range(min_val, min(max_val + 1, min_val + self.max_gap_size)):
-                            if i not in values:
+                            if i not in unique_values:
                                 missing.append(i)
                         
+                        density = len(unique_values) / (max_val - min_val + 1) if max_val > min_val else 1.0
+                        padding = max([n['length'] for n in num_list]) if num_list else 0
+                        is_padded = any([n['padded'] for n in num_list])
+                        
                         pattern_info['number_sequences'][pos] = {
-                            'existing_values': values[:10],  # Limit for display
+                            'existing_values': unique_values,
                             'range': (min_val, max_val),
-                            'missing_values': missing[:100],
-                            'density': len(values) / (max_val - min_val + 1) if max_val > min_val else 1.0
+                            'missing_values': missing,
+                            'density': density,
+                            'padding': padding if is_padded else 0
                         }
                 
                 if pattern_info['number_sequences']:
                     discovered_patterns.append(pattern_info)
         
-        print(f"   Found {len(discovered_patterns)} viable hostname patterns")
-        
-        # Display top patterns
-        for i, pattern in enumerate(discovered_patterns[:5]):
-            print(f"   Pattern {i+1}: {pattern['template']} ({pattern['host_count']} hosts)")
-            for pos, seq in pattern['number_sequences'].items():
-                if seq['missing_values']:
-                    print(f"      - Missing numbers: {len(seq['missing_values'])} gaps found")
-        
+        print(f"   Found {len(discovered_patterns)} patterns with {sum(len(p['number_sequences']) for p in discovered_patterns)} sequences")
         return discovered_patterns
 
-    def generate_missing_hostnames(self, patterns: List[Dict]) -> List[Dict]:
-        """Generate potential missing hostnames based on discovered patterns"""
-        print("\n🔧 Generating potential missing hostnames...")
+    def generate_all_candidates(self, patterns: List[Dict], existing_hostnames: Set[str]) -> List[Dict]:
+        """Generate ALL possible missing candidates"""
+        print("\n🔧 Generating missing hostname candidates...")
         
         missing_candidates = []
         
-        for pattern in patterns:
+        for pattern_idx, pattern in enumerate(patterns):
             template = pattern['template']
             
-            # Handle single number sequence patterns
             if len(pattern['number_sequences']) == 1:
                 pos = list(pattern['number_sequences'].keys())[0]
                 seq_info = pattern['number_sequences'][pos]
                 
-                for missing_num in seq_info['missing_values'][:50]:
-                    candidate_hostname = template.replace('XXX', str(missing_num), 1)
+                for missing_num in seq_info['missing_values']:
+                    if seq_info.get('padding', 0) > 0:
+                        num_str = str(missing_num).zfill(seq_info['padding'])
+                    else:
+                        num_str = str(missing_num)
                     
-                    missing_candidates.append({
-                        'hostname': candidate_hostname,
-                        'pattern_template': template,
-                        'missing_numbers': [missing_num],
-                        'pattern_density': seq_info['density'],
-                        'existing_hosts_count': pattern['host_count'],
-                        'sample_existing': pattern['sample_hosts'][:3]
-                    })
+                    candidate_hostname = template.replace('XXX', num_str, 1)
+                    
+                    if candidate_hostname not in existing_hostnames:
+                        missing_candidates.append({
+                            'hostname': candidate_hostname,
+                            'pattern_template': template,
+                            'pattern_density': seq_info['density'],
+                            'existing_hosts_count': pattern['host_count'],
+                            'sample_existing': pattern['sample_hosts'][:3]
+                        })
             
-            # Handle dual number sequence patterns
             elif len(pattern['number_sequences']) == 2:
                 positions = list(pattern['number_sequences'].keys())
                 seq1 = pattern['number_sequences'][positions[0]]
                 seq2 = pattern['number_sequences'][positions[1]]
                 
-                missing1 = seq1['missing_values'][:20]
-                missing2 = seq2['missing_values'][:20] 
-                
-                for num1 in missing1:
-                    for num2 in missing2:
+                for num1 in seq1['missing_values'][:100]:  # Limit for dual sequences
+                    for num2 in seq2['missing_values'][:100]:
                         candidate_hostname = template
-                        replacements = [str(num1), str(num2)]
                         
-                        for replacement in replacements:
-                            candidate_hostname = candidate_hostname.replace('XXX', replacement, 1)
+                        num1_str = str(num1).zfill(seq1.get('padding', 0)) if seq1.get('padding', 0) else str(num1)
+                        num2_str = str(num2).zfill(seq2.get('padding', 0)) if seq2.get('padding', 0) else str(num2)
                         
-                        missing_candidates.append({
-                            'hostname': candidate_hostname,
-                            'pattern_template': template,
-                            'missing_numbers': [num1, num2],
-                            'pattern_density': (seq1['density'] + seq2['density']) / 2,
-                            'existing_hosts_count': pattern['host_count'],
-                            'sample_existing': pattern['sample_hosts'][:3]
-                        })
+                        candidate_hostname = candidate_hostname.replace('XXX', num1_str, 1)
+                        candidate_hostname = candidate_hostname.replace('XXX', num2_str, 1)
+                        
+                        if candidate_hostname not in existing_hostnames:
+                            missing_candidates.append({
+                                'hostname': candidate_hostname,
+                                'pattern_template': template,
+                                'pattern_density': (seq1['density'] + seq2['density']) / 2,
+                                'existing_hosts_count': pattern['host_count'],
+                                'sample_existing': pattern['sample_hosts'][:3]
+                            })
         
-        print(f"   Generated {len(missing_candidates):,} missing hostname candidates")
+        print(f"   Generated {len(missing_candidates):,} unique candidates")
         return missing_candidates
     
     def prepare_training_data(self, df: pd.DataFrame) -> tuple:
-        """Prepare features and labels for model training"""
+        """Prepare training data"""
         features, existence_labels, visibility_labels = [], [], []
         
         print(f"\n📊 Processing {len(df):,} records for training...")
         
         for idx, row in df.iterrows():
-            if idx % 50000 == 0 and idx > 0:
+            if idx % 200000 == 0 and idx > 0:
                 print(f"   Processed {idx:,} records...")
                 
-            # Extract hostname features
             hostname_features = self.extract_hostname_features(row['host']) if pd.notna(row['host']) else self.extract_hostname_features("")
             
-            # Additional context features
             additional_features = [
                 1 if pd.notna(row['business_unit']) else 0,
                 1 if pd.notna(row['region']) else 0,
+                1 if pd.notna(row['country']) else 0,
+                1 if pd.notna(row['data_center']) else 0,
+                1 if pd.notna(row['cloud_region']) else 0,
                 1 if pd.notna(row['system_classification']) and 'server' in str(row['system_classification']).lower() else 0,
                 1 if pd.notna(row['system_classification']) and 'windows' in str(row['system_classification']).lower() else 0,
                 1 if pd.notna(row['system_classification']) and 'linux' in str(row['system_classification']).lower() else 0,
                 1 if pd.notna(row['infrastructure_type']) and 'cloud' in str(row['infrastructure_type']).lower() else 0,
+                1 if pd.notna(row['infrastructure_type']) and 'physical' in str(row['infrastructure_type']).lower() else 0,
+                1 if pd.notna(row['infrastructure_type']) and 'virtual' in str(row['infrastructure_type']).lower() else 0,
                 float(row['data_quality_score']) if pd.notna(row['data_quality_score']) else 0.0,
                 int(row['source_count']) if pd.notna(row['source_count']) else 0,
-                1 if pd.notna(row['cio']) else 0
+                1 if pd.notna(row['cio']) else 0,
+                1 if pd.notna(row['apm']) else 0
             ]
             
             combined_features = np.concatenate([hostname_features, additional_features])
             features.append(combined_features)
             
-            # Calculate existence score
-            existence_score = min(sum([
-                1 if pd.notna(row['logging_in_splunk']) and row['logging_in_splunk'] == 'yes' else 0,
-                1 if pd.notna(row['present_in_cmdb']) and row['present_in_cmdb'] == 'yes' else 0,
-                1 if pd.notna(row['edr_coverage']) and 'crowdstrike' in str(row['edr_coverage']).lower() else 0
-            ]) / 3.0, 1.0)
+            # Existence score
+            existence_score = 0.0
+            if pd.notna(row['logging_in_splunk']) and row['logging_in_splunk'] == 'yes':
+                existence_score += 0.35
+            if pd.notna(row['present_in_cmdb']) and row['present_in_cmdb'] == 'yes':
+                existence_score += 0.35
+            if pd.notna(row['edr_coverage']) and row['edr_coverage'] != 'none':
+                existence_score += 0.20
+            if pd.notna(row['tanium_coverage']) and row['tanium_coverage'] == 'yes':
+                existence_score += 0.05
+            if pd.notna(row['dlp_agent_coverage']) and row['dlp_agent_coverage'] == 'yes':
+                existence_score += 0.05
             
-            existence_labels.append(existence_score)
+            existence_labels.append(min(existence_score, 1.0))
             
-            # Determine visibility level
+            # Visibility classification
             visibility_type = 0
-            if (pd.notna(row['logging_in_splunk']) and row['logging_in_splunk'] == 'yes' and 
-                pd.notna(row['logging_in_gso']) and row['logging_in_gso'] == 'yes'):
-                visibility_type = 4  # Full visibility
-            elif pd.notna(row['logging_in_splunk']) and row['logging_in_splunk'] == 'yes':
-                visibility_type = 3  # Splunk only
-            elif pd.notna(row['logging_in_gso']) and row['logging_in_gso'] == 'yes':
-                visibility_type = 2  # GSO only
-            elif pd.notna(row['present_in_cmdb']) and row['present_in_cmdb'] == 'yes':
-                visibility_type = 1  # CMDB only
+            splunk = pd.notna(row['logging_in_splunk']) and row['logging_in_splunk'] == 'yes'
+            gso = pd.notna(row['logging_in_gso']) and row['logging_in_gso'] == 'yes'
+            cmdb = pd.notna(row['present_in_cmdb']) and row['present_in_cmdb'] == 'yes'
+            
+            if splunk and gso and cmdb:
+                visibility_type = 4
+            elif splunk and (gso or cmdb):
+                visibility_type = 3
+            elif splunk or gso:
+                visibility_type = 2
+            elif cmdb:
+                visibility_type = 1
             
             visibility_labels.append(visibility_type)
         
         return np.array(features), np.array(existence_labels), np.array(visibility_labels)
     
-    def train_models(self):
-        """Train neural networks for asset prediction"""
-        print("\n" + "="*60)
-        print("🤖 STARTING AI MODEL TRAINING")
-        print("="*60)
+    def train_or_load_models(self):
+        """Automatically train or load models"""
+        model_files = [
+            f'{self.model_dir}/hostname_net.pth',
+            f'{self.model_dir}/log_visibility_net.pth',
+            f'{self.model_dir}/feature_scaler.pkl'
+        ]
         
+        if all(os.path.exists(f) for f in model_files):
+            print("\n📂 Loading existing models...")
+            try:
+                sample_features = self.extract_hostname_features("sample")
+                additional_features = [0] * 15
+                input_size = len(np.concatenate([sample_features, additional_features]))
+                
+                self.hostname_net = HostnamePatternNet(input_size).to(device)
+                self.log_visibility_net = LogVisibilityPredictor(input_size).to(device)
+                
+                self.hostname_net.load_state_dict(torch.load(model_files[0], map_location=device))
+                self.log_visibility_net.load_state_dict(torch.load(model_files[1], map_location=device))
+                
+                with open(model_files[2], 'rb') as f:
+                    self.feature_scaler = pickle.load(f)
+                
+                self.trained = True
+                print("✅ Models loaded successfully!")
+                return
+            except Exception as e:
+                print(f"⚠️  Failed to load models: {e}")
+        
+        print("\n🤖 Training new models...")
         df = self.get_cmdb_data()
-        
         if df.empty:
-            print("❌ No data available for training!")
+            print("❌ No data for training!")
             return
         
-        try:
-            X, existence_y, visibility_y = self.prepare_training_data(df)
-        except ValueError as e:
-            print(f"❌ Error in prepare_training_data: {e}")
-            return
+        X, existence_y, visibility_y = self.prepare_training_data(df)
         
-        if len(X) == 0:
-            print("❌ No features extracted!")
-            return
-        
-        # Split data
         X_train, X_val, existence_y_train, existence_y_val, visibility_y_train, visibility_y_val = train_test_split(
-            X, existence_y, visibility_y, test_size=0.15, random_state=42
+            X, existence_y, visibility_y, test_size=0.20, random_state=42
         )
         
-        # Clean up memory
         del X, existence_y, visibility_y
         gc.collect()
         
-        # Scale features
         X_train_scaled = self.feature_scaler.fit_transform(X_train)
         X_val_scaled = self.feature_scaler.transform(X_val)
         
-        # Initialize networks
         input_size = X_train_scaled.shape[1]
         self.hostname_net = HostnamePatternNet(input_size).to(device)
         self.log_visibility_net = LogVisibilityPredictor(input_size).to(device)
         
-        # Optimizers
-        optimizer1 = optim.AdamW(self.hostname_net.parameters(), lr=0.001, weight_decay=1e-4)
-        optimizer2 = optim.AdamW(self.log_visibility_net.parameters(), lr=0.001, weight_decay=1e-4)
+        optimizer1 = optim.AdamW(self.hostname_net.parameters(), lr=0.001)
+        optimizer2 = optim.AdamW(self.log_visibility_net.parameters(), lr=0.001)
         
-        # Loss functions
         criterion1 = nn.BCELoss()
         criterion2 = nn.CrossEntropyLoss()
         
-        # Training configuration
-        batch_size = 8192 if device.type != 'cpu' else 1024
-        epochs = 50  # Reduced for faster demo
+        batch_size = 4096 if device.type != 'cpu' else 512
+        epochs = 50
         
-        print(f"\n🏋️ Training on {device}")
-        print(f"   Training samples: {len(X_train_scaled):,}")
-        print(f"   Validation samples: {len(X_val_scaled):,}")
-        print(f"   Batch size: {batch_size}")
-        print(f"   Epochs: {epochs}")
-        print("\n" + "-"*40)
-        
-        best_val_loss = float('inf')
+        print(f"Training on {len(X_train_scaled):,} samples...")
         
         for epoch in range(epochs):
             self.hostname_net.train()
@@ -439,7 +480,6 @@ class AIAssetPredictor:
             
             total_loss = 0.0
             
-            # Training loop
             for i in range(0, len(X_train_scaled), batch_size):
                 batch_end = min(i + batch_size, len(X_train_scaled))
                 
@@ -447,440 +487,316 @@ class AIAssetPredictor:
                 existence_y_batch = torch.FloatTensor(existence_y_train[i:batch_end]).reshape(-1, 1).to(device)
                 visibility_y_batch = torch.LongTensor(visibility_y_train[i:batch_end]).to(device)
                 
-                # Train existence predictor
                 optimizer1.zero_grad()
                 existence_outputs = self.hostname_net(X_batch)
                 loss1 = criterion1(existence_outputs, existence_y_batch)
                 loss1.backward()
-                torch.nn.utils.clip_grad_norm_(self.hostname_net.parameters(), 1.0)
                 optimizer1.step()
                 
-                # Train visibility predictor
                 optimizer2.zero_grad()
                 visibility_outputs = self.log_visibility_net(X_batch)
                 loss2 = criterion2(visibility_outputs, visibility_y_batch)
                 loss2.backward()
-                torch.nn.utils.clip_grad_norm_(self.log_visibility_net.parameters(), 1.0)
                 optimizer2.step()
                 
                 total_loss += loss1.item() + loss2.item()
-                
-                del X_batch, existence_y_batch, visibility_y_batch
             
-            # Validation every 10 epochs
-            if epoch % 10 == 0 or epoch == epochs - 1:
-                self.hostname_net.eval()
-                self.log_visibility_net.eval()
-                
-                val_loss1_total, val_loss2_total = 0.0, 0.0
-                val_batches = 0
-                
-                with torch.no_grad():
-                    for i in range(0, len(X_val_scaled), batch_size):
-                        batch_end = min(i + batch_size, len(X_val_scaled))
-                        
-                        X_val_batch = torch.FloatTensor(X_val_scaled[i:batch_end]).to(device)
-                        existence_y_val_batch = torch.FloatTensor(existence_y_val[i:batch_end]).reshape(-1, 1).to(device)
-                        visibility_y_val_batch = torch.LongTensor(visibility_y_val[i:batch_end]).to(device)
-                        
-                        val_existence_outputs = self.hostname_net(X_val_batch)
-                        val_loss1 = criterion1(val_existence_outputs, existence_y_val_batch)
-                        
-                        val_visibility_outputs = self.log_visibility_net(X_val_batch)
-                        val_loss2 = criterion2(val_visibility_outputs, visibility_y_val_batch)
-                        
-                        val_loss1_total += val_loss1.item()
-                        val_loss2_total += val_loss2.item()
-                        val_batches += 1
-                        
-                        del X_val_batch, existence_y_val_batch, visibility_y_val_batch
-                
-                avg_train_loss = total_loss / (len(X_train_scaled) / batch_size)
-                avg_val_loss1 = val_loss1_total / val_batches
-                avg_val_loss2 = val_loss2_total / val_batches
-                avg_val_loss = avg_val_loss1 + avg_val_loss2
-                
-                print(f'Epoch {epoch+1}/{epochs} | Train Loss: {avg_train_loss:.4f} | Val Loss: {avg_val_loss:.4f}')
-                
-                if avg_val_loss < best_val_loss:
-                    best_val_loss = avg_val_loss
-                    print(f'   ✨ New best validation loss!')
-                
-                gc.collect()
+            if epoch % 10 == 0:
+                print(f'   Epoch {epoch+1}/{epochs}, Loss: {total_loss/(len(X_train_scaled)/batch_size):.4f}')
+        
+        # Save models
+        torch.save(self.hostname_net.state_dict(), model_files[0])
+        torch.save(self.log_visibility_net.state_dict(), model_files[1])
+        with open(model_files[2], 'wb') as f:
+            pickle.dump(self.feature_scaler, f)
         
         self.trained = True
-        self.save_models()
-        
-        # Store training metrics
-        self.training_metrics = {
-            'final_train_loss': avg_train_loss,
-            'best_val_loss': best_val_loss,
-            'training_records': len(X_train_scaled),
-            'validation_records': len(X_val_scaled),
-            'epochs_trained': epochs,
-            'device': str(device)
-        }
-        
-        print("\n" + "="*60)
-        print(f"✅ TRAINING COMPLETED!")
-        print(f"   Final train loss: {avg_train_loss:.4f}")
-        print(f"   Best validation loss: {best_val_loss:.4f}")
-        print("="*60)
+        print("✅ Training completed and models saved!")
     
-    def save_models(self):
-        """Save trained models to disk"""
-        try:
-            torch.save(self.hostname_net.state_dict(), f'{self.model_dir}/hostname_net.pth')
-            torch.save(self.log_visibility_net.state_dict(), f'{self.model_dir}/log_visibility_net.pth')
-            with open(f'{self.model_dir}/feature_scaler.pkl', 'wb') as f:
-                pickle.dump(self.feature_scaler, f)
-            print("💾 Models saved to disk")
-        except Exception as e:
-            print(f"❌ Error saving models: {e}")
-    
-    def load_models(self):
-        """Load trained models from disk"""
-        try:
-            if not self.models_exist:
-                return False
-            
-            print("📂 Loading existing models from disk...")
-            
-            # Determine input size
-            sample_features = self.extract_hostname_features("sample-host-01.example.com")
-            additional_features = [0] * 9
-            input_size = len(np.concatenate([sample_features, additional_features]))
-            
-            # Initialize networks
-            self.hostname_net = HostnamePatternNet(input_size).to(device)
-            self.log_visibility_net = LogVisibilityPredictor(input_size).to(device)
-            
-            # Load state dicts
-            self.hostname_net.load_state_dict(torch.load(f'{self.model_dir}/hostname_net.pth', map_location=device))
-            self.log_visibility_net.load_state_dict(torch.load(f'{self.model_dir}/log_visibility_net.pth', map_location=device))
-            
-            # Load scaler
-            with open(f'{self.model_dir}/feature_scaler.pkl', 'rb') as f:
-                self.feature_scaler = pickle.load(f)
-            
-            self.trained = True
-            print("✅ Models loaded successfully!")
-            return True
-            
-        except Exception as e:
-            print(f"❌ Error loading models: {e}")
-            return False
-    
-    def predict_missing_assets(self, business_unit_filter: Optional[str] = None) -> List[Dict]:
-        """Predict missing assets using trained models"""
-        if not self.trained:
-            print("❌ Models not trained yet!")
-            return []
+    def analyze_all_candidates(self, candidates: List[Dict]) -> List[Dict]:
+        """Analyze ALL candidates with neural networks"""
+        print(f"\n🤖 Analyzing {len(candidates):,} candidates with AI...")
         
-        print("\n" + "="*60)
-        print("🔮 PREDICTING MISSING ASSETS")
-        print("="*60)
-        
-        df = self.get_cmdb_data()
-        if df.empty:
-            print("❌ No CMDB data available!")
-            return []
-        
-        # Apply business unit filter if specified
-        if business_unit_filter:
-            df = df[df['business_unit'] == business_unit_filter]
-            print(f"🏢 Filtered to business unit: {business_unit_filter} ({len(df)} records)")
-        
-        # Get existing hostnames
-        existing_hostnames = set(df['host'].dropna().str.lower())
-        print(f"📝 Found {len(existing_hostnames):,} existing hosts")
-        
-        # Discover patterns
-        hostname_patterns = self.discover_hostname_patterns(df)
-        if not hostname_patterns:
-            print("❌ No hostname patterns discovered!")
-            return []
-        
-        # Generate missing candidates
-        missing_candidates = self.generate_missing_hostnames(hostname_patterns)
-        if not missing_candidates:
-            print("❌ No missing hostname candidates generated!")
-            return []
-        
-        # Filter out existing hostnames
-        new_candidates = [c for c in missing_candidates if c['hostname'] not in existing_hostnames]
-        print(f"\n🎯 {len(new_candidates):,} potential missing assets to analyze")
-        
-        # Predict using neural networks
         predicted_assets = []
         self.hostname_net.eval()
         self.log_visibility_net.eval()
         
-        print("\n🤖 AI analyzing candidates...")
-        
         with torch.no_grad():
-            for i, candidate in enumerate(new_candidates[:500]):  # Limit for demo
-                if i % 100 == 0 and i > 0:
+            for i in range(0, len(candidates), self.batch_size_prediction):
+                if i % 5000 == 0 and i > 0:
                     print(f"   Analyzed {i:,} candidates...")
                 
-                # Prepare features
-                features = self.extract_hostname_features(candidate['hostname'])
-                additional_features = [
-                    1 if business_unit_filter else 0,
-                    1, 1, 0, 1, 0,
-                    7.5, 3, 1
-                ]
-                combined_features = np.concatenate([features, additional_features])
-                combined_features_scaled = self.feature_scaler.transform([combined_features])
+                batch_end = min(i + self.batch_size_prediction, len(candidates))
+                batch_candidates = candidates[i:batch_end]
                 
-                # Make predictions
-                features_tensor = torch.FloatTensor(combined_features_scaled).to(device)
-                existence_prob = self.hostname_net(features_tensor).cpu().item()
-                visibility_probs = self.log_visibility_net(features_tensor).cpu().numpy()[0]
+                batch_features = []
+                for candidate in batch_candidates:
+                    features = self.extract_hostname_features(candidate['hostname'])
+                    additional_features = [1, 1, 1, 0, 0, 1, 0, 1, 0, 0, 0, 7.5, 3, 1, 1]
+                    combined_features = np.concatenate([features, additional_features])
+                    batch_features.append(combined_features)
                 
-                # Filter by confidence threshold
-                if existence_prob > self.confidence_threshold:
-                    predicted_assets.append({
-                        'predicted_hostname': candidate['hostname'],
-                        'existence_probability': float(existence_prob),
-                        'splunk_probability': float(visibility_probs[3] + visibility_probs[4]),
-                        'gso_probability': float(visibility_probs[2] + visibility_probs[4]),
-                        'cmdb_probability': float(sum(visibility_probs[1:])),
-                        'pattern_family': candidate['pattern_template'],
-                        'business_unit': business_unit_filter or 'Unknown',
-                        'predicted_role': self.classify_role(candidate['hostname']),
-                        'predicted_log_types': self.predict_log_types(candidate['hostname']),
-                        'visibility_risk_score': self.calculate_visibility_risk(candidate['hostname'], existence_prob, visibility_probs),
-                        'similar_existing_hosts': candidate['sample_existing'],
-                        'pattern_density': f"{candidate['pattern_density']:.1%}",
-                        'existing_pattern_count': candidate['existing_hosts_count']
-                    })
+                batch_features_scaled = self.feature_scaler.transform(batch_features)
+                features_tensor = torch.FloatTensor(batch_features_scaled).to(device)
+                
+                existence_probs = self.hostname_net(features_tensor).cpu().numpy()
+                visibility_probs = self.log_visibility_net(features_tensor).cpu().numpy()
+                
+                for j, candidate in enumerate(batch_candidates):
+                    existence_prob = float(existence_probs[j][0])
+                    visibility_prob_vector = visibility_probs[j]
+                    
+                    # Calculate comprehensive scores
+                    pattern_score = candidate.get('pattern_density', 0.5)
+                    combined_score = (existence_prob * 0.6 + pattern_score * 0.4)
+                    
+                    # Determine confidence level
+                    confidence_level = 'none'
+                    for level, threshold in sorted(self.confidence_levels.items(), key=lambda x: x[1], reverse=True):
+                        if combined_score >= threshold:
+                            confidence_level = level
+                            break
+                    
+                    if confidence_level != 'none':
+                        risk_score = self.calculate_risk(candidate['hostname'], existence_prob, visibility_prob_vector)
+                        
+                        predicted_assets.append({
+                            'hostname': candidate['hostname'],
+                            'confidence_score': float(combined_score),
+                            'confidence_level': confidence_level,
+                            'existence_probability': existence_prob,
+                            'risk_score': risk_score,
+                            'risk_level': self.get_risk_level(risk_score),
+                            'predicted_role': self.classify_role(candidate['hostname']),
+                            'pattern_template': candidate['pattern_template'][:50] + '...' if len(candidate['pattern_template']) > 50 else candidate['pattern_template'],
+                            'pattern_density': f"{candidate['pattern_density']:.1%}",
+                            'similar_hosts': candidate['sample_existing'],
+                            'existing_count': candidate['existing_hosts_count'],
+                            'splunk_probability': float(visibility_prob_vector[3] + visibility_prob_vector[4]),
+                            'cmdb_probability': float(sum(visibility_prob_vector[1:]))
+                        })
         
-        # Sort by probability and return top results
-        result = sorted(predicted_assets, key=lambda x: x['existence_probability'], reverse=True)[:50]
-        
-        print(f"\n✅ Identified {len(result)} high-confidence missing assets!")
-        
-        return result
+        print(f"   Found {len(predicted_assets):,} missing assets across all confidence levels")
+        return predicted_assets
     
     def classify_role(self, hostname: str) -> str:
-        """Classify asset role based on hostname"""
-        hostname_lower = hostname.lower()
-        role_keywords = {
-            'Server': ['srv', 'server'],
-            'Web Server': ['web', 'www'],
-            'Database': ['db', 'database', 'sql'],
-            'Application': ['app', 'application'],
-            'Network': ['fw', 'firewall', 'router', 'switch'],
-            'Security': ['ids', 'ips', 'ndr', 'siem']
-        }
-        
-        for role, keywords in role_keywords.items():
-            if any(kw in hostname_lower for kw in keywords):
-                return role
-        return 'Endpoint'
-    
-    def predict_log_types(self, hostname: str) -> List[str]:
-        """Predict log types based on hostname"""
+        """Classify asset role"""
         hostname_lower = hostname.lower()
         
-        log_type_map = {
-            ['fw', 'firewall']: ['Firewall Traffic', 'IDS/IPS', 'NDR'],
-            ['web', 'www', 'app']: ['Web Logs', 'HTTP Access', 'Application Logs'],
-            ['db', 'database', 'sql']: ['OS logs', 'Database Audit', 'Query Logs'],
-            ['srv', 'server']: ['OS logs', 'EDR', 'System Events']
-        }
-        
-        for keywords, log_types in log_type_map.items():
-            if any(kw in hostname_lower for kw in keywords):
-                return log_types
-        
-        return ['OS logs', 'EDR']
-    
-    def calculate_visibility_risk(self, hostname: str, existence_prob: float, visibility_probs: np.ndarray) -> float:
-        """Calculate visibility risk score for missing asset"""
-        hostname_lower = hostname.lower()
-        
-        # Risk factors based on hostname patterns
-        risk_factors = [
-            0.4 if 'prod' in hostname_lower else 0,
-            0.3 if any(kw in hostname_lower for kw in ['srv', 'server', 'db']) else 0,
-            0.2 if '.com' in hostname_lower else 0,
-            0.3 if any(kw in hostname_lower for kw in ['1dc', 'fead']) else 0
+        role_patterns = [
+            (['fw', 'firewall', 'asa'], 'Firewall'),
+            (['lb', 'loadbalancer', 'f5'], 'Load Balancer'),
+            (['sw', 'switch'], 'Switch'),
+            (['rt', 'router'], 'Router'),
+            (['db', 'database', 'sql'], 'Database'),
+            (['web', 'www', 'nginx'], 'Web Server'),
+            (['app', 'application'], 'App Server'),
+            (['cache', 'redis'], 'Cache'),
+            (['queue', 'mq', 'kafka'], 'Queue'),
+            (['mail', 'smtp'], 'Mail Server'),
+            (['backup', 'bkp'], 'Backup'),
+            (['monitor', 'mon'], 'Monitoring'),
+            (['log', 'syslog'], 'Logging'),
+            (['dns'], 'DNS'),
+            (['proxy'], 'Proxy'),
+            (['srv', 'server'], 'Server')
         ]
         
-        base_risk = sum(risk_factors)
-        no_visibility_prob = visibility_probs[0]
-        
-        return min(base_risk + (existence_prob * 0.3) + (no_visibility_prob * 0.4), 1.0)
+        for patterns, role in role_patterns:
+            if any(p in hostname_lower for p in patterns):
+                return role
+        return 'Unknown'
     
-    def display_predictions(self, predictions: List[Dict]):
-        """Display predictions in a formatted table"""
-        if not predictions:
-            print("No predictions to display")
+    def calculate_risk(self, hostname: str, existence_prob: float, visibility_probs: np.ndarray) -> float:
+        """Calculate risk score"""
+        hostname_lower = hostname.lower()
+        
+        risk = 0.0
+        
+        # Environment risk
+        if 'prod' in hostname_lower or 'prd' in hostname_lower:
+            risk = 0.9
+        elif 'uat' in hostname_lower or 'stage' in hostname_lower:
+            risk = 0.6
+        elif 'test' in hostname_lower:
+            risk = 0.4
+        elif 'dev' in hostname_lower:
+            risk = 0.2
+        else:
+            risk = 0.5
+        
+        # Role criticality
+        role = self.classify_role(hostname)
+        critical_roles = {'Firewall': 0.9, 'Database': 0.9, 'Load Balancer': 0.8}
+        risk = max(risk, critical_roles.get(role, 0.3))
+        
+        # Visibility gap
+        no_visibility = visibility_probs[0]
+        risk += no_visibility * 0.3
+        
+        return min(risk, 1.0)
+    
+    def get_risk_level(self, risk_score: float) -> str:
+        """Get risk level"""
+        if risk_score >= 0.8:
+            return 'CRITICAL'
+        elif risk_score >= 0.6:
+            return 'HIGH'
+        elif risk_score >= 0.4:
+            return 'MEDIUM'
+        else:
+            return 'LOW'
+    
+    def run_comprehensive_analysis(self):
+        """Run complete analysis automatically"""
+        print("\n" + "="*80)
+        print("COMPREHENSIVE MISSING ASSET DISCOVERY")
+        print("="*80)
+        
+        start_time = datetime.now()
+        
+        # Load or train models
+        self.train_or_load_models()
+        if not self.trained:
+            print("❌ Cannot proceed without trained models")
             return
         
-        print("\n" + "="*100)
-        print("🎯 TOP MISSING ASSETS DISCOVERED")
-        print("="*100)
-        print(f"{'Hostname':<40} {'Probability':<12} {'Risk':<8} {'Role':<15} {'Pattern Count':<10}")
-        print("-"*100)
+        # Load CMDB data
+        df = self.get_cmdb_data()
+        if df.empty:
+            print("❌ No CMDB data available")
+            return
         
-        for i, asset in enumerate(predictions[:20]):
-            print(f"{asset['predicted_hostname']:<40} "
-                  f"{asset['existence_probability']:.1%}{'':8} "
-                  f"{asset['visibility_risk_score']:.2f}{'':5} "
-                  f"{asset['predicted_role']:<15} "
-                  f"{asset['existing_pattern_count']:<10}")
-            
-            if i < 5:  # Show details for top 5
-                print(f"   └─ Similar hosts: {', '.join(asset['similar_existing_hosts'][:2])}")
-                print(f"   └─ Log types: {', '.join(asset['predicted_log_types'][:2])}")
-                print(f"   └─ Pattern density: {asset['pattern_density']}")
-                print()
+        existing_hostnames = set(df['host'].dropna().str.lower())
+        print(f"📝 Existing hosts: {len(existing_hostnames):,}")
+        
+        # Discover patterns
+        patterns = self.discover_all_patterns(df)
+        
+        # Generate candidates
+        candidates = self.generate_all_candidates(patterns, existing_hostnames)
+        
+        # Analyze with AI
+        predictions = self.analyze_all_candidates(candidates)
+        
+        # Display results
+        self.display_comprehensive_results(predictions)
+        
+        # Export results
+        self.export_results(predictions)
+        
+        total_time = (datetime.now() - start_time).total_seconds()
+        print(f"\n⏱️  Total analysis time: {total_time:.1f} seconds")
+        print("="*80)
+    
+    def display_comprehensive_results(self, predictions: List[Dict]):
+        """Display all results grouped by confidence and risk"""
+        if not predictions:
+            print("\n❌ No missing assets found")
+            return
+        
+        print("\n" + "="*120)
+        print("MISSING ASSETS REPORT")
+        print("="*120)
+        
+        # Group by confidence level
+        by_confidence = defaultdict(list)
+        for asset in predictions:
+            by_confidence[asset['confidence_level']].append(asset)
+        
+        # Display each confidence level
+        for level in ['critical', 'high', 'medium', 'low', 'experimental']:
+            if level in by_confidence:
+                assets = by_confidence[level]
+                
+                # Further group by risk
+                by_risk = defaultdict(list)
+                for asset in assets:
+                    by_risk[asset['risk_level']].append(asset)
+                
+                print(f"\n{'='*120}")
+                print(f"{level.upper()} CONFIDENCE ({len(assets):,} assets)")
+                print(f"{'='*120}")
+                
+                for risk_level in ['CRITICAL', 'HIGH', 'MEDIUM', 'LOW']:
+                    if risk_level in by_risk:
+                        risk_assets = by_risk[risk_level][:20]  # Top 20 per category
+                        
+                        print(f"\n{risk_level} RISK ({len(by_risk[risk_level]):,} total):")
+                        print("-"*120)
+                        
+                        for asset in risk_assets:
+                            print(f"  {asset['hostname']:<50} "
+                                  f"Conf: {asset['confidence_score']:.1%} "
+                                  f"Risk: {asset['risk_score']:.2f} "
+                                  f"Role: {asset['predicted_role']:<15}")
         
         # Summary statistics
-        print("\n" + "="*100)
-        print("📊 SUMMARY STATISTICS")
-        print("="*100)
+        print("\n" + "="*120)
+        print("SUMMARY")
+        print("="*120)
         
-        high_risk = [a for a in predictions if a['visibility_risk_score'] > 0.7]
-        print(f"   Total missing assets found: {len(predictions)}")
-        print(f"   High risk assets (>0.7): {len(high_risk)}")
-        print(f"   Average confidence: {np.mean([a['existence_probability'] for a in predictions]):.1%}")
+        total = len(predictions)
+        critical_conf = len(by_confidence.get('critical', []))
+        high_conf = len(by_confidence.get('high', []))
+        medium_conf = len(by_confidence.get('medium', []))
         
-        # Group by role
-        roles = {}
-        for asset in predictions:
-            role = asset['predicted_role']
-            roles[role] = roles.get(role, 0) + 1
+        critical_risk = len([a for a in predictions if a['risk_level'] == 'CRITICAL'])
+        high_risk = len([a for a in predictions if a['risk_level'] == 'HIGH'])
         
-        print("\n   Assets by Role:")
-        for role, count in sorted(roles.items(), key=lambda x: x[1], reverse=True):
-            print(f"      {role}: {count}")
+        print(f"Total missing assets: {total:,}")
+        print(f"\nBy Confidence:")
+        print(f"  Critical: {critical_conf:,}")
+        print(f"  High: {high_conf:,}")
+        print(f"  Medium: {medium_conf:,}")
+        print(f"\nBy Risk:")
+        print(f"  Critical: {critical_risk:,}")
+        print(f"  High: {high_risk:,}")
         
-        # Export option
-        print("\n" + "="*100)
-        self.export_results(predictions)
-
+        # Role distribution
+        role_dist = Counter(a['predicted_role'] for a in predictions)
+        print(f"\nTop Asset Types:")
+        for role, count in role_dist.most_common(10):
+            print(f"  {role}: {count:,}")
+    
     def export_results(self, predictions: List[Dict]):
-        """Export predictions to JSON file"""
+        """Export results to files"""
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        filename = f"missing_assets_{timestamp}.json"
         
-        export_data = {
-            'generated_at': datetime.now().isoformat(),
-            'model_version': self.model_version,
-            'confidence_threshold': self.confidence_threshold,
-            'total_assets': len(predictions),
-            'predictions': predictions
-        }
+        # JSON export
+        json_file = f"reports/missing_assets_{timestamp}.json"
+        with open(json_file, 'w') as f:
+            json.dump({
+                'timestamp': datetime.now().isoformat(),
+                'total_assets': len(predictions),
+                'predictions': predictions
+            }, f, indent=2, default=str)
         
-        with open(filename, 'w') as f:
-            json.dump(export_data, f, indent=2)
+        # CSV export
+        csv_file = f"reports/missing_assets_{timestamp}.csv"
+        pd.DataFrame(predictions).to_csv(csv_file, index=False)
         
-        print(f"💾 Results exported to: {filename}")
+        print(f"\n💾 Results exported:")
+        print(f"   JSON: {json_file}")
+        print(f"   CSV: {csv_file}")
 
 def main():
-    """Main execution function"""
-    print("\n" + "="*60)
-    print("   🤖 AI ASSET PREDICTOR - MISSING IT ASSET DISCOVERY")
-    print("="*60)
-    print(f"Version: AI-Asset-Predictor-2025.1")
+    """Main execution - runs everything automatically"""
+    print("\n" + "="*80)
+    print("   AI ASSET PREDICTOR - FULLY AUTOMATED")
+    print("="*80)
     print(f"Device: {device}")
-    print("="*60)
+    print("="*80)
     
-    # Initialize predictor
-    predictor = AIAssetPredictor()
-    
-    # Check if models exist
-    if predictor.models_exist:
-        print("\n📁 Found existing models")
-        choice = input("Load existing models? (y/n) [y]: ").strip().lower() or 'y'
-        
-        if choice == 'y':
-            if predictor.load_models():
-                print("✅ Models loaded successfully!")
-            else:
-                print("❌ Failed to load models")
-                choice = input("Train new models? (y/n) [y]: ").strip().lower() or 'y'
-                if choice == 'y':
-                    predictor.train_models()
-                else:
-                    print("Exiting...")
-                    return
-        else:
-            print("Training new models...")
-            predictor.train_models()
-    else:
-        print("\n📝 No existing models found")
-        print("Training new models...")
-        predictor.train_models()
-    
-    if not predictor.trained:
-        print("❌ Models not ready. Exiting...")
-        return
-    
-    # Main menu loop
-    while True:
-        print("\n" + "="*60)
-        print("MAIN MENU")
-        print("="*60)
-        print("1. Predict missing assets (all business units)")
-        print("2. Predict missing assets (specific business unit)")
-        print("3. Retrain models")
-        print("4. View model status")
-        print("5. Exit")
-        print("-"*60)
-        
-        choice = input("Select option [1-5]: ").strip()
-        
-        if choice == '1':
-            predictions = predictor.predict_missing_assets()
-            predictor.display_predictions(predictions)
-            
-        elif choice == '2':
-            bu = input("Enter business unit name: ").strip()
-            if bu:
-                predictions = predictor.predict_missing_assets(bu)
-                predictor.display_predictions(predictions)
-            else:
-                print("❌ Invalid business unit")
-                
-        elif choice == '3':
-            confirm = input("Are you sure you want to retrain? (y/n): ").strip().lower()
-            if confirm == 'y':
-                predictor.train_models()
-                
-        elif choice == '4':
-            print("\n" + "="*60)
-            print("MODEL STATUS")
-            print("="*60)
-            print(f"Trained: {predictor.trained}")
-            print(f"Models exist on disk: {predictor.models_exist}")
-            print(f"Model version: {predictor.model_version}")
-            print(f"Confidence threshold: {predictor.confidence_threshold:.0%}")
-            if predictor.training_metrics:
-                print(f"\nTraining Metrics:")
-                for key, value in predictor.training_metrics.items():
-                    print(f"   {key}: {value}")
-            print("="*60)
-            
-        elif choice == '5':
-            print("\n👋 Goodbye!")
-            break
-            
-        else:
-            print("❌ Invalid option")
-        
-        input("\nPress Enter to continue...")
-
-if __name__ == '__main__':
     try:
-        main()
+        predictor = ComprehensiveAssetPredictor()
+        predictor.run_comprehensive_analysis()
     except KeyboardInterrupt:
-        print("\n\n⚠️  Interrupted by user")
+        print("\n\n⚠️  Analysis interrupted by user")
     except Exception as e:
         print(f"\n❌ Error: {e}")
         import traceback
         traceback.print_exc()
+
+if __name__ == '__main__':
+    main()
