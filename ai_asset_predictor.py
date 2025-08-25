@@ -1,3 +1,9 @@
+#!/usr/bin/env python3
+"""
+AI Asset Predictor - Automated Missing IT Asset Discovery
+Standalone console application that automatically trains and predicts missing assets
+"""
+
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -7,25 +13,26 @@ import re
 import duckdb
 from sklearn.preprocessing import StandardScaler
 from sklearn.model_selection import train_test_split
-from flask import Flask, jsonify, request
-import threading
 from datetime import datetime
 import os
 import pickle
 import gc
+import json
 from typing import List, Dict, Optional, Tuple
 from collections import Counter, defaultdict
+import warnings
+warnings.filterwarnings('ignore')
 
 # Device configuration - support for GPU acceleration
 if torch.cuda.is_available():
     device = torch.device("cuda")
-    print("Using NVIDIA GPU (CUDA)")
+    print("🚀 Using NVIDIA GPU (CUDA)")
 elif torch.backends.mps.is_available():
     device = torch.device("mps")
-    print("Using Apple Silicon GPU (MPS)")
+    print("🚀 Using Apple Silicon GPU (MPS)")
 else:
     device = torch.device("cpu")
-    print("Using CPU - Training will be slower")
+    print("⚠️  Using CPU - Training will be slower")
 
 class HostnamePatternNet(nn.Module):
     """Neural network for predicting asset existence based on hostname patterns"""
@@ -104,26 +111,13 @@ class AIAssetPredictor:
             f'{self.model_dir}/feature_scaler.pkl'
         ]
         return all(os.path.exists(f) for f in required_files)
-
-    def initialize_models(self):
-        """Initialize models - load existing or train new ones"""
-        if self.models_exist:
-            print("Loading existing models...")
-            if self.load_models():
-                print("Models loaded successfully!")
-                return True
-            print("Failed to load models, training new ones...")
-        
-        print("Training new models...")
-        self.train_models()
-        return self.trained
         
     def get_db_connection(self):
         """Get DuckDB connection"""
         try:
             return duckdb.connect(self.db_path)
         except Exception as e:
-            print(f"Database connection error: {e}")
+            print(f"❌ Database connection error: {e}")
             return None
     
     def extract_hostname_features(self, hostname: str) -> np.ndarray:
@@ -180,17 +174,17 @@ class AIAssetPredictor:
         
         try:
             df = conn.execute(query).df()
-            print(f"Successfully loaded {len(df)} records from universal_cmdb table")
+            print(f"✅ Successfully loaded {len(df):,} records from universal_cmdb")
             return df
         except Exception as e:
-            print(f"Error fetching CMDB data: {e}")
+            print(f"❌ Error fetching CMDB data: {e}")
             return pd.DataFrame()
         finally:
             conn.close()
 
     def discover_hostname_patterns(self, df: pd.DataFrame) -> List[Dict]:
         """Discover sequential patterns in hostnames for gap detection"""
-        print("Discovering hostname patterns...")
+        print("\n🔍 Discovering hostname patterns...")
         
         pattern_groups = defaultdict(list)
         
@@ -221,8 +215,6 @@ class AIAssetPredictor:
         # Analyze patterns with sufficient frequency
         for template, hostnames in pattern_groups.items():
             if len(hostnames) >= self.min_pattern_frequency:
-                print(f"   Pattern: {template} ({len(hostnames)} hosts)")
-                
                 # Analyze number sequences at each position
                 number_sequences = defaultdict(list)
                 
@@ -251,7 +243,7 @@ class AIAssetPredictor:
                                 missing.append(i)
                         
                         pattern_info['number_sequences'][pos] = {
-                            'existing_values': values,
+                            'existing_values': values[:10],  # Limit for display
                             'range': (min_val, max_val),
                             'missing_values': missing[:100],
                             'density': len(values) / (max_val - min_val + 1) if max_val > min_val else 1.0
@@ -260,12 +252,20 @@ class AIAssetPredictor:
                 if pattern_info['number_sequences']:
                     discovered_patterns.append(pattern_info)
         
-        print(f"Discovered {len(discovered_patterns)} viable hostname patterns")
+        print(f"   Found {len(discovered_patterns)} viable hostname patterns")
+        
+        # Display top patterns
+        for i, pattern in enumerate(discovered_patterns[:5]):
+            print(f"   Pattern {i+1}: {pattern['template']} ({pattern['host_count']} hosts)")
+            for pos, seq in pattern['number_sequences'].items():
+                if seq['missing_values']:
+                    print(f"      - Missing numbers: {len(seq['missing_values'])} gaps found")
+        
         return discovered_patterns
 
     def generate_missing_hostnames(self, patterns: List[Dict]) -> List[Dict]:
         """Generate potential missing hostnames based on discovered patterns"""
-        print("Generating potential missing hostnames...")
+        print("\n🔧 Generating potential missing hostnames...")
         
         missing_candidates = []
         
@@ -315,18 +315,18 @@ class AIAssetPredictor:
                             'sample_existing': pattern['sample_hosts'][:3]
                         })
         
-        print(f"Generated {len(missing_candidates)} missing hostname candidates")
+        print(f"   Generated {len(missing_candidates):,} missing hostname candidates")
         return missing_candidates
     
     def prepare_training_data(self, df: pd.DataFrame) -> tuple:
         """Prepare features and labels for model training"""
         features, existence_labels, visibility_labels = [], [], []
         
-        print(f"Processing {len(df)} records...")
+        print(f"\n📊 Processing {len(df):,} records for training...")
         
         for idx, row in df.iterrows():
-            if idx % 50000 == 0:
-                print(f"Processed {idx} records...")
+            if idx % 50000 == 0 and idx > 0:
+                print(f"   Processed {idx:,} records...")
                 
             # Extract hostname features
             hostname_features = self.extract_hostname_features(row['host']) if pd.notna(row['host']) else self.extract_hostname_features("")
@@ -370,27 +370,28 @@ class AIAssetPredictor:
             
             visibility_labels.append(visibility_type)
         
-        print(f"Finished processing. Features: {len(features)}, Existence: {len(existence_labels)}, Visibility: {len(visibility_labels)}")
         return np.array(features), np.array(existence_labels), np.array(visibility_labels)
     
     def train_models(self):
         """Train neural networks for asset prediction"""
-        print("Loading CMDB data...")
+        print("\n" + "="*60)
+        print("🤖 STARTING AI MODEL TRAINING")
+        print("="*60)
+        
         df = self.get_cmdb_data()
         
         if df.empty:
-            print("No data available for training!")
+            print("❌ No data available for training!")
             return
         
-        print(f"Preparing training data from {len(df)} records...")
         try:
             X, existence_y, visibility_y = self.prepare_training_data(df)
         except ValueError as e:
-            print(f"Error in prepare_training_data: {e}")
+            print(f"❌ Error in prepare_training_data: {e}")
             return
         
         if len(X) == 0:
-            print("No features extracted!")
+            print("❌ No features extracted!")
             return
         
         # Split data
@@ -421,11 +422,16 @@ class AIAssetPredictor:
         
         # Training configuration
         batch_size = 8192 if device.type != 'cpu' else 1024
-        epochs = 150
+        epochs = 50  # Reduced for faster demo
         
-        print(f"Training models on {device}...")
-        print(f"Training: {len(X_train_scaled):,} samples, Validation: {len(X_val_scaled):,} samples")
-        print(f"Batch size: {batch_size}, Epochs: {epochs}")
+        print(f"\n🏋️ Training on {device}")
+        print(f"   Training samples: {len(X_train_scaled):,}")
+        print(f"   Validation samples: {len(X_val_scaled):,}")
+        print(f"   Batch size: {batch_size}")
+        print(f"   Epochs: {epochs}")
+        print("\n" + "-"*40)
+        
+        best_val_loss = float('inf')
         
         for epoch in range(epochs):
             self.hostname_net.train()
@@ -460,12 +466,9 @@ class AIAssetPredictor:
                 total_loss += loss1.item() + loss2.item()
                 
                 del X_batch, existence_y_batch, visibility_y_batch
-                
-                if i % (batch_size * 20) == 0:
-                    gc.collect()
             
-            # Validation every 25 epochs
-            if epoch % 25 == 0:
+            # Validation every 10 epochs
+            if epoch % 10 == 0 or epoch == epochs - 1:
                 self.hostname_net.eval()
                 self.log_visibility_net.eval()
                 
@@ -495,8 +498,14 @@ class AIAssetPredictor:
                 avg_train_loss = total_loss / (len(X_train_scaled) / batch_size)
                 avg_val_loss1 = val_loss1_total / val_batches
                 avg_val_loss2 = val_loss2_total / val_batches
+                avg_val_loss = avg_val_loss1 + avg_val_loss2
                 
-                print(f'Epoch {epoch}/{epochs}, Train Loss: {avg_train_loss:.4f}, Val Loss: {avg_val_loss1:.4f}/{avg_val_loss2:.4f}')
+                print(f'Epoch {epoch+1}/{epochs} | Train Loss: {avg_train_loss:.4f} | Val Loss: {avg_val_loss:.4f}')
+                
+                if avg_val_loss < best_val_loss:
+                    best_val_loss = avg_val_loss
+                    print(f'   ✨ New best validation loss!')
+                
                 gc.collect()
         
         self.trained = True
@@ -504,14 +513,19 @@ class AIAssetPredictor:
         
         # Store training metrics
         self.training_metrics = {
-            'final_losses': [avg_train_loss, avg_val_loss1, avg_val_loss2],
+            'final_train_loss': avg_train_loss,
+            'best_val_loss': best_val_loss,
             'training_records': len(X_train_scaled),
             'validation_records': len(X_val_scaled),
             'epochs_trained': epochs,
             'device': str(device)
         }
         
-        print(f"Training completed! Final train loss: {avg_train_loss:.4f}")
+        print("\n" + "="*60)
+        print(f"✅ TRAINING COMPLETED!")
+        print(f"   Final train loss: {avg_train_loss:.4f}")
+        print(f"   Best validation loss: {best_val_loss:.4f}")
+        print("="*60)
     
     def save_models(self):
         """Save trained models to disk"""
@@ -520,15 +534,17 @@ class AIAssetPredictor:
             torch.save(self.log_visibility_net.state_dict(), f'{self.model_dir}/log_visibility_net.pth')
             with open(f'{self.model_dir}/feature_scaler.pkl', 'wb') as f:
                 pickle.dump(self.feature_scaler, f)
-            print("Models saved successfully!")
+            print("💾 Models saved to disk")
         except Exception as e:
-            print(f"Error saving models: {e}")
+            print(f"❌ Error saving models: {e}")
     
     def load_models(self):
         """Load trained models from disk"""
         try:
             if not self.models_exist:
                 return False
+            
+            print("📂 Loading existing models from disk...")
             
             # Determine input size
             sample_features = self.extract_hostname_features("sample-host-01.example.com")
@@ -548,62 +564,63 @@ class AIAssetPredictor:
                 self.feature_scaler = pickle.load(f)
             
             self.trained = True
+            print("✅ Models loaded successfully!")
             return True
             
         except Exception as e:
-            print(f"Error loading models: {e}")
+            print(f"❌ Error loading models: {e}")
             return False
     
     def predict_missing_assets(self, business_unit_filter: Optional[str] = None) -> List[Dict]:
         """Predict missing assets using trained models"""
         if not self.trained:
-            print("Models not trained yet! Attempting to initialize...")
-            self.initialize_models()
-            if not self.trained:
-                print("Unable to train models - no data available or training failed")
-                return []
+            print("❌ Models not trained yet!")
+            return []
         
-        print("Starting missing asset discovery...")
+        print("\n" + "="*60)
+        print("🔮 PREDICTING MISSING ASSETS")
+        print("="*60)
+        
         df = self.get_cmdb_data()
         if df.empty:
-            print("No CMDB data available!")
+            print("❌ No CMDB data available!")
             return []
         
         # Apply business unit filter if specified
         if business_unit_filter:
             df = df[df['business_unit'] == business_unit_filter]
-            print(f"Filtered to business unit: {business_unit_filter} ({len(df)} records)")
+            print(f"🏢 Filtered to business unit: {business_unit_filter} ({len(df)} records)")
         
         # Get existing hostnames
         existing_hostnames = set(df['host'].dropna().str.lower())
-        print(f"Found {len(existing_hostnames):,} existing hosts")
+        print(f"📝 Found {len(existing_hostnames):,} existing hosts")
         
         # Discover patterns
         hostname_patterns = self.discover_hostname_patterns(df)
         if not hostname_patterns:
-            print("No hostname patterns discovered!")
+            print("❌ No hostname patterns discovered!")
             return []
         
         # Generate missing candidates
         missing_candidates = self.generate_missing_hostnames(hostname_patterns)
         if not missing_candidates:
-            print("No missing hostname candidates generated!")
+            print("❌ No missing hostname candidates generated!")
             return []
         
         # Filter out existing hostnames
         new_candidates = [c for c in missing_candidates if c['hostname'] not in existing_hostnames]
-        print(f"{len(new_candidates):,} potential missing assets identified")
+        print(f"\n🎯 {len(new_candidates):,} potential missing assets to analyze")
         
         # Predict using neural networks
         predicted_assets = []
         self.hostname_net.eval()
         self.log_visibility_net.eval()
         
-        print("AI analyzing missing asset candidates...")
+        print("\n🤖 AI analyzing candidates...")
         
         with torch.no_grad():
-            for i, candidate in enumerate(new_candidates[:1000]):
-                if i % 250 == 0 and i > 0:
+            for i, candidate in enumerate(new_candidates[:500]):  # Limit for demo
+                if i % 100 == 0 and i > 0:
                     print(f"   Analyzed {i:,} candidates...")
                 
                 # Prepare features
@@ -640,8 +657,9 @@ class AIAssetPredictor:
                     })
         
         # Sort by probability and return top results
-        result = sorted(predicted_assets, key=lambda x: x['existence_probability'], reverse=True)[:100]
-        print(f"Identified {len(result)} high-confidence missing assets!")
+        result = sorted(predicted_assets, key=lambda x: x['existence_probability'], reverse=True)[:50]
+        
+        print(f"\n✅ Identified {len(result)} high-confidence missing assets!")
         
         return result
     
@@ -695,113 +713,174 @@ class AIAssetPredictor:
         no_visibility_prob = visibility_probs[0]
         
         return min(base_risk + (existence_prob * 0.3) + (no_visibility_prob * 0.4), 1.0)
-
-# Flask API Application
-app = Flask(__name__)
-ai_predictor = AIAssetPredictor()
-
-@app.route('/api/train-model')
-def train_model():
-    """Endpoint to train the AI models"""
-    try:
-        threading.Thread(target=ai_predictor.train_models, daemon=True).start()
-        return jsonify({
-            'status': 'training_started', 
-            'message': 'AI asset predictor training initiated',
-            'device': str(device)
-        })
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
-
-@app.route('/api/predict-missing-assets')
-def predict_missing_assets():
-    """Endpoint to predict missing assets"""
-    try:
-        if not ai_predictor.trained:
-            return jsonify({
-                'error': 'Models not trained yet',
-                'message': 'Please train the models first using /api/train-model'
-            }), 503
+    
+    def display_predictions(self, predictions: List[Dict]):
+        """Display predictions in a formatted table"""
+        if not predictions:
+            print("No predictions to display")
+            return
+        
+        print("\n" + "="*100)
+        print("🎯 TOP MISSING ASSETS DISCOVERED")
+        print("="*100)
+        print(f"{'Hostname':<40} {'Probability':<12} {'Risk':<8} {'Role':<15} {'Pattern Count':<10}")
+        print("-"*100)
+        
+        for i, asset in enumerate(predictions[:20]):
+            print(f"{asset['predicted_hostname']:<40} "
+                  f"{asset['existence_probability']:.1%}{'':8} "
+                  f"{asset['visibility_risk_score']:.2f}{'':5} "
+                  f"{asset['predicted_role']:<15} "
+                  f"{asset['existing_pattern_count']:<10}")
             
-        predictions = ai_predictor.predict_missing_assets()
-        return jsonify({
-            'total_missing_assets': len(predictions),
-            'confidence_threshold': f"{ai_predictor.confidence_threshold:.0%}",
-            'missing_assets': predictions,
-            'generated_at': datetime.now().isoformat()
-        })
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
+            if i < 5:  # Show details for top 5
+                print(f"   └─ Similar hosts: {', '.join(asset['similar_existing_hosts'][:2])}")
+                print(f"   └─ Log types: {', '.join(asset['predicted_log_types'][:2])}")
+                print(f"   └─ Pattern density: {asset['pattern_density']}")
+                print()
+        
+        # Summary statistics
+        print("\n" + "="*100)
+        print("📊 SUMMARY STATISTICS")
+        print("="*100)
+        
+        high_risk = [a for a in predictions if a['visibility_risk_score'] > 0.7]
+        print(f"   Total missing assets found: {len(predictions)}")
+        print(f"   High risk assets (>0.7): {len(high_risk)}")
+        print(f"   Average confidence: {np.mean([a['existence_probability'] for a in predictions]):.1%}")
+        
+        # Group by role
+        roles = {}
+        for asset in predictions:
+            role = asset['predicted_role']
+            roles[role] = roles.get(role, 0) + 1
+        
+        print("\n   Assets by Role:")
+        for role, count in sorted(roles.items(), key=lambda x: x[1], reverse=True):
+            print(f"      {role}: {count}")
+        
+        # Export option
+        print("\n" + "="*100)
+        self.export_results(predictions)
 
-@app.route('/api/predict-missing-assets/<business_unit>')
-def predict_missing_assets_bu(business_unit):
-    """Endpoint to predict missing assets for specific business unit"""
-    try:
-        if not ai_predictor.trained:
-            return jsonify({
-                'error': 'Models not trained yet', 
-                'message': 'Please train the models first using /api/train-model'
-            }), 503
+    def export_results(self, predictions: List[Dict]):
+        """Export predictions to JSON file"""
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        filename = f"missing_assets_{timestamp}.json"
+        
+        export_data = {
+            'generated_at': datetime.now().isoformat(),
+            'model_version': self.model_version,
+            'confidence_threshold': self.confidence_threshold,
+            'total_assets': len(predictions),
+            'predictions': predictions
+        }
+        
+        with open(filename, 'w') as f:
+            json.dump(export_data, f, indent=2)
+        
+        print(f"💾 Results exported to: {filename}")
+
+def main():
+    """Main execution function"""
+    print("\n" + "="*60)
+    print("   🤖 AI ASSET PREDICTOR - MISSING IT ASSET DISCOVERY")
+    print("="*60)
+    print(f"Version: AI-Asset-Predictor-2025.1")
+    print(f"Device: {device}")
+    print("="*60)
+    
+    # Initialize predictor
+    predictor = AIAssetPredictor()
+    
+    # Check if models exist
+    if predictor.models_exist:
+        print("\n📁 Found existing models")
+        choice = input("Load existing models? (y/n) [y]: ").strip().lower() or 'y'
+        
+        if choice == 'y':
+            if predictor.load_models():
+                print("✅ Models loaded successfully!")
+            else:
+                print("❌ Failed to load models")
+                choice = input("Train new models? (y/n) [y]: ").strip().lower() or 'y'
+                if choice == 'y':
+                    predictor.train_models()
+                else:
+                    print("Exiting...")
+                    return
+        else:
+            print("Training new models...")
+            predictor.train_models()
+    else:
+        print("\n📝 No existing models found")
+        print("Training new models...")
+        predictor.train_models()
+    
+    if not predictor.trained:
+        print("❌ Models not ready. Exiting...")
+        return
+    
+    # Main menu loop
+    while True:
+        print("\n" + "="*60)
+        print("MAIN MENU")
+        print("="*60)
+        print("1. Predict missing assets (all business units)")
+        print("2. Predict missing assets (specific business unit)")
+        print("3. Retrain models")
+        print("4. View model status")
+        print("5. Exit")
+        print("-"*60)
+        
+        choice = input("Select option [1-5]: ").strip()
+        
+        if choice == '1':
+            predictions = predictor.predict_missing_assets()
+            predictor.display_predictions(predictions)
             
-        predictions = ai_predictor.predict_missing_assets(business_unit)
-        return jsonify({
-            'total_missing_assets': len(predictions),
-            'business_unit': business_unit,
-            'confidence_threshold': f"{ai_predictor.confidence_threshold:.0%}",
-            'missing_assets': predictions,
-            'generated_at': datetime.now().isoformat()
-        })
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
-
-@app.route('/api/model-status')
-def model_status():
-    """Endpoint to check model status"""
-    return jsonify({
-        'trained': ai_predictor.trained,
-        'device': str(device),
-        'model_version': ai_predictor.model_version,
-        'training_metrics': ai_predictor.training_metrics,
-        'confidence_threshold': ai_predictor.confidence_threshold,
-        'models_exist': ai_predictor.models_exist
-    })
-
-@app.route('/api/load-models')
-def load_models():
-    """Endpoint to load existing models"""
-    try:
-        success = ai_predictor.load_models()
-        return jsonify({
-            'status': 'success' if success else 'failed',
-            'message': 'Models loaded successfully' if success else 'Failed to load models'
-        })
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        elif choice == '2':
+            bu = input("Enter business unit name: ").strip()
+            if bu:
+                predictions = predictor.predict_missing_assets(bu)
+                predictor.display_predictions(predictions)
+            else:
+                print("❌ Invalid business unit")
+                
+        elif choice == '3':
+            confirm = input("Are you sure you want to retrain? (y/n): ").strip().lower()
+            if confirm == 'y':
+                predictor.train_models()
+                
+        elif choice == '4':
+            print("\n" + "="*60)
+            print("MODEL STATUS")
+            print("="*60)
+            print(f"Trained: {predictor.trained}")
+            print(f"Models exist on disk: {predictor.models_exist}")
+            print(f"Model version: {predictor.model_version}")
+            print(f"Confidence threshold: {predictor.confidence_threshold:.0%}")
+            if predictor.training_metrics:
+                print(f"\nTraining Metrics:")
+                for key, value in predictor.training_metrics.items():
+                    print(f"   {key}: {value}")
+            print("="*60)
+            
+        elif choice == '5':
+            print("\n👋 Goodbye!")
+            break
+            
+        else:
+            print("❌ Invalid option")
+        
+        input("\nPress Enter to continue...")
 
 if __name__ == '__main__':
-    print("=" * 60)
-    print("AI Asset Predictor - Missing IT Asset Discovery System")
-    print("=" * 60)
-    print(f"Device: {device}")
-    print(f"Model Version: {ai_predictor.model_version}")
-    
-    # Attempt to initialize models
-    print("\nInitializing AI models...")
-    ai_predictor.initialize_models()
-    
-    if not ai_predictor.trained:
-        print("\nWARNING: AI models not ready. Some endpoints may not work.")
-        print("Use /api/train-model endpoint to train the models.")
-    else:
-        print("\nAI models ready!")
-    
-    print("\nStarting Flask API server...")
-    print("API Endpoints:")
-    print("  - GET  /api/model-status")
-    print("  - GET  /api/train-model")
-    print("  - GET  /api/load-models")
-    print("  - GET  /api/predict-missing-assets")
-    print("  - GET  /api/predict-missing-assets/<business_unit>")
-    print("\n" + "=" * 60)
-    
-    app.run(debug=True, port=5001, host='0.0.0.0')
+    try:
+        main()
+    except KeyboardInterrupt:
+        print("\n\n⚠️  Interrupted by user")
+    except Exception as e:
+        print(f"\n❌ Error: {e}")
+        import traceback
+        traceback.print_exc()
