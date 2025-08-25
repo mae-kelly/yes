@@ -9,64 +9,57 @@ import re
 import duckdb
 from sklearn.preprocessing import StandardScaler
 from sklearn.model_selection import train_test_split
-from flask import Flask, jsonify, request
+from flask import Flask, jsonify
 import threading
 from datetime import datetime
 import os
 import pickle
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Optional
 from collections import Counter
 
-try:
-    device = torch.device("mps") if torch.backends.mps.is_available() else torch.device("cpu")
-except:
-    device = torch.device("cpu")
+device = torch.device("mps") if torch.backends.mps.is_available() else torch.device("cpu")
 
 class HostnamePatternNet(nn.Module):
     def __init__(self, input_size: int):
-        super(HostnamePatternNet, self).__init__()
-        self.fc1 = nn.Linear(input_size, 512)
-        self.relu1 = nn.ReLU()
-        self.dropout1 = nn.Dropout(0.3)
-        self.fc2 = nn.Linear(512, 256)
-        self.relu2 = nn.ReLU()
-        self.dropout2 = nn.Dropout(0.3)
-        self.fc3 = nn.Linear(256, 128)
-        self.relu3 = nn.ReLU()
-        self.fc4 = nn.Linear(128, 64)
-        self.relu4 = nn.ReLU()
-        self.output = nn.Linear(64, 1)
-        self.sigmoid = nn.Sigmoid()
+        super().__init__()
+        self.layers = nn.Sequential(
+            nn.Linear(input_size, 512),
+            nn.ReLU(),
+            nn.Dropout(0.3),
+            nn.Linear(512, 256),
+            nn.ReLU(),
+            nn.Dropout(0.3),
+            nn.Linear(256, 128),
+            nn.ReLU(),
+            nn.Linear(128, 64),
+            nn.ReLU(),
+            nn.Linear(64, 1),
+            nn.Sigmoid()
+        )
         
     def forward(self, x):
-        x = self.dropout1(self.relu1(self.fc1(x)))
-        x = self.dropout2(self.relu2(self.fc2(x)))
-        x = self.relu3(self.fc3(x))
-        x = self.relu4(self.fc4(x))
-        return self.sigmoid(self.output(x))
+        return self.layers(x)
 
 class LogVisibilityPredictor(nn.Module):
     def __init__(self, input_size: int):
-        super(LogVisibilityPredictor, self).__init__()
-        self.fc1 = nn.Linear(input_size, 256)
-        self.relu1 = nn.ReLU()
-        self.dropout1 = nn.Dropout(0.2)
-        self.fc2 = nn.Linear(256, 128)
-        self.relu2 = nn.ReLU()
-        self.dropout2 = nn.Dropout(0.2)
-        self.fc3 = nn.Linear(128, 64)
-        self.relu3 = nn.ReLU()
-        self.fc4 = nn.Linear(64, 32)
-        self.relu4 = nn.ReLU()
-        self.output = nn.Linear(32, 5)
-        self.softmax = nn.Softmax(dim=1)
+        super().__init__()
+        self.layers = nn.Sequential(
+            nn.Linear(input_size, 256),
+            nn.ReLU(),
+            nn.Dropout(0.2),
+            nn.Linear(256, 128),
+            nn.ReLU(),
+            nn.Dropout(0.2),
+            nn.Linear(128, 64),
+            nn.ReLU(),
+            nn.Linear(64, 32),
+            nn.ReLU(),
+            nn.Linear(32, 5),
+            nn.Softmax(dim=1)
+        )
         
     def forward(self, x):
-        x = self.dropout1(self.relu1(self.fc1(x)))
-        x = self.dropout2(self.relu2(self.fc2(x)))
-        x = self.relu3(self.fc3(x))
-        x = self.relu4(self.fc4(x))
-        return self.softmax(self.output(x))
+        return self.layers(x)
 
 class AO1VisibilityPredictor:
     def __init__(self, db_path: str = 'universal_cmdb.db'):
@@ -75,33 +68,34 @@ class AO1VisibilityPredictor:
         self.feature_scaler = StandardScaler()
         self.trained = False
         self.db_path = db_path
-        self.model_version = "1.0.0"
+        self.model_version = "1.0.1"
         self.training_metrics = {}
-        
         self.model_dir = 'models'
-        os.makedirs(self.model_dir, exist_ok=True)
-        os.makedirs('data', exist_ok=True)
         
+        os.makedirs(self.model_dir, exist_ok=True)
+        
+    @property
     def models_exist(self) -> bool:
-        return (os.path.exists(f'{self.model_dir}/hostname_net.pth') and 
-                os.path.exists(f'{self.model_dir}/log_visibility_net.pth') and
-                os.path.exists(f'{self.model_dir}/feature_scaler.pkl'))
+        required_files = [
+            f'{self.model_dir}/hostname_net.pth',
+            f'{self.model_dir}/log_visibility_net.pth', 
+            f'{self.model_dir}/feature_scaler.pkl'
+        ]
+        return all(os.path.exists(f) for f in required_files)
 
     def initialize_models(self):
-        if self.models_exist():
+        if self.models_exist:
             print("Loading existing models...")
-            success = self.load_models()
-            if success:
+            if self.load_models():
                 print("Models loaded successfully!")
                 return True
-            else:
-                print("Failed to load models, will train new ones...")
+            print("Failed to load models, training new ones...")
         
-        print("No trained models found. Training new models...")
+        print("Training new models...")
         self.train_models()
         return self.trained
         
-    def get_db_connection(self) -> Optional[duckdb.DuckDBPyConnection]:
+    def get_db_connection(self):
         try:
             return duckdb.connect(self.db_path)
         except Exception as e:
@@ -110,71 +104,36 @@ class AO1VisibilityPredictor:
     
     def extract_hostname_features(self, hostname: str) -> np.ndarray:
         if not hostname:
-            return np.zeros(40)
+            return np.zeros(35)
         
         hostname = hostname.lower().strip()
-        features = []
         
-        features.append(len(hostname))
-        features.append(hostname.count('.'))
-        features.append(hostname.count('-'))
-        features.append(hostname.count('_'))
-        features.append(len(re.findall(r'\d', hostname)))
-        features.append(len(re.findall(r'[a-z]', hostname)))
+        features = [
+            len(hostname),
+            hostname.count('.'),
+            hostname.count('-'),
+            hostname.count('_'),
+            len(re.findall(r'\d', hostname)),
+            len(re.findall(r'[a-z]', hostname))
+        ]
         
-        features.append(1 if any(x in hostname for x in ['srv', 'server']) else 0)
-        features.append(1 if any(x in hostname for x in ['web', 'www']) else 0)
-        features.append(1 if any(x in hostname for x in ['db', 'database', 'sql']) else 0)
-        features.append(1 if any(x in hostname for x in ['app', 'application']) else 0)
-        features.append(1 if any(x in hostname for x in ['dc', 'datacenter']) else 0)
+        keywords = [
+            ['srv', 'server'], ['web', 'www'], ['db', 'database', 'sql'], 
+            ['app', 'application'], ['dc', 'datacenter'], ['prod', 'production'],
+            ['dev', 'development'], ['test', 'testing'], ['stage', 'staging'],
+            ['uat', 'preprod'], ['.com'], ['.local'], ['.net'],
+            ['1dc'], ['fead'], ['fiserv'], ['firewall', 'fw'], 
+            ['ids', 'ips'], ['ndr', 'detection'], ['proxy', 'px'],
+            ['dns', 'domain'], ['waf', 'gateway'], ['north', 'south', 'east', 'west'],
+            ['us', 'usa', 'america'], ['eu', 'emea', 'europe'], 
+            ['apac', 'asia'], ['vm', 'virtual'], ['docker', 'container'],
+            ['aws', 'azure', 'gcp', 'cloud']
+        ]
         
-        features.append(1 if any(x in hostname for x in ['prod', 'production']) else 0)
-        features.append(1 if any(x in hostname for x in ['dev', 'development']) else 0)
-        features.append(1 if any(x in hostname for x in ['test', 'testing']) else 0)
-        features.append(1 if any(x in hostname for x in ['stage', 'staging']) else 0)
-        features.append(1 if any(x in hostname for x in ['uat', 'preprod']) else 0)
+        for keyword_group in keywords:
+            features.append(1 if any(kw in hostname for kw in keyword_group) else 0)
         
-        number_groups = re.findall(r'\d+', hostname)
-        features.append(len(number_groups))
-        if number_groups:
-            try:
-                max_num = max([int(n) for n in number_groups])
-                min_num = min([int(n) for n in number_groups])
-                features.append(max_num)
-                features.append(min_num)
-                features.append(1 if max_num > 100 else 0)
-            except ValueError:
-                features.extend([0, 0, 0])
-        else:
-            features.extend([0, 0, 0])
-        
-        features.append(1 if hostname.endswith('.com') else 0)
-        features.append(1 if hostname.endswith('.local') else 0)
-        features.append(1 if hostname.endswith('.net') else 0)
-        
-        features.append(1 if '1dc' in hostname else 0)
-        features.append(1 if 'fead' in hostname else 0)
-        features.append(1 if 'fiserv' in hostname else 0)
-        
-        features.append(1 if any(x in hostname for x in ['firewall', 'fw']) else 0)
-        features.append(1 if any(x in hostname for x in ['ids', 'ips']) else 0)
-        features.append(1 if any(x in hostname for x in ['ndr', 'detection']) else 0)
-        features.append(1 if any(x in hostname for x in ['proxy', 'px']) else 0)
-        features.append(1 if any(x in hostname for x in ['dns', 'domain']) else 0)
-        features.append(1 if any(x in hostname for x in ['waf', 'gateway']) else 0)
-        
-        features.append(1 if any(x in hostname for x in ['north', 'south', 'east', 'west']) else 0)
-        features.append(1 if any(x in hostname for x in ['us', 'usa', 'america']) else 0)
-        features.append(1 if any(x in hostname for x in ['eu', 'emea', 'europe']) else 0)
-        features.append(1 if any(x in hostname for x in ['apac', 'asia']) else 0)
-        features.append(1 if any(x in hostname for x in ['latam', 'latin']) else 0)
-        
-        features.append(1 if any(x in hostname for x in ['vm', 'virtual']) else 0)
-        features.append(1 if any(x in hostname for x in ['docker', 'container']) else 0)
-        features.append(1 if any(x in hostname for x in ['aws', 'azure', 'gcp', 'cloud']) else 0)
-        features.append(1 if any(x in hostname for x in ['k8s', 'kubernetes']) else 0)
-        
-        return np.array(features[:40])
+        return np.array(features[:35])
     
     def get_cmdb_data(self) -> pd.DataFrame:
         conn = self.get_db_connection()
@@ -188,7 +147,7 @@ class AO1VisibilityPredictor:
             logging_in_splunk, logging_in_gso, present_in_cmdb, 
             edr_coverage, tanium_coverage, dlp_agent_coverage,
             first_seen, last_updated, data_quality_score, source_count
-        FROM main.universal_cmdb
+        FROM universal_cmdb
         WHERE fqdn IS NOT NULL AND fqdn != ''
             AND data_quality_score > 3.0
         ORDER BY data_quality_score DESC
@@ -197,27 +156,18 @@ class AO1VisibilityPredictor:
         
         try:
             df = conn.execute(query).df()
-            conn.close()
-            print(f"Successfully loaded {len(df)} records from main.universal_cmdb table")
+            print(f"Successfully loaded {len(df)} records from universal_cmdb table")
             return df
         except Exception as e:
             print(f"Error fetching CMDB data: {e}")
-            try:
-                tables = conn.execute("SHOW ALL TABLES").df()
-                print(f"Available tables: {tables}")
-                schemas = conn.execute("SELECT * FROM information_schema.schemata").df()
-                print(f"Available schemas: {schemas}")
-            except Exception as e2:
-                print(f"Error listing tables: {e2}")
-            conn.close()
             return pd.DataFrame()
+        finally:
+            conn.close()
     
     def prepare_training_data(self, df: pd.DataFrame) -> tuple:
-        features = []
-        existence_labels = []
-        visibility_labels = []
+        features, existence_labels, visibility_labels = [], [], []
         
-        for idx, row in df.iterrows():
+        for _, row in df.iterrows():
             hostname_features = self.extract_hostname_features(row['fqdn'])
             
             additional_features = [
@@ -227,7 +177,6 @@ class AO1VisibilityPredictor:
                 1 if pd.notna(row['system_classification']) and 'windows' in str(row['system_classification']).lower() else 0,
                 1 if pd.notna(row['system_classification']) and 'linux' in str(row['system_classification']).lower() else 0,
                 1 if pd.notna(row['infrastructure_type']) and 'cloud' in str(row['infrastructure_type']).lower() else 0,
-                1 if pd.notna(row['infrastructure_type']) and 'server' in str(row['infrastructure_type']).lower() else 0,
                 float(row['data_quality_score']) if pd.notna(row['data_quality_score']) else 0.0,
                 int(row['source_count']) if pd.notna(row['source_count']) else 0,
                 1 if pd.notna(row['cio']) else 0
@@ -239,7 +188,7 @@ class AO1VisibilityPredictor:
             existence_score = min(sum([
                 1 if row['logging_in_splunk'] == 'yes' else 0,
                 1 if row['present_in_cmdb'] == 'yes' else 0,
-                1 if pd.notna(row['edr_coverage']) and 'crowdstrike agent' in str(row['edr_coverage']).lower() else 0
+                1 if pd.notna(row['edr_coverage']) and 'crowdstrike' in str(row['edr_coverage']).lower() else 0
             ]) / 3.0, 1.0)
             
             existence_labels.append(existence_score)
@@ -291,21 +240,21 @@ class AO1VisibilityPredictor:
         self.hostname_net = HostnamePatternNet(input_size).to(device)
         self.log_visibility_net = LogVisibilityPredictor(input_size).to(device)
         
-        optimizer1 = optim.Adam(self.hostname_net.parameters(), lr=0.001, weight_decay=1e-5)
-        optimizer2 = optim.Adam(self.log_visibility_net.parameters(), lr=0.001, weight_decay=1e-5)
+        optimizer1 = optim.AdamW(self.hostname_net.parameters(), lr=0.001, weight_decay=1e-4)
+        optimizer2 = optim.AdamW(self.log_visibility_net.parameters(), lr=0.001, weight_decay=1e-4)
         
         criterion1 = nn.BCELoss()
         criterion2 = nn.CrossEntropyLoss()
         
-        scheduler1 = optim.lr_scheduler.ReduceLROnPlateau(optimizer1, patience=20, factor=0.5)
-        scheduler2 = optim.lr_scheduler.ReduceLROnPlateau(optimizer2, patience=20, factor=0.5)
+        scheduler1 = optim.lr_scheduler.ReduceLROnPlateau(optimizer1, patience=15, factor=0.7)
+        scheduler2 = optim.lr_scheduler.ReduceLROnPlateau(optimizer2, patience=15, factor=0.7)
         
         print(f"Training models on {device}...")
         
         best_val_loss = float('inf')
         patience_counter = 0
         
-        for epoch in range(500):
+        for epoch in range(300):
             self.hostname_net.train()
             self.log_visibility_net.train()
             
@@ -313,12 +262,14 @@ class AO1VisibilityPredictor:
             existence_outputs = self.hostname_net(X_train_tensor)
             loss1 = criterion1(existence_outputs, existence_y_train_tensor)
             loss1.backward()
+            torch.nn.utils.clip_grad_norm_(self.hostname_net.parameters(), 1.0)
             optimizer1.step()
             
             optimizer2.zero_grad()
             visibility_outputs = self.log_visibility_net(X_train_tensor)
             loss2 = criterion2(visibility_outputs, visibility_y_train_tensor)
             loss2.backward()
+            torch.nn.utils.clip_grad_norm_(self.log_visibility_net.parameters(), 1.0)
             optimizer2.step()
             
             if epoch % 10 == 0:
@@ -334,8 +285,7 @@ class AO1VisibilityPredictor:
                     
                     total_val_loss = val_loss1 + val_loss2
                     
-                    print(f'Epoch {epoch}, Train Loss: {loss1.item():.4f}, {loss2.item():.4f}, '
-                          f'Val Loss: {val_loss1.item():.4f}, {val_loss2.item():.4f}')
+                    print(f'Epoch {epoch}, Train: {loss1.item():.4f}/{loss2.item():.4f}, Val: {val_loss1.item():.4f}/{val_loss2.item():.4f}')
                     
                     if total_val_loss < best_val_loss:
                         best_val_loss = total_val_loss
@@ -344,7 +294,7 @@ class AO1VisibilityPredictor:
                     else:
                         patience_counter += 1
                     
-                    if patience_counter >= 30:
+                    if patience_counter >= 25:
                         print("Early stopping triggered!")
                         break
                 
@@ -353,10 +303,7 @@ class AO1VisibilityPredictor:
         
         self.trained = True
         self.training_metrics = {
-            'final_train_loss1': loss1.item(),
-            'final_train_loss2': loss2.item(),
-            'final_val_loss1': val_loss1.item(),
-            'final_val_loss2': val_loss2.item(),
+            'final_losses': [loss1.item(), loss2.item(), val_loss1.item(), val_loss2.item()],
             'training_records': len(X_train),
             'validation_records': len(X_val),
             'epochs_trained': epoch + 1,
@@ -369,31 +316,19 @@ class AO1VisibilityPredictor:
         try:
             torch.save(self.hostname_net.state_dict(), f'{self.model_dir}/hostname_net.pth')
             torch.save(self.log_visibility_net.state_dict(), f'{self.model_dir}/log_visibility_net.pth')
-            
             with open(f'{self.model_dir}/feature_scaler.pkl', 'wb') as f:
                 pickle.dump(self.feature_scaler, f)
-                
-            print("Models saved successfully!")
         except Exception as e:
             print(f"Error saving models: {e}")
     
     def load_models(self):
         try:
-            required_files = [
-                f'{self.model_dir}/hostname_net.pth',
-                f'{self.model_dir}/log_visibility_net.pth',
-                f'{self.model_dir}/feature_scaler.pkl'
-            ]
-            
-            for file_path in required_files:
-                if not os.path.exists(file_path):
-                    print(f"Model file not found: {file_path}")
-                    return False
+            if not self.models_exist:
+                return False
             
             sample_features = self.extract_hostname_features("sample-host-01.example.com")
-            additional_features = [0] * 10
-            combined_features = np.concatenate([sample_features, additional_features])
-            input_size = len(combined_features)
+            additional_features = [0] * 9
+            input_size = len(np.concatenate([sample_features, additional_features]))
             
             self.hostname_net = HostnamePatternNet(input_size).to(device)
             self.log_visibility_net = LogVisibilityPredictor(input_size).to(device)
@@ -405,19 +340,16 @@ class AO1VisibilityPredictor:
                 self.feature_scaler = pickle.load(f)
             
             self.trained = True
-            print("Models loaded successfully!")
             return True
             
         except Exception as e:
             print(f"Error loading models: {e}")
-            self.trained = False
             return False
     
     def predict_missing_assets(self, business_unit_filter: Optional[str] = None) -> List[Dict]:
         if not self.trained:
             print("Models not trained yet! Attempting to initialize...")
             self.initialize_models()
-            
             if not self.trained:
                 print("Unable to train models - no data available or training failed")
                 return []
@@ -431,35 +363,29 @@ class AO1VisibilityPredictor:
         
         hostname_patterns = self.analyze_naming_patterns(df)
         predicted_assets = []
+        existing_hostnames = set(df['fqdn'].values)
         
-        for pattern in hostname_patterns[:20]:
-            for i in range(1, 200):
+        for pattern in hostname_patterns[:15]:
+            for i in range(1, 150):
                 for padding in [2, 3, 4]:
                     potential_hostname = pattern['pattern'].replace('XXX', str(i).zfill(padding))
                     
-                    if potential_hostname not in df['fqdn'].values:
+                    if potential_hostname not in existing_hostnames:
                         features = self.extract_hostname_features(potential_hostname)
                         additional_features = [
                             1 if business_unit_filter else 0,
-                            1,
-                            1,
-                            0,
-                            1,
-                            0,
-                            1,
-                            7.5,
-                            3,
-                            1
+                            1, 1, 0, 1, 0,
+                            7.5, 3, 1
                         ]
                         combined_features = np.concatenate([features, additional_features])
                         combined_features_scaled = self.feature_scaler.transform([combined_features])
                         
                         with torch.no_grad():
                             features_tensor = torch.FloatTensor(combined_features_scaled).to(device)
-                            existence_prob = self.hostname_net(features_tensor).cpu().numpy()[0][0]
+                            existence_prob = self.hostname_net(features_tensor).cpu().item()
                             visibility_probs = self.log_visibility_net(features_tensor).cpu().numpy()[0]
                         
-                        if existence_prob > 0.75:
+                        if existence_prob > 0.7:
                             predicted_assets.append({
                                 'predicted_hostname': potential_hostname,
                                 'existence_probability': float(existence_prob),
@@ -473,21 +399,19 @@ class AO1VisibilityPredictor:
                                 'visibility_risk_score': self.calculate_visibility_risk(potential_hostname, existence_prob, visibility_probs)
                             })
         
-        return sorted(predicted_assets, key=lambda x: x['existence_probability'], reverse=True)[:100]
+        return sorted(predicted_assets, key=lambda x: x['existence_probability'], reverse=True)[:75]
     
     def analyze_naming_patterns(self, df: pd.DataFrame) -> List[Dict]:
         patterns = []
         
-        for bu in df['business_unit'].dropna().unique()[:10]:
+        for bu in df['business_unit'].dropna().unique()[:8]:
             bu_df = df[df['business_unit'] == bu]
-            
             pattern_counts = {}
+            
             for hostname in bu_df['fqdn']:
-                if not hostname:
-                    continue
-                
-                base_pattern = re.sub(r'\d+', 'XXX', hostname.lower())
-                pattern_counts[base_pattern] = pattern_counts.get(base_pattern, 0) + 1
+                if hostname:
+                    base_pattern = re.sub(r'\d+', 'XXX', hostname.lower())
+                    pattern_counts[base_pattern] = pattern_counts.get(base_pattern, 0) + 1
             
             for pattern, count in pattern_counts.items():
                 if count >= 2:
@@ -502,50 +426,45 @@ class AO1VisibilityPredictor:
     
     def classify_role(self, hostname: str) -> str:
         hostname_lower = hostname.lower()
-        if any(keyword in hostname_lower for keyword in ['srv', 'server']):
-            return 'Server'
-        elif any(keyword in hostname_lower for keyword in ['web', 'www']):
-            return 'Web Server'
-        elif any(keyword in hostname_lower for keyword in ['db', 'database', 'sql']):
-            return 'Database'
-        elif any(keyword in hostname_lower for keyword in ['app', 'application']):
-            return 'Application'
-        elif any(keyword in hostname_lower for keyword in ['fw', 'firewall']):
-            return 'Network'
-        elif any(keyword in hostname_lower for keyword in ['ids', 'ips', 'ndr']):
-            return 'Security'
-        else:
-            return 'Endpoint'
+        role_keywords = {
+            'Server': ['srv', 'server'],
+            'Web Server': ['web', 'www'],
+            'Database': ['db', 'database', 'sql'],
+            'Application': ['app', 'application'],
+            'Network': ['fw', 'firewall'],
+            'Security': ['ids', 'ips', 'ndr']
+        }
+        
+        for role, keywords in role_keywords.items():
+            if any(kw in hostname_lower for kw in keywords):
+                return role
+        return 'Endpoint'
     
     def predict_log_types(self, hostname: str) -> List[str]:
         hostname_lower = hostname.lower()
-        log_types = []
         
-        if any(keyword in hostname_lower for keyword in ['fw', 'firewall']):
-            log_types.extend(['Firewall Traffic', 'IDS/IPS', 'NDR'])
-        elif any(keyword in hostname_lower for keyword in ['web', 'www', 'app']):
-            log_types.extend(['Web Logs', 'HTTP Access', 'Application Logs'])
-        elif any(keyword in hostname_lower for keyword in ['db', 'database', 'sql']):
-            log_types.extend(['OS logs', 'Theom', 'Database Audit'])
-        elif any(keyword in hostname_lower for keyword in ['srv', 'server']):
-            log_types.extend(['OS logs', 'EDR', 'System Events'])
-        else:
-            log_types.extend(['OS logs', 'EDR'])
+        log_type_map = {
+            ['fw', 'firewall']: ['Firewall Traffic', 'IDS/IPS', 'NDR'],
+            ['web', 'www', 'app']: ['Web Logs', 'HTTP Access', 'Application Logs'],
+            ['db', 'database', 'sql']: ['OS logs', 'Theom', 'Database Audit'],
+            ['srv', 'server']: ['OS logs', 'EDR', 'System Events']
+        }
         
-        return log_types
+        for keywords, log_types in log_type_map.items():
+            if any(kw in hostname_lower for kw in keywords):
+                return log_types
+        
+        return ['OS logs', 'EDR']
     
     def calculate_visibility_risk(self, hostname: str, existence_prob: float, visibility_probs: np.ndarray) -> float:
-        risk_factors = []
-        
         hostname_lower = hostname.lower()
-        if 'prod' in hostname_lower:
-            risk_factors.append(0.4)
-        if any(keyword in hostname_lower for keyword in ['srv', 'server', 'db']):
-            risk_factors.append(0.3)
-        if '.com' in hostname_lower:
-            risk_factors.append(0.2)
-        if '1dc' in hostname_lower or 'fead' in hostname_lower:
-            risk_factors.append(0.3)
+        
+        risk_factors = [
+            0.4 if 'prod' in hostname_lower else 0,
+            0.3 if any(kw in hostname_lower for kw in ['srv', 'server', 'db']) else 0,
+            0.2 if '.com' in hostname_lower else 0,
+            0.3 if any(kw in hostname_lower for kw in ['1dc', 'fead']) else 0
+        ]
         
         base_risk = sum(risk_factors)
         no_visibility_prob = visibility_probs[0]
@@ -553,15 +472,12 @@ class AO1VisibilityPredictor:
         return min(base_risk + (existence_prob * 0.3) + (no_visibility_prob * 0.4), 1.0)
 
 app = Flask(__name__)
-ao1_predictor = AO1VisibilityPredictor(db_path='universal_cmdb.db')
+ao1_predictor = AO1VisibilityPredictor()
 
 @app.route('/api/train-visibility-model')
 def train_visibility_model():
     try:
-        def train_async():
-            ao1_predictor.train_models()
-        
-        threading.Thread(target=train_async, daemon=True).start()
+        threading.Thread(target=ao1_predictor.train_models, daemon=True).start()
         return jsonify({
             'status': 'training_started', 
             'message': 'AO1 visibility model training initiated',
@@ -635,16 +551,9 @@ def visibility_gap_analysis():
             'total_predicted_assets': len(predictions),
             'avg_existence_probability': float(np.mean([p['existence_probability'] for p in predictions])) if predictions else 0,
             'pattern_coverage': len(set([p['pattern_family'] for p in predictions])),
-            'business_unit_distribution': {},
-            'role_distribution': {}
+            'business_unit_distribution': dict(Counter([p['business_unit'] for p in predictions]).most_common(10)) if predictions else {},
+            'role_distribution': dict(Counter([p['predicted_role'] for p in predictions])) if predictions else {}
         }
-        
-        if predictions:
-            bu_dist = Counter([p['business_unit'] for p in predictions])
-            role_dist = Counter([p['predicted_role'] for p in predictions])
-            
-            analysis['business_unit_distribution'] = dict(bu_dist.most_common(10))
-            analysis['role_distribution'] = dict(role_dist)
         
         return jsonify(analysis)
     except Exception as e:
