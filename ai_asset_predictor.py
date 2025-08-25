@@ -103,9 +103,7 @@ class AO1VisibilityPredictor:
         
     def get_db_connection(self) -> Optional[duckdb.DuckDBPyConnection]:
         try:
-            conn = duckdb.connect()
-            conn.execute(f"ATTACH '{self.db_path}' AS universal_cmdb")
-            return conn
+            return duckdb.connect(self.db_path)
         except Exception as e:
             print(f"Database connection error: {e}")
             return None
@@ -190,7 +188,7 @@ class AO1VisibilityPredictor:
             logging_in_splunk, logging_in_gso, present_in_cmdb, 
             edr_coverage, tanium_coverage, dlp_agent_coverage,
             first_seen, last_updated, data_quality_score, source_count
-        FROM universal_cmdb.main.universal_cmdb
+        FROM main.universal_cmdb
         WHERE fqdn IS NOT NULL AND fqdn != ''
             AND data_quality_score > 3.0
         ORDER BY data_quality_score DESC
