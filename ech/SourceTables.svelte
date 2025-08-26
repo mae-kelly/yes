@@ -7,8 +7,6 @@
 	let selectedSource = null;
 	let hostDetails = [];
 	let searchTerm = '';
-	let sortField = 'frequency';
-	let sortDirection = 'desc';
 
 	onMount(async () => {
 		try {
@@ -25,21 +23,14 @@
 	$: filteredSources = data.source_intelligence ? 
 		Object.entries(data.source_intelligence)
 			.filter(([source]) => source.toLowerCase().includes(searchTerm.toLowerCase()))
-			.sort((a, b) => {
-				if (sortField === 'frequency') {
-					return sortDirection === 'desc' ? b[1] - a[1] : a[1] - b[1];
-				} else {
-					return sortDirection === 'desc' ? 
-						b[0].localeCompare(a[0]) : a[0].localeCompare(b[0]);
-				}
-			}) : [];
+			.sort((a, b) => b[1] - a[1]) : [];
 
 	function getThreatLevel(frequency) {
 		if (!data.total_mentions) return { level: 'LOW', color: '#0096ff', intensity: 0.3 };
 		let percentage = (frequency / data.total_mentions) * 100;
-		if (percentage >= 15) return { level: 'CRITICAL', color: '#ff00ff', intensity: 1.0 };
+		if (percentage >= 15) return { level: 'CRIT', color: '#ff00ff', intensity: 1.0 };
 		if (percentage >= 10) return { level: 'HIGH', color: '#ff0066', intensity: 0.8 };
-		if (percentage >= 5) return { level: 'MEDIUM', color: '#ffaa00', intensity: 0.6 };
+		if (percentage >= 5) return { level: 'MED', color: '#ffaa00', intensity: 0.6 };
 		return { level: 'LOW', color: '#00ffff', intensity: 0.4 };
 	}
 
@@ -64,22 +55,13 @@
 		}
 	}
 
-	function sortBy(field) {
-		if (sortField === field) {
-			sortDirection = sortDirection === 'desc' ? 'asc' : 'desc';
-		} else {
-			sortField = field;
-			sortDirection = 'desc';
-		}
-	}
-
 	function closeDetails() {
 		selectedSource = null;
 		hostDetails = [];
 	}
 
 	function getCircularProgress(percentage) {
-		const circumference = 2 * Math.PI * 30;
+		const circumference = 2 * Math.PI * 25;
 		const strokeDashoffset = circumference - (percentage / 100) * circumference;
 		return { strokeDashoffset };
 	}
@@ -97,16 +79,16 @@
 			</div>
 			<div class="metrics-display">
 				<div class="metric-ring">
-					<svg width="80" height="80" viewBox="0 0 80 80">
-						<circle cx="40" cy="40" r="30" fill="none" stroke="rgba(0, 255, 255, 0.2)" stroke-width="2"/>
+					<svg width="60" height="60" viewBox="0 0 60 60">
+						<circle cx="30" cy="30" r="25" fill="none" stroke="rgba(0, 255, 255, 0.2)" stroke-width="1.5"/>
 						<circle 
-							cx="40" cy="40" r="30" 
+							cx="30" cy="30" r="25" 
 							fill="none" 
 							stroke="#00ffff" 
-							stroke-width="3"
-							stroke-dasharray="188"
+							stroke-width="2"
+							stroke-dasharray="157"
 							stroke-dashoffset={getCircularProgress(85).strokeDashoffset}
-							transform="rotate(-90 40 40)"
+							transform="rotate(-90 30 30)"
 						/>
 					</svg>
 					<div class="ring-content">
@@ -115,16 +97,16 @@
 					</div>
 				</div>
 				<div class="metric-ring">
-					<svg width="80" height="80" viewBox="0 0 80 80">
-						<circle cx="40" cy="40" r="30" fill="none" stroke="rgba(255, 0, 255, 0.2)" stroke-width="2"/>
+					<svg width="60" height="60" viewBox="0 0 60 60">
+						<circle cx="30" cy="30" r="25" fill="none" stroke="rgba(255, 0, 255, 0.2)" stroke-width="1.5"/>
 						<circle 
-							cx="40" cy="40" r="30" 
+							cx="30" cy="30" r="25" 
 							fill="none" 
 							stroke="#ff00ff" 
-							stroke-width="3"
-							stroke-dasharray="188"
+							stroke-width="2"
+							stroke-dasharray="157"
 							stroke-dashoffset={getCircularProgress(92).strokeDashoffset}
-							transform="rotate(-90 40 40)"
+							transform="rotate(-90 30 30)"
 						/>
 					</svg>
 					<div class="ring-content">
@@ -152,12 +134,12 @@
 		<div class="view-selector">
 			<button class="selector-btn {!selectedSource ? 'active' : ''}" on:click={closeDetails}>
 				<span class="btn-icon">▣</span>
-				TABLE VIEW
+				TABLE
 			</button>
 			{#if selectedSource}
 				<button class="selector-btn active">
 					<span class="btn-icon">⚡</span>
-					DRILL: {selectedSource.source}
+					DRILL
 				</button>
 			{/if}
 		</div>
@@ -167,7 +149,7 @@
 		<div class="loading-interface">
 			<div class="loading-rings">
 				{#each Array(3) as _, i}
-					<div class="loading-ring" style="--delay: {i * 0.2}s; --size: {60 + i * 20}px"></div>
+					<div class="loading-ring" style="--delay: {i * 0.2}s; --size: {40 + i * 15}px"></div>
 				{/each}
 			</div>
 			<div class="loading-text">SCANNING SOURCE INTELLIGENCE...</div>
@@ -183,8 +165,8 @@
 					<div class="target-info">
 						<h3>{selectedSource.source}</h3>
 						<div class="target-stats">
-							<span class="stat">FREQ: {selectedSource.frequency.toLocaleString()}</span>
-							<span class="stat">COV: {getPercentage(selectedSource.frequency)}%</span>
+							<span class="stat">F: {selectedSource.frequency.toLocaleString()}</span>
+							<span class="stat">%: {getPercentage(selectedSource.frequency)}%</span>
 						</div>
 					</div>
 				</div>
@@ -211,25 +193,23 @@
 							<div class="header-cell">REGION</div>
 							<div class="header-cell">COUNTRY</div>
 							<div class="header-cell">INFRA</div>
-							<div class="header-cell">DC</div>
 							<div class="header-cell">CMDB</div>
 							<div class="header-cell">TANIUM</div>
 						</div>
 						{#each hostDetails.slice(0, 50) as host, i}
-							<div class="grid-row" style="animation-delay: {i * 0.05}s">
+							<div class="grid-row" style="animation-delay: {i * 0.03}s">
 								<div class="data-cell host-cell">{host.host}</div>
 								<div class="data-cell">{host.region}</div>
 								<div class="data-cell">{host.country}</div>
 								<div class="data-cell">{host.infrastructure_type}</div>
-								<div class="data-cell">{host.data_center}</div>
 								<div class="data-cell">
 									<span class="status-chip {host.present_in_cmdb?.toLowerCase().includes('yes') ? 'active' : 'inactive'}">
-										{host.present_in_cmdb?.toLowerCase().includes('yes') ? 'ACTIVE' : 'INACTIVE'}
+										{host.present_in_cmdb?.toLowerCase().includes('yes') ? 'Y' : 'N'}
 									</span>
 								</div>
 								<div class="data-cell">
 									<span class="status-chip {host.tanium_coverage?.toLowerCase().includes('tanium') ? 'active' : 'inactive'}">
-										{host.tanium_coverage?.toLowerCase().includes('tanium') ? 'COVERED' : 'NOT COVERED'}
+										{host.tanium_coverage?.toLowerCase().includes('tanium') ? 'Y' : 'N'}
 									</span>
 								</div>
 							</div>
@@ -242,28 +222,18 @@
 		<div class="data-matrix">
 			<div class="matrix-grid">
 				<div class="grid-header">
-					<div class="header-cell sortable" on:click={() => sortBy('source')}>
-						SOURCE TABLE
-						{#if sortField === 'source'}
-							<span class="sort-arrow">{sortDirection === 'desc' ? '▼' : '▲'}</span>
-						{/if}
-					</div>
-					<div class="header-cell sortable" on:click={() => sortBy('frequency')}>
-						FREQUENCY
-						{#if sortField === 'frequency'}
-							<span class="sort-arrow">{sortDirection === 'desc' ? '▼' : '▲'}</span>
-						{/if}
-					</div>
-					<div class="header-cell">COVERAGE</div>
-					<div class="header-cell">THREAT LEVEL</div>
-					<div class="header-cell">ACTIONS</div>
+					<div class="header-cell">SOURCE TABLE</div>
+					<div class="header-cell">FREQ</div>
+					<div class="header-cell">COV%</div>
+					<div class="header-cell">THREAT</div>
+					<div class="header-cell">ACTION</div>
 				</div>
 				
-				{#each filteredSources.slice(0, 50) as [source, frequency], i}
+				{#each filteredSources.slice(0, 12) as [source, frequency], i}
 					<div class="grid-row" style="--threat-color: {getThreatLevel(frequency).color}; animation-delay: {i * 0.02}s">
 						<div class="data-cell source-cell">
 							<div class="source-indicator" style="background: {getThreatLevel(frequency).color}"></div>
-							{source}
+							<span class="source-name">{source}</span>
 						</div>
 						<div class="data-cell frequency-cell">
 							<span class="frequency-value">{frequency.toLocaleString()}</span>
@@ -275,7 +245,7 @@
 							</div>
 						</div>
 						<div class="data-cell threat-cell">
-							<span class="threat-badge {getThreatLevel(frequency).level.toLowerCase()}" 
+							<span class="threat-badge" 
 								  style="color: {getThreatLevel(frequency).color}; border-color: {getThreatLevel(frequency).color};">
 								{getThreatLevel(frequency).level}
 							</span>
@@ -283,7 +253,7 @@
 						<div class="data-cell action-cell">
 							<button class="drill-button" on:click={() => drillDownSource(source, frequency)}>
 								<span class="drill-icon">⚡</span>
-								DRILL DOWN
+								DRILL
 							</button>
 						</div>
 					</div>
@@ -294,8 +264,8 @@
 
 	<div class="interface-footer">
 		<div class="footer-stats">
-			<span>DISPLAYING {filteredSources.length} OF {data.unique_sources || 0} SOURCES</span>
-			<span>AVG MENTIONS/SOURCE: {((data.total_mentions || 0) / (data.unique_sources || 1)).toFixed(0)}</span>
+			<span>SHOWING {Math.min(filteredSources.length, 12)} OF {filteredSources.length}</span>
+			<span>AVG: {((data.total_mentions || 0) / (data.unique_sources || 1)).toFixed(0)}/SRC</span>
 		</div>
 		<div class="neural-signature">
 			◈ SOURCE INTELLIGENCE PROTOCOL ACTIVE
@@ -307,13 +277,14 @@
 	.source-intel-matrix {
 		width: 100%;
 		height: 100%;
-		font-family: 'Orbitron', 'Exo 2', monospace;
+		font-family: 'JetBrains Mono', monospace;
 		color: #fff;
 		display: flex;
 		flex-direction: column;
 		background: transparent;
 		text-transform: uppercase;
-		letter-spacing: 0.05em;
+		letter-spacing: 0.03em;
+		font-size: 0.75rem;
 	}
 
 	.matrix-header {
@@ -322,11 +293,11 @@
 			rgba(0, 255, 255, 0.05) 50%,
 			rgba(0, 0, 0, 0.8) 100%);
 		border: 2px solid #00ffff;
-		border-radius: 12px;
-		padding: 1.5rem 2rem;
-		margin-bottom: 1.5rem;
+		border-radius: 8px;
+		padding: 0.8rem 1.2rem;
+		margin-bottom: 1rem;
 		backdrop-filter: blur(20px);
-		box-shadow: 0 0 30px rgba(0, 255, 255, 0.2);
+		box-shadow: 0 0 25px rgba(0, 255, 255, 0.2);
 	}
 
 	.header-hud {
@@ -338,44 +309,44 @@
 	.hud-element {
 		display: flex;
 		align-items: center;
-		gap: 1rem;
+		gap: 0.8rem;
 	}
 
 	.hud-icon {
-		font-size: 2rem;
+		font-size: 1.5rem;
 		color: #00ffff;
-		text-shadow: 0 0 20px #00ffff;
+		text-shadow: 0 0 15px #00ffff;
 		animation: iconPulse 3s ease-in-out infinite;
 	}
 
 	.hud-data {
 		display: flex;
 		flex-direction: column;
-		gap: 0.3rem;
+		gap: 0.2rem;
 	}
 
 	.data-label {
-		font-size: 1.2rem;
+		font-size: 0.9rem;
 		font-weight: 700;
 		color: #fff;
-		text-shadow: 0 0 15px rgba(0, 255, 255, 0.5);
+		text-shadow: 0 0 10px rgba(0, 255, 255, 0.5);
 	}
 
 	.data-value {
-		font-size: 0.8rem;
+		font-size: 0.65rem;
 		color: rgba(255, 255, 255, 0.6);
 		font-weight: 400;
 	}
 
 	.metrics-display {
 		display: flex;
-		gap: 2rem;
+		gap: 1.5rem;
 	}
 
 	.metric-ring {
 		position: relative;
-		width: 80px;
-		height: 80px;
+		width: 60px;
+		height: 60px;
 	}
 
 	.ring-content {
@@ -387,36 +358,36 @@
 	}
 
 	.ring-value {
-		font-size: 1rem;
+		font-size: 0.7rem;
 		font-weight: 700;
 		color: #00ffff;
-		text-shadow: 0 0 10px #00ffff;
+		text-shadow: 0 0 8px #00ffff;
 	}
 
 	.ring-label {
-		font-size: 0.6rem;
+		font-size: 0.45rem;
 		color: rgba(255, 255, 255, 0.6);
-		margin-top: 0.2rem;
+		margin-top: 0.1rem;
 	}
 
 	.control-matrix {
 		display: flex;
 		justify-content: space-between;
 		align-items: center;
-		margin-bottom: 1.5rem;
-		gap: 2rem;
+		margin-bottom: 1rem;
+		gap: 1rem;
 	}
 
 	.search-console {
 		flex: 1;
-		max-width: 500px;
+		max-width: 350px;
 	}
 
 	.console-frame {
 		position: relative;
 		background: linear-gradient(135deg, rgba(0, 0, 0, 0.8), rgba(0, 255, 255, 0.05));
 		border: 2px solid #00ffff;
-		border-radius: 8px;
+		border-radius: 6px;
 		overflow: hidden;
 	}
 
@@ -424,19 +395,19 @@
 		width: 100%;
 		background: transparent;
 		border: none;
-		padding: 1rem 1.5rem;
+		padding: 0.6rem 1rem;
 		color: #fff;
 		font-family: inherit;
-		font-size: 0.9rem;
+		font-size: 0.65rem;
 		font-weight: 600;
 		outline: none;
 		text-transform: uppercase;
-		letter-spacing: 0.1em;
+		letter-spacing: 0.05em;
 	}
 
 	.console-input::placeholder {
 		color: rgba(255, 255, 255, 0.4);
-		text-shadow: 0 0 8px rgba(0, 255, 255, 0.3);
+		text-shadow: 0 0 6px rgba(0, 255, 255, 0.3);
 	}
 
 	.search-scanner {
@@ -452,37 +423,37 @@
 
 	.view-selector {
 		display: flex;
-		gap: 0.5rem;
+		gap: 0.3rem;
 	}
 
 	.selector-btn {
 		background: linear-gradient(135deg, rgba(0, 0, 0, 0.6), rgba(255, 255, 255, 0.02));
 		border: 2px solid rgba(255, 255, 255, 0.1);
-		border-radius: 6px;
-		padding: 0.8rem 1.5rem;
+		border-radius: 4px;
+		padding: 0.5rem 0.8rem;
 		color: rgba(255, 255, 255, 0.7);
 		font-family: inherit;
-		font-size: 0.7rem;
+		font-size: 0.6rem;
 		font-weight: 600;
 		cursor: pointer;
 		transition: all 0.3s ease;
 		text-transform: uppercase;
-		letter-spacing: 0.05em;
+		letter-spacing: 0.03em;
 		display: flex;
 		align-items: center;
-		gap: 0.5rem;
+		gap: 0.3rem;
 	}
 
 	.selector-btn:hover,
 	.selector-btn.active {
 		border-color: #00ffff;
 		color: #00ffff;
-		box-shadow: 0 0 20px rgba(0, 255, 255, 0.3);
-		text-shadow: 0 0 8px #00ffff;
+		box-shadow: 0 0 15px rgba(0, 255, 255, 0.3);
+		text-shadow: 0 0 6px #00ffff;
 	}
 
 	.btn-icon {
-		font-size: 0.8rem;
+		font-size: 0.7rem;
 		animation: iconFloat 2s ease-in-out infinite;
 	}
 
@@ -492,21 +463,21 @@
 		flex-direction: column;
 		align-items: center;
 		justify-content: center;
-		gap: 2rem;
+		gap: 1.5rem;
 	}
 
 	.loading-rings {
 		position: relative;
-		width: 120px;
-		height: 120px;
+		width: 80px;
+		height: 80px;
 	}
 
 	.loading-ring {
 		position: absolute;
 		width: var(--size);
 		height: var(--size);
-		border: 3px solid transparent;
-		border-top: 3px solid #00ffff;
+		border: 2px solid transparent;
+		border-top: 2px solid #00ffff;
 		border-radius: 50%;
 		top: 50%;
 		left: 50%;
@@ -517,9 +488,9 @@
 
 	.loading-text {
 		color: #00ffff;
-		font-size: 1rem;
+		font-size: 0.7rem;
 		font-weight: 600;
-		letter-spacing: 0.1em;
+		letter-spacing: 0.05em;
 		animation: textGlow 2s ease-in-out infinite;
 	}
 
@@ -527,7 +498,7 @@
 		flex: 1;
 		background: linear-gradient(135deg, rgba(0, 0, 0, 0.6), rgba(0, 255, 255, 0.02));
 		border: 2px solid #00ffff;
-		border-radius: 12px;
+		border-radius: 8px;
 		overflow: hidden;
 	}
 
@@ -539,45 +510,33 @@
 
 	.grid-header {
 		display: grid;
-		grid-template-columns: 2fr 1fr 1fr 1fr 1fr;
+		grid-template-columns: 2fr 0.8fr 0.8fr 0.6fr 0.8fr;
 		background: linear-gradient(135deg, rgba(0, 0, 0, 0.9), rgba(0, 255, 255, 0.1));
 		border-bottom: 2px solid #00ffff;
+		gap: 1px;
 	}
 
 	.header-cell {
-		padding: 1rem 1.5rem;
-		font-size: 0.8rem;
+		padding: 0.6rem 0.8rem;
+		font-size: 0.6rem;
 		font-weight: 700;
 		color: #00ffff;
-		text-shadow: 0 0 8px #00ffff;
+		text-shadow: 0 0 6px #00ffff;
 		border-right: 1px solid rgba(0, 255, 255, 0.2);
 		display: flex;
 		align-items: center;
-		justify-content: space-between;
-	}
-
-	.sortable {
-		cursor: pointer;
-		transition: all 0.2s ease;
-	}
-
-	.sortable:hover {
-		background: rgba(0, 255, 255, 0.05);
-	}
-
-	.sort-arrow {
-		color: #ff00ff;
-		text-shadow: 0 0 8px #ff00ff;
+		letter-spacing: 0.03em;
 	}
 
 	.grid-row {
 		display: grid;
-		grid-template-columns: 2fr 1fr 1fr 1fr 1fr;
+		grid-template-columns: 2fr 0.8fr 0.8fr 0.6fr 0.8fr;
 		border-bottom: 1px solid rgba(255, 255, 255, 0.05);
 		transition: all 0.3s ease;
 		animation: rowEntrance 0.5s ease-out;
 		animation-fill-mode: both;
 		opacity: 0;
+		gap: 1px;
 	}
 
 	.grid-row:hover {
@@ -589,8 +548,8 @@
 	}
 
 	.data-cell {
-		padding: 1rem 1.5rem;
-		font-size: 0.8rem;
+		padding: 0.6rem 0.8rem;
+		font-size: 0.65rem;
 		color: rgba(255, 255, 255, 0.8);
 		border-right: 1px solid rgba(255, 255, 255, 0.05);
 		display: flex;
@@ -602,15 +561,22 @@
 		color: #fff;
 		display: flex;
 		align-items: center;
-		gap: 1rem;
+		gap: 0.6rem;
 	}
 
 	.source-indicator {
-		width: 8px;
-		height: 8px;
+		width: 6px;
+		height: 6px;
 		border-radius: 50%;
-		box-shadow: 0 0 10px currentColor;
+		box-shadow: 0 0 8px currentColor;
 		animation: indicatorPulse 2s ease-in-out infinite;
+		flex-shrink: 0;
+	}
+
+	.source-name {
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
 	}
 
 	.frequency-cell {
@@ -620,7 +586,7 @@
 	.frequency-value {
 		font-weight: 700;
 		color: #00ffff;
-		text-shadow: 0 0 8px #00ffff;
+		text-shadow: 0 0 6px #00ffff;
 	}
 
 	.coverage-cell {
@@ -629,19 +595,19 @@
 
 	.coverage-bar {
 		position: relative;
-		width: 100px;
-		height: 20px;
+		width: 60px;
+		height: 12px;
 		background: rgba(0, 0, 0, 0.5);
-		border-radius: 10px;
+		border-radius: 6px;
 		border: 1px solid rgba(255, 255, 255, 0.1);
 		overflow: hidden;
 	}
 
 	.coverage-fill {
 		height: 100%;
-		border-radius: 10px;
+		border-radius: 6px;
 		transition: width 1s ease-out;
-		box-shadow: 0 0 15px currentColor;
+		box-shadow: 0 0 10px currentColor;
 	}
 
 	.coverage-text {
@@ -649,7 +615,7 @@
 		top: 50%;
 		left: 50%;
 		transform: translate(-50%, -50%);
-		font-size: 0.7rem;
+		font-size: 0.5rem;
 		font-weight: 600;
 		color: #fff;
 		text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.8);
@@ -660,15 +626,15 @@
 	}
 
 	.threat-badge {
-		padding: 0.4rem 0.8rem;
-		border: 2px solid;
-		border-radius: 4px;
-		font-size: 0.6rem;
+		padding: 0.2rem 0.5rem;
+		border: 1px solid;
+		border-radius: 3px;
+		font-size: 0.5rem;
 		font-weight: 700;
 		text-transform: uppercase;
-		letter-spacing: 0.05em;
+		letter-spacing: 0.03em;
 		background: rgba(0, 0, 0, 0.4);
-		text-shadow: 0 0 8px currentColor;
+		text-shadow: 0 0 6px currentColor;
 		animation: badgeGlow 3s ease-in-out infinite;
 	}
 
@@ -679,30 +645,30 @@
 	.drill-button {
 		background: linear-gradient(135deg, rgba(0, 255, 255, 0.1), rgba(0, 255, 255, 0.05));
 		border: 2px solid #00ffff;
-		border-radius: 6px;
-		padding: 0.6rem 1rem;
+		border-radius: 4px;
+		padding: 0.3rem 0.6rem;
 		color: #00ffff;
 		font-family: inherit;
-		font-size: 0.7rem;
+		font-size: 0.55rem;
 		font-weight: 600;
 		cursor: pointer;
 		transition: all 0.3s ease;
 		text-transform: uppercase;
 		display: flex;
 		align-items: center;
-		gap: 0.5rem;
-		letter-spacing: 0.05em;
+		gap: 0.3rem;
+		letter-spacing: 0.03em;
 	}
 
 	.drill-button:hover {
 		background: linear-gradient(135deg, rgba(0, 255, 255, 0.2), rgba(0, 255, 255, 0.1));
-		box-shadow: 0 0 20px rgba(0, 255, 255, 0.4);
-		transform: translateY(-2px);
-		text-shadow: 0 0 8px #00ffff;
+		box-shadow: 0 0 15px rgba(0, 255, 255, 0.4);
+		transform: translateY(-1px);
+		text-shadow: 0 0 6px #00ffff;
 	}
 
 	.drill-icon {
-		font-size: 0.8rem;
+		font-size: 0.6rem;
 		animation: iconSpark 2s ease-in-out infinite;
 	}
 
@@ -712,14 +678,14 @@
 		flex-direction: column;
 		background: linear-gradient(135deg, rgba(0, 0, 0, 0.8), rgba(255, 0, 255, 0.02));
 		border: 2px solid #ff00ff;
-		border-radius: 12px;
+		border-radius: 8px;
 		overflow: hidden;
 	}
 
 	.drill-header {
 		background: linear-gradient(135deg, rgba(0, 0, 0, 0.9), rgba(255, 0, 255, 0.05));
 		border-bottom: 2px solid #ff00ff;
-		padding: 1.5rem 2rem;
+		padding: 0.8rem 1.2rem;
 		display: flex;
 		justify-content: space-between;
 		align-items: center;
@@ -728,14 +694,14 @@
 	.target-display {
 		display: flex;
 		align-items: center;
-		gap: 1.5rem;
+		gap: 1rem;
 	}
 
 	.target-badge {
 		position: relative;
-		padding: 1rem;
+		padding: 0.6rem;
 		border: 2px solid var(--threat-color);
-		border-radius: 8px;
+		border-radius: 6px;
 		background: rgba(0, 0, 0, 0.6);
 		text-align: center;
 	}
@@ -747,49 +713,49 @@
 		right: -2px;
 		bottom: -2px;
 		border: 1px solid var(--threat-color);
-		border-radius: 8px;
+		border-radius: 6px;
 		animation: ringRotate 4s linear infinite;
 		opacity: 0.5;
 	}
 
 	.threat-level {
-		font-size: 0.8rem;
+		font-size: 0.6rem;
 		font-weight: 700;
 		color: var(--threat-color);
-		text-shadow: 0 0 10px var(--threat-color);
+		text-shadow: 0 0 8px var(--threat-color);
 		z-index: 2;
 		position: relative;
 	}
 
 	.target-info h3 {
 		margin: 0;
-		font-size: 1.3rem;
+		font-size: 1rem;
 		color: #fff;
-		text-shadow: 0 0 15px rgba(255, 255, 255, 0.3);
+		text-shadow: 0 0 10px rgba(255, 255, 255, 0.3);
 	}
 
 	.target-stats {
 		display: flex;
-		gap: 1.5rem;
-		margin-top: 0.5rem;
-		font-size: 0.8rem;
+		gap: 1rem;
+		margin-top: 0.3rem;
+		font-size: 0.6rem;
 		color: rgba(255, 255, 255, 0.6);
 	}
 
 	.stat {
 		color: #ff00ff;
 		font-weight: 600;
-		text-shadow: 0 0 8px #ff00ff;
+		text-shadow: 0 0 6px #ff00ff;
 	}
 
 	.close-terminal {
 		background: linear-gradient(135deg, rgba(255, 0, 102, 0.2), rgba(255, 0, 102, 0.1));
 		border: 2px solid #ff0066;
 		border-radius: 50%;
-		width: 50px;
-		height: 50px;
+		width: 35px;
+		height: 35px;
 		color: #ff0066;
-		font-size: 1.5rem;
+		font-size: 1rem;
 		cursor: pointer;
 		transition: all 0.3s ease;
 		display: flex;
@@ -799,12 +765,12 @@
 
 	.close-terminal:hover {
 		background: linear-gradient(135deg, rgba(255, 0, 102, 0.3), rgba(255, 0, 102, 0.2));
-		box-shadow: 0 0 25px rgba(255, 0, 102, 0.5);
+		box-shadow: 0 0 20px rgba(255, 0, 102, 0.5);
 		transform: rotate(90deg);
 	}
 
 	.close-icon {
-		text-shadow: 0 0 10px #ff0066;
+		text-shadow: 0 0 8px #ff0066;
 	}
 
 	.scanning-hosts {
@@ -813,16 +779,16 @@
 		flex-direction: column;
 		align-items: center;
 		justify-content: center;
-		gap: 2rem;
+		gap: 1.5rem;
 		color: #ff00ff;
 	}
 
 	.scan-grid {
 		display: grid;
 		grid-template-columns: repeat(3, 1fr);
-		gap: 0.5rem;
-		width: 120px;
-		height: 120px;
+		gap: 0.3rem;
+		width: 80px;
+		height: 80px;
 	}
 
 	.scan-cell {
@@ -834,23 +800,23 @@
 
 	.host-matrix {
 		flex: 1;
-		padding: 1rem;
+		padding: 0.8rem;
 		overflow-y: auto;
 	}
 
 	.host-matrix .grid-header {
-		grid-template-columns: 2fr 1fr 1fr 1.5fr 1fr 1fr 1.5fr;
+		grid-template-columns: 2fr 1fr 1fr 1fr 0.6fr 0.6fr;
 		background: linear-gradient(135deg, rgba(0, 0, 0, 0.9), rgba(255, 0, 255, 0.1));
 		border-bottom: 2px solid #ff00ff;
 	}
 
 	.host-matrix .header-cell {
 		color: #ff00ff;
-		text-shadow: 0 0 8px #ff00ff;
+		text-shadow: 0 0 6px #ff00ff;
 	}
 
 	.host-matrix .grid-row {
-		grid-template-columns: 2fr 1fr 1fr 1.5fr 1fr 1fr 1.5fr;
+		grid-template-columns: 2fr 1fr 1fr 1fr 0.6fr 0.6fr;
 	}
 
 	.host-cell {
@@ -859,12 +825,12 @@
 	}
 
 	.status-chip {
-		padding: 0.3rem 0.8rem;
-		border-radius: 4px;
-		font-size: 0.6rem;
+		padding: 0.2rem 0.4rem;
+		border-radius: 3px;
+		font-size: 0.5rem;
 		font-weight: 600;
 		text-transform: uppercase;
-		letter-spacing: 0.05em;
+		letter-spacing: 0.03em;
 		border: 1px solid;
 	}
 
@@ -872,42 +838,42 @@
 		background: rgba(0, 255, 133, 0.1);
 		color: #00ff85;
 		border-color: #00ff85;
-		text-shadow: 0 0 8px #00ff85;
+		text-shadow: 0 0 6px #00ff85;
 	}
 
 	.status-chip.inactive {
 		background: rgba(255, 0, 102, 0.1);
 		color: #ff0066;
 		border-color: #ff0066;
-		text-shadow: 0 0 8px #ff0066;
+		text-shadow: 0 0 6px #ff0066;
 	}
 
 	.interface-footer {
 		display: flex;
 		justify-content: space-between;
 		align-items: center;
-		padding: 1rem 0;
-		margin-top: 1.5rem;
+		padding: 0.6rem 0;
+		margin-top: 1rem;
 		border-top: 1px solid rgba(255, 255, 255, 0.1);
-		font-size: 0.7rem;
+		font-size: 0.55rem;
 		color: rgba(255, 255, 255, 0.5);
 	}
 
 	.footer-stats {
 		display: flex;
-		gap: 2rem;
+		gap: 1.5rem;
 	}
 
 	.neural-signature {
 		color: #00ffff;
 		font-weight: 600;
-		letter-spacing: 0.05em;
-		text-shadow: 0 0 8px #00ffff;
+		letter-spacing: 0.03em;
+		text-shadow: 0 0 6px #00ffff;
 	}
 
 	@keyframes iconPulse {
-		0%, 100% { transform: scale(1); text-shadow: 0 0 20px #00ffff; }
-		50% { transform: scale(1.05); text-shadow: 0 0 30px #00ffff; }
+		0%, 100% { transform: scale(1); text-shadow: 0 0 15px #00ffff; }
+		50% { transform: scale(1.05); text-shadow: 0 0 20px #00ffff; }
 	}
 
 	@keyframes scannerSweep {
@@ -926,14 +892,14 @@
 	}
 
 	@keyframes textGlow {
-		0%, 100% { text-shadow: 0 0 10px #00ffff; }
-		50% { text-shadow: 0 0 20px #00ffff; }
+		0%, 100% { text-shadow: 0 0 8px #00ffff; }
+		50% { text-shadow: 0 0 15px #00ffff; }
 	}
 
 	@keyframes rowEntrance {
 		0% { 
 			opacity: 0; 
-			transform: translateX(-20px);
+			transform: translateX(-15px);
 		}
 		100% { 
 			opacity: 1; 
@@ -947,13 +913,13 @@
 	}
 
 	@keyframes badgeGlow {
-		0%, 100% { box-shadow: 0 0 8px currentColor; }
-		50% { box-shadow: 0 0 16px currentColor; }
+		0%, 100% { box-shadow: 0 0 6px currentColor; }
+		50% { box-shadow: 0 0 12px currentColor; }
 	}
 
 	@keyframes iconSpark {
-		0%, 100% { text-shadow: 0 0 5px currentColor; }
-		50% { text-shadow: 0 0 15px currentColor; }
+		0%, 100% { text-shadow: 0 0 4px currentColor; }
+		50% { text-shadow: 0 0 12px currentColor; }
 	}
 
 	@keyframes ringRotate {
@@ -969,18 +935,18 @@
 	@media (max-width: 1200px) {
 		.header-hud {
 			flex-direction: column;
-			gap: 1rem;
+			gap: 0.8rem;
 		}
 
 		.control-matrix {
 			flex-direction: column;
-			gap: 1rem;
+			gap: 0.8rem;
 		}
 
 		.matrix-grid .grid-header,
 		.matrix-grid .grid-row {
 			grid-template-columns: 1fr;
-			gap: 0.5rem;
+			gap: 0.3rem;
 		}
 
 		.data-cell {
@@ -990,19 +956,19 @@
 
 	@media (max-width: 768px) {
 		.matrix-header {
-			padding: 1rem;
+			padding: 0.6rem;
 		}
 
 		.drill-header {
 			flex-direction: column;
-			gap: 1rem;
+			gap: 0.8rem;
 			align-items: flex-start;
 		}
 
 		.target-display {
 			flex-direction: column;
 			align-items: flex-start;
-			gap: 1rem;
+			gap: 0.8rem;
 		}
 	}
 </style>
