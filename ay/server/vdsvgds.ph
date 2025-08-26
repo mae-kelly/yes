@@ -1,56 +1,86 @@
-# Add this debug endpoint to your app.py to see what's happening
+# Replace your existing /api/global-view endpoint in app.py with this corrected version:
 
-@app.route('/api/debug/current-state')
-def debug_current_state():
-    """Show current DB_CONFIG state and test query"""
+@app.route('/api/global-view')
+def global_view():
     try:
-        # Show current config
-        debug_info = {
-            'db_config': {
-                'db_path': DB_CONFIG.get('db_path'),
-                'full_table_name': DB_CONFIG.get('full_table_name'),
-                'simple_table_name': DB_CONFIG.get('simple_table_name'),
-                'connection_method': DB_CONFIG.get('connection_method'),
-                'columns': list(DB_CONFIG.get('columns', {}).keys())[:10]  # First 10 columns
+        if not DB_CONFIG['db_path']:
+            if not try_connection_methods():
+                raise Exception("Database not available after 20+ attempts")
+        
+        table_name = DB_CONFIG['full_table_name']
+        total_hosts = execute_query(f'SELECT COUNT(*) FROM {table_name}')[0][0]
+        
+        coverage = {}
+        
+        # Splunk coverage (note: key is 'splunk', not 'splunk_logging')
+        try:
+            query = f"SELECT COUNT(*) FROM {table_name} WHERE LOWER(logging_in_splunk) = 'yes'"
+            count = execute_query(query)[0][0]
+            coverage['splunk'] = {
+                'count': count,
+                'percentage': calculate_coverage_percentage(count, total_hosts)
             }
-        }
+        except Exception as e:
+            logger.error(f"Error calculating splunk coverage: {str(e)}")
+            coverage['splunk'] = {'count': 0, 'percentage': 0}
         
-        # Try to connect and query
-        if DB_CONFIG.get('db_path'):
-            try:
-                conn = get_connection()
-                
-                # Try the stored table name
-                if DB_CONFIG.get('full_table_name'):
-                    try:
-                        query = f"SELECT COUNT(*) FROM {DB_CONFIG['full_table_name']}"
-                        count = conn.execute(query).fetchone()[0]
-                        debug_info['query_test'] = {
-                            'query': query,
-                            'result': count,
-                            'status': 'SUCCESS'
-                        }
-                    except Exception as e:
-                        debug_info['query_test'] = {
-                            'query': query,
-                            'error': str(e),
-                            'status': 'FAILED'
-                        }
-                
-                # List actual tables in database
-                try:
-                    tables = conn.execute("SHOW TABLES").fetchall()
-                    debug_info['actual_tables'] = [str(t[0]) for t in tables]
-                except:
-                    debug_info['actual_tables'] = []
-                
-                conn.close()
-            except Exception as e:
-                debug_info['connection_error'] = str(e)
-        else:
-            debug_info['error'] = 'No DB_CONFIG path set - discovery may not have run'
+        # CMDB coverage (note: key is 'cmdb', not 'cmdb_present')
+        try:
+            query = f"SELECT COUNT(*) FROM {table_name} WHERE LOWER(present_in_cmdb) = 'yes'"
+            count = execute_query(query)[0][0]
+            coverage['cmdb'] = {
+                'count': count,
+                'percentage': calculate_coverage_percentage(count, total_hosts)
+            }
+        except Exception as e:
+            logger.error(f"Error calculating cmdb coverage: {str(e)}")
+            coverage['cmdb'] = {'count': 0, 'percentage': 0}
         
-        return jsonify(debug_info)
+        # CrowdStrike/EDR coverage (note: key is 'crowdstrike')
+        try:
+            query = f"SELECT COUNT(*) FROM {table_name} WHERE edr_coverage IS NOT NULL AND edr_coverage != ''"
+            count = execute_query(query)[0][0]
+            coverage['crowdstrike'] = {
+                'count': count,
+                'percentage': calculate_coverage_percentage(count, total_hosts)
+            }
+        except Exception as e:
+            logger.error(f"Error calculating crowdstrike coverage: {str(e)}")
+            coverage['crowdstrike'] = {'count': 0, 'percentage': 0}
+        
+        # Tanium coverage
+        try:
+            query = f"SELECT COUNT(*) FROM {table_name} WHERE tanium_coverage IS NOT NULL AND tanium_coverage != ''"
+            count = execute_query(query)[0][0]
+            coverage['tanium'] = {
+                'count': count,
+                'percentage': calculate_coverage_percentage(count, total_hosts)
+            }
+        except Exception as e:
+            logger.error(f"Error calculating tanium coverage: {str(e)}")
+            coverage['tanium'] = {'count': 0, 'percentage': 0}
+        
+        # APM coverage
+        try:
+            query = f"SELECT COUNT(*) FROM {table_name} WHERE apm IS NOT NULL AND apm != ''"
+            count = execute_query(query)[0][0]
+            coverage['apm'] = {
+                'count': count,
+                'percentage': calculate_coverage_percentage(count, total_hosts)
+            }
+        except Exception as e:
+            logger.error(f"Error calculating apm coverage: {str(e)}")
+            coverage['apm'] = {'count': 0, 'percentage': 0}
+        
+        return jsonify({
+            'total_hosts': total_hosts,
+            'coverage': coverage,
+            'connection_method': DB_CONFIG['connection_method'],
+            'table': table_name,
+            'timestamp': datetime.now().isoformat()
+        })
         
     except Exception as e:
-        return jsonify({'error': str(e), 'traceback': traceback.format_exc()}), 500
+        logger.error(f"Global view failed: {str(e)}")
+        logger.error(traceback.format_exc())
+        return jsonify({'error': str(e)}), 500
