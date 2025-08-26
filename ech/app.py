@@ -14,7 +14,6 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 def get_db_connection():
-    """Try to connect to DuckDB database"""
     db_paths = [
         'universal_cmdb.db',
         './universal_cmdb.db',
@@ -41,7 +40,6 @@ def get_db_connection():
             logger.error(f"Failed to connect to {db_path}: {e}")
             continue
     
-    # If no database file found, return error with helpful message
     error_msg = """
     ❌ Database file 'universal_cmdb.db' not found!
     
@@ -58,7 +56,6 @@ def get_db_connection():
     raise Exception(error_msg)
 
 def verify_table_structure(conn):
-    """Verify table structure and get basic info"""
     try:
         result = conn.execute("DESCRIBE universal_cmdb").fetchall()
         columns = [row[0] for row in result]
@@ -73,7 +70,6 @@ def verify_table_structure(conn):
         return [], 0
 
 def normalize_country(country):
-    """Normalize country names to standard format"""
     if not country:
         return 'unknown'
     
@@ -122,7 +118,6 @@ def normalize_country(country):
     return country_mapping.get(country_lower, country_lower)
 
 def normalize_region(region):
-    """Normalize region names"""
     if not region:
         return 'unknown'
     
@@ -146,7 +141,6 @@ def normalize_region(region):
 
 @app.route('/api/database_status')
 def database_status():
-    """Check database connection status"""
     try:
         conn = get_db_connection()
         columns, row_count = verify_table_structure(conn)
@@ -167,11 +161,9 @@ def database_status():
 
 @app.route('/api/source_tables')
 def source_tables_metrics():
-    """Analyze source tables from comma-separated data"""
     try:
         conn = get_db_connection()
         
-        # Try different query approaches based on actual data structure
         queries_to_try = [
             """
             SELECT 
@@ -233,11 +225,10 @@ def source_tables_metrics():
         
         for row in result:
             source_name, frequency, unique_hosts = row
-            if source_name:  # Skip null values
+            if source_name:
                 data[source_name] = frequency
                 total_mentions += frequency
         
-        # Calculate percentages
         for source_name, frequency in data.items():
             percentage = (frequency / total_mentions * 100) if total_mentions > 0 else 0
             detailed_data.append({
@@ -247,15 +238,14 @@ def source_tables_metrics():
                 'percentage': round(percentage, 2)
             })
         
-        # Sort by frequency
         detailed_data.sort(key=lambda x: x['frequency'], reverse=True)
         
         conn.close()
         
         return jsonify({
-            'data': data,
+            'source_intelligence': data,
             'detailed_data': detailed_data,
-            'total_sources': len(data),
+            'unique_sources': len(data),
             'total_mentions': total_mentions,
             'unique_hosts_with_sources': total_rows,
             'top_10': detailed_data[:10],
@@ -271,11 +261,9 @@ def source_tables_metrics():
 
 @app.route('/api/domain_metrics')
 def domain_metrics():
-    """Analyze 1DC vs FEAD domains"""
     try:
         conn = get_db_connection()
         
-        # Try to get domain data
         queries_to_try = [
             """
             SELECT 
@@ -317,7 +305,6 @@ def domain_metrics():
             for row in rows:
                 host, domain, domain_type = row
                 
-                # Handle pipe-separated domains
                 if '|' in str(domain):
                     for d in str(domain).split('|'):
                         d = d.strip()
@@ -368,7 +355,6 @@ def domain_metrics():
 
 @app.route('/api/infrastructure_type')
 def infrastructure_type_metrics():
-    """Analyze infrastructure types"""
     try:
         conn = get_db_connection()
         
@@ -389,7 +375,6 @@ def infrastructure_type_metrics():
             infra_type, frequency = row
             
             if infra_type and infra_type != 'unknown':
-                # Handle pipe-separated values
                 if '|' in str(infra_type):
                     for i_type in str(infra_type).split('|'):
                         i_type = i_type.strip()
@@ -428,7 +413,6 @@ def infrastructure_type_metrics():
 
 @app.route('/api/region_metrics')
 def region_metrics():
-    """Analyze regional distribution"""
     try:
         conn = get_db_connection()
         
@@ -450,7 +434,6 @@ def region_metrics():
             if region and region != 'unknown':
                 raw_regions.append({'region': region, 'frequency': frequency})
                 
-                # Handle pipe-separated regions
                 if '|' in str(region):
                     for r in str(region).split('|'):
                         r = r.strip()
@@ -494,7 +477,6 @@ def region_metrics():
 
 @app.route('/api/country_metrics')
 def country_metrics():
-    """Analyze country distribution"""
     try:
         conn = get_db_connection()
         
@@ -512,7 +494,6 @@ def country_metrics():
         for row in result:
             country, frequency = row
             if country and country != 'unknown':
-                # Handle pipe-separated countries
                 if '|' in str(country):
                     for c in str(country).split('|'):
                         c = c.strip()
@@ -542,7 +523,6 @@ def country_metrics():
 
 @app.route('/api/data_center_metrics')
 def data_center_metrics():
-    """Analyze data center distribution"""
     try:
         conn = get_db_connection()
         
@@ -560,7 +540,6 @@ def data_center_metrics():
         for row in result:
             data_center, frequency = row
             if data_center and data_center != 'unknown':
-                # Extract first word for analysis
                 first_word = str(data_center).split()[0] if str(data_center).split() else str(data_center)
                 facility_intelligence[first_word] = facility_intelligence.get(first_word, 0) + frequency
         
@@ -580,7 +559,6 @@ def data_center_metrics():
 
 @app.route('/api/cloud_region_metrics')
 def cloud_region_metrics():
-    """Analyze cloud region distribution"""
     try:
         conn = get_db_connection()
         
@@ -610,7 +588,6 @@ def cloud_region_metrics():
 
 @app.route('/api/class_metrics')
 def class_metrics():
-    """Analyze class numbers"""
     try:
         conn = get_db_connection()
         
@@ -629,7 +606,6 @@ def class_metrics():
         for row in result:
             class_name, frequency = row
             if class_name and class_name != 'unknown':
-                # Extract class numbers using regex
                 class_matches = re.findall(r'class\s*(\d+)', str(class_name).lower())
                 if class_matches:
                     for match in class_matches:
@@ -649,7 +625,6 @@ def class_metrics():
 
 @app.route('/api/system_classification_metrics')
 def system_classification_metrics():
-    """Analyze system classifications"""
     try:
         conn = get_db_connection()
         
@@ -667,7 +642,6 @@ def system_classification_metrics():
         for row in result:
             system_name, frequency = row
             if system_name and system_name != 'unknown':
-                # Handle pipe-separated systems
                 if '|' in str(system_name):
                     for s in str(system_name).split('|'):
                         s = s.strip()
@@ -688,7 +662,6 @@ def system_classification_metrics():
 
 @app.route('/api/business_unit_metrics')
 def business_unit_metrics():
-    """Analyze business units"""
     try:
         conn = get_db_connection()
         
@@ -706,7 +679,6 @@ def business_unit_metrics():
         for row in result:
             bu_name, frequency = row
             if bu_name and bu_name != 'unknown':
-                # Handle comma and pipe separated business units
                 separators = [',', '|']
                 units = [bu_name]
                 
@@ -732,7 +704,6 @@ def business_unit_metrics():
 
 @app.route('/api/cio_metrics')
 def cio_metrics():
-    """Analyze CIO data (words only, no numbers)"""
     try:
         conn = get_db_connection()
         
@@ -751,15 +722,12 @@ def cio_metrics():
         for row in result:
             cio_name, frequency = row
             if cio_name and cio_name != 'unknown':
-                # Handle pipe-separated values and filter out numbers
                 if '|' in str(cio_name):
                     for c in str(cio_name).split('|'):
                         c = c.strip()
-                        # Only include if it contains letters (words only, no pure numbers)
                         if c and re.search(r'[a-zA-Z]', c):
                             operative_intelligence[c] = operative_intelligence.get(c, 0) + frequency
                 else:
-                    # Only include if it contains letters (words only, no pure numbers)
                     if re.search(r'[a-zA-Z]', str(cio_name)):
                         operative_intelligence[str(cio_name)] = frequency
         
@@ -775,11 +743,9 @@ def cio_metrics():
 
 @app.route('/api/tanium_coverage')
 def tanium_coverage():
-    """Analyze Tanium coverage"""
     try:
         conn = get_db_connection()
         
-        # Count instances where tanium_coverage contains "tanium"
         tanium_count = conn.execute("""
             SELECT COUNT(*) 
             FROM universal_cmdb 
@@ -790,7 +756,6 @@ def tanium_coverage():
         
         coverage_percentage = (tanium_count / total_count * 100) if total_count > 0 else 0
         
-        # Get status breakdown
         status_breakdown = conn.execute("""
             SELECT 
                 CASE 
@@ -827,11 +792,9 @@ def tanium_coverage():
 
 @app.route('/api/cmdb_presence')
 def cmdb_presence():
-    """Analyze CMDB presence"""
     try:
         conn = get_db_connection()
         
-        # Count instances where present_in_cmdb contains "yes"
         yes_count = conn.execute("""
             SELECT COUNT(*) 
             FROM universal_cmdb 
@@ -842,7 +805,6 @@ def cmdb_presence():
         
         registration_rate = (yes_count / total_count * 100) if total_count > 0 else 0
         
-        # Get presence breakdown
         presence_breakdown = conn.execute("""
             SELECT 
                 CASE 
@@ -879,7 +841,6 @@ def cmdb_presence():
 
 @app.route('/api/host_search')
 def host_search():
-    """Search for specific hosts"""
     try:
         search_term = request.args.get('q', '')
         if not search_term:
