@@ -3,6 +3,7 @@ import { svelte } from '@sveltejs/vite-plugin-svelte'
 
 export default defineConfig({
   plugins: [svelte()],
+  root: './',
   server: {
     port: 3000,
     host: true,
@@ -14,11 +15,17 @@ export default defineConfig({
     outDir: 'dist',
     sourcemap: true,
     rollupOptions: {
+      input: './index.html',
       output: {
         manualChunks: {
           vendor: ['svelte']
         }
       }
+    }
+  },
+  resolve: {
+    alias: {
+      '@': './'
     }
   },
   optimizeDeps: {
