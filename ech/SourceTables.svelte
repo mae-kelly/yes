@@ -1,4 +1,3 @@
-<!-- SourceTables.svelte - Optimized for Maximum Data Density -->
 <script>
 	import { onMount } from 'svelte';
 	
@@ -297,6 +296,7 @@
 		margin-bottom: 0.6rem;
 		backdrop-filter: blur(20px);
 		box-shadow: 0 0 15px rgba(0, 255, 255, 0.2);
+		flex-shrink: 0;
 	}
 
 	.header-hud {
@@ -375,6 +375,7 @@
 		align-items: center;
 		margin-bottom: 0.6rem;
 		gap: 0.8rem;
+		flex-shrink: 0;
 	}
 
 	.search-console {
@@ -499,12 +500,16 @@
 		border: 1px solid #00ffff;
 		border-radius: 6px;
 		overflow: hidden;
+		display: flex;
+		flex-direction: column;
 	}
 
 	.matrix-grid {
 		width: 100%;
 		display: flex;
 		flex-direction: column;
+		flex: 1;
+		overflow-y: auto;
 	}
 
 	.grid-header {
@@ -513,6 +518,10 @@
 		background: linear-gradient(135deg, rgba(0, 0, 0, 0.9), rgba(0, 255, 255, 0.1));
 		border-bottom: 1px solid #00ffff;
 		gap: 0.5px;
+		position: sticky;
+		top: 0;
+		z-index: 10;
+		flex-shrink: 0;
 	}
 
 	.header-cell {
@@ -690,6 +699,7 @@
 		display: flex;
 		justify-content: space-between;
 		align-items: center;
+		flex-shrink: 0;
 	}
 
 	.target-display {
@@ -803,7 +813,7 @@
 		flex: 1;
 		padding: 0.5rem;
 		overflow-y: auto;
-		max-height: 60vh;
+		max-height: calc(100% - 60px);
 	}
 
 	.host-matrix .grid-header {
@@ -863,6 +873,7 @@
 		border-top: 1px solid rgba(255, 255, 255, 0.1);
 		font-size: 0.45rem;
 		color: rgba(255, 255, 255, 0.5);
+		flex-shrink: 0;
 	}
 
 	.footer-stats {
@@ -936,47 +947,5 @@
 	@keyframes cellFlicker {
 		0%, 100% { opacity: 0.3; background: #ff00ff; }
 		50% { opacity: 1; background: #fff; }
-	}
-
-	@media (max-width: 1400px) {
-		.header-hud {
-			flex-direction: column;
-			gap: 0.5rem;
-		}
-
-		.control-matrix {
-			flex-direction: column;
-			gap: 0.5rem;
-		}
-
-		.matrix-grid .grid-header,
-		.matrix-grid .grid-row {
-			grid-template-columns: 1fr;
-			gap: 0.2rem;
-		}
-
-		.data-cell {
-			justify-content: space-between;
-		}
-	}
-
-	@media (max-width: 768px) {
-		.matrix-header {
-			padding: 0.4rem;
-		}
-
-		.drill-header {
-			flex-direction: column;
-			gap: 0.5rem;
-			align-items: flex-start;
-		}
-
-		.target-display {
-			flex-direction: column;
-			align-items: flex-start;
-			gap: 0.5rem;
-		}
-
-		.font-size: 0.6rem;
 	}
 </style>
