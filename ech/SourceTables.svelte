@@ -26,11 +26,21 @@
 	$: maxFrequency = filteredSources.length > 0 ? Math.max(...filteredSources.map(([, freq]) => freq)) : 1;
 
 	function getThreatLevel(frequency) {
+		if (!data.total_mentions) return { level: 'LOW', color: '#8B5CF6' };
 		const percentage = (frequency / data.total_mentions) * 100;
 		if (percentage >= 15) return { level: 'CRITICAL', color: '#FF0080' };
 		if (percentage >= 10) return { level: 'HIGH', color: '#FF4500' };
 		if (percentage >= 5) return { level: 'MEDIUM', color: '#FFE500' };
 		return { level: 'LOW', color: '#00FF85' };
+	}
+
+	function getPercentage(frequency) {
+		if (!data.total_mentions) return '0.00';
+		return ((frequency / data.total_mentions) * 100).toFixed(2);
+	}
+
+	function getBarWidth(frequency) {
+		return `${(frequency / maxFrequency) * 100}%`;
 	}
 
 	function selectSource(source, frequency) {
@@ -43,6 +53,13 @@
 			acc[threat.level] = (acc[threat.level] || 0) + 1;
 			return acc;
 		}, {});
+	}
+
+	function getThreatBarWidth(level) {
+		const stats = getThreatStats();
+		const count = stats[level] || 0;
+		const maxCount = Math.max(...Object.values(stats));
+		return maxCount > 0 ? `${(count / maxCount) * 100}%` : '0%';
 	}
 </script>
 
@@ -99,7 +116,7 @@
 					{#each filteredSources.slice(0, 50) as [source, frequency]}
 						<div 
 							class="source-crystal"
-							style="--threat-color: {getThreatLevel(frequency).color}; --bar-width: {(frequency / maxFrequency) * 100}%"
+							style="--threat-color: {getThreatLevel(frequency).color}; --bar-width: {getBarWidth(frequency)}"
 							on:click={() => selectSource(source, frequency)}
 						>
 							<div class="crystal-header">
@@ -111,7 +128,7 @@
 							
 							<div class="frequency-display">
 								<span class="frequency-count">{frequency.toLocaleString()}</span>
-								<span class="frequency-percent">{((frequency / data.total_mentions) * 100).toFixed(2)}%</span>
+								<span class="frequency-percent">{getPercentage(frequency)}%</span>
 							</div>
 							
 							<div class="frequency-bar">
@@ -131,7 +148,6 @@
 				</div>
 				
 				{#if selectedSource}
-					{@const threat = getThreatLevel(selectedSource.frequency)}
 					<div class="selected-analysis">
 						<div class="analysis-header">
 							<div class="selected-name">{selectedSource.source}</div>
@@ -142,15 +158,15 @@
 								</div>
 								<div class="metric">
 									<span class="metric-label">PERCENTAGE</span>
-									<span class="metric-value">{((selectedSource.frequency / data.total_mentions) * 100).toFixed(2)}%</span>
+									<span class="metric-value">{getPercentage(selectedSource.frequency)}%</span>
 								</div>
 							</div>
 						</div>
 						
 						<div class="threat-assessment">
-							<div class="assessment-level" style="--level-color: {threat.color}">
+							<div class="assessment-level" style="--level-color: {getThreatLevel(selectedSource.frequency).color}">
 								<div class="level-indicator"></div>
-								<span class="level-text">THREAT LEVEL: {threat.level}</span>
+								<span class="level-text">THREAT LEVEL: {getThreatLevel(selectedSource.frequency).level}</span>
 							</div>
 						</div>
 					</div>
@@ -163,20 +179,17 @@
 
 				<div class="distribution-chart">
 					<div class="chart-title">THREAT DISTRIBUTION</div>
-					{@const threatStats = getThreatStats()}
-					{@const maxCount = Math.max(...Object.values(threatStats))}
 					<div class="threat-bars">
 						{#each [['CRITICAL', '#FF0080'], ['HIGH', '#FF4500'], ['MEDIUM', '#FFE500'], ['LOW', '#00FF85']] as [level, color]}
-							{@const count = threatStats[level] || 0}
 							<div class="threat-bar">
 								<span class="bar-label">{level}</span>
 								<div class="bar-container">
 									<div 
 										class="bar" 
-										style="width: {maxCount > 0 ? (count / maxCount) * 100 : 0}%; background: {color}"
+										style="width: {getThreatBarWidth(level)}; background: {color}"
 									></div>
 								</div>
-								<span class="bar-count">{count}</span>
+								<span class="bar-count">{getThreatStats()[level] || 0}</span>
 							</div>
 						{/each}
 					</div>
