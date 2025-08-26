@@ -74,15 +74,16 @@
           </thead>
           <tbody>
             {#each Object.entries(data.business_units || {}) as [bu, stats]}
-              {@const threat = getThreatLevel(stats.overall_coverage)}
-              <tr>
-                <td class="font-weight-bold">{bu.length > 30 ? bu.substring(0, 30) + '...' : bu.toUpperCase()}</td>
-                <td class="text-center">{formatNumber(stats.total)}</td>
-                <td class="text-center" style="color: {getThreatLevel(stats.splunk_coverage).color};">{stats.splunk_coverage}%</td>
-                <td class="text-center" style="color: {getThreatLevel(stats.cmdb_coverage).color};">{stats.cmdb_coverage}%</td>
-                <td class="text-center" style="color: {getThreatLevel(stats.edr_coverage).color};">{stats.edr_coverage}%</td>
-                <td class="text-center" style="color: {threat.color};">{threat.status}</td>
-              </tr>
+              {#if stats}
+                <tr>
+                  <td class="font-weight-bold">{bu.length > 30 ? bu.substring(0, 30) + '...' : bu.toUpperCase()}</td>
+                  <td class="text-center">{formatNumber(stats.total)}</td>
+                  <td class="text-center" style="color: {getThreatLevel(stats.splunk_coverage).color};">{stats.splunk_coverage}%</td>
+                  <td class="text-center" style="color: {getThreatLevel(stats.cmdb_coverage).color};">{stats.cmdb_coverage}%</td>
+                  <td class="text-center" style="color: {getThreatLevel(stats.edr_coverage).color};">{stats.edr_coverage}%</td>
+                  <td class="text-center" style="color: {getThreatLevel(stats.overall_coverage).color};">{getThreatLevel(stats.overall_coverage).status}</td>
+                </tr>
+              {/if}
             {/each}
           </tbody>
         </table>
@@ -104,15 +105,16 @@
           </thead>
           <tbody>
             {#each Object.entries(data.cio || {}) as [cio, stats]}
-              {@const threat = getThreatLevel(stats.overall_coverage)}
-              <tr>
-                <td class="font-weight-bold">{cio.toUpperCase()}</td>
-                <td class="text-center">{formatNumber(stats.total)}</td>
-                <td class="text-center" style="color: {getThreatLevel(stats.splunk_coverage).color};">{stats.splunk_coverage}%</td>
-                <td class="text-center" style="color: {getThreatLevel(stats.cmdb_coverage).color};">{stats.cmdb_coverage}%</td>
-                <td class="text-center" style="color: {getThreatLevel(stats.edr_coverage).color};">{stats.edr_coverage}%</td>
-                <td class="text-center" style="color: {threat.color};">{threat.status}</td>
-              </tr>
+              {#if stats}
+                <tr>
+                  <td class="font-weight-bold">{cio.toUpperCase()}</td>
+                  <td class="text-center">{formatNumber(stats.total)}</td>
+                  <td class="text-center" style="color: {getThreatLevel(stats.splunk_coverage).color};">{stats.splunk_coverage}%</td>
+                  <td class="text-center" style="color: {getThreatLevel(stats.cmdb_coverage).color};">{stats.cmdb_coverage}%</td>
+                  <td class="text-center" style="color: {getThreatLevel(stats.edr_coverage).color};">{stats.edr_coverage}%</td>
+                  <td class="text-center" style="color: {getThreatLevel(stats.overall_coverage).color};">{getThreatLevel(stats.overall_coverage).status}</td>
+                </tr>
+              {/if}
             {/each}
           </tbody>
         </table>
@@ -122,28 +124,33 @@
     <div class="card" style="padding: 25px;">
       <div class="header-title" style="margin-bottom: 20px;">APM MONITORING COVERAGE</div>
       
-      {@const apmThreat = getThreatLevel(data.apm_coverage?.overall_coverage || 0)}
-      <div class="metric-card" style="border-color: {apmThreat.color};">
-        <div class="metric-content">
-          <div class="metric-label" style="color: {apmThreat.color};">APM MONITORED APPLICATIONS</div>
-          <div class="metric-value" style="color: {apmThreat.color};">{formatNumber(data.apm_coverage?.total || 0)}</div>
-          <div class="metric-detail">Applications with APM monitoring</div>
-        </div>
-      </div>
-
-      <div class="d-flex flex-column gap-3" style="margin-top: 20px;">
-        {#each [['APM + Splunk', data.apm_coverage?.splunk_coverage || 0], ['APM + CMDB', data.apm_coverage?.cmdb_coverage || 0], ['APM + EDR', data.apm_coverage?.edr_coverage || 0]] as [label, percentage]}
-          <div class="coverage-item">
-            <div class="coverage-header">
-              <span>{label}</span>
-              <span style="color: {getThreatLevel(percentage).color};">{percentage}%</span>
-            </div>
-            <div class="progress-bar">
-              <div class="progress-fill" style="width: {percentage}%; background: {getThreatLevel(percentage).color};"></div>
-            </div>
+      {#if data.apm_coverage}
+        <div class="metric-card" style="border-color: {getThreatLevel(data.apm_coverage.overall_coverage || 0).color};">
+          <div class="metric-content">
+            <div class="metric-label" style="color: {getThreatLevel(data.apm_coverage.overall_coverage || 0).color};">APM MONITORED APPLICATIONS</div>
+            <div class="metric-value" style="color: {getThreatLevel(data.apm_coverage.overall_coverage || 0).color};">{formatNumber(data.apm_coverage.total || 0)}</div>
+            <div class="metric-detail">Applications with APM monitoring</div>
           </div>
-        {/each}
-      </div>
+        </div>
+
+        <div class="d-flex flex-column gap-3" style="margin-top: 20px;">
+          {#each [['APM + Splunk', data.apm_coverage.splunk_coverage || 0], ['APM + CMDB', data.apm_coverage.cmdb_coverage || 0], ['APM + EDR', data.apm_coverage.edr_coverage || 0]] as [label, percentage]}
+            <div class="coverage-item">
+              <div class="coverage-header">
+                <span>{label}</span>
+                <span style="color: {getThreatLevel(percentage).color};">{percentage}%</span>
+              </div>
+              <div class="progress-bar">
+                <div class="progress-fill" style="width: {percentage}%; background: {getThreatLevel(percentage).color};"></div>
+              </div>
+            </div>
+          {/each}
+        </div>
+      {:else}
+        <div class="text-center" style="color: var(--text-secondary); padding: 40px;">
+          No APM coverage data available
+        </div>
+      {/if}
     </div>
   {/if}
 {/if}
