@@ -36,6 +36,14 @@
 	function selectSource(source, frequency) {
 		selectedSource = { source, frequency };
 	}
+
+	function getThreatStats() {
+		return filteredSources.reduce((acc, [source, freq]) => {
+			const threat = getThreatLevel(freq);
+			acc[threat.level] = (acc[threat.level] || 0) + 1;
+			return acc;
+		}, {});
+	}
 </script>
 
 <div class="intel-matrix">
@@ -51,7 +59,7 @@
 		<div class="matrix-header">
 			<div class="header-metrics">
 				<div class="metric-crystal">
-					<div class="crystal-core" style="--value: {data.unique_sources || 0}">
+					<div class="crystal-core">
 						<span class="crystal-value">{(data.unique_sources || 0).toLocaleString()}</span>
 						<span class="crystal-label">UNIQUE SOURCES</span>
 					</div>
@@ -59,7 +67,7 @@
 				</div>
 				
 				<div class="metric-crystal">
-					<div class="crystal-core" style="--value: {data.total_mentions || 0}">
+					<div class="crystal-core">
 						<span class="crystal-value">{(data.total_mentions || 0).toLocaleString()}</span>
 						<span class="crystal-label">TOTAL MENTIONS</span>
 					</div>
@@ -125,6 +133,7 @@
 				</div>
 				
 				{#if selectedSource}
+					{@const threat = getThreatLevel(selectedSource.frequency)}
 					<div class="selected-analysis">
 						<div class="analysis-header">
 							<div class="selected-name">{selectedSource.source}</div>
@@ -156,15 +165,11 @@
 
 				<div class="distribution-chart">
 					<div class="chart-title">THREAT DISTRIBUTION</div>
+					{@const threatStats = getThreatStats()}
+					{@const maxCount = Math.max(...Object.values(threatStats))}
 					<div class="threat-bars">
 						{#each [['CRITICAL', '#FF0080'], ['HIGH', '#FF4500'], ['MEDIUM', '#FFE500'], ['LOW', '#00FF85']] as [level, color]}
-							{@const threatStats = filteredSources.reduce((acc, [source, freq]) => {
-								const threat = getThreatLevel(freq);
-								acc[threat.level] = (acc[threat.level] || 0) + 1;
-								return acc;
-							}, {})}
 							{@const count = threatStats[level] || 0}
-							{@const maxCount = Math.max(...Object.values(threatStats))}
 							<div class="threat-bar">
 								<span class="bar-label">{level}</span>
 								<div class="bar-container">
@@ -684,24 +689,6 @@
 		color: rgba(255, 255, 255, 0.7);
 		font-weight: 600;
 		text-align: right;
-	}
-
-	:global(::-webkit-scrollbar) {
-		width: 6px;
-	}
-
-	:global(::-webkit-scrollbar-track) {
-		background: rgba(0, 0, 0, 0.2);
-		border-radius: 3px;
-	}
-
-	:global(::-webkit-scrollbar-thumb) {
-		background: linear-gradient(135deg, #00D4FF, #8B5CF6);
-		border-radius: 3px;
-	}
-
-	:global(::-webkit-scrollbar-thumb:hover) {
-		background: linear-gradient(135deg, #FF0080, #00D4FF);
 	}
 
 	@keyframes coreRotate {
