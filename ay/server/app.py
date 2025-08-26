@@ -4,9 +4,369 @@ from flask import Flask, jsonify
 from flask_cors import CORS
 import re
 import os
+import logging
+import traceback
+from datetime import datetime
+
+# Configure detailed logging
+logging.basicConfig(
+    level=logging.DEBUG,
+    format='%(asctime)s - %(levelname)s - %(funcName)s:%(lineno)d - %(message)s',
+    handlers=[
+        logging.FileHandler('server_debug.log'),
+        logging.StreamHandler()
+    ]
+)
 
 app = Flask(__name__)
 CORS(app)
+logger = logging.getLogger(__name__)
+
+def get_db_connection():
+    db_path = os.path.join(os.path.dirname(__file__), '..', 'universal_cmdb.db')
+    logger.info(f"Attempting to connect to database at: {os.path.abspath(db_path)}")
+    
+    if not os.path.exists(db_path):
+        logger.error(f"Database file does not exist at: {os.path.abspath(db_path)}")
+        raise FileNotFoundError(f"Database file not found: {db_path}")
+    
+    try:
+        conn = duckdb.connect(db_path)
+        logger.info("Database connection successful")
+        
+        # Test the connection and log table info
+        tables = conn.execute("SHOW TABLES").fetchall()
+        logger.info(f"Available tables: {tables}")
+        
+        if ('universal_cmdb',) in tables:
+            row_count = conn.execute("SELECT COUNT(*) FROM universal_cmdb").fetchone()[0]
+            logger.info(f"universal_cmdb table has {row_count} rows")
+            
+            # Log column information
+            columns = conn.execute("DESCRIBE universal_cmdb").fetchall()
+            logger.info(f"Table columns: {[col[0] for col in columns]}")
+        else:
+            logger.error("universal_cmdb table not found in database")
+            
+        return conn
+    except Exception as e:
+        logger.error(f"Database connection failed: {str(e)}")
+        logger.error(f"Traceback: {traceback.format_exc()}")
+        raise
+
+def parse_multi_values(value, delimiters=['|', ',']):
+    if not value or value == 'null' or str(value).lower() == 'null':
+        return []
+    for delimiter in delimiters:
+        if delimiter in str(value):
+            return [v.strip() for v in str(value).split(delimiter) if v.strip() and v.strip().lower() != 'null']
+    return [str(value).strip()] if str(value).strip() and str(value).strip().lower() != 'null' else []
+
+def extract_class_numbers(value):
+    if not value or value == 'null':
+        return []
+    classes = []
+    for part in parse_multi_values(value):
+        matches = re.findall(r'class\s*(\d+)', part.lower())
+        classes.extend([int(match) for match in matches])
+    return classes
+
+def standardize_region(region):
+    if not region or str(region).lower() == 'null':
+        return 'unknown'
+    region_lower = str(region).lower()
+    if any(term in region_lower for term in ['north america', 'na', 'us', 'united states', 'canada']):
+        return 'North America'
+    elif any(term in region_lower for term in ['latam', 'latin america', 'south america', 'brazil', 'mexico']):
+        return 'LATAM'
+    elif any(term in region_lower for term in ['emea', 'europe', 'middle east', 'africa']):
+        return 'EMEA'
+    elif any(term in region_lower for term in ['apac', 'asia', 'pacific', 'australia', 'japan']):
+        return 'APAC'
+    return region
+
+def calculate_coverage_metrics(total, splunk, cmdb, crowdstrike, tanium=0, dlp=0):
+    if total == 0:
+        return {
+            'total': 0, 'splunk_coverage': 0, 'cmdb_coverage': 0, 
+            'edr_coverage': 0, 'tanium_coverage': 0, 'dlp_coverage': 0, 'overall_coverage': 0
+        }
+    
+    splunk_pct = round((splunk / total) * 100, 2)
+    cmdb_pct = round((cmdb / total) * 100, 2)
+    edr_pct = round((crowdstrike / total) * 100, 2)
+    tanium_pct = round((tanium / total) * 100, 2)
+    dlp_pct = round((dlp / total) * 100, 2)
+    overall_pct = round((splunk_pct + cmdb_pct + edr_pct) / 3, 2)
+    
+    return {
+        'total': total,
+        'splunk_coverage': splunk_pct,
+        'cmdb_coverage': cmdb_pct,
+        'edr_coverage': edr_pct,
+        'tanium_coverage': tanium_pct,
+        'dlp_coverage': dlp_pct,
+        'overall_coverage': overall_pct
+    }
+
+@app.before_request
+def log_request_info():
+    logger.info(f"Request: {request.method} {request.url}")
+    logger.info(f"Headers: {dict(request.headers)}")
+
+@app.after_request
+def log_response_info(response):
+    logger.info(f"Response: {response.status_code}")
+    return response
+
+@app.route('/api/health')
+def health_check():
+    try:
+        conn = get_db_connection()
+        row_count = conn.execute("SELECT COUNT(*) FROM universal_cmdb").fetchone()[0]
+        conn.close()
+        
+        return jsonify({
+            'status': 'healthy',
+            'database': 'connected',
+            'rows': row_count,
+            'timestamp': datetime.now().isoformat()
+        })
+    except Exception as e:
+        logger.error(f"Health check failed: {str(e)}")
+        return jsonify({
+            'status': 'unhealthy',
+            'error': str(e),
+            'timestamp': datetime.now().isoformat()
+        }), 500
+
+@app.route('/api/debug/columns')
+def debug_columns():
+    try:
+        conn = get_db_connection()
+        columns = conn.execute("DESCRIBE universal_cmdb").fetchall()
+        sample_row = conn.execute("SELECT * FROM universal_cmdb LIMIT 1").fetchone()
+        conn.close()
+        
+        return jsonify({
+            'columns': [{'name': col[0], 'type': col[1]} for col in columns],
+            'sample_row': dict(zip([col[0] for col in columns], sample_row)) if sample_row else None
+        })
+    except Exception as e:
+        logger.error(f"Debug columns failed: {str(e)}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/global-view')
+def global_view():
+    try:
+        logger.info("Starting global_view endpoint")
+        conn = get_db_connection()
+        
+        total_hosts = conn.execute("SELECT COUNT(*) FROM universal_cmdb").fetchone()[0]
+        logger.info(f"Total hosts: {total_hosts}")
+        
+        # Test each query with detailed logging
+        splunk_query = """
+            SELECT COUNT(*) FROM universal_cmdb 
+            WHERE logging_in_splunk IS NOT NULL 
+            AND LOWER(CAST(logging_in_splunk AS VARCHAR)) = 'yes'
+        """
+        logger.info(f"Executing splunk query: {splunk_query}")
+        splunk_count = conn.execute(splunk_query).fetchone()[0]
+        logger.info(f"Splunk count: {splunk_count}")
+        
+        cmdb_query = """
+            SELECT COUNT(*) FROM universal_cmdb 
+            WHERE present_in_cmdb IS NOT NULL 
+            AND LOWER(CAST(present_in_cmdb AS VARCHAR)) = 'yes'
+        """
+        logger.info(f"Executing CMDB query: {cmdb_query}")
+        cmdb_count = conn.execute(cmdb_query).fetchone()[0]
+        logger.info(f"CMDB count: {cmdb_count}")
+        
+        crowdstrike_query = """
+            SELECT COUNT(*) FROM universal_cmdb 
+            WHERE edr_coverage IS NOT NULL 
+            AND LOWER(CAST(edr_coverage AS VARCHAR)) LIKE '%crowdstrike%'
+        """
+        logger.info(f"Executing CrowdStrike query: {crowdstrike_query}")
+        crowdstrike_count = conn.execute(crowdstrike_query).fetchone()[0]
+        logger.info(f"CrowdStrike count: {crowdstrike_count}")
+        
+        tanium_query = """
+            SELECT COUNT(*) FROM universal_cmdb 
+            WHERE tanium_coverage IS NOT NULL 
+            AND LOWER(CAST(tanium_coverage AS VARCHAR)) LIKE '%tanium%'
+        """
+        logger.info(f"Executing Tanium query: {tanium_query}")
+        tanium_count = conn.execute(tanium_query).fetchone()[0]
+        logger.info(f"Tanium count: {tanium_count}")
+        
+        apm_query = """
+            SELECT COUNT(*) FROM universal_cmdb 
+            WHERE apm IS NOT NULL 
+            AND LOWER(CAST(apm AS VARCHAR)) LIKE '%apm%'
+        """
+        logger.info(f"Executing APM query: {apm_query}")
+        apm_count = conn.execute(apm_query).fetchone()[0]
+        logger.info(f"APM count: {apm_count}")
+        
+        chronicle_query = """
+            SELECT COUNT(*) FROM universal_cmdb 
+            WHERE logging_in_chronicle IS NOT NULL 
+            AND LOWER(CAST(logging_in_chronicle AS VARCHAR)) = 'yes'
+        """
+        logger.info(f"Executing Chronicle query: {chronicle_query}")
+        chronicle_count = conn.execute(chronicle_query).fetchone()[0]
+        logger.info(f"Chronicle count: {chronicle_count}")
+        
+        conn.close()
+        
+        result = {
+            'total_hosts': total_hosts,
+            'coverage': {
+                'splunk': {'count': splunk_count, 'percentage': round((splunk_count / total_hosts) * 100, 2)},
+                'chronicle': {'count': chronicle_count, 'percentage': round((chronicle_count / total_hosts) * 100, 2)},
+                'cmdb': {'count': cmdb_count, 'percentage': round((cmdb_count / total_hosts) * 100, 2)},
+                'crowdstrike': {'count': crowdstrike_count, 'percentage': round((crowdstrike_count / total_hosts) * 100, 2)},
+                'tanium': {'count': tanium_count, 'percentage': round((tanium_count / total_hosts) * 100, 2)},
+                'apm': {'count': apm_count, 'percentage': round((apm_count / total_hosts) * 100, 2)}
+            }
+        }
+        
+        logger.info(f"Returning result: {result}")
+        return jsonify(result)
+        
+    except Exception as e:
+        logger.error(f"global_view failed: {str(e)}")
+        logger.error(f"Traceback: {traceback.format_exc()}")
+        return jsonify({'error': str(e), 'traceback': traceback.format_exc()}), 500
+
+@app.route('/api/domain-visibility')
+def domain_visibility():
+    try:
+        logger.info("Starting domain_visibility endpoint")
+        conn = get_db_connection()
+        
+        dc1_total = conn.execute("SELECT COUNT(*) FROM universal_cmdb WHERE LOWER(CAST(domain AS VARCHAR)) LIKE '%1dc%'").fetchone()[0]
+        fead_total = conn.execute("SELECT COUNT(*) FROM universal_cmdb WHERE LOWER(CAST(domain AS VARCHAR)) LIKE '%fead%'").fetchone()[0]
+        
+        dc1_splunk = conn.execute("SELECT COUNT(*) FROM universal_cmdb WHERE LOWER(CAST(domain AS VARCHAR)) LIKE '%1dc%' AND LOWER(CAST(logging_in_splunk AS VARCHAR)) = 'yes'").fetchone()[0]
+        dc1_cmdb = conn.execute("SELECT COUNT(*) FROM universal_cmdb WHERE LOWER(CAST(domain AS VARCHAR)) LIKE '%1dc%' AND LOWER(CAST(present_in_cmdb AS VARCHAR)) = 'yes'").fetchone()[0]
+        dc1_crowdstrike = conn.execute("SELECT COUNT(*) FROM universal_cmdb WHERE LOWER(CAST(domain AS VARCHAR)) LIKE '%1dc%' AND LOWER(CAST(edr_coverage AS VARCHAR)) LIKE '%crowdstrike%'").fetchone()[0]
+        dc1_tanium = conn.execute("SELECT COUNT(*) FROM universal_cmdb WHERE LOWER(CAST(domain AS VARCHAR)) LIKE '%1dc%' AND LOWER(CAST(tanium_coverage AS VARCHAR)) LIKE '%tanium%'").fetchone()[0]
+        
+        fead_splunk = conn.execute("SELECT COUNT(*) FROM universal_cmdb WHERE LOWER(CAST(domain AS VARCHAR)) LIKE '%fead%' AND LOWER(CAST(logging_in_splunk AS VARCHAR)) = 'yes'").fetchone()[0]
+        fead_cmdb = conn.execute("SELECT COUNT(*) FROM universal_cmdb WHERE LOWER(CAST(domain AS VARCHAR)) LIKE '%fead%' AND LOWER(CAST(present_in_cmdb AS VARCHAR)) = 'yes'").fetchone()[0]
+        fead_crowdstrike = conn.execute("SELECT COUNT(*) FROM universal_cmdb WHERE LOWER(CAST(domain AS VARCHAR)) LIKE '%fead%' AND LOWER(CAST(edr_coverage AS VARCHAR)) LIKE '%crowdstrike%'").fetchone()[0]
+        fead_tanium = conn.execute("SELECT COUNT(*) FROM universal_cmdb WHERE LOWER(CAST(domain AS VARCHAR)) LIKE '%fead%' AND LOWER(CAST(tanium_coverage AS VARCHAR)) LIKE '%tanium%'").fetchone()[0]
+        
+        all_domains = conn.execute("SELECT domain FROM universal_cmdb WHERE domain IS NOT NULL LIMIT 100").fetchall()
+        domain_stats = {}
+        
+        for row in all_domains:
+            domains = parse_multi_values(row[0])
+            for domain in domains:
+                if domain not in domain_stats:
+                    domain_stats[domain] = 0
+                domain_stats[domain] += 1
+        
+        conn.close()
+        
+        result = {
+            '1dc': calculate_coverage_metrics(dc1_total, dc1_splunk, dc1_cmdb, dc1_crowdstrike, dc1_tanium),
+            'fead': calculate_coverage_metrics(fead_total, fead_splunk, fead_cmdb, fead_crowdstrike, fead_tanium),
+            'all_domains': sorted(domain_stats.items(), key=lambda x: x[1], reverse=True)[:20]
+        }
+        
+        logger.info(f"Domain visibility result: {result}")
+        return jsonify(result)
+        
+    except Exception as e:
+        logger.error(f"domain_visibility failed: {str(e)}")
+        logger.error(f"Traceback: {traceback.format_exc()}")
+        return jsonify({'error': str(e), 'traceback': traceback.format_exc()}), 500
+
+# Add error handling for all other endpoints
+@app.errorhandler(500)
+def internal_error(error):
+    logger.error(f"Internal server error: {str(error)}")
+    return jsonify({'error': 'Internal server error', 'details': str(error)}), 500
+
+@app.errorhandler(404)
+def not_found(error):
+    logger.error(f"Not found: {request.url}")
+    return jsonify({'error': 'Endpoint not found', 'url': request.url}), 404
+
+# Stub endpoints for testing
+@app.route('/api/infrastructure-type')
+def infrastructure_type():
+    try:
+        logger.info("infrastructure_type endpoint called")
+        return jsonify({"server": {"total": 1000, "splunk_coverage": 75, "cmdb_coverage": 80, "edr_coverage": 60, "overall_coverage": 72}})
+    except Exception as e:
+        logger.error(f"infrastructure_type failed: {str(e)}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/regional-country-view')
+def regional_country_view():
+    try:
+        logger.info("regional_country_view endpoint called")
+        return jsonify({"regions": {"North America": {"total": 500, "splunk_coverage": 80, "cmdb_coverage": 85, "edr_coverage": 70, "overall_coverage": 78}}})
+    except Exception as e:
+        logger.error(f"regional_country_view failed: {str(e)}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/bu-application-view')
+def bu_application_view():
+    try:
+        logger.info("bu_application_view endpoint called")
+        return jsonify({"business_units": {"Technology": {"total": 200, "splunk_coverage": 90, "cmdb_coverage": 85, "edr_coverage": 75, "overall_coverage": 83}}})
+    except Exception as e:
+        logger.error(f"bu_application_view failed: {str(e)}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/system-classification')
+def system_classification():
+    try:
+        logger.info("system_classification endpoint called")
+        return jsonify({"system_classifications": {"Windows Server": {"total": 300, "splunk_coverage": 80, "cmdb_coverage": 90, "edr_coverage": 70, "overall_coverage": 80}}})
+    except Exception as e:
+        logger.error(f"system_classification failed: {str(e)}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/security-control-coverage')
+def security_control_coverage():
+    try:
+        logger.info("security_control_coverage endpoint called")
+        return jsonify({"total_hosts": 1000, "coverage": {"edr": {"count": 600, "percentage": 60}, "tanium": {"count": 700, "percentage": 70}}})
+    except Exception as e:
+        logger.error(f"security_control_coverage failed: {str(e)}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/logging-compliance-gso-splunk')
+def logging_compliance_gso_splunk():
+    try:
+        logger.info("logging_compliance_gso_splunk endpoint called")
+        return jsonify({"summary": {"total_hosts": 1000, "splunk_coverage": {"count": 750, "percentage": 75}}})
+    except Exception as e:
+        logger.error(f"logging_compliance_gso_splunk failed: {str(e)}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/log-type-priority')
+def log_type_priority():
+    try:
+        logger.info("log_type_priority endpoint called")
+        return jsonify({"Network": {"total": 400, "splunk_coverage": 80, "chronicle_coverage": 60, "overall_priority": 70}})
+    except Exception as e:
+        logger.error(f"log_type_priority failed: {str(e)}")
+        return jsonify({'error': str(e)}), 500
+
+if __name__ == '__main__':
+    logger.info("Starting Flask application")
+    logger.info(f"Current working directory: {os.getcwd()}")
+    logger.info(f"Script directory: {os.path.dirname(__file__)}")
+    app.run(debug=True, host='0.0.0.0', port=5000)
 
 def get_db_connection():
     db_path = os.path.join(os.path.dirname(__file__), '..', 'universal_cmdb.db')
