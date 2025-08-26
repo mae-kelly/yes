@@ -1,0 +1,20 @@
+{
+  "name": "ao1-log-visibility",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "backend": "python app.py",
+    "start": "concurrently \"npm run backend\" \"npm run dev\""
+  },
+  "devDependencies": {
+    "@sveltejs/vite-plugin-svelte": "^3.0.0",
+    "svelte": "^4.2.7",
+    "vite": "^5.0.3"
+  },
+  "dependencies": {
+    "concurrently": "^8.2.0"
+  }
+}
