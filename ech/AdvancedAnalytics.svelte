@@ -259,11 +259,6 @@
 	function selectMetric(metric) {
 		selectedMetric = selectedMetric === metric ? null : metric;
 	}
-	
-	$: correlationData = data.correlation_analysis || [];
-	$: trendData = data.trend_analysis || {};
-	$: riskCombinations = data.high_risk_combinations || [];
-	$: insights = data.predictive_insights || {};
 </script>
 
 <div class="advanced-analytics-matrix">
@@ -315,9 +310,8 @@
 		{#if activeView === 'correlation'}
 			<div class="correlation-matrix">
 				<div class="matrix-grid">
-					{#each correlationData.slice(0, 20) as item, i}
-						<div class="correlation-node" 
-							 class:high-risk={item.risk_category === 'HIGH'}
+					{#each (data.correlation_analysis || []).slice(0, 20) as item, i}
+						<div class="correlation-node {item.risk_category === 'HIGH' ? 'high-risk' : ''}"
 							 style="animation-delay: {i * 0.05}s"
 							 on:click={() => selectMetric(item)}>
 							<div class="node-header">
@@ -336,7 +330,7 @@
 								</div>
 								<div class="metric-row">
 									<span class="metric-label">Security:</span>
-									<span class="metric-value security-score" style="--score: {item.security_score}">{item.security_score}%</span>
+									<span class="metric-value security-score">{item.security_score}%</span>
 								</div>
 							</div>
 							
@@ -381,7 +375,7 @@
 							<div class="detail-section">
 								<h4>{selectedMetric.region.toUpperCase()} - {selectedMetric.infrastructure_type}</h4>
 								<div class="security-assessment">
-									<div class="assessment-score" style="--color: {selectedMetric.security_score < 50 ? '#ff0066' : selectedMetric.security_score < 80 ? '#ffaa00' : '#00ff85'}">
+									<div class="assessment-score" style="color: {selectedMetric.security_score < 50 ? '#ff0066' : selectedMetric.security_score < 80 ? '#ffaa00' : '#00ff85'}">
 										{selectedMetric.security_score}%
 									</div>
 									<div class="assessment-status">{selectedMetric.risk_category} RISK</div>
@@ -593,7 +587,7 @@
 										<div class="band-item">
 											<div class="band-name">{band.toUpperCase()}</div>
 											<div class="band-bar">
-												<div class="bar-fill" style="width: {(count / correlationData.length * 100)}%"></div>
+												<div class="bar-fill" style="width: {(count / (data.correlation_analysis?.length || 1) * 100)}%"></div>
 											</div>
 											<div class="band-count">{count}</div>
 										</div>
@@ -1080,8 +1074,7 @@
 	.assessment-score {
 		font-size: 2.5rem;
 		font-weight: 700;
-		color: var(--color);
-		text-shadow: 0 0 20px var(--color);
+		text-shadow: 0 0 20px currentColor;
 	}
 
 	.assessment-status {
@@ -1118,7 +1111,8 @@
 		text-transform: uppercase;
 	}
 
-	.predictions-interface {
+	.predictions-interface,
+	.ai-validation-interface {
 		flex: 1;
 		overflow-y: auto;
 	}
@@ -1128,7 +1122,10 @@
 		gap: 2rem;
 	}
 
-	.prediction-panel {
+	.prediction-panel,
+	.anomaly-section,
+	.patterns-section,
+	.recommendations-section {
 		background: linear-gradient(135deg, rgba(0, 0, 0, 0.6), rgba(255, 0, 255, 0.02));
 		border: 2px solid rgba(255, 0, 255, 0.3);
 		border-radius: 12px;
@@ -1136,106 +1133,16 @@
 		backdrop-filter: blur(20px);
 	}
 
-	.panel-header {
-		display: flex;
-		align-items: center;
-		gap: 1rem;
-		margin-bottom: 1.5rem;
-	}
-
-	.header-icon {
-		font-size: 1.5rem;
-		animation: iconPulse 3s ease-in-out infinite;
-	}
-
-	.panel-header h3 {
-		margin: 0;
-		font-size: 1.1rem;
-		color: #ff00ff;
-		letter-spacing: 0.05em;
-	}
-
-	.trajectory-list {
-		display: flex;
-		flex-direction: column;
-		gap: 1rem;
-	}
-
-	.trajectory-item {
+	.trajectory-item,
+	.resource-item,
+	.anomaly-item,
+	.pattern-item,
+	.recommendation-card {
 		background: linear-gradient(135deg, rgba(0, 0, 0, 0.4), rgba(255, 255, 255, 0.02));
 		border: 1px solid rgba(255, 255, 255, 0.1);
 		border-radius: 8px;
 		padding: 1rem;
-	}
-
-	.trajectory-item.escalating {
-		border-left: 4px solid #ff0066;
-		background: linear-gradient(135deg, rgba(255, 0, 102, 0.05), rgba(0, 0, 0, 0.4));
-	}
-
-	.item-header {
-		display: flex;
-		justify-content: space-between;
-		align-items: center;
-		margin-bottom: 0.8rem;
-	}
-
-	.region {
-		font-size: 0.9rem;
-		font-weight: 600;
-		color: #fff;
-	}
-
-	.trend-badge {
-		padding: 0.2rem 0.6rem;
-		background: rgba(255, 0, 102, 0.2);
-		border: 1px solid #ff0066;
-		border-radius: 4px;
-		font-size: 0.6rem;
-		font-weight: 600;
-		color: #ff0066;
-		text-shadow: 0 0 6px #ff0066;
-	}
-
-	.item-metrics {
-		display: flex;
-		gap: 2rem;
-		margin-bottom: 0.8rem;
-	}
-
-	.metric {
-		display: flex;
-		flex-direction: column;
-		align-items: center;
-	}
-
-	.metric .value {
-		font-size: 1.2rem;
-		font-weight: 700;
-		color: #ff00ff;
-		text-shadow: 0 0 8px #ff00ff;
-	}
-
-	.metric .label {
-		font-size: 0.6rem;
-		color: rgba(255, 255, 255, 0.6);
-		margin-top: 0.2rem;
-	}
-
-	.priority-indicator {
-		padding: 0.4rem 0.8rem;
-		border-radius: 4px;
-		font-size: 0.7rem;
-		font-weight: 600;
-		text-align: center;
-		text-transform: uppercase;
-	}
-
-	.priority-indicator.urgent {
-		background: rgba(255, 0, 102, 0.2);
-		color: #ff0066;
-		border: 1px solid #ff0066;
-		text-shadow: 0 0 8px #ff0066;
+		margin-bottom: 1rem;
 	}
 
 	.probability-grid {
@@ -1255,12 +1162,6 @@
 		border-radius: 8px;
 	}
 
-	.card-region {
-		font-size: 0.8rem;
-		font-weight: 600;
-		color: rgba(255, 255, 255, 0.9);
-	}
-
 	.probability-meter {
 		position: relative;
 		display: flex;
@@ -1276,108 +1177,6 @@
 		text-shadow: 0 0 10px #ff00ff;
 	}
 
-	.timeframe {
-		font-size: 0.6rem;
-		color: rgba(255, 255, 255, 0.6);
-		text-transform: uppercase;
-	}
-
-	.resource-list {
-		display: flex;
-		flex-direction: column;
-		gap: 1rem;
-	}
-
-	.resource-item {
-		display: grid;
-		grid-template-columns: 150px 1fr auto;
-		gap: 1rem;
-		align-items: center;
-		padding: 1rem;
-		background: linear-gradient(135deg, rgba(0, 0, 0, 0.4), rgba(255, 255, 255, 0.02));
-		border: 1px solid rgba(255, 255, 255, 0.1);
-		border-radius: 8px;
-	}
-
-	.item-region {
-		font-size: 0.8rem;
-		font-weight: 600;
-		color: rgba(255, 255, 255, 0.9);
-	}
-
-	.resource-metrics {
-		display: flex;
-		gap: 2rem;
-	}
-
-	.resource-stat {
-		display: flex;
-		flex-direction: column;
-		align-items: center;
-	}
-
-	.stat-value {
-		font-size: 1rem;
-		font-weight: 700;
-		color: #ff00ff;
-		text-shadow: 0 0 8px #ff00ff;
-	}
-
-	.stat-label {
-		font-size: 0.6rem;
-		color: rgba(255, 255, 255, 0.6);
-	}
-
-	.priority-level {
-		padding: 0.3rem 0.8rem;
-		border-radius: 4px;
-		font-size: 0.6rem;
-		font-weight: 600;
-	}
-
-	.priority-level.critical {
-		background: rgba(255, 0, 102, 0.2);
-		color: #ff0066;
-		border: 1px solid #ff0066;
-		text-shadow: 0 0 6px #ff0066;
-	}
-
-	.priority-level.standard {
-		background: rgba(0, 150, 255, 0.2);
-		color: #0096ff;
-		border: 1px solid #0096ff;
-		text-shadow: 0 0 6px #0096ff;
-	}
-
-	.ai-validation-interface {
-		flex: 1;
-		overflow-y: auto;
-	}
-
-	.validation-header {
-		display: flex;
-		justify-content: space-between;
-		align-items: center;
-		margin-bottom: 2rem;
-		padding: 1.5rem;
-		background: linear-gradient(135deg, rgba(0, 0, 0, 0.6), rgba(0, 255, 255, 0.02));
-		border: 2px solid rgba(0, 255, 255, 0.3);
-		border-radius: 12px;
-	}
-
-	.confidence-meter {
-		display: flex;
-		flex-direction: column;
-		align-items: center;
-		gap: 0.5rem;
-	}
-
-	.meter-label {
-		font-size: 0.7rem;
-		color: rgba(255, 255, 255, 0.6);
-		letter-spacing: 0.05em;
-	}
-
 	.confidence-ring {
 		position: relative;
 		display: flex;
@@ -1391,6 +1190,17 @@
 		font-weight: 700;
 		color: #00ffff;
 		text-shadow: 0 0 15px #00ffff;
+	}
+
+	.validation-header {
+		display: flex;
+		justify-content: space-between;
+		align-items: center;
+		margin-bottom: 2rem;
+		padding: 1.5rem;
+		background: linear-gradient(135deg, rgba(0, 0, 0, 0.6), rgba(0, 255, 255, 0.02));
+		border: 2px solid rgba(0, 255, 255, 0.3);
+		border-radius: 12px;
 	}
 
 	.validation-stats {
@@ -1409,276 +1219,17 @@
 		border-radius: 8px;
 	}
 
-	.validation-content {
-		display: flex;
-		flex-direction: column;
-		gap: 2rem;
-	}
-
-	.anomaly-section,
-	.patterns-section,
-	.recommendations-section {
-		background: linear-gradient(135deg, rgba(0, 0, 0, 0.6), rgba(255, 0, 255, 0.02));
-		border: 2px solid rgba(255, 0, 255, 0.2);
-		border-radius: 12px;
-		padding: 1.5rem;
-		backdrop-filter: blur(20px);
-	}
-
-	.anomaly-section h3,
-	.patterns-section h3,
-	.recommendations-section h3 {
-		margin: 0 0 1rem 0;
-		font-size: 1rem;
+	.stat-value {
+		font-size: 1.5rem;
+		font-weight: 700;
 		color: #ff00ff;
 		text-shadow: 0 0 10px #ff00ff;
-		letter-spacing: 0.05em;
 	}
 
-	.anomaly-list {
-		display: flex;
-		flex-direction: column;
-		gap: 1rem;
-	}
-
-	.anomaly-item {
-		background: linear-gradient(135deg, rgba(0, 0, 0, 0.4), rgba(255, 255, 255, 0.02));
-		border: 1px solid rgba(255, 255, 255, 0.1);
-		border-radius: 8px;
-		padding: 1rem;
-	}
-
-	.anomaly-item.critical {
-		border-left: 4px solid #ff0066;
-		background: linear-gradient(135deg, rgba(255, 0, 102, 0.05), rgba(0, 0, 0, 0.4));
-	}
-
-	.anomaly-item.high {
-		border-left: 4px solid #ffaa00;
-		background: linear-gradient(135deg, rgba(255, 170, 0, 0.05), rgba(0, 0, 0, 0.4));
-	}
-
-	.anomaly-item.medium {
-		border-left: 4px solid #0096ff;
-		background: linear-gradient(135deg, rgba(0, 150, 255, 0.05), rgba(0, 0, 0, 0.4));
-	}
-
-	.anomaly-header {
-		display: flex;
-		gap: 1rem;
-		align-items: center;
-		margin-bottom: 0.8rem;
-	}
-
-	.severity-badge {
-		padding: 0.2rem 0.6rem;
-		border-radius: 4px;
-		font-size: 0.6rem;
-		font-weight: 700;
-	}
-
-	.anomaly-item.critical .severity-badge {
-		background: rgba(255, 0, 102, 0.2);
-		color: #ff0066;
-		border: 1px solid #ff0066;
-		text-shadow: 0 0 6px #ff0066;
-	}
-
-	.anomaly-type {
-		font-size: 0.7rem;
-		color: rgba(255, 255, 255, 0.8);
-	}
-
-	.anomaly-details {
-		display: flex;
-		flex-direction: column;
-		gap: 0.5rem;
-	}
-
-	.detail-text {
-		font-size: 0.8rem;
-		color: rgba(255, 255, 255, 0.7);
-		line-height: 1.4;
-	}
-
-	.affected-info {
-		display: flex;
-		gap: 1rem;
-		font-size: 0.7rem;
-		color: rgba(255, 255, 255, 0.6);
-	}
-
-	.pattern-grid {
-		display: grid;
-		grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-		gap: 1.5rem;
-	}
-
-	.pattern-category h4 {
-		margin: 0 0 1rem 0;
-		font-size: 0.9rem;
-		color: #00ffff;
-		text-shadow: 0 0 8px #00ffff;
-	}
-
-	.pattern-item {
-		background: rgba(0, 0, 0, 0.3);
-		border: 1px solid rgba(255, 255, 255, 0.1);
-		border-radius: 6px;
-		padding: 0.8rem;
-		margin-bottom: 0.8rem;
-	}
-
-	.pattern-name {
-		font-size: 0.8rem;
-		font-weight: 600;
-		color: rgba(255, 255, 255, 0.9);
-		margin-bottom: 0.5rem;
-	}
-
-	.pattern-data {
-		display: flex;
-		flex-wrap: wrap;
-		gap: 1rem;
-	}
-
-	.data-point {
+	.stat-label {
 		font-size: 0.6rem;
 		color: rgba(255, 255, 255, 0.6);
-	}
-
-	.security-bands {
-		display: flex;
-		flex-direction: column;
-		gap: 0.8rem;
-	}
-
-	.band-item {
-		display: grid;
-		grid-template-columns: 80px 1fr 50px;
-		align-items: center;
-		gap: 0.5rem;
-	}
-
-	.band-name {
-		font-size: 0.7rem;
-		color: rgba(255, 255, 255, 0.8);
-	}
-
-	.band-bar {
-		height: 8px;
-		background: rgba(0, 0, 0, 0.4);
-		border-radius: 4px;
-		overflow: hidden;
-	}
-
-	.band-bar .bar-fill {
-		height: 100%;
-		background: linear-gradient(90deg, #ff00ff, #cc00cc);
-		border-radius: 4px;
-		box-shadow: 0 0 8px rgba(255, 0, 255, 0.5);
-	}
-
-	.band-count {
-		font-size: 0.7rem;
-		font-weight: 600;
-		color: #ff00ff;
-		text-align: right;
-		text-shadow: 0 0 6px #ff00ff;
-	}
-
-	.recommendation-list {
-		display: flex;
-		flex-direction: column;
-		gap: 1rem;
-	}
-
-	.recommendation-card {
-		background: linear-gradient(135deg, rgba(0, 0, 0, 0.4), rgba(255, 255, 255, 0.02));
-		border: 1px solid rgba(255, 255, 255, 0.1);
-		border-radius: 8px;
-		padding: 1rem;
-		animation: cardSlide 0.6s ease-out;
-		animation-fill-mode: both;
-		opacity: 0;
-	}
-
-	.rec-header {
-		display: flex;
-		gap: 1rem;
-		align-items: center;
-		margin-bottom: 1rem;
-	}
-
-	.priority-badge {
-		padding: 0.3rem 0.6rem;
-		border-radius: 4px;
-		font-size: 0.6rem;
-		font-weight: 700;
 		text-transform: uppercase;
-	}
-
-	.priority-badge.immediate {
-		background: rgba(255, 0, 102, 0.2);
-		color: #ff0066;
-		border: 1px solid #ff0066;
-		text-shadow: 0 0 6px #ff0066;
-	}
-
-	.priority-badge.high {
-		background: rgba(255, 170, 0, 0.2);
-		color: #ffaa00;
-		border: 1px solid #ffaa00;
-		text-shadow: 0 0 6px #ffaa00;
-	}
-
-	.priority-badge.medium {
-		background: rgba(0, 150, 255, 0.2);
-		color: #0096ff;
-		border: 1px solid #0096ff;
-		text-shadow: 0 0 6px #0096ff;
-	}
-
-	.action-type {
-		font-size: 0.8rem;
-		font-weight: 600;
-		color: rgba(255, 255, 255, 0.9);
-	}
-
-	.rec-content {
-		display: flex;
-		flex-direction: column;
-		gap: 0.8rem;
-		font-size: 0.7rem;
-		color: rgba(255, 255, 255, 0.7);
-		line-height: 1.4;
-	}
-
-	.targets {
-		display: flex;
-		flex-wrap: wrap;
-		gap: 0.5rem;
-		align-items: center;
-	}
-
-	.target-chip {
-		padding: 0.2rem 0.5rem;
-		background: rgba(0, 255, 255, 0.1);
-		border: 1px solid #00ffff;
-		border-radius: 3px;
-		font-size: 0.6rem;
-		color: #00ffff;
-		text-shadow: 0 0 4px #00ffff;
-	}
-
-	.more-chip {
-		padding: 0.2rem 0.5rem;
-		background: rgba(255, 0, 255, 0.1);
-		border: 1px solid #ff00ff;
-		border-radius: 3px;
-		font-size: 0.6rem;
-		color: #ff00ff;
-		text-shadow: 0 0 4px #ff00ff;
 	}
 
 	.interface-footer {
@@ -1712,14 +1263,8 @@
 	}
 
 	@keyframes symbolPulse {
-		0%, 100% { 
-			text-shadow: 0 0 25px #ff00ff; 
-			transform: scale(1);
-		}
-		50% { 
-			text-shadow: 0 0 35px #ff00ff; 
-			transform: scale(1.05);
-		}
+		0%, 100% { text-shadow: 0 0 25px #ff00ff; transform: scale(1); }
+		50% { text-shadow: 0 0 35px #ff00ff; transform: scale(1.05); }
 	}
 
 	@keyframes iconFloat {
@@ -1733,186 +1278,17 @@
 	}
 
 	@keyframes waveExpand {
-		0% { 
-			transform: scale(0.3); 
-			opacity: 1;
-		}
-		100% { 
-			transform: scale(1.5); 
-			opacity: 0;
-		}
+		0% { transform: scale(0.3); opacity: 1; }
+		100% { transform: scale(1.5); opacity: 0; }
 	}
 
 	@keyframes nodeEntrance {
-		0% { 
-			opacity: 0; 
-			transform: translateY(30px);
-		}
-		100% { 
-			opacity: 1; 
-			transform: translateY(0);
-		}
+		0% { opacity: 0; transform: translateY(30px); }
+		100% { opacity: 1; transform: translateY(0); }
 	}
 
 	@keyframes panelSlide {
-		0% { 
-			opacity: 0; 
-			transform: translateX(50px) translateY(-50%);
-		}
-		100% { 
-			opacity: 1; 
-			transform: translateX(0) translateY(-50%);
-		}
+		0% { opacity: 0; transform: translateX(50px) translateY(-50%); }
+		100% { opacity: 1; transform: translateX(0) translateY(-50%); }
 	}
-
-	@keyframes iconPulse {
-		0%, 100% { opacity: 1; transform: scale(1); }
-		50% { opacity: 0.8; transform: scale(1.1); }
-	}
-
-	@keyframes cardSlide {
-		0% { 
-			opacity: 0; 
-			transform: translateY(20px);
-		}
-		100% { 
-			opacity: 1; 
-			transform: translateY(0);
-		}
-	}
-
-	@media (max-width: 1400px) {
-		.matrix-grid {
-			grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-		}
-
-		.metric-detail-panel {
-			width: 350px;
-			right: 1rem;
-		}
-
-		.pattern-grid {
-			grid-template-columns: 1fr;
-		}
-	}
-
-	@media (max-width: 768px) {
-		.matrix-header {
-			flex-direction: column;
-			gap: 1.5rem;
-			text-align: center;
-		}
-
-		.neural-interface {
-			flex-direction: column;
-			gap: 1rem;
-		}
-
-		.view-selector {
-			flex-direction: column;
-			width: 100%;
-		}
-
-		.view-btn {
-			width: 100%;
-			justify-content: center;
-		}
-
-		.matrix-grid {
-			grid-template-columns: 1fr;
-		}
-
-		.metric-detail-panel {
-			position: fixed;
-			top: auto;
-			bottom: 0;
-			left: 0;
-			right: 0;
-			width: 100%;
-			transform: translateY(0);
-			border-radius: 12px 12px 0 0;
-			max-height: 70vh;
-			overflow-y: auto;
-		}
-
-		.validation-header {
-			flex-direction: column;
-			gap: 1.5rem;
-		}
-
-		.validation-stats {
-			width: 100%;
-			justify-content: space-around;
-		}
-
-		.probability-grid {
-			grid-template-columns: 1fr;
-		}
-
-		.resource-item {
-			grid-template-columns: 1fr;
-			gap: 0.8rem;
-			text-align: center;
-		}
-
-		.resource-metrics {
-			justify-content: center;
-		}
-
-		.item-metrics {
-			justify-content: center;
-		}
-
-		.recommendation-card {
-			padding: 0.8rem;
-		}
-
-		.rec-header {
-			flex-wrap: wrap;
-		}
-
-		.targets {
-			flex-direction: column;
-			align-items: flex-start;
-		}
-	}
-
-	@media (max-width: 480px) {
-		.correlation-node {
-			padding: 1rem;
-		}
-
-		.diversity-metrics {
-			padding-top: 0.8rem;
-		}
-
-		.diversity-value {
-			font-size: 1rem;
-		}
-
-		.prediction-panel {
-			padding: 1rem;
-		}
-
-		.anomaly-section,
-		.patterns-section,
-		.recommendations-section {
-			padding: 1rem;
-		}
-
-		.stat-card {
-			padding: 0.8rem;
-		}
-
-		.stat-value {
-			font-size: 0.9rem;
-		}
-
-		.confidence-value {
-			font-size: 1.2rem;
-		}
-
-		.assessment-score {
-			font-size: 2rem;
-		}
-	}
+</style>
