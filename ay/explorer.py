@@ -27,23 +27,72 @@ def find_and_explore_db():
                 table_name = table[0]
                 print(f"\n--- TABLE: {table_name} ---")
                 
-                # Get columns
+                # Get columns - try different quoting methods
                 try:
-                    columns = conn.execute(f"DESCRIBE `{table_name}`").fetchall()
-                    print(f"Columns ({len(columns)}):")
-                    for col in columns:
-                        print(f"  - {col[0]} ({col[1]})")
+                    # Try different ways to quote the table name
+                    queries_to_try = [
+                        f'DESCRIBE "{table_name}"',
+                        f"DESCRIBE '{table_name}'", 
+                        f"DESCRIBE `{table_name}`",
+                        f"DESCRIBE {table_name}",
+                        f'PRAGMA table_info("{table_name}")'
+                    ]
                     
-                    # Get row count
-                    count = conn.execute(f"SELECT COUNT(*) FROM `{table_name}`").fetchone()[0]
-                    print(f"Rows: {count:,}")
+                    columns = None
+                    for query in queries_to_try:
+                        try:
+                            columns = conn.execute(query).fetchall()
+                            print(f"Successful query: {query}")
+                            break
+                        except Exception as e:
+                            continue
                     
-                    # Show sample data
-                    if count > 0:
-                        sample = conn.execute(f"SELECT * FROM `{table_name}` LIMIT 3").fetchall()
-                        print("Sample data:")
-                        for i, row in enumerate(sample):
-                            print(f"  Row {i+1}: {row[:5]}...")  # First 5 columns
+                    if columns:
+                        print(f"Columns ({len(columns)}):")
+                        for col in columns:
+                            print(f"  - {col[0]} ({col[1]})")
+                        
+                        # Get row count - try different quoting
+                        count = None
+                        count_queries = [
+                            f'SELECT COUNT(*) FROM "{table_name}"',
+                            f"SELECT COUNT(*) FROM '{table_name}'",
+                            f"SELECT COUNT(*) FROM `{table_name}`",
+                            f"SELECT COUNT(*) FROM {table_name}"
+                        ]
+                        
+                        for count_query in count_queries:
+                            try:
+                                count = conn.execute(count_query).fetchone()[0]
+                                break
+                            except:
+                                continue
+                        
+                        if count is not None:
+                            print(f"Rows: {count:,}")
+                            
+                            # Show sample data
+                            if count > 0:
+                                sample_queries = [
+                                    f'SELECT * FROM "{table_name}" LIMIT 3',
+                                    f"SELECT * FROM '{table_name}' LIMIT 3",
+                                    f"SELECT * FROM `{table_name}` LIMIT 3",
+                                    f"SELECT * FROM {table_name} LIMIT 3"
+                                ]
+                                
+                                for sample_query in sample_queries:
+                                    try:
+                                        sample = conn.execute(sample_query).fetchall()
+                                        print("Sample data:")
+                                        for i, row in enumerate(sample):
+                                            print(f"  Row {i+1}: {row[:5]}...")  # First 5 columns
+                                        break
+                                    except:
+                                        continue
+                        else:
+                            print("Could not get row count")
+                    else:
+                        print("Could not get column information")
                     
                 except Exception as e:
                     print(f"Error exploring table {table_name}: {e}")
