@@ -299,6 +299,220 @@
 </div>
 
 <style>
+	.source-intelligence-matrix {
+		width: 100%;
+		height: 100%;
+		font-family: 'JetBrains Mono', monospace;
+		color: #ffffff;
+		position: relative;
+	}
+
+	.neural-scanner {
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		justify-content: center;
+		height: 400px;
+		gap: 2rem;
+	}
+
+	.scanner-core {
+		position: relative;
+		width: 120px;
+		height: 120px;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+	}
+
+	.scan-rings {
+		position: absolute;
+		top: 0;
+		left: 0;
+		width: 100%;
+		height: 100%;
+	}
+
+	.scan-ring {
+		position: absolute;
+		border-radius: 50%;
+		border: 2px solid;
+		top: 50%;
+		left: 50%;
+		transform: translate(-50%, -50%);
+		animation: scanRotate 3s linear infinite;
+	}
+
+	.ring-1 {
+		width: 120px;
+		height: 120px;
+		border-color: rgba(0, 255, 255, 0.6);
+		animation-duration: 4s;
+	}
+
+	.ring-2 {
+		width: 90px;
+		height: 90px;
+		border-color: rgba(255, 0, 255, 0.4);
+		animation-duration: 3s;
+		animation-direction: reverse;
+	}
+
+	.ring-3 {
+		width: 60px;
+		height: 60px;
+		border-color: rgba(0, 150, 255, 0.8);
+		animation-duration: 2s;
+	}
+
+	.scan-center {
+		position: relative;
+		z-index: 3;
+		font-size: 2rem;
+		color: rgba(0, 255, 255, 0.9);
+		text-shadow: 0 0 20px rgba(0, 255, 255, 0.8);
+		animation: centerPulse 2s ease-in-out infinite;
+	}
+
+	.scanner-text {
+		color: rgba(0, 255, 255, 0.8);
+		font-size: 1rem;
+		font-weight: 500;
+		letter-spacing: 0.1em;
+		animation: textGlow 2s ease-in-out infinite;
+	}
+
+	.intelligence-header {
+		display: flex;
+		justify-content: space-between;
+		align-items: center;
+		margin-bottom: 2rem;
+		gap: 2rem;
+	}
+
+	.metrics-cluster {
+		display: flex;
+		gap: 2rem;
+	}
+
+	.holo-metric {
+		position: relative;
+	}
+
+	.metric-ring {
+		position: relative;
+		width: 120px;
+		height: 120px;
+	}
+
+	.progress-ring {
+		filter: drop-shadow(0 0 5px currentColor);
+		animation: ringGlow 3s ease-in-out infinite;
+	}
+
+	.metric-center {
+		position: absolute;
+		top: 50%;
+		left: 50%;
+		transform: translate(-50%, -50%);
+		text-align: center;
+	}
+
+	.metric-value {
+		display: block;
+		font-size: 1.5rem;
+		font-weight: 700;
+		color: #ffffff;
+		text-shadow: 0 0 15px rgba(0, 255, 255, 0.6);
+	}
+
+	.metric-label {
+		font-size: 0.7rem;
+		color: rgba(255, 255, 255, 0.6);
+		font-weight: 400;
+		letter-spacing: 0.05em;
+		margin-top: 0.25rem;
+	}
+
+	.neural-search {
+		flex: 1;
+		max-width: 400px;
+	}
+
+	.search-frame {
+		position: relative;
+		width: 100%;
+	}
+
+	.search-input {
+		width: 100%;
+		background: linear-gradient(135deg, 
+			rgba(0, 0, 0, 0.6) 0%, 
+			rgba(0, 255, 255, 0.05) 100%);
+		border: 1px solid rgba(0, 255, 255, 0.3);
+		border-radius: 8px;
+		padding: 0.75rem 1rem;
+		color: #ffffff;
+		font-family: inherit;
+		font-size: 0.9rem;
+		backdrop-filter: blur(20px);
+		transition: all 0.3s ease;
+		box-shadow: 0 0 15px rgba(0, 255, 255, 0.1);
+	}
+
+	.search-input::placeholder {
+		color: rgba(255, 255, 255, 0.4);
+		letter-spacing: 0.05em;
+	}
+
+	.search-input:focus {
+		outline: none;
+		border-color: rgba(0, 255, 255, 0.8);
+		box-shadow: 0 0 25px rgba(0, 255, 255, 0.3);
+	}
+
+	.search-beam {
+		position: absolute;
+		top: 0;
+		left: -100%;
+		width: 100%;
+		height: 100%;
+		background: linear-gradient(90deg, 
+			transparent, 
+			rgba(0, 255, 255, 0.2), 
+			transparent);
+		animation: searchScan 3s linear infinite;
+		border-radius: 8px;
+		pointer-events: none;
+	}
+
+	.search-particles {
+		position: absolute;
+		top: 50%;
+		right: 15px;
+		transform: translateY(-50%);
+		display: flex;
+		gap: 3px;
+	}
+
+	.particle {
+		width: 3px;
+		height: 3px;
+		background: rgba(0, 255, 255, 0.6);
+		border-radius: 50%;
+		animation: particlePulse 1.5s ease-in-out infinite;
+	}
+
+	.particle:nth-child(2) { animation-delay: 0.5s; }
+	.particle:nth-child(3) { animation-delay: 1s; }
+
+	.data-matrix {
+		display: grid;
+		grid-template-columns: 1fr 400px;
+		gap: 2rem;
+		height: calc(100vh - 350px);
+	}
+
 	.source-hologram {
 		background: linear-gradient(135deg, 
 			rgba(0, 0, 0, 0.4) 0%, 
@@ -937,218 +1151,4 @@
 			grid-template-columns: 1fr;
 		}
 	}
-</style>intelligence-matrix {
-		width: 100%;
-		height: 100%;
-		font-family: 'JetBrains Mono', monospace;
-		color: #ffffff;
-		position: relative;
-	}
-
-	.neural-scanner {
-		display: flex;
-		flex-direction: column;
-		align-items: center;
-		justify-content: center;
-		height: 400px;
-		gap: 2rem;
-	}
-
-	.scanner-core {
-		position: relative;
-		width: 120px;
-		height: 120px;
-		display: flex;
-		align-items: center;
-		justify-content: center;
-	}
-
-	.scan-rings {
-		position: absolute;
-		top: 0;
-		left: 0;
-		width: 100%;
-		height: 100%;
-	}
-
-	.scan-ring {
-		position: absolute;
-		border-radius: 50%;
-		border: 2px solid;
-		top: 50%;
-		left: 50%;
-		transform: translate(-50%, -50%);
-		animation: scanRotate 3s linear infinite;
-	}
-
-	.ring-1 {
-		width: 120px;
-		height: 120px;
-		border-color: rgba(0, 255, 255, 0.6);
-		animation-duration: 4s;
-	}
-
-	.ring-2 {
-		width: 90px;
-		height: 90px;
-		border-color: rgba(255, 0, 255, 0.4);
-		animation-duration: 3s;
-		animation-direction: reverse;
-	}
-
-	.ring-3 {
-		width: 60px;
-		height: 60px;
-		border-color: rgba(0, 150, 255, 0.8);
-		animation-duration: 2s;
-	}
-
-	.scan-center {
-		position: relative;
-		z-index: 3;
-		font-size: 2rem;
-		color: rgba(0, 255, 255, 0.9);
-		text-shadow: 0 0 20px rgba(0, 255, 255, 0.8);
-		animation: centerPulse 2s ease-in-out infinite;
-	}
-
-	.scanner-text {
-		color: rgba(0, 255, 255, 0.8);
-		font-size: 1rem;
-		font-weight: 500;
-		letter-spacing: 0.1em;
-		animation: textGlow 2s ease-in-out infinite;
-	}
-
-	.intelligence-header {
-		display: flex;
-		justify-content: space-between;
-		align-items: center;
-		margin-bottom: 2rem;
-		gap: 2rem;
-	}
-
-	.metrics-cluster {
-		display: flex;
-		gap: 2rem;
-	}
-
-	.holo-metric {
-		position: relative;
-	}
-
-	.metric-ring {
-		position: relative;
-		width: 120px;
-		height: 120px;
-	}
-
-	.progress-ring {
-		filter: drop-shadow(0 0 5px currentColor);
-		animation: ringGlow 3s ease-in-out infinite;
-	}
-
-	.metric-center {
-		position: absolute;
-		top: 50%;
-		left: 50%;
-		transform: translate(-50%, -50%);
-		text-align: center;
-	}
-
-	.metric-value {
-		display: block;
-		font-size: 1.5rem;
-		font-weight: 700;
-		color: #ffffff;
-		text-shadow: 0 0 15px rgba(0, 255, 255, 0.6);
-	}
-
-	.metric-label {
-		font-size: 0.7rem;
-		color: rgba(255, 255, 255, 0.6);
-		font-weight: 400;
-		letter-spacing: 0.05em;
-		margin-top: 0.25rem;
-	}
-
-	.neural-search {
-		flex: 1;
-		max-width: 400px;
-	}
-
-	.search-frame {
-		position: relative;
-		width: 100%;
-	}
-
-	.search-input {
-		width: 100%;
-		background: linear-gradient(135deg, 
-			rgba(0, 0, 0, 0.6) 0%, 
-			rgba(0, 255, 255, 0.05) 100%);
-		border: 1px solid rgba(0, 255, 255, 0.3);
-		border-radius: 8px;
-		padding: 0.75rem 1rem;
-		color: #ffffff;
-		font-family: inherit;
-		font-size: 0.9rem;
-		backdrop-filter: blur(20px);
-		transition: all 0.3s ease;
-		box-shadow: 0 0 15px rgba(0, 255, 255, 0.1);
-	}
-
-	.search-input::placeholder {
-		color: rgba(255, 255, 255, 0.4);
-		letter-spacing: 0.05em;
-	}
-
-	.search-input:focus {
-		outline: none;
-		border-color: rgba(0, 255, 255, 0.8);
-		box-shadow: 0 0 25px rgba(0, 255, 255, 0.3);
-	}
-
-	.search-beam {
-		position: absolute;
-		top: 0;
-		left: -100%;
-		width: 100%;
-		height: 100%;
-		background: linear-gradient(90deg, 
-			transparent, 
-			rgba(0, 255, 255, 0.2), 
-			transparent);
-		animation: searchScan 3s linear infinite;
-		border-radius: 8px;
-		pointer-events: none;
-	}
-
-	.search-particles {
-		position: absolute;
-		top: 50%;
-		right: 15px;
-		transform: translateY(-50%);
-		display: flex;
-		gap: 3px;
-	}
-
-	.particle {
-		width: 3px;
-		height: 3px;
-		background: rgba(0, 255, 255, 0.6);
-		border-radius: 50%;
-		animation: particlePulse 1.5s ease-in-out infinite;
-	}
-
-	.particle:nth-child(2) { animation-delay: 0.5s; }
-	.particle:nth-child(3) { animation-delay: 1s; }
-
-	.data-matrix {
-		display: grid;
-		grid-template-columns: 1fr 400px;
-		gap: 2rem;
-		height: calc(100vh - 350px);
-	}
-
-	.source-
+</style>
