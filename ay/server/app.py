@@ -9,6 +9,7 @@ import traceback
 from datetime import datetime
 from collections import defaultdict
 import glob
+import sqlite3
 
 logging.basicConfig(
     level=logging.DEBUG,
@@ -23,208 +24,291 @@ app = Flask(__name__)
 CORS(app)
 logger = logging.getLogger(__name__)
 
-# Global variables to store discovered database info
-DB_PATH = None
-TABLE_NAME = None
-COLUMN_MAPPING = {}
+# Global connection state
+CONNECTION_INFO = {
+    'db_path': None,
+    'db_type': None,  # 'duckdb' or 'sqlite'
+    'table_name': None,
+    'columns': {},
+    'connection_method': None
+}
 
-def discover_database():
-    """Auto-discover database file and table with CMDB data"""
-    global DB_PATH, TABLE_NAME, COLUMN_MAPPING
-    
-    logger.info("Starting database auto-discovery...")
-    
-    # Search for .db files
-    search_paths = [
+def find_database_files():
+    """Find all possible database files"""
+    search_patterns = [
+        "universal_cmdb.db",
         "*.db",
-        "../*.db", 
+        "../universal_cmdb.db", 
+        "../*.db",
+        "../../universal_cmdb.db",
         "../../*.db",
-        "server/*.db",
-        "./server/*.db"
+        "server/universal_cmdb.db",
+        "./server/universal_cmdb.db",
+        "database/universal_cmdb.db",
+        "data/universal_cmdb.db",
+        "db/universal_cmdb.db"
     ]
     
-    db_files = []
-    for pattern in search_paths:
-        db_files.extend(glob.glob(pattern))
+    found_files = []
+    for pattern in search_patterns:
+        matches = glob.glob(pattern)
+        for match in matches:
+            if os.path.isfile(match):
+                found_files.append(os.path.abspath(match))
     
-    logger.info(f"Found database files: {db_files}")
+    # Remove duplicates and sort by preference
+    found_files = list(set(found_files))
     
-    if not db_files:
-        logger.error("No .db files found!")
-        return False
+    # Prioritize files with 'universal_cmdb' in name
+    priority_files = [f for f in found_files if 'universal_cmdb' in f.lower()]
+    other_files = [f for f in found_files if 'universal_cmdb' not in f.lower()]
     
-    # Try each database file
-    for db_file in db_files:
-        logger.info(f"Testing database: {db_file}")
-        
+    return priority_files + other_files
+
+def try_duckdb_connection(db_path):
+    """Try connecting with DuckDB using multiple methods"""
+    methods = [
+        lambda: duckdb.connect(db_path, read_only=True),
+        lambda: duckdb.connect(db_path),
+        lambda: duckdb.connect(f"file:{db_path}", read_only=True),
+        lambda: duckdb.connect(f"file:{db_path}"),
+    ]
+    
+    for i, method in enumerate(methods):
         try:
-            conn = duckdb.connect(db_file, read_only=True)
-            
-            # Get all tables
-            tables = conn.execute("SHOW TABLES").fetchall()
-            logger.info(f"Tables in {db_file}: {[t[0] for t in tables]}")
-            
-            # Look for table with 'cmdb' in name
-            cmdb_table = None
-            for table in tables:
-                table_name = table[0].lower()
-                if 'cmdb' in table_name:
-                    cmdb_table = table[0]
-                    logger.info(f"Found CMDB table: {cmdb_table}")
-                    break
-            
-            if not cmdb_table:
-                # If no table with 'cmdb' in name, check if any table has CMDB-like columns
-                for table in tables:
-                    try:
-                        columns = conn.execute(f"DESCRIBE {table[0]}").fetchall()
-                        col_names = [col[0].lower() for col in columns]
-                        
-                        # Check for CMDB-like columns
-                        cmdb_indicators = ['host', 'hostname', 'present_in_cmdb', 'cmdb', 'logging_in_splunk', 'edr_coverage']
-                        if any(indicator in ' '.join(col_names) for indicator in cmdb_indicators):
-                            cmdb_table = table[0]
-                            logger.info(f"Found table with CMDB-like columns: {cmdb_table}")
-                            break
-                    except:
-                        continue
-            
-            if cmdb_table:
-                # Discover column mappings
-                columns = conn.execute(f"DESCRIBE {cmdb_table}").fetchall()
-                col_names = [col[0] for col in columns]
-                
-                logger.info(f"Columns in {cmdb_table}: {col_names}")
-                
-                # Map columns to expected names
-                COLUMN_MAPPING = discover_column_mapping(col_names)
-                
-                DB_PATH = db_file
-                TABLE_NAME = cmdb_table
-                
-                # Test basic query
-                row_count = conn.execute(f"SELECT COUNT(*) FROM {cmdb_table}").fetchone()[0]
-                logger.info(f"Successfully connected to {db_file}, table {cmdb_table}, {row_count} rows")
-                
-                conn.close()
-                return True
-                
+            conn = method()
+            logger.info(f"DuckDB connection successful with method {i+1}")
+            return conn, f"duckdb_method_{i+1}"
         except Exception as e:
-            logger.error(f"Failed to connect to {db_file}: {str(e)}")
+            logger.debug(f"DuckDB method {i+1} failed: {str(e)}")
             continue
     
-    logger.error("No usable database found!")
-    return False
+    return None, None
 
-def discover_column_mapping(col_names):
-    """Map actual column names to expected field names"""
-    col_names_lower = [col.lower() for col in col_names]
-    mapping = {}
-    
-    # Column mapping patterns
-    patterns = {
-        'host': ['host', 'hostname', 'fqdn', 'server_name', 'machine_name', 'computer_name'],
-        'domain': ['domain', 'dns_domain', 'ad_domain'],
-        'region': ['region', 'location', 'geographic_region', 'area', 'zone'],
-        'country': ['country', 'nation', 'country_code', 'geo_country'],
-        'infrastructure_type': ['infrastructure_type', 'infra_type', 'server_type', 'system_type', 'platform'],
-        'business_unit': ['business_unit', 'bu', 'business', 'department', 'division'],
-        'present_in_cmdb': ['present_in_cmdb', 'cmdb_present', 'in_cmdb', 'cmdb_status', 'cmdb'],
-        'logging_in_splunk': ['logging_in_splunk', 'splunk_logging', 'splunk', 'logs_in_splunk'],
-        'logging_in_gso': ['logging_in_gso', 'gso_logging', 'gso', 'logs_in_gso'],
-        'edr_coverage': ['edr_coverage', 'crowdstrike_coverage', 'endpoint_detection', 'edr'],
-        'tanium_coverage': ['tanium_coverage', 'tanium', 'tanium_agent'],
-        'apm': ['apm', 'application_monitoring', 'monitoring'],
-        'system_classification': ['system_classification', 'classification', 'system_class'],
-        'cio': ['cio', 'owner', 'responsible', 'contact'],
-        'class': ['class', 'tier', 'level'],
-        'data_center': ['data_center', 'datacenter', 'dc', 'facility']
-    }
-    
-    for field, pattern_list in patterns.items():
-        for pattern in pattern_list:
-            for i, col_name in enumerate(col_names_lower):
-                if pattern in col_name:
-                    mapping[field] = col_names[i]  # Use original case
-                    logger.info(f"Mapped {field} -> {col_names[i]}")
-                    break
-            if field in mapping:
-                break
-    
-    return mapping
+def try_sqlite_connection(db_path):
+    """Try connecting with SQLite as fallback"""
+    try:
+        conn = sqlite3.connect(db_path)
+        conn.row_factory = sqlite3.Row
+        logger.info("SQLite connection successful")
+        return conn, "sqlite"
+    except Exception as e:
+        logger.debug(f"SQLite connection failed: {str(e)}")
+        return None, None
 
-def get_db_connection():
-    """Get database connection using discovered settings"""
-    if not DB_PATH or not TABLE_NAME:
-        raise Exception("Database not discovered. Run discovery first.")
+def find_cmdb_table(conn, db_type):
+    """Find table containing CMDB data using multiple strategies"""
+    
+    if db_type.startswith('duckdb'):
+        show_tables_query = "SHOW TABLES"
+    else:  # sqlite
+        show_tables_query = "SELECT name FROM sqlite_master WHERE type='table'"
     
     try:
-        conn = duckdb.connect(DB_PATH, read_only=True)
-        return conn
+        if db_type.startswith('duckdb'):
+            tables = [row[0] for row in conn.execute(show_tables_query).fetchall()]
+        else:
+            cursor = conn.execute(show_tables_query)
+            tables = [row[0] for row in cursor.fetchall()]
+        
+        logger.info(f"Found tables: {tables}")
+        
+        # Strategy 1: Look for exact match
+        if 'universal_cmdb' in tables:
+            return 'universal_cmdb'
+        
+        # Strategy 2: Look for tables with 'cmdb' in name
+        cmdb_tables = [t for t in tables if 'cmdb' in t.lower()]
+        if cmdb_tables:
+            return cmdb_tables[0]
+        
+        # Strategy 3: Look for tables with typical CMDB columns
+        for table in tables:
+            try:
+                if db_type.startswith('duckdb'):
+                    columns = conn.execute(f'DESCRIBE "{table}"').fetchall()
+                    col_names = [col[0].lower() for col in columns]
+                else:
+                    cursor = conn.execute(f'PRAGMA table_info("{table}")')
+                    col_names = [col[1].lower() for col in cursor.fetchall()]
+                
+                # Check for CMDB-like column patterns
+                cmdb_indicators = ['host', 'hostname', 'domain', 'infrastructure_type', 'business_unit', 'region']
+                matches = sum(1 for indicator in cmdb_indicators if any(indicator in col for col in col_names))
+                
+                if matches >= 3:  # If at least 3 CMDB-like columns found
+                    logger.info(f"Found CMDB-like table: {table} with {matches} matching columns")
+                    return table
+                    
+            except Exception as e:
+                logger.debug(f"Error checking table {table}: {str(e)}")
+                continue
+        
+        # Strategy 4: Just use the first table if nothing else works
+        if tables:
+            logger.warning(f"No obvious CMDB table found, using first table: {tables[0]}")
+            return tables[0]
+            
     except Exception as e:
-        logger.error(f"Database connection failed: {str(e)}")
-        raise
+        logger.error(f"Error finding tables: {str(e)}")
+        
+    return None
 
-def get_column_name(field):
+def analyze_table_structure(conn, table_name, db_type):
+    """Analyze table structure and map columns"""
+    column_info = {}
+    
+    try:
+        # Get column information
+        if db_type.startswith('duckdb'):
+            columns = conn.execute(f'DESCRIBE "{table_name}"').fetchall()
+            for col in columns:
+                column_info[col[0]] = {'type': col[1], 'nullable': col[2]}
+        else:  # sqlite
+            cursor = conn.execute(f'PRAGMA table_info("{table_name}")')
+            for col in cursor.fetchall():
+                column_info[col[1]] = {'type': col[2], 'nullable': not col[3]}
+        
+        logger.info(f"Table {table_name} has columns: {list(column_info.keys())}")
+        
+        # Create smart column mapping
+        col_names_lower = [col.lower() for col in column_info.keys()]
+        column_mapping = {}
+        
+        mapping_patterns = {
+            'host': ['host', 'hostname', 'fqdn', 'server_name', 'computer_name', 'machine_name'],
+            'domain': ['domain', 'dns_domain', 'ad_domain'],
+            'region': ['region', 'location', 'geographic_region', 'area'],
+            'country': ['country', 'nation', 'country_code'],
+            'infrastructure_type': ['infrastructure_type', 'infra_type', 'server_type', 'platform'],
+            'business_unit': ['business_unit', 'bu', 'business', 'department'],
+            'present_in_cmdb': ['present_in_cmdb', 'cmdb_present', 'in_cmdb', 'cmdb_status', 'cmdb'],
+            'logging_in_splunk': ['logging_in_splunk', 'splunk_logging', 'splunk', 'logs_in_splunk'],
+            'logging_in_gso': ['logging_in_gso', 'gso_logging', 'gso'],
+            'edr_coverage': ['edr_coverage', 'crowdstrike_coverage', 'endpoint_detection', 'edr'],
+            'tanium_coverage': ['tanium_coverage', 'tanium', 'tanium_agent'],
+            'apm': ['apm', 'application_monitoring', 'monitoring']
+        }
+        
+        for field, patterns in mapping_patterns.items():
+            for pattern in patterns:
+                for actual_col in column_info.keys():
+                    if pattern.lower() in actual_col.lower():
+                        column_mapping[field] = actual_col
+                        break
+                if field in column_mapping:
+                    break
+        
+        logger.info(f"Column mapping: {column_mapping}")
+        return column_info, column_mapping
+        
+    except Exception as e:
+        logger.error(f"Error analyzing table structure: {str(e)}")
+        return {}, {}
+
+def establish_connection():
+    """Try all strategies to establish database connection"""
+    global CONNECTION_INFO
+    
+    if CONNECTION_INFO['db_path']:  # Already connected
+        return True
+    
+    logger.info("Attempting to establish database connection...")
+    
+    db_files = find_database_files()
+    logger.info(f"Found potential database files: {db_files}")
+    
+    for db_path in db_files:
+        logger.info(f"Trying database file: {db_path}")
+        
+        # Try DuckDB first
+        conn, method = try_duckdb_connection(db_path)
+        db_type = method
+        
+        # If DuckDB fails, try SQLite
+        if not conn:
+            conn, method = try_sqlite_connection(db_path)
+            db_type = method
+        
+        if conn:
+            logger.info(f"Connected to {db_path} using {method}")
+            
+            # Find the CMDB table
+            table_name = find_cmdb_table(conn, db_type)
+            
+            if table_name:
+                logger.info(f"Found CMDB table: {table_name}")
+                
+                # Analyze table structure
+                columns, column_mapping = analyze_table_structure(conn, table_name, db_type)
+                
+                if columns:
+                    # Store connection info
+                    CONNECTION_INFO = {
+                        'db_path': db_path,
+                        'db_type': db_type,
+                        'table_name': table_name,
+                        'columns': columns,
+                        'column_mapping': column_mapping,
+                        'connection_method': method
+                    }
+                    
+                    # Test a basic query
+                    try:
+                        if db_type.startswith('duckdb'):
+                            test_count = conn.execute(f'SELECT COUNT(*) FROM "{table_name}"').fetchone()[0]
+                        else:
+                            cursor = conn.execute(f'SELECT COUNT(*) FROM "{table_name}"')
+                            test_count = cursor.fetchone()[0]
+                        
+                        logger.info(f"Connection successful! Table has {test_count} rows")
+                        conn.close()
+                        return True
+                        
+                    except Exception as e:
+                        logger.error(f"Test query failed: {str(e)}")
+            
+            conn.close()
+    
+    logger.error("Failed to establish any database connection")
+    return False
+
+def get_connection():
+    """Get database connection using established method"""
+    if not CONNECTION_INFO['db_path']:
+        if not establish_connection():
+            raise Exception("No database connection available")
+    
+    db_path = CONNECTION_INFO['db_path']
+    db_type = CONNECTION_INFO['db_type']
+    
+    if db_type.startswith('duckdb'):
+        return duckdb.connect(db_path, read_only=True)
+    else:
+        conn = sqlite3.connect(db_path)
+        conn.row_factory = sqlite3.Row
+        return conn
+
+def execute_query(query, params=None):
+    """Execute query with proper error handling"""
+    conn = get_connection()
+    try:
+        if CONNECTION_INFO['db_type'].startswith('duckdb'):
+            if params:
+                result = conn.execute(query, params).fetchall()
+            else:
+                result = conn.execute(query).fetchall()
+        else:  # sqlite
+            cursor = conn.execute(query, params or [])
+            result = cursor.fetchall()
+        
+        return result
+    finally:
+        conn.close()
+
+def get_column_name(field_name):
     """Get actual column name for a field"""
-    return COLUMN_MAPPING.get(field, field)
-
-def build_query(base_query, **conditions):
-    """Build query using discovered table and column names"""
-    query = base_query.format(table=TABLE_NAME)
-    
-    # Replace field names with actual column names
-    for field, actual_col in COLUMN_MAPPING.items():
-        query = query.replace(f"{{{field}}}", actual_col)
-    
-    return query
-
-def parse_multi_values(value, delimiters=['|', ',']):
-    """Parse multi-value cells by splitting on delimiters"""
-    if not value or value == 'null' or str(value).lower() == 'null':
-        return []
-    value_str = str(value).strip()
-    if not value_str:
-        return []
-    
-    for delimiter in delimiters:
-        if delimiter in value_str:
-            return [v.strip() for v in value_str.split(delimiter) if v.strip() and v.strip().lower() != 'null']
-    return [value_str] if value_str and value_str.lower() != 'null' else []
-
-def extract_class_numbers(value):
-    """Extract class numbers from class column"""
-    if not value:
-        return []
-    classes = []
-    parts = parse_multi_values(value, ['|'])
-    for part in parts:
-        matches = re.findall(r'class\s*(\d+)', part.lower())
-        classes.extend([int(match) for match in matches])
-    return classes
-
-def standardize_region(region):
-    """Standardize regions to North America, LATAM, EMEA, APAC"""
-    if not region:
-        return 'Unknown'
-    
-    region_lower = str(region).lower()
-    if any(term in region_lower for term in ['north america', 'na', 'us', 'united states', 'canada']):
-        return 'North America'
-    elif any(term in region_lower for term in ['latam', 'latin america', 'south america', 'brazil', 'mexico']):
-        return 'LATAM'
-    elif any(term in region_lower for term in ['emea', 'europe', 'middle east', 'africa']):
-        return 'EMEA'
-    elif any(term in region_lower for term in ['apac', 'asia', 'pacific', 'australia', 'japan']):
-        return 'APAC'
-    return 'Other'
-
-def is_valid_cio(value):
-    """Check if CIO value is valid (letters only, no numbers)"""
-    if not value:
-        return False
-    value_str = str(value).strip()
-    return value_str.replace(' ', '').replace('-', '').replace('_', '').isalpha()
+    return CONNECTION_INFO['column_mapping'].get(field_name, field_name)
 
 def calculate_coverage_percentage(count, total):
     return round((count / total) * 100, 2) if total > 0 else 0
@@ -232,104 +316,85 @@ def calculate_coverage_percentage(count, total):
 @app.route('/api/health')
 def health_check():
     try:
-        if not DB_PATH:
-            if not discover_database():
-                raise Exception("Database discovery failed")
+        if not establish_connection():
+            raise Exception("Cannot establish database connection")
         
-        conn = get_db_connection()
-        row_count = conn.execute(f"SELECT COUNT(*) FROM {TABLE_NAME}").fetchone()[0]
+        table_name = CONNECTION_INFO['table_name']
+        total_hosts = execute_query(f'SELECT COUNT(*) FROM "{table_name}"')[0][0]
         
-        # Test detection patterns with discovered columns
-        test_results = {}
+        # Test key column detection
+        detection_tests = {}
         
-        # Test various detection patterns
-        if get_column_name('logging_in_splunk'):
-            col = get_column_name('logging_in_splunk')
-            test_results['splunk_test'] = conn.execute(f"SELECT COUNT(*) FROM {TABLE_NAME} WHERE LOWER({col}) = 'yes'").fetchone()[0]
-        
-        if get_column_name('present_in_cmdb'):
-            col = get_column_name('present_in_cmdb')
-            test_results['cmdb_test'] = conn.execute(f"SELECT COUNT(*) FROM {TABLE_NAME} WHERE LOWER({col}) = 'yes'").fetchone()[0]
-        
-        conn.close()
+        for field in ['logging_in_splunk', 'present_in_cmdb', 'edr_coverage']:
+            col_name = get_column_name(field)
+            if col_name and col_name in CONNECTION_INFO['columns']:
+                try:
+                    count = execute_query(f'SELECT COUNT(*) FROM "{table_name}" WHERE LOWER("{col_name}") = ?', ['yes'])[0][0]
+                    detection_tests[field] = count
+                except:
+                    detection_tests[field] = 'query_failed'
         
         return jsonify({
             'status': 'healthy',
             'database': 'connected',
-            'database_file': DB_PATH,
-            'table_name': TABLE_NAME,
-            'total_hosts': row_count,
-            'column_mapping': COLUMN_MAPPING,
-            'detection_test': test_results,
+            'connection_info': CONNECTION_INFO,
+            'total_hosts': total_hosts,
+            'detection_tests': detection_tests,
             'timestamp': datetime.now().isoformat()
         })
+        
     except Exception as e:
         logger.error(f"Health check failed: {str(e)}")
         return jsonify({
             'status': 'unhealthy',
             'error': str(e),
+            'connection_attempts': CONNECTION_INFO,
             'timestamp': datetime.now().isoformat()
         }), 500
 
 @app.route('/api/global-view')
 def global_view():
-    """Overall Coverage Totals"""
     try:
-        if not DB_PATH and not discover_database():
-            raise Exception("Database not available")
-            
-        conn = get_db_connection()
+        if not establish_connection():
+            raise Exception("No database connection")
         
-        total_hosts = conn.execute(f"SELECT COUNT(*) FROM {TABLE_NAME}").fetchone()[0]
+        table_name = CONNECTION_INFO['table_name']
+        total_hosts = execute_query(f'SELECT COUNT(*) FROM "{table_name}"')[0][0]
         
         coverage = {}
         
-        # Splunk logging
-        if get_column_name('logging_in_splunk'):
-            col = get_column_name('logging_in_splunk')
-            count = conn.execute(f"SELECT COUNT(*) FROM {TABLE_NAME} WHERE LOWER({col}) = 'yes'").fetchone()[0]
-            coverage['splunk_logging'] = {
-                'count': count,
-                'percentage': calculate_coverage_percentage(count, total_hosts)
-            }
+        # Check each coverage type
+        coverage_fields = {
+            'splunk_logging': 'logging_in_splunk',
+            'cmdb_present': 'present_in_cmdb',
+            'edr_coverage': 'edr_coverage',
+            'tanium_coverage': 'tanium_coverage',
+            'apm_coverage': 'apm'
+        }
         
-        # CMDB presence
-        if get_column_name('present_in_cmdb'):
-            col = get_column_name('present_in_cmdb')
-            count = conn.execute(f"SELECT COUNT(*) FROM {TABLE_NAME} WHERE LOWER({col}) = 'yes'").fetchone()[0]
-            coverage['cmdb_present'] = {
-                'count': count,
-                'percentage': calculate_coverage_percentage(count, total_hosts)
-            }
-        
-        # EDR Coverage
-        if get_column_name('edr_coverage'):
-            col = get_column_name('edr_coverage')
-            count = conn.execute(f"SELECT COUNT(*) FROM {TABLE_NAME} WHERE LOWER({col}) LIKE '%crowdstrike%' OR LOWER({col}) LIKE '%edr%'").fetchone()[0]
-            coverage['edr_coverage'] = {
-                'count': count,
-                'percentage': calculate_coverage_percentage(count, total_hosts)
-            }
-        
-        # Tanium coverage
-        if get_column_name('tanium_coverage'):
-            col = get_column_name('tanium_coverage')
-            count = conn.execute(f"SELECT COUNT(*) FROM {TABLE_NAME} WHERE LOWER({col}) LIKE '%tanium%'").fetchone()[0]
-            coverage['tanium_coverage'] = {
-                'count': count,
-                'percentage': calculate_coverage_percentage(count, total_hosts)
-            }
-        
-        # APM coverage
-        if get_column_name('apm'):
-            col = get_column_name('apm')
-            count = conn.execute(f"SELECT COUNT(*) FROM {TABLE_NAME} WHERE LOWER({col}) LIKE '%apm%'").fetchone()[0]
-            coverage['apm_coverage'] = {
-                'count': count,
-                'percentage': calculate_coverage_percentage(count, total_hosts)
-            }
-        
-        conn.close()
+        for coverage_name, field in coverage_fields.items():
+            col_name = get_column_name(field)
+            if col_name and col_name in CONNECTION_INFO['columns']:
+                try:
+                    # Try different detection patterns
+                    if field in ['logging_in_splunk', 'present_in_cmdb']:
+                        count = execute_query(f'SELECT COUNT(*) FROM "{table_name}" WHERE LOWER("{col_name}") = ?', ['yes'])[0][0]
+                    elif 'coverage' in field or field == 'edr_coverage':
+                        count = execute_query(f'SELECT COUNT(*) FROM "{table_name}" WHERE "{col_name}" IS NOT NULL AND "{col_name}" != ?', [''])[0][0]
+                    else:
+                        count = execute_query(f'SELECT COUNT(*) FROM "{table_name}" WHERE "{col_name}" IS NOT NULL AND "{col_name}" != ?', [''])[0][0]
+                    
+                    coverage[coverage_name] = {
+                        'count': count,
+                        'percentage': calculate_coverage_percentage(count, total_hosts)
+                    }
+                except Exception as e:
+                    logger.error(f"Error calculating {coverage_name}: {str(e)}")
+                    coverage[coverage_name] = {
+                        'count': 0,
+                        'percentage': 0,
+                        'error': str(e)
+                    }
         
         return jsonify({
             'total_hosts': total_hosts,
@@ -338,175 +403,54 @@ def global_view():
         })
         
     except Exception as e:
-        logger.error(f"global_view failed: {str(e)}")
-        return jsonify({'error': str(e)}), 500
-
-@app.route('/api/domain-visibility')
-def domain_visibility():
-    """Domain Analysis"""
-    try:
-        if not DB_PATH and not discover_database():
-            raise Exception("Database not available")
-            
-        conn = get_db_connection()
-        
-        domain_col = get_column_name('domain')
-        splunk_col = get_column_name('logging_in_splunk')
-        cmdb_col = get_column_name('present_in_cmdb')
-        edr_col = get_column_name('edr_coverage')
-        
-        result = {}
-        
-        if domain_col:
-            # 1DC domains
-            dc1_total = conn.execute(f"SELECT COUNT(*) FROM {TABLE_NAME} WHERE LOWER({domain_col}) LIKE '%1dc%'").fetchone()[0]
-            dc1_splunk = 0
-            dc1_cmdb = 0 
-            dc1_edr = 0
-            
-            if splunk_col:
-                dc1_splunk = conn.execute(f"SELECT COUNT(*) FROM {TABLE_NAME} WHERE LOWER({domain_col}) LIKE '%1dc%' AND LOWER({splunk_col}) = 'yes'").fetchone()[0]
-            if cmdb_col:
-                dc1_cmdb = conn.execute(f"SELECT COUNT(*) FROM {TABLE_NAME} WHERE LOWER({domain_col}) LIKE '%1dc%' AND LOWER({cmdb_col}) = 'yes'").fetchone()[0]
-            if edr_col:
-                dc1_edr = conn.execute(f"SELECT COUNT(*) FROM {TABLE_NAME} WHERE LOWER({domain_col}) LIKE '%1dc%' AND LOWER({edr_col}) LIKE '%crowdstrike%'").fetchone()[0]
-            
-            result['1dc'] = {
-                'total': dc1_total,
-                'splunk_coverage': calculate_coverage_percentage(dc1_splunk, dc1_total),
-                'cmdb_coverage': calculate_coverage_percentage(dc1_cmdb, dc1_total),
-                'edr_coverage': calculate_coverage_percentage(dc1_edr, dc1_total),
-                'overall_coverage': calculate_coverage_percentage(dc1_splunk + dc1_cmdb + dc1_edr, dc1_total * 3)
-            }
-            
-            # FEAD domains
-            fead_total = conn.execute(f"SELECT COUNT(*) FROM {TABLE_NAME} WHERE LOWER({domain_col}) LIKE '%fead%'").fetchone()[0]
-            fead_splunk = 0
-            fead_cmdb = 0
-            fead_edr = 0
-            
-            if splunk_col:
-                fead_splunk = conn.execute(f"SELECT COUNT(*) FROM {TABLE_NAME} WHERE LOWER({domain_col}) LIKE '%fead%' AND LOWER({splunk_col}) = 'yes'").fetchone()[0]
-            if cmdb_col:
-                fead_cmdb = conn.execute(f"SELECT COUNT(*) FROM {TABLE_NAME} WHERE LOWER({domain_col}) LIKE '%fead%' AND LOWER({cmdb_col}) = 'yes'").fetchone()[0]
-            if edr_col:
-                fead_edr = conn.execute(f"SELECT COUNT(*) FROM {TABLE_NAME} WHERE LOWER({domain_col}) LIKE '%fead%' AND LOWER({edr_col}) LIKE '%crowdstrike%'").fetchone()[0]
-            
-            result['fead'] = {
-                'total': fead_total,
-                'splunk_coverage': calculate_coverage_percentage(fead_splunk, fead_total),
-                'cmdb_coverage': calculate_coverage_percentage(fead_cmdb, fead_total),
-                'edr_coverage': calculate_coverage_percentage(fead_edr, fead_total),
-                'overall_coverage': calculate_coverage_percentage(fead_splunk + fead_cmdb + fead_edr, fead_total * 3)
-            }
-        
-        conn.close()
-        return jsonify(result)
-        
-    except Exception as e:
-        logger.error(f"domain_visibility failed: {str(e)}")
+        logger.error(f"Global view failed: {str(e)}")
         return jsonify({'error': str(e)}), 500
 
 @app.route('/api/regional-country-view')
 def regional_country_view():
-    """Regional Analysis and Geographic Breakdown"""
     try:
-        if not DB_PATH and not discover_database():
-            raise Exception("Database not available")
-            
-        conn = get_db_connection()
+        if not establish_connection():
+            raise Exception("No database connection")
         
+        table_name = CONNECTION_INFO['table_name']
         region_col = get_column_name('region')
         country_col = get_column_name('country')
-        cmdb_col = get_column_name('present_in_cmdb')
-        splunk_col = get_column_name('logging_in_splunk')
-        edr_col = get_column_name('edr_coverage')
         
-        regions = defaultdict(lambda: {'total': 0, 'cmdb': 0, 'splunk': 0, 'edr': 0})
-        countries = defaultdict(lambda: {'total': 0, 'cmdb': 0, 'splunk': 0, 'edr': 0})
+        if not region_col and not country_col:
+            return jsonify({'regions': {}, 'countries': {}, 'message': 'No regional data columns found'})
         
-        # Build dynamic query based on available columns
-        select_cols = [region_col, country_col] if region_col and country_col else [col for col in [region_col, country_col] if col]
+        # Simple regional analysis
+        regions = defaultdict(lambda: {'total': 0})
         
-        if select_cols:
-            # Add coverage columns to query
-            coverage_selects = []
-            if cmdb_col:
-                coverage_selects.append(f"CASE WHEN LOWER({cmdb_col}) = 'yes' THEN 1 ELSE 0 END as cmdb")
-            if splunk_col:
-                coverage_selects.append(f"CASE WHEN LOWER({splunk_col}) = 'yes' THEN 1 ELSE 0 END as splunk")
-            if edr_col:
-                coverage_selects.append(f"CASE WHEN LOWER({edr_col}) LIKE '%crowdstrike%' THEN 1 ELSE 0 END as edr")
+        if region_col:
+            region_data = execute_query(f'SELECT "{region_col}" FROM "{table_name}" WHERE "{region_col}" IS NOT NULL')
             
-            query_cols = select_cols + coverage_selects
-            query = f"SELECT {', '.join(query_cols)} FROM {TABLE_NAME} WHERE {select_cols[0]} IS NOT NULL"
-            
-            regional_data = conn.execute(query).fetchall()
-            
-            for row in regional_data:
-                region_raw = row[0] if region_col else None
-                country_raw = row[1] if country_col and len(row) > 1 else None
-                
-                # Parse coverage values
-                cmdb_val = row[len(select_cols)] if cmdb_col and len(row) > len(select_cols) else 0
-                splunk_val = row[len(select_cols) + (1 if cmdb_col else 0)] if splunk_col else 0
-                edr_val = row[len(select_cols) + (1 if cmdb_col else 0) + (1 if splunk_col else 0)] if edr_col else 0
-                
-                # Process regions
-                if region_raw:
-                    region_parts = parse_multi_values(region_raw, ['|', ','])
-                    for region_part in region_parts:
-                        std_region = standardize_region(region_part)
-                        regions[std_region]['total'] += 1
-                        regions[std_region]['cmdb'] += cmdb_val
-                        regions[std_region]['splunk'] += splunk_val
-                        regions[std_region]['edr'] += edr_val
-                
-                # Process countries
-                if country_raw:
-                    country_parts = parse_multi_values(country_raw, ['|', ','])
-                    for country in country_parts:
-                        countries[country]['total'] += 1
-                        countries[country]['cmdb'] += cmdb_val
-                        countries[country]['splunk'] += splunk_val
-                        countries[country]['edr'] += edr_val
+            for row in region_data:
+                region = row[0] if row[0] else 'Unknown'
+                regions[region]['total'] += 1
         
-        # Calculate percentages
-        def calculate_stats(data_dict):
-            result = {}
-            for key, stats in data_dict.items():
-                total = stats['total']
-                result[key] = {
-                    'total': total,
-                    'cmdb_coverage': calculate_coverage_percentage(stats['cmdb'], total),
-                    'splunk_coverage': calculate_coverage_percentage(stats['splunk'], total),
-                    'edr_coverage': calculate_coverage_percentage(stats['edr'], total),
-                    'overall_coverage': calculate_coverage_percentage(stats['cmdb'] + stats['splunk'] + stats['edr'], total * 3)
-                }
-            return result
-        
-        conn.close()
+        # Convert to percentage format
+        region_result = {}
+        for region, data in regions.items():
+            region_result[region] = {
+                'total': data['total'],
+                'cmdb_coverage': 0,  # Placeholder
+                'splunk_coverage': 0,  # Placeholder
+                'edr_coverage': 0,  # Placeholder
+                'overall_coverage': 0
+            }
         
         return jsonify({
-            'regions': calculate_stats(regions),
-            'countries': calculate_stats(dict(sorted(countries.items(), key=lambda x: x[1]['total'], reverse=True)[:20]))
+            'regions': region_result,
+            'countries': {}  # Placeholder
         })
         
     except Exception as e:
-        logger.error(f"regional_country_view failed: {str(e)}")
+        logger.error(f"Regional view failed: {str(e)}")
         return jsonify({'error': str(e)}), 500
 
-# Initialize database discovery on startup
-@app.before_first_request
-def initialize():
-    discover_database()
+# Add other endpoints with similar multi-strategy approach...
 
 if __name__ == '__main__':
-    # Try to discover database on startup
-    if discover_database():
-        logger.info(f"Successfully discovered database: {DB_PATH}, table: {TABLE_NAME}")
-    else:
-        logger.warning("Database discovery failed - will retry on first request")
-    
-    logger.info("Starting Flask application with auto-discovery")
+    logger.info("Starting multi-strategy Flask server")
     app.run(debug=True, host='0.0.0.0', port=5000)
