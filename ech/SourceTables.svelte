@@ -1,4 +1,4 @@
-<!-- ech/SourceTables.svelte -->
+<!-- SourceTables.svelte -->
 <script>
 	import { onMount } from 'svelte';
 	
@@ -77,326 +77,329 @@
 		selectedSource = null;
 		hostDetails = [];
 	}
+
+	function getCircularProgress(percentage) {
+		const circumference = 2 * Math.PI * 30;
+		const strokeDashoffset = circumference - (percentage / 100) * circumference;
+		return { strokeDashoffset };
+	}
 </script>
 
-<div class="source-intelligence-matrix">
+<div class="source-intel-matrix">
 	<div class="matrix-header">
-		<div class="header-glow"></div>
-		<div class="header-content">
-			<div class="intel-title">
-				<span class="title-icon">◈</span>
-				<div class="title-text">
-					<h2>Source Intelligence Analysis</h2>
-					<p>Log source frequency and coverage mapping</p>
+		<div class="header-hud">
+			<div class="hud-element">
+				<div class="hud-icon">◈</div>
+				<div class="hud-data">
+					<div class="data-label">SOURCE INTELLIGENCE</div>
+					<div class="data-value">ANALYSIS PROTOCOL ACTIVE</div>
 				</div>
 			</div>
-			
-			<div class="intel-metrics">
-				<div class="metric-node">
-					<div class="metric-ring"></div>
-					<div class="metric-data">
-						<span class="metric-value">{(data.unique_sources || 0).toLocaleString()}</span>
-						<span class="metric-label">SOURCES</span>
+			<div class="metrics-display">
+				<div class="metric-ring">
+					<svg width="80" height="80" viewBox="0 0 80 80">
+						<circle cx="40" cy="40" r="30" fill="none" stroke="rgba(0, 255, 255, 0.2)" stroke-width="2"/>
+						<circle 
+							cx="40" cy="40" r="30" 
+							fill="none" 
+							stroke="#00ffff" 
+							stroke-width="3"
+							stroke-dasharray="188"
+							stroke-dashoffset={getCircularProgress(85).strokeDashoffset}
+							transform="rotate(-90 40 40)"
+						/>
+					</svg>
+					<div class="ring-content">
+						<div class="ring-value">{(data.unique_sources || 0).toLocaleString()}</div>
+						<div class="ring-label">SOURCES</div>
 					</div>
 				</div>
-				
-				<div class="metric-node">
-					<div class="metric-ring"></div>
-					<div class="metric-data">
-						<span class="metric-value">{(data.total_mentions || 0).toLocaleString()}</span>
-						<span class="metric-label">MENTIONS</span>
+				<div class="metric-ring">
+					<svg width="80" height="80" viewBox="0 0 80 80">
+						<circle cx="40" cy="40" r="30" fill="none" stroke="rgba(255, 0, 255, 0.2)" stroke-width="2"/>
+						<circle 
+							cx="40" cy="40" r="30" 
+							fill="none" 
+							stroke="#ff00ff" 
+							stroke-width="3"
+							stroke-dasharray="188"
+							stroke-dashoffset={getCircularProgress(92).strokeDashoffset}
+							transform="rotate(-90 40 40)"
+						/>
+					</svg>
+					<div class="ring-content">
+						<div class="ring-value">{(data.total_mentions || 0).toLocaleString()}</div>
+						<div class="ring-label">MENTIONS</div>
 					</div>
 				</div>
 			</div>
 		</div>
 	</div>
 
-	<div class="control-panel">
-		<div class="search-terminal">
-			<input 
-				type="text" 
-				bind:value={searchTerm}
-				placeholder="SEARCH SOURCE TABLES..."
-				class="terminal-input"
-			/>
-			<div class="search-scanner"></div>
+	<div class="control-matrix">
+		<div class="search-console">
+			<div class="console-frame">
+				<input 
+					type="text" 
+					bind:value={searchTerm}
+					placeholder="SEARCH SOURCE INTELLIGENCE..."
+					class="console-input"
+				/>
+				<div class="search-scanner"></div>
+			</div>
 		</div>
 		
-		<div class="view-controls">
-			<button class="control-btn {!selectedSource ? 'active' : ''}" on:click={closeDetails}>
+		<div class="view-selector">
+			<button class="selector-btn {!selectedSource ? 'active' : ''}" on:click={closeDetails}>
+				<span class="btn-icon">▣</span>
 				TABLE VIEW
 			</button>
 			{#if selectedSource}
-				<button class="control-btn active">
-					DRILL-DOWN: {selectedSource.source}
+				<button class="selector-btn active">
+					<span class="btn-icon">⚡</span>
+					DRILL: {selectedSource.source}
 				</button>
 			{/if}
 		</div>
 	</div>
 
 	{#if loading && !selectedSource}
-		<div class="loading-matrix">
-			<div class="matrix-loader">
-				<div class="loader-grid">
-					{#each Array(16) as _, i}
-						<div class="grid-cell" style="animation-delay: {i * 0.1}s"></div>
-					{/each}
-				</div>
+		<div class="loading-interface">
+			<div class="loading-rings">
+				{#each Array(3) as _, i}
+					<div class="loading-ring" style="--delay: {i * 0.2}s; --size: {60 + i * 20}px"></div>
+				{/each}
 			</div>
-			<p class="loading-text">SCANNING SOURCE INTELLIGENCE...</p>
+			<div class="loading-text">SCANNING SOURCE INTELLIGENCE...</div>
 		</div>
 	{:else if selectedSource}
-		<div class="drill-down-view">
+		<div class="drill-interface">
 			<div class="drill-header">
-				<div class="selected-source">
-					<div class="source-badge" style="--badge-color: {getThreatLevel(selectedSource.frequency).color}">
-						<span class="badge-level">{getThreatLevel(selectedSource.frequency).level}</span>
+				<div class="target-display">
+					<div class="target-badge" style="--threat-color: {getThreatLevel(selectedSource.frequency).color}">
+						<div class="badge-ring"></div>
+						<span class="threat-level">{getThreatLevel(selectedSource.frequency).level}</span>
 					</div>
-					<div class="source-info">
+					<div class="target-info">
 						<h3>{selectedSource.source}</h3>
-						<div class="source-stats">
-							<span>Frequency: {selectedSource.frequency.toLocaleString()}</span>
-							<span>Coverage: {getPercentage(selectedSource.frequency)}%</span>
+						<div class="target-stats">
+							<span class="stat">FREQ: {selectedSource.frequency.toLocaleString()}</span>
+							<span class="stat">COV: {getPercentage(selectedSource.frequency)}%</span>
 						</div>
 					</div>
 				</div>
 				
-				<button class="close-btn" on:click={closeDetails}>✕</button>
+				<button class="close-terminal" on:click={closeDetails}>
+					<div class="close-icon">✕</div>
+				</button>
 			</div>
 
 			{#if loading}
-				<div class="loading-hosts">
-					<div class="host-scanner"></div>
+				<div class="scanning-hosts">
+					<div class="scan-grid">
+						{#each Array(9) as _, i}
+							<div class="scan-cell" style="animation-delay: {i * 0.1}s"></div>
+						{/each}
+					</div>
 					<p>RETRIEVING HOST DETAILS...</p>
 				</div>
 			{:else}
-				<div class="host-table-container">
-					<table class="cyber-table host-table">
-						<thead>
-							<tr class="table-header">
-								<th>HOST</th>
-								<th>REGION</th>
-								<th>COUNTRY</th>
-								<th>INFRASTRUCTURE</th>
-								<th>DATA CENTER</th>
-								<th>CMDB STATUS</th>
-								<th>TANIUM</th>
-							</tr>
-						</thead>
-						<tbody>
-							{#each hostDetails.slice(0, 100) as host}
-								<tr class="host-row">
-									<td class="host-name">{host.host}</td>
-									<td class="host-region">{host.region}</td>
-									<td class="host-country">{host.country}</td>
-									<td class="host-infra">{host.infrastructure_type}</td>
-									<td class="host-dc">{host.data_center}</td>
-									<td class="host-cmdb">
-										<span class="status-indicator {host.present_in_cmdb?.toLowerCase().includes('yes') ? 'active' : 'inactive'}">
-											{host.present_in_cmdb?.toLowerCase().includes('yes') ? 'ACTIVE' : 'INACTIVE'}
-										</span>
-									</td>
-									<td class="host-tanium">
-										<span class="status-indicator {host.tanium_coverage?.toLowerCase().includes('tanium') ? 'active' : 'inactive'}">
-											{host.tanium_coverage?.toLowerCase().includes('tanium') ? 'COVERED' : 'NOT COVERED'}
-										</span>
-									</td>
-								</tr>
-							{/each}
-						</tbody>
-					</table>
+				<div class="host-matrix">
+					<div class="matrix-grid">
+						<div class="grid-header">
+							<div class="header-cell">HOST</div>
+							<div class="header-cell">REGION</div>
+							<div class="header-cell">COUNTRY</div>
+							<div class="header-cell">INFRA</div>
+							<div class="header-cell">DC</div>
+							<div class="header-cell">CMDB</div>
+							<div class="header-cell">TANIUM</div>
+						</div>
+						{#each hostDetails.slice(0, 50) as host, i}
+							<div class="grid-row" style="animation-delay: {i * 0.05}s">
+								<div class="data-cell host-cell">{host.host}</div>
+								<div class="data-cell">{host.region}</div>
+								<div class="data-cell">{host.country}</div>
+								<div class="data-cell">{host.infrastructure_type}</div>
+								<div class="data-cell">{host.data_center}</div>
+								<div class="data-cell">
+									<span class="status-chip {host.present_in_cmdb?.toLowerCase().includes('yes') ? 'active' : 'inactive'}">
+										{host.present_in_cmdb?.toLowerCase().includes('yes') ? 'ACTIVE' : 'INACTIVE'}
+									</span>
+								</div>
+								<div class="data-cell">
+									<span class="status-chip {host.tanium_coverage?.toLowerCase().includes('tanium') ? 'active' : 'inactive'}">
+										{host.tanium_coverage?.toLowerCase().includes('tanium') ? 'COVERED' : 'NOT COVERED'}
+									</span>
+								</div>
+							</div>
+						{/each}
+					</div>
 				</div>
 			{/if}
 		</div>
 	{:else}
-		<div class="data-table-container">
-			<table class="cyber-table source-table">
-				<thead>
-					<tr class="table-header">
-						<th class="sortable" on:click={() => sortBy('source')}>
-							SOURCE TABLE
-							{#if sortField === 'source'}
-								<span class="sort-indicator">{sortDirection === 'desc' ? '↓' : '↑'}</span>
-							{/if}
-						</th>
-						<th class="sortable" on:click={() => sortBy('frequency')}>
-							FREQUENCY
-							{#if sortField === 'frequency'}
-								<span class="sort-indicator">{sortDirection === 'desc' ? '↓' : '↑'}</span>
-							{/if}
-						</th>
-						<th>COVERAGE %</th>
-						<th>THREAT LEVEL</th>
-						<th>ACTIONS</th>
-					</tr>
-				</thead>
-				<tbody>
-					{#each filteredSources.slice(0, 50) as [source, frequency]}
-						<tr class="source-row" style="--threat-color: {getThreatLevel(frequency).color}">
-							<td class="source-name">
-								<div class="name-container">
-									<div class="name-indicator"></div>
-									{source}
-								</div>
-							</td>
-							<td class="source-frequency">
-								<span class="frequency-value">{frequency.toLocaleString()}</span>
-							</td>
-							<td class="source-coverage">
-								<div class="coverage-bar">
-									<div class="coverage-fill" style="width: {getPercentage(frequency)}%; background: {getThreatLevel(frequency).color};"></div>
-									<span class="coverage-text">{getPercentage(frequency)}%</span>
-								</div>
-							</td>
-							<td class="source-threat">
-								<span class="threat-badge {getThreatLevel(frequency).level.toLowerCase()}" style="--threat-color: {getThreatLevel(frequency).color}">
-									{getThreatLevel(frequency).level}
-								</span>
-							</td>
-							<td class="source-actions">
-								<button class="drill-btn" on:click={() => drillDownSource(source, frequency)}>
-									<span class="btn-icon">⚡</span>
-									DRILL DOWN
-								</button>
-							</td>
-						</tr>
-					{/each}
-				</tbody>
-			</table>
+		<div class="data-matrix">
+			<div class="matrix-grid">
+				<div class="grid-header">
+					<div class="header-cell sortable" on:click={() => sortBy('source')}>
+						SOURCE TABLE
+						{#if sortField === 'source'}
+							<span class="sort-arrow">{sortDirection === 'desc' ? '▼' : '▲'}</span>
+						{/if}
+					</div>
+					<div class="header-cell sortable" on:click={() => sortBy('frequency')}>
+						FREQUENCY
+						{#if sortField === 'frequency'}
+							<span class="sort-arrow">{sortDirection === 'desc' ? '▼' : '▲'}</span>
+						{/if}
+					</div>
+					<div class="header-cell">COVERAGE</div>
+					<div class="header-cell">THREAT LEVEL</div>
+					<div class="header-cell">ACTIONS</div>
+				</div>
+				
+				{#each filteredSources.slice(0, 50) as [source, frequency], i}
+					<div class="grid-row" style="--threat-color: {getThreatLevel(frequency).color}; animation-delay: {i * 0.02}s">
+						<div class="data-cell source-cell">
+							<div class="source-indicator" style="background: {getThreatLevel(frequency).color}"></div>
+							{source}
+						</div>
+						<div class="data-cell frequency-cell">
+							<span class="frequency-value">{frequency.toLocaleString()}</span>
+						</div>
+						<div class="data-cell coverage-cell">
+							<div class="coverage-bar">
+								<div class="coverage-fill" style="width: {getPercentage(frequency)}%; background: {getThreatLevel(frequency).color};"></div>
+								<span class="coverage-text">{getPercentage(frequency)}%</span>
+							</div>
+						</div>
+						<div class="data-cell threat-cell">
+							<span class="threat-badge {getThreatLevel(frequency).level.toLowerCase()}" 
+								  style="color: {getThreatLevel(frequency).color}; border-color: {getThreatLevel(frequency).color};">
+								{getThreatLevel(frequency).level}
+							</span>
+						</div>
+						<div class="data-cell action-cell">
+							<button class="drill-button" on:click={() => drillDownSource(source, frequency)}>
+								<span class="drill-icon">⚡</span>
+								DRILL DOWN
+							</button>
+						</div>
+					</div>
+				{/each}
+			</div>
 		</div>
 	{/if}
 
-	<div class="matrix-footer">
+	<div class="interface-footer">
 		<div class="footer-stats">
-			<span>Displaying {filteredSources.length} of {data.unique_sources || 0} sources</span>
-			<span>Total coverage: {((data.total_mentions || 0) / (data.unique_sources || 1)).toFixed(0)} avg mentions/source</span>
+			<span>DISPLAYING {filteredSources.length} OF {data.unique_sources || 0} SOURCES</span>
+			<span>AVG MENTIONS/SOURCE: {((data.total_mentions || 0) / (data.unique_sources || 1)).toFixed(0)}</span>
 		</div>
 		<div class="neural-signature">
-			◈ NEURAL PROTOCOL ACTIVE
+			◈ SOURCE INTELLIGENCE PROTOCOL ACTIVE
 		</div>
 	</div>
 </div>
 
 <style>
-	.source-intelligence-matrix {
+	.source-intel-matrix {
 		width: 100%;
 		height: 100%;
-		font-family: 'JetBrains Mono', monospace;
-		color: #ffffff;
+		font-family: 'Orbitron', 'Exo 2', monospace;
+		color: #fff;
 		display: flex;
 		flex-direction: column;
 		background: transparent;
+		text-transform: uppercase;
+		letter-spacing: 0.05em;
 	}
 
 	.matrix-header {
-		position: relative;
 		background: linear-gradient(135deg, 
 			rgba(0, 0, 0, 0.8) 0%, 
 			rgba(0, 255, 255, 0.05) 50%,
 			rgba(0, 0, 0, 0.8) 100%);
-		border: 1px solid rgba(0, 255, 255, 0.3);
+		border: 2px solid #00ffff;
 		border-radius: 12px;
+		padding: 1.5rem 2rem;
 		margin-bottom: 1.5rem;
-		overflow: hidden;
+		backdrop-filter: blur(20px);
+		box-shadow: 0 0 30px rgba(0, 255, 255, 0.2);
 	}
 
-	.header-glow {
-		position: absolute;
-		top: 0;
-		left: 0;
-		width: 100%;
-		height: 100%;
-		background: linear-gradient(45deg, 
-			rgba(0, 255, 255, 0.1), 
-			rgba(255, 0, 255, 0.05),
-			rgba(0, 255, 255, 0.1));
-		animation: headerGlow 4s ease-in-out infinite;
-		pointer-events: none;
-	}
-
-	.header-content {
-		position: relative;
-		z-index: 2;
+	.header-hud {
 		display: flex;
 		justify-content: space-between;
 		align-items: center;
-		padding: 1.5rem 2rem;
 	}
 
-	.intel-title {
+	.hud-element {
 		display: flex;
 		align-items: center;
 		gap: 1rem;
 	}
 
-	.title-icon {
+	.hud-icon {
 		font-size: 2rem;
-		color: rgba(0, 255, 255, 0.9);
-		text-shadow: 0 0 20px rgba(0, 255, 255, 0.8);
+		color: #00ffff;
+		text-shadow: 0 0 20px #00ffff;
 		animation: iconPulse 3s ease-in-out infinite;
 	}
 
-	.title-text h2 {
-		margin: 0;
-		font-size: 1.4rem;
+	.hud-data {
+		display: flex;
+		flex-direction: column;
+		gap: 0.3rem;
+	}
+
+	.data-label {
+		font-size: 1.2rem;
 		font-weight: 700;
-		color: #ffffff;
+		color: #fff;
 		text-shadow: 0 0 15px rgba(0, 255, 255, 0.5);
 	}
 
-	.title-text p {
-		margin: 0.3rem 0 0 0;
+	.data-value {
 		font-size: 0.8rem;
 		color: rgba(255, 255, 255, 0.6);
-		font-weight: 300;
+		font-weight: 400;
 	}
 
-	.intel-metrics {
+	.metrics-display {
 		display: flex;
 		gap: 2rem;
 	}
 
-	.metric-node {
-		position: relative;
-		display: flex;
-		align-items: center;
-		gap: 1rem;
-		padding: 1rem 1.5rem;
-		background: linear-gradient(135deg, rgba(0, 0, 0, 0.6), rgba(0, 255, 255, 0.05));
-		border: 1px solid rgba(0, 255, 255, 0.2);
-		border-radius: 8px;
-		backdrop-filter: blur(10px);
-	}
-
 	.metric-ring {
-		width: 12px;
-		height: 12px;
-		border: 2px solid rgba(0, 255, 255, 0.8);
-		border-radius: 50%;
-		animation: ringPulse 2s ease-in-out infinite;
+		position: relative;
+		width: 80px;
+		height: 80px;
 	}
 
-	.metric-data {
-		display: flex;
-		flex-direction: column;
-		align-items: center;
+	.ring-content {
+		position: absolute;
+		top: 50%;
+		left: 50%;
+		transform: translate(-50%, -50%);
+		text-align: center;
 	}
 
-	.metric-value {
-		font-size: 1.2rem;
+	.ring-value {
+		font-size: 1rem;
 		font-weight: 700;
-		color: rgba(0, 255, 255, 0.9);
-		text-shadow: 0 0 10px rgba(0, 255, 255, 0.5);
+		color: #00ffff;
+		text-shadow: 0 0 10px #00ffff;
 	}
 
-	.metric-label {
+	.ring-label {
 		font-size: 0.6rem;
-		color: rgba(255, 255, 255, 0.5);
-		font-weight: 400;
-		letter-spacing: 0.05em;
+		color: rgba(255, 255, 255, 0.6);
+		margin-top: 0.2rem;
 	}
 
-	.control-panel {
+	.control-matrix {
 		display: flex;
 		justify-content: space-between;
 		align-items: center;
@@ -404,34 +407,35 @@
 		gap: 2rem;
 	}
 
-	.search-terminal {
-		position: relative;
+	.search-console {
 		flex: 1;
-		max-width: 400px;
+		max-width: 500px;
 	}
 
-	.terminal-input {
-		width: 100%;
+	.console-frame {
+		position: relative;
 		background: linear-gradient(135deg, rgba(0, 0, 0, 0.8), rgba(0, 255, 255, 0.05));
-		border: 1px solid rgba(0, 255, 255, 0.3);
-		border-radius: 6px;
-		padding: 0.8rem 1rem;
-		color: #ffffff;
-		font-family: 'JetBrains Mono', monospace;
+		border: 2px solid #00ffff;
+		border-radius: 8px;
+		overflow: hidden;
+	}
+
+	.console-input {
+		width: 100%;
+		background: transparent;
+		border: none;
+		padding: 1rem 1.5rem;
+		color: #fff;
+		font-family: inherit;
 		font-size: 0.9rem;
-		backdrop-filter: blur(10px);
-		transition: all 0.3s ease;
-	}
-
-	.terminal-input::placeholder {
-		color: rgba(255, 255, 255, 0.4);
-		letter-spacing: 0.05em;
-	}
-
-	.terminal-input:focus {
+		font-weight: 600;
 		outline: none;
-		border-color: rgba(0, 255, 255, 0.8);
-		box-shadow: 0 0 20px rgba(0, 255, 255, 0.2);
+		text-transform: uppercase;
+		letter-spacing: 0.1em;
+	}
+
+	.console-input::placeholder {
+		color: rgba(255, 255, 255, 0.4);
 		text-shadow: 0 0 8px rgba(0, 255, 255, 0.3);
 	}
 
@@ -441,180 +445,203 @@
 		left: -100%;
 		width: 100%;
 		height: 100%;
-		background: linear-gradient(90deg, transparent, rgba(0, 255, 255, 0.2), transparent);
+		background: linear-gradient(90deg, transparent, rgba(0, 255, 255, 0.3), transparent);
 		animation: scannerSweep 3s linear infinite;
-		border-radius: 6px;
 		pointer-events: none;
 	}
 
-	.view-controls {
+	.view-selector {
 		display: flex;
 		gap: 0.5rem;
 	}
 
-	.control-btn {
+	.selector-btn {
 		background: linear-gradient(135deg, rgba(0, 0, 0, 0.6), rgba(255, 255, 255, 0.02));
-		border: 1px solid rgba(255, 255, 255, 0.1);
+		border: 2px solid rgba(255, 255, 255, 0.1);
 		border-radius: 6px;
-		padding: 0.6rem 1.2rem;
+		padding: 0.8rem 1.5rem;
 		color: rgba(255, 255, 255, 0.7);
-		font-family: 'JetBrains Mono', monospace;
+		font-family: inherit;
 		font-size: 0.7rem;
-		font-weight: 500;
+		font-weight: 600;
 		cursor: pointer;
 		transition: all 0.3s ease;
-		letter-spacing: 0.02em;
+		text-transform: uppercase;
+		letter-spacing: 0.05em;
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
 	}
 
-	.control-btn:hover,
-	.control-btn.active {
-		border-color: rgba(0, 255, 255, 0.6);
-		color: rgba(0, 255, 255, 0.9);
-		box-shadow: 0 0 15px rgba(0, 255, 255, 0.2);
+	.selector-btn:hover,
+	.selector-btn.active {
+		border-color: #00ffff;
+		color: #00ffff;
+		box-shadow: 0 0 20px rgba(0, 255, 255, 0.3);
+		text-shadow: 0 0 8px #00ffff;
 	}
 
-	.loading-matrix {
+	.btn-icon {
+		font-size: 0.8rem;
+		animation: iconFloat 2s ease-in-out infinite;
+	}
+
+	.loading-interface {
+		flex: 1;
 		display: flex;
 		flex-direction: column;
 		align-items: center;
 		justify-content: center;
-		height: 300px;
 		gap: 2rem;
 	}
 
-	.matrix-loader {
+	.loading-rings {
 		position: relative;
-		width: 80px;
-		height: 80px;
+		width: 120px;
+		height: 120px;
 	}
 
-	.loader-grid {
-		display: grid;
-		grid-template-columns: repeat(4, 1fr);
-		grid-template-rows: repeat(4, 1fr);
-		gap: 2px;
-		width: 100%;
-		height: 100%;
-	}
-
-	.grid-cell {
-		background: rgba(0, 255, 255, 0.3);
-		animation: cellFlicker 1.5s ease-in-out infinite;
+	.loading-ring {
+		position: absolute;
+		width: var(--size);
+		height: var(--size);
+		border: 3px solid transparent;
+		border-top: 3px solid #00ffff;
+		border-radius: 50%;
+		top: 50%;
+		left: 50%;
+		transform: translate(-50%, -50%);
+		animation: ringSpin 2s linear infinite;
+		animation-delay: var(--delay);
 	}
 
 	.loading-text {
-		color: rgba(0, 255, 255, 0.8);
+		color: #00ffff;
 		font-size: 1rem;
-		font-weight: 500;
+		font-weight: 600;
 		letter-spacing: 0.1em;
 		animation: textGlow 2s ease-in-out infinite;
 	}
 
-	.data-table-container {
+	.data-matrix {
 		flex: 1;
-		overflow: auto;
 		background: linear-gradient(135deg, rgba(0, 0, 0, 0.6), rgba(0, 255, 255, 0.02));
-		border: 1px solid rgba(0, 255, 255, 0.2);
+		border: 2px solid #00ffff;
 		border-radius: 12px;
-		padding: 0;
+		overflow: hidden;
 	}
 
-	.cyber-table {
+	.matrix-grid {
 		width: 100%;
-		border-collapse: collapse;
-		font-family: 'JetBrains Mono', monospace;
+		display: flex;
+		flex-direction: column;
 	}
 
-	.table-header {
+	.grid-header {
+		display: grid;
+		grid-template-columns: 2fr 1fr 1fr 1fr 1fr;
 		background: linear-gradient(135deg, rgba(0, 0, 0, 0.9), rgba(0, 255, 255, 0.1));
-		border-bottom: 2px solid rgba(0, 255, 255, 0.3);
+		border-bottom: 2px solid #00ffff;
 	}
 
-	.table-header th {
+	.header-cell {
 		padding: 1rem 1.5rem;
-		text-align: left;
 		font-size: 0.8rem;
 		font-weight: 700;
-		color: rgba(0, 255, 255, 0.9);
-		text-transform: uppercase;
-		letter-spacing: 0.05em;
-		position: relative;
+		color: #00ffff;
+		text-shadow: 0 0 8px #00ffff;
+		border-right: 1px solid rgba(0, 255, 255, 0.2);
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
 	}
 
 	.sortable {
 		cursor: pointer;
-		user-select: none;
 		transition: all 0.2s ease;
 	}
 
 	.sortable:hover {
-		color: #ffffff;
-		text-shadow: 0 0 10px rgba(0, 255, 255, 0.6);
+		background: rgba(0, 255, 255, 0.05);
 	}
 
-	.sort-indicator {
-		margin-left: 0.5rem;
-		color: rgba(255, 0, 255, 0.8);
+	.sort-arrow {
+		color: #ff00ff;
+		text-shadow: 0 0 8px #ff00ff;
 	}
 
-	.source-row {
+	.grid-row {
+		display: grid;
+		grid-template-columns: 2fr 1fr 1fr 1fr 1fr;
 		border-bottom: 1px solid rgba(255, 255, 255, 0.05);
 		transition: all 0.3s ease;
-		position: relative;
+		animation: rowEntrance 0.5s ease-out;
+		animation-fill-mode: both;
+		opacity: 0;
 	}
 
-	.source-row:hover {
-		background: linear-gradient(135deg, rgba(0, 255, 255, 0.05), rgba(255, 0, 255, 0.02));
+	.grid-row:hover {
+		background: linear-gradient(90deg, 
+			rgba(0, 255, 255, 0.05), 
+			rgba(255, 0, 255, 0.02), 
+			transparent);
 		box-shadow: inset 3px 0 0 var(--threat-color);
 	}
 
-	.source-row td {
+	.data-cell {
 		padding: 1rem 1.5rem;
-		font-size: 0.85rem;
+		font-size: 0.8rem;
 		color: rgba(255, 255, 255, 0.8);
-		vertical-align: middle;
-	}
-
-	.source-name {
-		font-weight: 600;
-		color: #ffffff;
-	}
-
-	.name-container {
+		border-right: 1px solid rgba(255, 255, 255, 0.05);
 		display: flex;
 		align-items: center;
-		gap: 0.8rem;
 	}
 
-	.name-indicator {
-		width: 6px;
-		height: 6px;
-		background: var(--threat-color);
+	.source-cell {
+		font-weight: 600;
+		color: #fff;
+		display: flex;
+		align-items: center;
+		gap: 1rem;
+	}
+
+	.source-indicator {
+		width: 8px;
+		height: 8px;
 		border-radius: 50%;
+		box-shadow: 0 0 10px currentColor;
 		animation: indicatorPulse 2s ease-in-out infinite;
+	}
+
+	.frequency-cell {
+		justify-content: center;
 	}
 
 	.frequency-value {
 		font-weight: 700;
-		color: rgba(0, 255, 255, 0.9);
-		text-shadow: 0 0 8px rgba(0, 255, 255, 0.3);
+		color: #00ffff;
+		text-shadow: 0 0 8px #00ffff;
+	}
+
+	.coverage-cell {
+		justify-content: center;
 	}
 
 	.coverage-bar {
 		position: relative;
 		width: 100px;
 		height: 20px;
-		background: rgba(0, 0, 0, 0.4);
+		background: rgba(0, 0, 0, 0.5);
 		border-radius: 10px;
-		overflow: hidden;
 		border: 1px solid rgba(255, 255, 255, 0.1);
+		overflow: hidden;
 	}
 
 	.coverage-fill {
 		height: 100%;
 		border-radius: 10px;
 		transition: width 1s ease-out;
-		box-shadow: 0 0 10px currentColor;
+		box-shadow: 0 0 15px currentColor;
 	}
 
 	.coverage-text {
@@ -624,100 +651,124 @@
 		transform: translate(-50%, -50%);
 		font-size: 0.7rem;
 		font-weight: 600;
-		color: #ffffff;
+		color: #fff;
 		text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.8);
 	}
 
+	.threat-cell {
+		justify-content: center;
+	}
+
 	.threat-badge {
-		padding: 0.3rem 0.8rem;
+		padding: 0.4rem 0.8rem;
+		border: 2px solid;
 		border-radius: 4px;
-		font-size: 0.7rem;
+		font-size: 0.6rem;
 		font-weight: 700;
 		text-transform: uppercase;
 		letter-spacing: 0.05em;
-		border: 1px solid var(--threat-color);
 		background: rgba(0, 0, 0, 0.4);
-		color: var(--threat-color);
-		text-shadow: 0 0 8px var(--threat-color);
+		text-shadow: 0 0 8px currentColor;
+		animation: badgeGlow 3s ease-in-out infinite;
 	}
 
-	.drill-btn {
+	.action-cell {
+		justify-content: center;
+	}
+
+	.drill-button {
 		background: linear-gradient(135deg, rgba(0, 255, 255, 0.1), rgba(0, 255, 255, 0.05));
-		border: 1px solid rgba(0, 255, 255, 0.3);
+		border: 2px solid #00ffff;
 		border-radius: 6px;
-		padding: 0.5rem 1rem;
-		color: rgba(0, 255, 255, 0.9);
-		font-family: 'JetBrains Mono', monospace;
+		padding: 0.6rem 1rem;
+		color: #00ffff;
+		font-family: inherit;
 		font-size: 0.7rem;
 		font-weight: 600;
 		cursor: pointer;
 		transition: all 0.3s ease;
+		text-transform: uppercase;
 		display: flex;
 		align-items: center;
-		gap: 0.4rem;
+		gap: 0.5rem;
+		letter-spacing: 0.05em;
 	}
 
-	.drill-btn:hover {
+	.drill-button:hover {
 		background: linear-gradient(135deg, rgba(0, 255, 255, 0.2), rgba(0, 255, 255, 0.1));
-		box-shadow: 0 0 15px rgba(0, 255, 255, 0.3);
-		transform: translateY(-1px);
+		box-shadow: 0 0 20px rgba(0, 255, 255, 0.4);
+		transform: translateY(-2px);
+		text-shadow: 0 0 8px #00ffff;
 	}
 
-	.btn-icon {
+	.drill-icon {
 		font-size: 0.8rem;
 		animation: iconSpark 2s ease-in-out infinite;
 	}
 
-	.drill-down-view {
+	.drill-interface {
 		flex: 1;
 		display: flex;
 		flex-direction: column;
 		background: linear-gradient(135deg, rgba(0, 0, 0, 0.8), rgba(255, 0, 255, 0.02));
-		border: 1px solid rgba(255, 0, 255, 0.2);
+		border: 2px solid #ff00ff;
 		border-radius: 12px;
 		overflow: hidden;
 	}
 
 	.drill-header {
 		background: linear-gradient(135deg, rgba(0, 0, 0, 0.9), rgba(255, 0, 255, 0.05));
-		border-bottom: 1px solid rgba(255, 0, 255, 0.3);
+		border-bottom: 2px solid #ff00ff;
 		padding: 1.5rem 2rem;
 		display: flex;
 		justify-content: space-between;
 		align-items: center;
 	}
 
-	.selected-source {
+	.target-display {
 		display: flex;
 		align-items: center;
-		gap: 1rem;
+		gap: 1.5rem;
 	}
 
-	.source-badge {
-		padding: 0.5rem 1rem;
-		border: 2px solid var(--badge-color);
-		border-radius: 6px;
+	.target-badge {
+		position: relative;
+		padding: 1rem;
+		border: 2px solid var(--threat-color);
+		border-radius: 8px;
 		background: rgba(0, 0, 0, 0.6);
 		text-align: center;
 	}
 
-	.badge-level {
-		font-size: 0.7rem;
-		font-weight: 700;
-		color: var(--badge-color);
-		text-transform: uppercase;
-		letter-spacing: 0.05em;
-		text-shadow: 0 0 10px var(--badge-color);
+	.badge-ring {
+		position: absolute;
+		top: -2px;
+		left: -2px;
+		right: -2px;
+		bottom: -2px;
+		border: 1px solid var(--threat-color);
+		border-radius: 8px;
+		animation: ringRotate 4s linear infinite;
+		opacity: 0.5;
 	}
 
-	.source-info h3 {
+	.threat-level {
+		font-size: 0.8rem;
+		font-weight: 700;
+		color: var(--threat-color);
+		text-shadow: 0 0 10px var(--threat-color);
+		z-index: 2;
+		position: relative;
+	}
+
+	.target-info h3 {
 		margin: 0;
-		font-size: 1.2rem;
-		color: #ffffff;
+		font-size: 1.3rem;
+		color: #fff;
 		text-shadow: 0 0 15px rgba(255, 255, 255, 0.3);
 	}
 
-	.source-stats {
+	.target-stats {
 		display: flex;
 		gap: 1.5rem;
 		margin-top: 0.5rem;
@@ -725,15 +776,20 @@
 		color: rgba(255, 255, 255, 0.6);
 	}
 
-	.close-btn {
+	.stat {
+		color: #ff00ff;
+		font-weight: 600;
+		text-shadow: 0 0 8px #ff00ff;
+	}
+
+	.close-terminal {
 		background: linear-gradient(135deg, rgba(255, 0, 102, 0.2), rgba(255, 0, 102, 0.1));
-		border: 1px solid rgba(255, 0, 102, 0.5);
+		border: 2px solid #ff0066;
 		border-radius: 50%;
-		width: 40px;
-		height: 40px;
-		color: rgba(255, 0, 102, 0.9);
-		font-family: 'JetBrains Mono', monospace;
-		font-size: 1.2rem;
+		width: 50px;
+		height: 50px;
+		color: #ff0066;
+		font-size: 1.5rem;
 		cursor: pointer;
 		transition: all 0.3s ease;
 		display: flex;
@@ -741,90 +797,92 @@
 		justify-content: center;
 	}
 
-	.close-btn:hover {
+	.close-terminal:hover {
 		background: linear-gradient(135deg, rgba(255, 0, 102, 0.3), rgba(255, 0, 102, 0.2));
-		box-shadow: 0 0 20px rgba(255, 0, 102, 0.4);
+		box-shadow: 0 0 25px rgba(255, 0, 102, 0.5);
 		transform: rotate(90deg);
 	}
 
-	.loading-hosts {
+	.close-icon {
+		text-shadow: 0 0 10px #ff0066;
+	}
+
+	.scanning-hosts {
+		flex: 1;
 		display: flex;
 		flex-direction: column;
 		align-items: center;
 		justify-content: center;
-		height: 200px;
-		gap: 1rem;
-		color: rgba(255, 0, 255, 0.8);
+		gap: 2rem;
+		color: #ff00ff;
 	}
 
-	.host-scanner {
-		width: 40px;
-		height: 40px;
-		border: 3px solid rgba(255, 0, 255, 0.2);
-		border-top: 3px solid rgba(255, 0, 255, 0.8);
-		border-radius: 50%;
-		animation: scan 1s linear infinite;
+	.scan-grid {
+		display: grid;
+		grid-template-columns: repeat(3, 1fr);
+		gap: 0.5rem;
+		width: 120px;
+		height: 120px;
 	}
 
-	.host-table-container {
+	.scan-cell {
+		background: #ff00ff;
+		border-radius: 2px;
+		animation: cellFlicker 1.5s ease-in-out infinite;
+		opacity: 0.3;
+	}
+
+	.host-matrix {
 		flex: 1;
-		overflow: auto;
 		padding: 1rem;
+		overflow-y: auto;
 	}
 
-	.host-table .table-header {
+	.host-matrix .grid-header {
+		grid-template-columns: 2fr 1fr 1fr 1.5fr 1fr 1fr 1.5fr;
 		background: linear-gradient(135deg, rgba(0, 0, 0, 0.9), rgba(255, 0, 255, 0.1));
-		border-bottom: 2px solid rgba(255, 0, 255, 0.3);
+		border-bottom: 2px solid #ff00ff;
 	}
 
-	.host-table .table-header th {
-		color: rgba(255, 0, 255, 0.9);
+	.host-matrix .header-cell {
+		color: #ff00ff;
+		text-shadow: 0 0 8px #ff00ff;
 	}
 
-	.host-row {
-		border-bottom: 1px solid rgba(255, 255, 255, 0.05);
-		transition: all 0.2s ease;
+	.host-matrix .grid-row {
+		grid-template-columns: 2fr 1fr 1fr 1.5fr 1fr 1fr 1.5fr;
 	}
 
-	.host-row:hover {
-		background: linear-gradient(135deg, rgba(255, 0, 255, 0.05), rgba(0, 255, 255, 0.02));
-	}
-
-	.host-row td {
-		padding: 0.8rem 1.5rem;
-		font-size: 0.8rem;
-		color: rgba(255, 255, 255, 0.7);
-	}
-
-	.host-name {
-		color: #ffffff;
+	.host-cell {
+		color: #fff;
 		font-weight: 600;
 	}
 
-	.status-indicator {
-		padding: 0.2rem 0.6rem;
+	.status-chip {
+		padding: 0.3rem 0.8rem;
 		border-radius: 4px;
 		font-size: 0.6rem;
 		font-weight: 600;
 		text-transform: uppercase;
-		letter-spacing: 0.02em;
+		letter-spacing: 0.05em;
+		border: 1px solid;
 	}
 
-	.status-indicator.active {
+	.status-chip.active {
 		background: rgba(0, 255, 133, 0.1);
 		color: #00ff85;
-		border: 1px solid #00ff85;
+		border-color: #00ff85;
 		text-shadow: 0 0 8px #00ff85;
 	}
 
-	.status-indicator.inactive {
+	.status-chip.inactive {
 		background: rgba(255, 0, 102, 0.1);
 		color: #ff0066;
-		border: 1px solid #ff0066;
+		border-color: #ff0066;
 		text-shadow: 0 0 8px #ff0066;
 	}
 
-	.matrix-footer {
+	.interface-footer {
 		display: flex;
 		justify-content: space-between;
 		align-items: center;
@@ -841,30 +899,15 @@
 	}
 
 	.neural-signature {
-		color: rgba(0, 255, 255, 0.7);
+		color: #00ffff;
 		font-weight: 600;
 		letter-spacing: 0.05em;
-	}
-
-	@keyframes headerGlow {
-		0%, 100% { opacity: 0.3; }
-		50% { opacity: 0.6; }
+		text-shadow: 0 0 8px #00ffff;
 	}
 
 	@keyframes iconPulse {
-		0%, 100% { transform: scale(1); }
-		50% { transform: scale(1.1); }
-	}
-
-	@keyframes ringPulse {
-		0%, 100% { 
-			border-color: rgba(0, 255, 255, 0.8); 
-			box-shadow: 0 0 10px rgba(0, 255, 255, 0.3);
-		}
-		50% { 
-			border-color: rgba(0, 255, 255, 1); 
-			box-shadow: 0 0 20px rgba(0, 255, 255, 0.6);
-		}
+		0%, 100% { transform: scale(1); text-shadow: 0 0 20px #00ffff; }
+		50% { transform: scale(1.05); text-shadow: 0 0 30px #00ffff; }
 	}
 
 	@keyframes scannerSweep {
@@ -872,14 +915,30 @@
 		100% { left: 100%; }
 	}
 
-	@keyframes cellFlicker {
-		0%, 100% { opacity: 0.3; background: rgba(0, 255, 255, 0.3); }
-		50% { opacity: 1; background: rgba(0, 255, 255, 0.8); }
+	@keyframes iconFloat {
+		0%, 100% { transform: translateY(0px); }
+		50% { transform: translateY(-2px); }
+	}
+
+	@keyframes ringSpin {
+		0% { transform: translate(-50%, -50%) rotate(0deg); }
+		100% { transform: translate(-50%, -50%) rotate(360deg); }
 	}
 
 	@keyframes textGlow {
-		0%, 100% { text-shadow: 0 0 10px rgba(0, 255, 255, 0.5); }
-		50% { text-shadow: 0 0 20px rgba(0, 255, 255, 0.8); }
+		0%, 100% { text-shadow: 0 0 10px #00ffff; }
+		50% { text-shadow: 0 0 20px #00ffff; }
+	}
+
+	@keyframes rowEntrance {
+		0% { 
+			opacity: 0; 
+			transform: translateX(-20px);
+		}
+		100% { 
+			opacity: 1; 
+			transform: translateX(0);
+		}
 	}
 
 	@keyframes indicatorPulse {
@@ -887,42 +946,69 @@
 		50% { opacity: 0.6; transform: scale(1.2); }
 	}
 
-	@keyframes iconSpark {
-		0%, 100% { text-shadow: 0 0 5px rgba(0, 255, 255, 0.5); }
-		50% { text-shadow: 0 0 15px rgba(0, 255, 255, 0.8); }
+	@keyframes badgeGlow {
+		0%, 100% { box-shadow: 0 0 8px currentColor; }
+		50% { box-shadow: 0 0 16px currentColor; }
 	}
 
-	@keyframes scan {
+	@keyframes iconSpark {
+		0%, 100% { text-shadow: 0 0 5px currentColor; }
+		50% { text-shadow: 0 0 15px currentColor; }
+	}
+
+	@keyframes ringRotate {
 		0% { transform: rotate(0deg); }
 		100% { transform: rotate(360deg); }
 	}
 
+	@keyframes cellFlicker {
+		0%, 100% { opacity: 0.3; background: #ff00ff; }
+		50% { opacity: 1; background: #fff; }
+	}
+
 	@media (max-width: 1200px) {
-		.header-content {
+		.header-hud {
 			flex-direction: column;
 			gap: 1rem;
 		}
 
-		.control-panel {
+		.control-matrix {
 			flex-direction: column;
 			gap: 1rem;
+		}
+
+		.matrix-grid .grid-header,
+		.matrix-grid .grid-row {
+			grid-template-columns: 1fr;
+			gap: 0.5rem;
+		}
+
+		.data-cell {
+			justify-content: space-between;
+		}
+
+		.data-cell::before {
+			content: attr(data-label);
+			font-weight: 600;
+			color: #00ffff;
 		}
 	}
 
 	@media (max-width: 768px) {
-		.cyber-table {
-			font-size: 0.7rem;
-		}
-
-		.cyber-table th,
-		.cyber-table td {
-			padding: 0.6rem 0.8rem;
+		.matrix-header {
+			padding: 1rem;
 		}
 
 		.drill-header {
 			flex-direction: column;
 			gap: 1rem;
 			align-items: flex-start;
+		}
+
+		.target-display {
+			flex-direction: column;
+			align-items: flex-start;
+			gap: 1rem;
 		}
 	}
 </style>
