@@ -5,80 +5,50 @@
   let data = null;
   let loading = true;
   let error = null;
-  let selectedAgent = null;
-  let selectedOverlap = null;
-  let viewMode = 'overview';
-  let threatSimulation = [];
-  let attackVectors = [];
+  let selectedInfrastructure = null;
+  let viewMode = 'effectiveness';
 
   async function fetchData() {
     try {
       const response = await fetch('http://localhost:5000/api/security-control-coverage');
-      if (!response.ok) throw new Error('DEFENSE GRID COMPROMISED');
+      if (!response.ok) throw new Error('Defense grid compromised');
       data = await response.json();
       loading = false;
-      initializeThreatSim();
     } catch (err) {
       error = err.message;
       loading = false;
     }
   }
 
-  function initializeThreatSim() {
-    const threats = ['MALWARE', 'APT', 'INSIDER', 'PHISHING', 'RANSOMWARE', 'DDoS'];
-    const vectors = ['EMAIL', 'WEB', 'USB', 'NETWORK', 'SOCIAL', 'SUPPLY_CHAIN'];
-    
-    setInterval(() => {
-      threatSimulation = [...threatSimulation.slice(-9), {
-        id: Date.now(),
-        type: threats[Math.floor(Math.random() * threats.length)],
-        severity: Math.floor(Math.random() * 5) + 1,
-        blocked: Math.random() > 0.3,
-        timestamp: new Date().toLocaleTimeString()
-      }];
-      
-      if (Math.random() > 0.7) {
-        attackVectors = [...attackVectors.slice(-4), {
-          vector: vectors[Math.floor(Math.random() * vectors.length)],
-          attempts: Math.floor(Math.random() * 100),
-          blocked: Math.floor(Math.random() * 80)
-        }];
-      }
-    }, 3000);
-  }
-
   onMount(fetchData);
 
-  function getThreatLevel(percentage) {
-    if (percentage >= 95) return { color: 'var(--matrix-primary)', status: 'FORTRESS', level: 'MAXIMUM' };
-    if (percentage >= 85) return { color: 'var(--neural-cyan)', status: 'PROTECTED', level: 'HIGH' };
-    if (percentage >= 70) return { color: 'var(--toxic-yellow)', status: 'DEFENDED', level: 'MEDIUM' };
-    if (percentage >= 50) return { color: 'var(--plasma-magenta)', status: 'VULNERABLE', level: 'LOW' };
-    return { color: 'var(--danger-crimson)', status: 'EXPOSED', level: 'CRITICAL' };
+  function getThreatColor(score) {
+    if (score >= 90) return 'var(--matrix-primary)';
+    if (score >= 75) return 'var(--neural-cyan)';
+    if (score >= 50) return 'var(--toxic-yellow)';
+    if (score >= 25) return 'var(--plasma-magenta)';
+    return 'var(--danger-crimson)';
   }
 
-  function formatNumber(num) {
+  function formatAssets(num) {
     if (num >= 1000000) return (num / 1000000).toFixed(1) + 'M';
     if (num >= 1000) return (num / 1000).toFixed(1) + 'K';
     return num.toString();
   }
 
-  function getAgentDeploymentData() {
-    if (!data?.agent_deployment) return [];
-    return Object.entries(data.agent_deployment)
-      .map(([agent, stats]) => ({
-        agent: agent.replace(/_/g, ' ').toUpperCase(),
-        ...stats,
-        threat: getThreatLevel(stats.coverage_score)
-      }))
-      .sort((a, b) => b.total - a.total);
+  function getSecurityStackData() {
+    if (!data?.security_stack_tiers) return [];
+    return data.security_stack_tiers.sort((a, b) => b.asset_count - a.asset_count);
   }
 
-  function getSecurityGaps() {
-    if (!data?.security_gaps) return [];
-    return data.security_gaps
-      .filter(gap => gap.risk_level === 'high')
-      .slice(0, 10);
+  function getGeographicSecurityMap() {
+    if (!data?.geographic_security_map) return [];
+    return data.geographic_security_map.slice(0, 20);
+  }
+
+  function getThreatSurfaceData() {
+    if (!data?.threat_surface) return [];
+    return data.threat_surface.sort((a, b) => b.external_exposure - a.external_exposure);
   }
 </script>
 
@@ -88,243 +58,241 @@
     <div class="quantum-ring"></div>
     <div class="quantum-ring"></div>
   </div>
-  <div style="text-align: center; margin-top: 30px; color: var(--matrix-primary); font-size: 18px; letter-spacing: 3px; animation: blink-cursor 1s infinite;">
-    INITIALIZING DEFENSE MATRIX...
-  </div>
 {:else if error}
   <div class="dystopia-modal active">
-    <h2 style="color: var(--danger-crimson); font-size: 20px; letter-spacing: 2px; margin-bottom: 20px;">
-      DEFENSE GRID FAILURE
-    </h2>
-    <p style="color: var(--text-muted); margin-bottom: 20px;">{error}</p>
-    <button class="quantum-btn danger" on:click={fetchData}>
-      RESTORE DEFENSES
-    </button>
+    <h2 style="color: var(--danger-crimson);">DEFENSE BREACH</h2>
+    <p>{error}</p>
+    <button class="quantum-btn danger" on:click={fetchData}>RESTORE DEFENSES</button>
   </div>
 {:else if data}
-
-  <!-- Command Center Header -->
-  <div class="glitch-field" style="margin-bottom: 30px;">
-    <div class="glitch-text" data-text="CYBERSECURITY DEFENSE MATRIX" style="font-size: 22px; font-weight: bold; letter-spacing: 4px; margin-bottom: 15px;">
-      CYBERSECURITY DEFENSE MATRIX
-    </div>
-    <div style="display: flex; gap: 15px;">
-      <button class="quantum-btn {viewMode === 'overview' ? 'active' : ''}" on:click={() => viewMode = 'overview'}>
-        OVERVIEW
+  <!-- Security Control Effectiveness -->
+  <div style="margin-bottom: 20px;">
+    <div style="display: flex; gap: 10px; margin-bottom: 20px;">
+      <button class="quantum-btn {viewMode === 'effectiveness' ? 'active' : ''}" on:click={() => viewMode = 'effectiveness'}>
+        CONTROL EFFECTIVENESS
       </button>
-      <button class="quantum-btn {viewMode === 'agents' ? 'active' : ''}" on:click={() => viewMode = 'agents'}>
-        AGENT DEPLOYMENT
+      <button class="quantum-btn {viewMode === 'geographic' ? 'active' : ''}" on:click={() => viewMode = 'geographic'}>
+        GEOGRAPHIC SECURITY
       </button>
-      <button class="quantum-btn {viewMode === 'threats' ? 'active' : ''}" on:click={() => viewMode = 'threats'}>
-        THREAT SIMULATION
+      <button class="quantum-btn {viewMode === 'threat_surface' ? 'active' : ''}" on:click={() => viewMode = 'threat_surface'}>
+        THREAT SURFACE
       </button>
-      <button class="quantum-btn {viewMode === 'gaps' ? 'active' : ''}" on:click={() => viewMode = 'gaps'}>
-        SECURITY GAPS
+      <button class="quantum-btn {viewMode === 'stack_analysis' ? 'active' : ''}" on:click={() => viewMode = 'stack_analysis'}>
+        SECURITY STACK
       </button>
     </div>
   </div>
 
-  {#if viewMode === 'overview'}
-    <!-- Executive Security Dashboard -->
-    <div style="display: grid; grid-template-columns: repeat(5, 1fr); gap: 20px; margin-bottom: 30px;">
-      {#each [
-        ['OVERALL SECURITY', data.control_matrix.coverage_score, 'COMPOSITE'],
-        ['EDR COVERAGE', data.control_matrix.crowdstrike.percentage, 'ENDPOINT'],
-        ['TANIUM AGENTS', data.control_matrix.tanium.percentage, 'SYSTEM'],
-        ['DLP PROTECTION', data.control_matrix.dlp.percentage, 'DATA'],
-        ['APM MONITORING', data.control_matrix.apm.percentage, 'APPLICATION']
-      ] as [label, value, type]}
-        {@const threat = getThreatLevel(value)}
-        <div class="holo-card-3d" style="padding: 20px; text-align: center; border-color: {threat.color};">
-          <div style="font-size: 32px; color: {threat.color}; font-weight: bold; margin-bottom: 10px;">
-            {value}%
+  {#if viewMode === 'effectiveness'}
+    <!-- Security Control Effectiveness by Infrastructure Type -->
+    <div class="holo-card-3d" style="padding: 25px; margin-bottom: 20px;">
+      <h3 style="color: var(--matrix-primary); font-size: 16px; letter-spacing: 2px; margin-bottom: 20px;">
+        SECURITY CONTROL EFFECTIVENESS BY INFRASTRUCTURE
+      </h3>
+      
+      <div style="max-height: 500px; overflow-y: auto;">
+        {#each data.control_effectiveness as control}
+          <div 
+            style="background: linear-gradient(90deg, rgba(0,0,0,0.8), {getThreatColor(control.security_score)}10); border-left: 4px solid {getThreatColor(control.security_score)}; padding: 15px; margin-bottom: 8px; cursor: pointer;"
+            class="neural-link"
+            on:click={() => selectedInfrastructure = selectedInfrastructure === control.infrastructure ? null : control.infrastructure}
+          >
+            <div style="display: grid; grid-template-columns: 2fr 1fr 1fr 1fr 1fr 1fr; gap: 15px; align-items: center;">
+              <div>
+                <div style="color: var(--neural-cyan); font-size: 13px; font-weight: bold;">{control.infrastructure}</div>
+                <div style="color: var(--text-muted); font-size: 10px;">{formatAssets(control.total_assets)} assets</div>
+              </div>
+              <div style="text-align: center;">
+                <div style="color: {getThreatColor(control.edr_coverage)}; font-size: 13px; font-weight: bold;">{control.edr_coverage}%</div>
+                <div style="color: var(--text-muted); font-size: 9px;">EDR</div>
+              </div>
+              <div style="text-align: center;">
+                <div style="color: {getThreatColor(control.tanium_coverage)}; font-size: 13px; font-weight: bold;">{control.tanium_coverage}%</div>
+                <div style="color: var(--text-muted); font-size: 9px;">TANIUM</div>
+              </div>
+              <div style="text-align: center;">
+                <div style="color: {getThreatColor(control.dlp_coverage)}; font-size: 13px; font-weight: bold;">{control.dlp_coverage}%</div>
+                <div style="color: var(--text-muted); font-size: 9px;">DLP</div>
+              </div>
+              <div style="text-align: center;">
+                <div style="color: {getThreatColor(control.logging_coverage)}; font-size: 13px; font-weight: bold;">{control.logging_coverage}%</div>
+                <div style="color: var(--text-muted); font-size: 9px;">LOGS</div>
+              </div>
+              <div style="text-align: center;">
+                <div style="color: {getThreatColor(control.security_score)}; font-size: 15px; font-weight: bold;">{control.security_score}%</div>
+                <div style="color: var(--text-muted); font-size: 9px;">COMPOSITE</div>
+              </div>
+            </div>
           </div>
-          <div style="color: var(--neural-cyan); font-size: 12px; letter-spacing: 2px; margin-bottom: 8px;">
-            {label}
-          </div>
-          <div style="color: {threat.color}; font-size: 10px; letter-spacing: 1px; margin-bottom: 10px;">
-            {threat.status}
-          </div>
-          <div style="color: var(--text-muted); font-size: 9px;">
-            {type} LAYER
-          </div>
-          <div class="data-viz-container" style="margin-top: 12px; height: 30px;">
-            <div class="data-wave" style="background: linear-gradient(0deg, {threat.color}30, transparent);"></div>
-          </div>
-        </div>
-      {/each}
+        {/each}
+      </div>
     </div>
 
-    <!-- Coverage Overlap Analysis -->
-    <div style="display: grid; grid-template-columns: 2fr 1fr; gap: 20px; margin-bottom: 30px;">
+  {:else if viewMode === 'geographic'}
+    <!-- Geographic Security Coverage Map -->
+    <div class="holo-card-3d" style="padding: 25px; margin-bottom: 20px;">
+      <h3 style="color: var(--matrix-primary); font-size: 16px; letter-spacing: 2px; margin-bottom: 20px;">
+        GLOBAL SECURITY COVERAGE MAP
+      </h3>
+      
+      <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 15px;">
+        {#each getGeographicSecurityMap() as location}
+          <div style="background: linear-gradient(135deg, rgba(0,0,0,0.8), {getThreatColor(location.composite_security_score)}15); border: 1px solid {getThreatColor(location.composite_security_score)}; padding: 15px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+              <div>
+                <div style="color: var(--neural-cyan); font-size: 12px; font-weight: bold;">{location.country}</div>
+                <div style="color: var(--text-muted); font-size: 10px;">{location.region}</div>
+              </div>
+              <div style="text-align: right;">
+                <div style="color: {getThreatColor(location.composite_security_score)}; font-size: 16px; font-weight: bold;">
+                  {location.composite_security_score}%
+                </div>
+                <div style="color: var(--text-muted); font-size: 9px;">security score</div>
+              </div>
+            </div>
+            
+            <div style="margin-bottom: 10px;">
+              <div style="color: var(--text-muted); font-size: 10px; margin-bottom: 6px;">
+                {formatAssets(location.asset_count)} assets • {location.infrastructure_diversity} infra types
+              </div>
+            </div>
+            
+            <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; font-size: 9px;">
+              <div style="text-align: center;">
+                <div style="color: {getThreatColor(location.edr_coverage)}; font-weight: bold;">{location.edr_coverage}%</div>
+                <div style="color: var(--text-muted);">EDR</div>
+              </div>
+              <div style="text-align: center;">
+                <div style="color: {getThreatColor(location.tanium_coverage)}; font-weight: bold;">{location.tanium_coverage}%</div>
+                <div style="color: var(--text-muted);">TANIUM</div>
+              </div>
+              <div style="text-align: center;">
+                <div style="color: {getThreatColor(location.logging_coverage)}; font-weight: bold;">{location.logging_coverage}%</div>
+                <div style="color: var(--text-muted);">LOGS</div>
+              </div>
+            </div>
+          </div>
+        {/each}
+      </div>
+    </div>
+
+  {:else if viewMode === 'threat_surface'}
+    <!-- Threat Surface Analysis -->
+    <div class="holo-card-3d" style="padding: 25px; margin-bottom: 20px;">
+      <h3 style="color: var(--danger-crimson); font-size: 16px; letter-spacing: 2px; margin-bottom: 20px;">
+        EXTERNAL THREAT SURFACE ANALYSIS
+      </h3>
+      
+      <div style="display: grid; gap: 10px; max-height: 500px; overflow-y: auto;">
+        {#each getThreatSurfaceData() as surface}
+          <div style="background: {surface.threat_level === 'critical' ? 'rgba(255, 7, 58, 0.1)' : surface.threat_level === 'medium' ? 'rgba(255, 44, 196, 0.1)' : 'rgba(0, 255, 65, 0.1)'}; border-left: 4px solid {surface.threat_level === 'critical' ? 'var(--danger-crimson)' : surface.threat_level === 'medium' ? 'var(--plasma-magenta)' : 'var(--matrix-primary)'}; padding: 15px;">
+            <div style="display: grid; grid-template-columns: 2fr 1fr 1fr 1fr 1fr; gap: 15px; align-items: center;">
+              <div>
+                <div style="color: var(--neural-cyan); font-size: 13px; font-weight: bold; margin-bottom: 4px;">
+                  {surface.system_type}
+                </div>
+                <div style="color: var(--text-muted); font-size: 10px;">
+                  {formatAssets(surface.total_systems)} systems
+                </div>
+              </div>
+              
+              <div style="text-align: center;">
+                <div style="color: {surface.external_exposure > 0 ? 'var(--danger-crimson)' : 'var(--matrix-primary)'}; font-size: 14px; font-weight: bold;">
+                  {surface.external_exposure}
+                </div>
+                <div style="color: var(--text-muted); font-size: 9px;">external</div>
+              </div>
+              
+              <div style="text-align: center;">
+                <div style="color: {getThreatColor(surface.exposure_ratio)}; font-size: 14px; font-weight: bold;">
+                  {surface.exposure_ratio}%
+                </div>
+                <div style="color: var(--text-muted); font-size: 9px;">exposure</div>
+              </div>
+              
+              <div style="text-align: center;">
+                <div style="color: {getThreatColor(surface.edr_protection)}; font-size: 14px; font-weight: bold;">
+                  {surface.edr_protection}%
+                </div>
+                <div style="color: var(--text-muted); font-size: 9px;">protected</div>
+              </div>
+              
+              <div style="text-align: center;">
+                <div style="color: {surface.threat_level === 'critical' ? 'var(--danger-crimson)' : surface.threat_level === 'medium' ? 'var(--plasma-magenta)' : 'var(--matrix-primary)'}; font-size: 11px; font-weight: bold; letter-spacing: 1px;">
+                  {surface.threat_level.toUpperCase()}
+                </div>
+              </div>
+            </div>
+          </div>
+        {/each}
+      </div>
+    </div>
+
+  {:else if viewMode === 'stack_analysis'}
+    <!-- Security Stack Tier Analysis -->
+    <div style="display: grid; grid-template-columns: 2fr 1fr; gap: 20px;">
       <div class="holo-card-3d" style="padding: 25px;">
         <h3 style="color: var(--matrix-primary); font-size: 16px; letter-spacing: 2px; margin-bottom: 20px;">
-          DEFENSE LAYER OVERLAPS
+          SECURITY STACK DISTRIBUTION
+        </h3>
+        
+        <div style="display: grid; gap: 15px;">
+          {#each getSecurityStackData() as tier}
+            {@const tierColor = tier.tier === 'full_stack' ? 'var(--matrix-primary)' : tier.tier === 'core_security' ? 'var(--neural-cyan)' : tier.tier === 'basic_security' ? 'var(--toxic-yellow)' : tier.tier === 'logging_only' ? 'var(--plasma-magenta)' : 'var(--danger-crimson)'}
+            <div style="background: linear-gradient(90deg, rgba(0,0,0,0.8), {tierColor}15); border-left: 4px solid {tierColor}; padding: 20px;">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                <h4 style="color: {tierColor}; font-size: 14px; font-weight: bold; letter-spacing: 1px;">
+                  {tier.tier.replace(/_/g, ' ').toUpperCase()}
+                </h4>
+                <div style="color: {tierColor}; font-size: 18px; font-weight: bold;">
+                  {tier.tier_percentage}%
+                </div>
+              </div>
+              
+              <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px;">
+                <div>
+                  <div style="color: var(--neural-cyan); font-size: 16px; font-weight: bold;">{formatAssets(tier.asset_count)}</div>
+                  <div style="color: var(--text-muted); font-size: 10px;">assets in tier</div>
+                </div>
+                <div>
+                  <div style="color: {getThreatColor(tier.data_quality)}; font-size: 16px; font-weight: bold;">{tier.data_quality}%</div>
+                  <div style="color: var(--text-muted); font-size: 10px;">data quality</div>
+                </div>
+              </div>
+              
+              <div style="background: rgba(0,0,0,0.6); height: 6px; border-radius: 3px; overflow: hidden;">
+                <div style="background: {tierColor}; height: 100%; width: {tier.tier_percentage}%; transition: all 0.8s; box-shadow: 0 0 10px {tierColor};"></div>
+              </div>
+            </div>
+          {/each}
+        </div>
+      </div>
+
+      <!-- Security Metrics Breakdown -->
+      <div class="holo-card-3d" style="padding: 25px;">
+        <h3 style="color: var(--neural-cyan); font-size: 16px; letter-spacing: 2px; margin-bottom: 20px;">
+          CONTROL METRICS
         </h3>
         
         <div style="display: grid; gap: 15px;">
           {#each [
-            ['FULL STACK PROTECTION', data.coverage_overlaps.full_stack, 'ALL CONTROLS'],
-            ['TRIPLE COVERAGE', data.coverage_overlaps.triple_coverage, 'LOG + CMDB + EDR'],
-            ['EDR + LOGGING', data.coverage_overlaps.dual_edr_logging, 'ENDPOINT + LOGS'],
-            ['TANIUM + LOGGING', data.coverage_overlaps.dual_tanium_logging, 'AGENT + LOGS'],
-            ['NO COVERAGE', data.coverage_overlaps.no_coverage, 'ZERO PROTECTION']
-          ] as [name, count, description]}
-            {@const percentage = (count / data.deployment_metrics.total_controlled) * 100}
-            {@const threat = name === 'NO COVERAGE' ? {color: 'var(--danger-crimson)', status: 'CRITICAL'} : getThreatLevel(percentage)}
-            <div 
-              style="background: rgba(0, 0, 0, 0.4); border-left: 3px solid {threat.color}; padding: 15px; cursor: pointer; transition: all 0.3s;"
-              class="neural-link"
-              on:click={() => selectedOverlap = selectedOverlap === name ? null : name}
-            >
-              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-                <span style="color: var(--neural-cyan); font-size: 13px; font-weight: bold;">{name}</span>
-                <span style="color: {threat.color}; font-size: 15px; font-weight: bold;">{formatNumber(count)}</span>
+            ['EDR DEPLOYMENT', getSecurityStackData().reduce((sum, t) => sum + (t.tier.includes('security') || t.tier === 'full_stack' ? t.asset_count : 0), 0)],
+            ['TANIUM MANAGED', getSecurityStackData().reduce((sum, t) => sum + (t.tier === 'full_stack' || t.tier === 'core_security' ? t.asset_count : 0), 0)],
+            ['DLP PROTECTED', getSecurityStackData().reduce((sum, t) => sum + (t.tier === 'full_stack' ? t.asset_count : 0), 0)],
+            ['UNPROTECTED', getSecurityStackData().find(t => t.tier === 'unprotected')?.asset_count || 0]
+          ] as [label, count], i}
+            {@const total = getSecurityStackData().reduce((sum, t) => sum + t.asset_count, 0)}
+            {@const percentage = total > 0 ? (count / total) * 100 : 0}
+            {@const color = i === 3 ? 'var(--danger-crimson)' : getThreatColor(percentage)}
+            <div style="background: rgba(0,0,0,0.4); border: 1px solid {color}; padding: 15px; text-align: center;">
+              <div style="color: {color}; font-size: 18px; font-weight: bold; margin-bottom: 6px;">
+                {formatAssets(count)}
               </div>
-              <div style="color: var(--text-muted); font-size: 11px; margin-bottom: 8px;">
-                {description} • {percentage.toFixed(1)}% OF ASSETS
+              <div style="color: var(--neural-cyan); font-size: 11px; letter-spacing: 1px; margin-bottom: 4px;">
+                {label}
               </div>
-              <div style="background: rgba(0, 0, 0, 0.6); height: 4px; border-radius: 2px; overflow: hidden;">
-                <div style="background: {threat.color}; height: 100%; width: {percentage}%; transition: all 0.5s; box-shadow: 0 0 10px {threat.color};"></div>
-              </div>
-            </div>
-          {/each}
-        </div>
-      </div>
-
-      <div class="holo-card-3d" style="padding: 25px;">
-        <h3 style="color: var(--matrix-primary); font-size: 16px; letter-spacing: 2px; margin-bottom: 20px;">
-          DEPLOYMENT METRICS
-        </h3>
-        
-        <div style="display: grid; gap: 20px;">
-          <div style="text-align: center;">
-            <div style="color: var(--neural-cyan); font-size: 28px; font-weight: bold; margin-bottom: 5px;">
-              {formatNumber(data.deployment_metrics.total_controlled)}
-            </div>
-            <div style="color: var(--text-muted); font-size: 12px; letter-spacing: 1px;">
-              CONTROLLED ASSETS
-            </div>
-          </div>
-          
-          <div style="text-align: center;">
-            {@const securityThreat = getThreatLevel(data.deployment_metrics.security_score)}
-            <div style="color: {securityThreat.color}; font-size: 28px; font-weight: bold; margin-bottom: 5px;">
-              {data.deployment_metrics.security_score}%
-            </div>
-            <div style="color: var(--text-muted); font-size: 12px; letter-spacing: 1px;">
-              SECURITY SCORE
-            </div>
-            <div style="color: {securityThreat.color}; font-size: 10px; letter-spacing: 2px; margin-top: 5px;">
-              {securityThreat.status}
-            </div>
-          </div>
-
-          <div style="text-align: center;">
-            <div style="color: {data.deployment_metrics.threat_level === 'optimal' ? 'var(--matrix-primary)' : 'var(--danger-crimson)'}; font-size: 16px; font-weight: bold; letter-spacing: 2px; margin-bottom: 5px;">
-              {data.deployment_metrics.threat_level.toUpperCase()}
-            </div>
-            <div style="color: var(--text-muted); font-size: 12px; letter-spacing: 1px;">
-              THREAT LEVEL
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-
-  {:else if viewMode === 'agents'}
-    <!-- Agent Deployment Matrix -->
-    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 20px; margin-bottom: 30px;">
-      {#each getAgentDeploymentData() as agent}
-        <div 
-          class="holo-card-3d"
-          style="padding: 25px; border-color: {agent.threat.color}; cursor: pointer; transition: all 0.3s;"
-          on:click={() => selectedAgent = selectedAgent === agent.agent ? null : agent.agent}
-        >
-          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
-            <h3 style="color: var(--neural-cyan); font-size: 14px; letter-spacing: 1px;">{agent.agent}</h3>
-            <div style="color: {agent.threat.color}; font-size: 20px; font-weight: bold;">
-              {agent.coverage_score}%
-            </div>
-          </div>
-          
-          <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; margin-bottom: 15px;">
-            <div style="text-align: center;">
-              <div style="color: var(--neural-cyan); font-size: 18px; font-weight: bold;">{formatNumber(agent.total)}</div>
-              <div style="color: var(--text-muted); font-size: 10px;">TOTAL ASSETS</div>
-            </div>
-            <div style="text-align: center;">
-              <div style="color: {agent.threat.color}; font-size: 18px; font-weight: bold;">{agent.threat.level}</div>
-              <div style="color: var(--text-muted); font-size: 10px;">PROTECTION</div>
-            </div>
-          </div>
-
-          <div style="display: grid; gap: 8px;">
-            {#each [
-              ['SPLUNK', agent.splunk.percentage],
-              ['CMDB', agent.cmdb.percentage],
-              ['EDR', agent.crowdstrike.percentage]
-            ] as [name, pct]}
-              {@const ctrlThreat = getThreatLevel(pct)}
-              <div style="display: flex; justify-content: space-between; align-items: center; font-size: 11px;">
-                <span style="color: var(--text-muted);">{name}</span>
-                <span style="color: {ctrlThreat.color}; font-weight: bold;">{pct}%</span>
-              </div>
-            {/each}
-          </div>
-
-          <div style="background: {agent.threat.color}; height: 3px; margin-top: 15px; width: {agent.coverage_score}%; transition: all 0.5s; box-shadow: 0 0 15px {agent.threat.color};"></div>
-        </div>
-      {/each}
-    </div>
-
-  {:else if viewMode === 'threats'}
-    <!-- Threat Simulation Dashboard -->
-    <div style="display: grid; grid-template-columns: 2fr 1fr; gap: 20px; margin-bottom: 30px;">
-      <div class="holo-card-3d" style="padding: 25px;">
-        <h3 style="color: var(--danger-crimson); font-size: 16px; letter-spacing: 2px; margin-bottom: 20px;">
-          LIVE THREAT SIMULATION
-        </h3>
-        
-        <div style="max-height: 300px; overflow-y: auto;">
-          {#each threatSimulation as threat}
-            <div 
-              style="background: {threat.blocked ? 'rgba(0, 255, 65, 0.1)' : 'rgba(255, 7, 58, 0.1)'}; border-left: 3px solid {threat.blocked ? 'var(--matrix-primary)' : 'var(--danger-crimson)'}; padding: 12px; margin-bottom: 8px;"
-            >
-              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
-                <span style="color: var(--neural-cyan); font-size: 13px; font-weight: bold;">{threat.type}</span>
-                <span style="color: {threat.blocked ? 'var(--matrix-primary)' : 'var(--danger-crimson)'}; font-size: 11px; letter-spacing: 1px;">
-                  {threat.blocked ? 'BLOCKED' : 'DETECTED'}
-                </span>
-              </div>
-              <div style="display: flex; justify-content: space-between; font-size: 10px; color: var(--text-muted);">
-                <span>SEVERITY: {threat.severity}/5</span>
-                <span>{threat.timestamp}</span>
-              </div>
-            </div>
-          {/each}
-        </div>
-      </div>
-
-      <div class="holo-card-3d" style="padding: 25px;">
-        <h3 style="color: var(--plasma-magenta); font-size: 16px; letter-spacing: 2px; margin-bottom: 20px;">
-          ATTACK VECTORS
-        </h3>
-        
-        <div style="display: grid; gap: 15px;">
-          {#each attackVectors as vector}
-            {@const blockRate = (vector.blocked / vector.attempts) * 100}
-            {@const threat = getThreatLevel(blockRate)}
-            <div style="background: rgba(0, 0, 0, 0.4); border: 1px solid {threat.color}; padding: 15px;">
-              <div style="color: var(--neural-cyan); font-size: 13px; font-weight: bold; margin-bottom: 8px;">
-                {vector.vector}
-              </div>
-              <div style="display: flex; justify-content: space-between; margin-bottom: 8px; font-size: 11px;">
-                <span style="color: var(--text-muted);">ATTEMPTS: {vector.attempts}</span>
-                <span style="color: {threat.color};">BLOCKED: {blockRate.toFixed(1)}%</span>
-              </div>
-              <div style="background: rgba(0, 0, 0, 0.6); height: 3px; border-radius: 2px; overflow: hidden;">
-                <div style="background: {threat.color}; height: 100%; width: {blockRate}%; transition: all 0.5s;"></div>
+              <div style="color: var(--text-muted); font-size: 9px;">
+                {percentage.toFixed(1)}% of fleet
               </div>
             </div>
           {/each}
@@ -332,36 +300,106 @@
       </div>
     </div>
 
-  {:else if viewMode === 'gaps'}
-    <!-- Security Gaps Analysis -->
-    <div class="holo-card-3d" style="padding: 25px; margin-bottom: 30px;">
-      <h3 style="color: var(--danger-crimson); font-size: 16px; letter-spacing: 2px; margin-bottom: 20px;">
-        HIGH-RISK SECURITY GAPS
+  {:else if viewMode === 'geographic'}
+    <!-- Geographic Security Distribution -->
+    <div class="holo-card-3d" style="padding: 25px;">
+      <h3 style="color: var(--matrix-primary); font-size: 16px; letter-spacing: 2px; margin-bottom: 20px;">
+        REGIONAL SECURITY COVERAGE ANALYSIS
       </h3>
       
-      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px;">
-        {#each getSecurityGaps() as gap}
-          <div style="background: rgba(255, 7, 58, 0.05); border: 2px solid var(--danger-crimson); padding: 20px;">
-            <div style="color: var(--danger-crimson); font-size: 16px; font-weight: bold; margin-bottom: 10px;">
-              {gap.infrastructure.toUpperCase()}
-            </div>
-            <div style="color: var(--text-muted); font-size: 12px; margin-bottom: 15px;">
-              {formatNumber(gap.total_assets)} ASSETS AT RISK
+      <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 15px;">
+        {#each getGeographicSecurityMap() as location}
+          <div style="background: linear-gradient(135deg, rgba(0,0,0,0.8), {getThreatColor(location.composite_security_score)}10); border: 1px solid {getThreatColor(location.composite_security_score)}; padding: 15px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+              <div>
+                <div style="color: var(--neural-cyan); font-size: 13px; font-weight: bold;">{location.country}</div>
+                <div style="color: var(--text-muted); font-size: 10px;">{location.region}</div>
+              </div>
+              <div style="text-align: right;">
+                <div style="color: {getThreatColor(location.composite_security_score)}; font-size: 16px; font-weight: bold;">
+                  {location.composite_security_score}%
+                </div>
+                <div style="color: var(--text-muted); font-size: 9px;">security</div>
+              </div>
             </div>
             
-            <div style="display: grid; gap: 10px;">
-              <div style="display: flex; justify-content: space-between; font-size: 11px;">
-                <span style="color: var(--neural-cyan);">EDR COVERAGE:</span>
-                <span style="color: {getThreatLevel(gap.edr_coverage).color}; font-weight: bold;">{gap.edr_coverage}%</span>
+            <div style="margin-bottom: 12px;">
+              <div style="color: var(--text-muted); font-size: 10px; margin-bottom: 8px;">
+                {formatAssets(location.asset_count)} assets • {location.infrastructure_diversity} infra types
               </div>
-              <div style="display: flex; justify-content: space-between; font-size: 11px;">
-                <span style="color: var(--neural-cyan);">TANIUM COVERAGE:</span>
-                <span style="color: {getThreatLevel(gap.tanium_coverage).color}; font-weight: bold;">{gap.tanium_coverage}%</span>
+            </div>
+            
+            <div style="display: grid; gap: 6px;">
+              {#each [
+                ['EDR Coverage', location.edr_coverage],
+                ['Tanium Coverage', location.tanium_coverage],
+                ['Logging Coverage', location.logging_coverage]
+              ] as [metric, value]}
+                <div style="display: flex; justify-content: space-between; align-items: center; font-size: 10px;">
+                  <span style="color: var(--text-muted);">{metric}</span>
+                  <span style="color: {getThreatColor(value)}; font-weight: bold;">{value}%</span>
+                </div>
+                <div style="background: rgba(0,0,0,0.6); height: 2px; margin-bottom: 4px;">
+                  <div style="background: {getThreatColor(value)}; height: 100%; width: {value}%; transition: all 0.5s;"></div>
+                </div>
+              {/each}
+            </div>
+          </div>
+        {/each}
+      </div>
+    </div>
+
+  {:else if viewMode === 'threat_surface'}
+    <!-- Threat Surface Exposure -->
+    <div class="holo-card-3d" style="padding: 25px;">
+      <h3 style="color: var(--danger-crimson); font-size: 16px; letter-spacing: 2px; margin-bottom: 20px;">
+        EXTERNAL THREAT SURFACE EXPOSURE
+      </h3>
+      
+      <div style="display: grid; gap: 10px; max-height: 500px; overflow-y: auto;">
+        {#each getThreatSurfaceData() as surface}
+          <div style="background: {surface.threat_level === 'critical' ? 'rgba(255, 7, 58, 0.1)' : surface.threat_level === 'medium' ? 'rgba(255, 44, 196, 0.1)' : 'rgba(0, 255, 65, 0.1)'}; border-left: 4px solid {surface.threat_level === 'critical' ? 'var(--danger-crimson)' : surface.threat_level === 'medium' ? 'var(--plasma-magenta)' : 'var(--matrix-primary)'}; padding: 15px;">
+            <div style="display: grid; grid-template-columns: 2fr 1fr 1fr 1fr 1fr; gap: 12px; align-items: center;">
+              <div>
+                <div style="color: var(--neural-cyan); font-size: 13px; font-weight: bold; margin-bottom: 4px;">
+                  {surface.system_type}
+                </div>
+                <div style="color: var(--text-muted); font-size: 10px;">
+                  {formatAssets(surface.total_systems)} systems
+                </div>
               </div>
-              <div style="display: flex; justify-content: space-between; font-size: 11px;">
-                <span style="color: var(--neural-cyan);">RISK LEVEL:</span>
-                <span style="color: var(--danger-crimson); font-weight: bold; letter-spacing: 1px;">{gap.risk_level.toUpperCase()}</span>
+              
+              <div style="text-align: center;">
+                <div style="color: {surface.external_exposure > 0 ? 'var(--danger-crimson)' : 'var(--matrix-primary)'}; font-size: 15px; font-weight: bold;">
+                  {surface.external_exposure}
+                </div>
+                <div style="color: var(--text-muted); font-size: 9px;">external</div>
               </div>
+              
+              <div style="text-align: center;">
+                <div style="color: {getThreatColor(100 - surface.exposure_ratio)}; font-size: 14px; font-weight: bold;">
+                  {surface.exposure_ratio}%
+                </div>
+                <div style="color: var(--text-muted); font-size: 9px;">exposure</div>
+              </div>
+              
+              <div style="text-align: center;">
+                <div style="color: {getThreatColor(surface.edr_protection)}; font-size: 14px; font-weight: bold;">
+                  {surface.edr_protection}%
+                </div>
+                <div style="color: var(--text-muted); font-size: 9px;">protected</div>
+              </div>
+              
+              <div style="text-align: center;">
+                <div style="color: {surface.threat_level === 'critical' ? 'var(--danger-crimson)' : surface.threat_level === 'medium' ? 'var(--plasma-magenta)' : 'var(--matrix-primary)'}; font-size: 11px; font-weight: bold; letter-spacing: 1px;">
+                  {surface.threat_level.toUpperCase()}
+                </div>
+              </div>
+            </div>
+            
+            <div style="margin-top: 10px; display: flex; justify-content: space-between; font-size: 10px;">
+              <span style="color: var(--text-muted);">Internal: {surface.internal_exposure}</span>
+              <span style="color: {getThreatColor(surface.monitoring_coverage)};">Monitored: {surface.monitoring_coverage}%</span>
             </div>
           </div>
         {/each}
@@ -369,59 +407,49 @@
     </div>
   {/if}
 
-  <!-- Selected Agent Details Modal -->
-  {#if selectedAgent}
-    <div class="dystopia-modal active" style="max-width: 700px;">
-      <h2 style="color: var(--matrix-primary); font-size: 18px; letter-spacing: 2px; margin-bottom: 20px;">
-        AGENT ANALYSIS: {selectedAgent}
-      </h2>
-      
-      {@const agentData = getAgentDeploymentData().find(a => a.agent === selectedAgent)}
-      {#if agentData}
-        <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 20px; margin-bottom: 20px;">
+  <!-- Selected Infrastructure Deep Dive Modal -->
+  {#if selectedInfrastructure}
+    {@const infraData = data.control_effectiveness.find(c => c.infrastructure === selectedInfrastructure)}
+    {#if infraData}
+      <div class="dystopia-modal active" style="max-width: 700px;">
+        <h2 style="color: var(--matrix-primary); font-size: 18px; letter-spacing: 2px; margin-bottom: 20px;">
+          INFRASTRUCTURE DEEP DIVE: {selectedInfrastructure.toUpperCase()}
+        </h2>
+        
+        <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 15px; margin-bottom: 20px;">
           <div style="text-align: center;">
-            <div style="color: var(--neural-cyan); font-size: 20px; font-weight: bold;">{formatNumber(agentData.total)}</div>
-            <div style="color: var(--text-muted); font-size: 11px;">DEPLOYMENTS</div>
+            <div style="color: var(--neural-cyan); font-size: 20px; font-weight: bold;">{formatAssets(infraData.total_assets)}</div>
+            <div style="color: var(--text-muted); font-size: 11px;">TOTAL ASSETS</div>
           </div>
           <div style="text-align: center;">
-            <div style="color: {agentData.threat.color}; font-size: 20px; font-weight: bold;">{agentData.coverage_score}%</div>
-            <div style="color: var(--text-muted); font-size: 11px;">COVERAGE</div>
+            <div style="color: {getThreatColor(infraData.security_score)}; font-size: 20px; font-weight: bold;">{infraData.security_score}%</div>
+            <div style="color: var(--text-muted); font-size: 11px;">SECURITY SCORE</div>
           </div>
           <div style="text-align: center;">
-            <div style="color: {agentData.threat.color}; font-size: 16px; font-weight: bold;">{agentData.threat.level}</div>
-            <div style="color: var(--text-muted); font-size: 11px;">PROTECTION</div>
-          </div>
-          <div style="text-align: center;">
-            <div style="color: {agentData.threat.color}; font-size: 14px; font-weight: bold;">{agentData.threat.status}</div>
-            <div style="color: var(--text-muted); font-size: 11px;">STATUS</div>
+            <div style="color: {getThreatColor(infraData.data_quality)}; font-size: 20px; font-weight: bold;">{infraData.data_quality}%</div>
+            <div style="color: var(--text-muted); font-size: 11px;">DATA QUALITY</div>
           </div>
         </div>
         
-        <div style="display: grid; gap: 12px;">
+        <div style="display: grid; gap: 10px; margin-bottom: 20px;">
           {#each [
-            ['SPLUNK INTEGRATION', agentData.splunk],
-            ['CMDB REGISTRATION', agentData.cmdb],
-            ['EDR CORRELATION', agentData.crowdstrike],
-            ['TANIUM SYNERGY', agentData.tanium]
-          ] as [name, stats]}
-            {@const threat = getThreatLevel(stats.percentage)}
-            <div style="display: flex; justify-content: space-between; align-items: center; padding: 10px; background: rgba(0, 0, 0, 0.4); border-left: 2px solid {threat.color};">
-              <div>
-                <div style="color: var(--neural-cyan); font-size: 12px; font-weight: bold;">{name}</div>
-                <div style="color: var(--text-muted); font-size: 10px;">{formatNumber(stats.count)} assets</div>
-              </div>
-              <div style="text-align: right;">
-                <div style="color: {threat.color}; font-size: 14px; font-weight: bold;">{stats.percentage}%</div>
-                <div style="color: {threat.color}; font-size: 9px;">{threat.status}</div>
-              </div>
+            ['EDR COVERAGE', infraData.edr_coverage],
+            ['TANIUM COVERAGE', infraData.tanium_coverage],
+            ['DLP COVERAGE', infraData.dlp_coverage],
+            ['LOGGING COVERAGE', infraData.logging_coverage]
+          ] as [control, coverage]}
+            {@const controlThreat = getThreatColor(coverage)}
+            <div style="display: flex; justify-content: space-between; align-items: center; padding: 10px; background: rgba(0,0,0,0.4); border-left: 2px solid {controlThreat};">
+              <span style="color: var(--neural-cyan); font-size: 12px;">{control}</span>
+              <span style="color: {controlThreat}; font-size: 14px; font-weight: bold;">{coverage}%</span>
             </div>
           {/each}
         </div>
-      {/if}
-      
-      <button class="quantum-btn" style="margin-top: 20px; width: 100%;" on:click={() => selectedAgent = null}>
-        CLOSE ANALYSIS
-      </button>
-    </div>
+        
+        <button class="quantum-btn" style="width: 100%;" on:click={() => selectedInfrastructure = null}>
+          CLOSE ANALYSIS
+        </button>
+      </div>
+    {/if}
   {/if}
 {/if}
