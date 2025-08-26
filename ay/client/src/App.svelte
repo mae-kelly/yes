@@ -1,9 +1,7 @@
+// client/src/App.svelte
 <script>
-  console.log('🔍 App.svelte: AO1 Cyber Visibility Dashboard starting...');
-  
   import { onMount } from 'svelte';
   
-  // Import all the cybersecurity dashboard components
   import GlobalView from './components/GlobalView.svelte';
   import InfrastructureType from './components/InfrastructureType.svelte';
   import RegionalCountryView from './components/RegionalCountryView.svelte';
@@ -16,17 +14,18 @@
   
   let selectedView = 'global';
   let serverStatus = 'checking';
+  let currentTime = '';
   
   const dashboardViews = [
-    { key: 'global', label: 'GLOBAL VIEW', icon: '🌐', component: GlobalView },
-    { key: 'infrastructure', label: 'INFRASTRUCTURE', icon: '🏗️', component: InfrastructureType },
-    { key: 'regional', label: 'REGIONAL/COUNTRY', icon: '🗺️', component: RegionalCountryView },
-    { key: 'business-units', label: 'BUSINESS UNITS', icon: '🏢', component: BUandApplicationView },
-    { key: 'systems', label: 'SYSTEM CLASS', icon: '💻', component: SystemClassification },
-    { key: 'security', label: 'SECURITY CONTROLS', icon: '🛡️', component: SecurityControlCoverage },
-    { key: 'domains', label: 'DOMAIN VISIBILITY', icon: '🔍', component: DomainVisibility },
-    { key: 'logging', label: 'LOGGING COMPLIANCE', icon: '📊', component: LoggingComplianceInGSOandSplunk },
-    { key: 'priorities', label: 'LOG PRIORITIES', icon: '⚡', component: LogTypePriority }
+    { key: 'global', label: 'GLOBAL VISIBILITY', component: GlobalView },
+    { key: 'infrastructure', label: 'INFRASTRUCTURE', component: InfrastructureType },
+    { key: 'regional', label: 'REGIONS', component: RegionalCountryView },
+    { key: 'business-units', label: 'BUSINESS UNITS', component: BUandApplicationView },
+    { key: 'systems', label: 'SYSTEM CLASS', component: SystemClassification },
+    { key: 'security', label: 'SECURITY', component: SecurityControlCoverage },
+    { key: 'domains', label: 'DOMAINS', component: DomainVisibility },
+    { key: 'logging', label: 'LOGGING', component: LoggingComplianceInGSOandSplunk },
+    { key: 'priorities', label: 'PRIORITIES', component: LogTypePriority }
   ];
   
   let currentComponent = GlobalView;
@@ -36,7 +35,6 @@
     const view = dashboardViews.find(v => v.key === viewKey);
     if (view) {
       currentComponent = view.component;
-      console.log(`🔍 Switched to ${view.label} dashboard`);
     }
   }
   
@@ -45,247 +43,164 @@
       const response = await fetch('/api/health');
       if (response.ok) {
         serverStatus = 'connected';
-        console.log('✅ Server connection established');
       } else {
         serverStatus = 'error';
-        console.log('❌ Server responded with error');
       }
     } catch (error) {
       serverStatus = 'disconnected';
-      console.log('❌ Server connection failed:', error);
     }
   }
   
+  function updateTime() {
+    const now = new Date();
+    currentTime = now.toLocaleTimeString('en-US', { 
+      hour12: false, 
+      hour: '2-digit', 
+      minute: '2-digit', 
+      second: '2-digit' 
+    });
+  }
+  
   onMount(() => {
-    console.log('✅ AO1 Cyber Visibility Dashboard mounted successfully!');
     checkServerStatus();
+    updateTime();
+    const interval = setInterval(updateTime, 1000);
     
-    return () => {
-      console.log('🔍 AO1 Dashboard unmounting...');
-    };
+    return () => clearInterval(interval);
   });
 </script>
 
 <div class="dashboard">
-  <!-- Circuit Overlay Background -->
   <div class="circuit-overlay"></div>
   
-  <!-- Dashboard Header -->
   <header class="dashboard-header">
     <div class="dashboard-title">
-      <div class="icon-circle" style="border-color: var(--accent-cyan); margin-right: 15px;">
-        <span style="color: var(--accent-cyan); font-size: 18px;">🔒</span>
-      </div>
-      <div>
-        <h1 class="title-main" style="margin: 0; color: var(--accent-cyan);">
-          AO1 LOG VISIBILITY MEASUREMENT DASHBOARD
-        </h1>
-        <div style="color: var(--text-secondary); font-size: 0.9rem; margin-top: 5px;">
-          Comprehensive Cybersecurity Operations Center (CSOC) Visibility Analysis
+      <div class="logo-section">
+        <div class="logo-icon">
+          <svg width="32" height="32" viewBox="0 0 32 32" fill="none">
+            <circle cx="16" cy="16" r="15" stroke="url(#gradient)" stroke-width="2"/>
+            <path d="M16 8 L8 16 L16 24 L24 16 Z" stroke="url(#gradient)" stroke-width="2" fill="none"/>
+            <defs>
+              <linearGradient id="gradient" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" style="stop-color:#00e5ff;stop-opacity:1" />
+                <stop offset="100%" style="stop-color:#00ffff;stop-opacity:1" />
+              </linearGradient>
+            </defs>
+          </svg>
+        </div>
+        <div>
+          <h1 class="title-main">SECURITY VISIBILITY MATRIX</h1>
+          <div class="subtitle">SYSTEM // SECURITY // MONITORING</div>
         </div>
       </div>
     </div>
     
     <div class="dashboard-controls">
       <div class="search-container">
-        <input type="text" class="search-input" placeholder="SEARCH ASSETS..." />
+        <svg class="search-icon" width="16" height="16" viewBox="0 0 16 16" fill="none">
+          <circle cx="6" cy="6" r="5" stroke="currentColor" stroke-width="1.5"/>
+          <path d="M10 10L14 14" stroke="currentColor" stroke-width="1.5"/>
+        </svg>
+        <input type="text" class="search-input" placeholder="SEARCH SYSTEMS..." />
       </div>
       
-      <div class="status-badge" style="background: {serverStatus === 'connected' ? 'var(--status-good)' : serverStatus === 'error' ? 'var(--status-warning)' : 'var(--status-critical)'}; color: var(--primary-color); padding: 8px 16px; border-radius: 4px;">
-        {serverStatus === 'connected' ? '🟢 CONNECTED' : serverStatus === 'error' ? '🟡 PARTIAL' : serverStatus === 'checking' ? '🔄 CHECKING' : '🔴 OFFLINE'}
+      <div class="time-display">{currentTime}</div>
+      
+      <div class="status-badge" class:connected={serverStatus === 'connected'} 
+           class:error={serverStatus === 'error'} 
+           class:disconnected={serverStatus === 'disconnected'}>
+        {serverStatus === 'connected' ? 'LIVE DATA' : 
+         serverStatus === 'error' ? 'PARTIAL' : 
+         serverStatus === 'checking' ? 'CONNECTING' : 'OFFLINE'}
       </div>
     </div>
   </header>
   
-  <!-- Navigation Tabs -->
-  <nav class="nav-tabs" style="margin: 20px 0;">
+  <nav class="nav-tabs">
     {#each dashboardViews as view}
       <button 
         class="nav-tab {selectedView === view.key ? 'active' : ''}" 
         on:click={() => selectView(view.key)}
       >
-        <span class="nav-tab-icon">{view.icon}</span>
         {view.label}
       </button>
     {/each}
   </nav>
   
-  <!-- Main Dashboard Content -->
   <main class="dashboard-content">
-    <div style="grid-column: span 12; position: relative;">
-      {#if serverStatus === 'disconnected'}
-        <div class="error">
-          <div class="error-container">
-            <h2 class="error-title" style="color: var(--status-critical);">🚨 BACKEND CONNECTION FAILED</h2>
-            <p class="error-message">
-              Unable to connect to the Flask API server. Please ensure the server is running on port 5000.
-            </p>
-            <div style="margin: 20px 0; padding: 15px; background: rgba(0,0,0,0.3); border-radius: 8px;">
-              <strong>To start the backend server:</strong><br/>
-              <code style="color: var(--accent-cyan);">cd server && python app.py</code>
-            </div>
-            <button class="retry-button" on:click={checkServerStatus}>RETRY CONNECTION</button>
+    {#if serverStatus === 'disconnected'}
+      <div class="error">
+        <div class="error-container">
+          <h2 class="error-title">CONNECTION FAILED</h2>
+          <p class="error-message">
+            Unable to establish connection to backend services.
+            Please verify the server is operational on port 5000.
+          </p>
+          <div class="error-code">
+            <code>cd server && python app.py</code>
           </div>
+          <button class="retry-button" on:click={checkServerStatus}>
+            RECONNECT
+          </button>
         </div>
-      {:else}
-        <!-- Dynamic Component Rendering -->
-        <div class="component-container" style="animation: fadeIn 0.5s ease-out;">
-          <svelte:component this={currentComponent} />
-        </div>
-      {/if}
-    </div>
+      </div>
+    {:else}
+      <div class="component-container">
+        <svelte:component this={currentComponent} />
+      </div>
+    {/if}
   </main>
-  
-  <!-- Footer Stats -->
-  <footer style="margin-top: 30px; padding: 20px 0; border-top: 1px solid var(--border-cyan);">
-    <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.85rem; color: var(--text-secondary);">
-      <div>
-        🔍 Real-time cybersecurity visibility across enterprise infrastructure
-      </div>
-      <div>
-        Last updated: {new Date().toLocaleTimeString()} | Status: 
-        <span style="color: {serverStatus === 'connected' ? 'var(--status-good)' : 'var(--status-critical)'};">
-          {serverStatus.toUpperCase()}
-        </span>
-      </div>
-    </div>
-  </footer>
 </div>
 
 <style>
-  :global(body) {
-    margin: 0;
-    padding: 0;
-    background: var(--gradient-primary);
-    font-family: var(--font-mono);
-    color: var(--text-primary);
-    line-height: 1.6;
-    min-height: 100vh;
-  }
-
   .dashboard {
-    width: 100%;
+    position: relative;
+    z-index: 2;
+    padding: 2rem;
     min-height: 100vh;
-    padding: var(--spacing-md);
-    position: relative;
-    background: var(--gradient-primary);
   }
 
-  .circuit-overlay {
-    position: fixed;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    background-image: 
-      linear-gradient(to right, rgba(0, 229, 255, 0.08) 1px, transparent 1px),
-      linear-gradient(to bottom, rgba(0, 229, 255, 0.08) 1px, transparent 1px);
-    background-size: 40px 40px;
-    opacity: 0.3;
-    pointer-events: none;
-    z-index: 0;
-  }
-
-  .dashboard-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: var(--spacing-lg);
-    position: relative;
-    z-index: 2;
-  }
-
-  .dashboard-title {
+  .logo-section {
     display: flex;
     align-items: center;
+    gap: 1rem;
   }
 
-  .dashboard-controls {
-    display: flex;
-    gap: var(--spacing-md);
-    align-items: center;
-  }
-
-  .search-container {
+  .logo-icon {
     display: flex;
     align-items: center;
-    background: rgba(0, 229, 255, 0.1);
-    border: 2px solid rgba(0, 229, 255, 0.25);
-    border-radius: 4px;
-    padding: 8px 16px;
-    width: 200px;
+    justify-content: center;
   }
 
-  .search-input {
-    background: transparent;
-    border: none;
-    color: rgba(185, 235, 255, 0.95);
-    font-size: 0.9rem;
-    font-family: 'JetBrains Mono', monospace;
-    width: 100%;
-    outline: none;
-    letter-spacing: 1px;
+  .time-display {
+    font-family: var(--font-mono);
+    font-size: 0.875rem;
+    color: var(--accent-cyan);
+    font-variant-numeric: tabular-nums;
+    letter-spacing: 0.05em;
   }
 
-  .search-input::placeholder {
-    color: rgba(90, 160, 220, 0.7);
+  .search-icon {
+    color: var(--text-tertiary);
+    margin-right: 0.5rem;
   }
 
-  .nav-tabs {
-    display: flex;
-    gap: 8px;
-    margin-bottom: 0;
-    flex-wrap: wrap;
-    position: relative;
-    z-index: 2;
+  .status-badge.connected {
+    background: linear-gradient(135deg, rgba(0, 255, 136, 0.2), rgba(0, 255, 136, 0.1));
+    border-color: var(--status-good);
+    color: var(--status-good);
   }
 
-  .nav-tab {
-    padding: 8px 16px;
-    background: rgba(5, 16, 32, 0.6);
-    border: 1px solid rgba(0, 229, 255, 0.25);
-    border-radius: 4px;
-    font-size: 0.85rem;
-    color: rgba(130, 210, 255, 0.85);
-    cursor: pointer;
-    transition: all 0.2s ease;
-    display: flex;
-    align-items: center;
-    font-family: 'JetBrains Mono', monospace;
-    font-weight: 500;
-    letter-spacing: 1px;
+  .status-badge.error {
+    background: linear-gradient(135deg, rgba(255, 170, 0, 0.2), rgba(255, 170, 0, 0.1));
+    border-color: var(--status-warning);
+    color: var(--status-warning);
   }
 
-  .nav-tab:hover {
-    background: rgba(0, 229, 255, 0.1);
-    color: rgba(185, 235, 255, 0.95);
-    border-color: rgba(0, 229, 255, 0.9);
-  }
-
-  .nav-tab.active {
-    background: rgba(0, 229, 255, 0.2);
-    color: rgba(0, 229, 255, 0.9);
-    border-color: rgba(0, 229, 255, 0.9);
-    box-shadow: 0 0 15px rgba(0, 229, 255, 0.5);
-  }
-
-  .nav-tab-icon {
-    margin-right: 4px;
-    font-size: 1rem;
-  }
-
-  .dashboard-content {
-    position: relative;
-    z-index: 2;
-    min-height: 400px;
-  }
-
-  .component-container {
-    background: rgba(5, 16, 32, 0.4);
-    border-radius: 8px;
-    padding: 24px;
-    border: 1px solid rgba(0, 229, 255, 0.25);
-    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+  .status-badge.disconnected {
+    background: linear-gradient(135deg, rgba(255, 35, 64, 0.2), rgba(255, 35, 64, 0.1));
+    border-color: var(--status-critical);
+    color: var(--status-critical);
   }
 
   .error {
@@ -295,110 +210,32 @@
     min-height: 400px;
   }
 
-  .error-container {
-    background: rgba(5, 15, 25, 0.8);
-    border: 2px solid #ff2340;
-    box-shadow: 0 0 20px rgba(255, 35, 64, 0.3);
-    border-radius: 12px;
-    padding: 48px;
-    max-width: 600px;
-    text-align: center;
+  .error-code {
+    background: rgba(0, 0, 0, 0.4);
+    border: 1px solid var(--border-cyan);
+    border-radius: 8px;
+    padding: 1rem;
+    margin: 1.5rem 0;
   }
 
-  .error-title {
-    font-size: 1.5rem;
-    font-weight: bold;
-    margin-bottom: 16px;
+  .error-code code {
+    color: var(--accent-cyan);
+    font-family: var(--font-mono);
+    font-size: 0.875rem;
   }
 
-  .error-message {
-    color: rgba(130, 210, 255, 0.85);
-    margin-bottom: 24px;
-    line-height: 1.6;
-  }
-
-  .retry-button {
-    background: #071130;
-    border: 2px solid #00e5ff;
-    color: #00e5ff;
-    padding: 16px 32px;
-    font-family: 'JetBrains Mono', monospace;
-    font-weight: bold;
-    font-size: 1rem;
-    cursor: pointer;
-    transition: all 0.2s ease;
-    letter-spacing: 2px;
-    border-radius: 4px;
-    box-shadow: 0 0 15px rgba(0, 229, 255, 0.5);
-  }
-
-  .retry-button:hover {
-    background: rgba(0, 229, 255, 0.1);
-    transform: translateY(-2px);
-    box-shadow: 0 5px 15px rgba(0, 229, 255, 0.4);
-  }
-
-  .status-badge {
-    font-size: 0.8rem;
-    font-weight: bold;
-    letter-spacing: 1px;
-  }
-
-  .title-main {
-    font-size: 1.8rem;
-    font-weight: bold;
-    letter-spacing: 2px;
-    text-shadow: 0 0 10px rgba(0, 229, 255, 0.4);
-  }
-
-  .icon-circle {
-    width: 40px;
-    height: 40px;
-    border-radius: 50%;
-    background: transparent;
-    border: 2px solid rgba(0, 229, 255, 0.9);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    box-shadow: 0 0 15px rgba(0, 229, 255, 0.5);
+  .component-container {
+    animation: fadeIn 0.5s ease-out;
   }
 
   @keyframes fadeIn {
     from { 
       opacity: 0; 
-      transform: translateY(20px); 
+      transform: translateY(10px); 
     }
     to { 
       opacity: 1; 
       transform: translateY(0); 
-    }
-  }
-
-  /* Responsive Design */
-  @media (max-width: 1200px) {
-    .nav-tabs {
-      gap: 4px;
-    }
-    
-    .nav-tab {
-      font-size: 0.75rem;
-      padding: 4px 8px;
-    }
-  }
-
-  @media (max-width: 768px) {
-    .dashboard-header {
-      flex-direction: column;
-      gap: 16px;
-    }
-    
-    .nav-tabs {
-      justify-content: center;
-    }
-    
-    .search-container {
-      width: 100%;
-      max-width: 250px;
     }
   }
 </style>
