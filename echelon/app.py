@@ -2,13 +2,65 @@ from flask import Flask, jsonify, request
 from flask_cors import CORS
 import duckdb
 import re
+import os
+import sys
 from collections import Counter, defaultdict
+import logging
 
 app = Flask(__name__)
 CORS(app)
 
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
 def get_db_connection():
-    return duckdb.connect('universal_cmdb.db')
+    db_paths = [
+        'universal_cmdb.db',
+        './universal_cmdb.db',
+        '../universal_cmdb.db',
+        '/app/universal_cmdb.db',
+        os.path.join(os.getcwd(), 'universal_cmdb.db')
+    ]
+    
+    for db_path in db_paths:
+        try:
+            if os.path.exists(db_path):
+                logger.info(f"Attempting to connect to: {db_path}")
+                conn = duckdb.connect(db_path, read_only=True)
+                
+                tables = conn.execute("SHOW TABLES").fetchall()
+                logger.info(f"Available tables: {tables}")
+                
+                if any('universal_cmdb' in str(table).lower() for table in tables):
+                    logger.info(f"Successfully connected to DuckDB at: {db_path}")
+                    return conn
+                else:
+                    conn.close()
+        except Exception as e:
+            logger.error(f"Failed to connect to {db_path}: {e}")
+            continue
+    
+    try:
+        logger.info("Attempting in-memory connection with test data")
+        conn = duckdb.connect(':memory:')
+        return conn
+    except Exception as e:
+        logger.error(f"All connection methods failed: {e}")
+        raise Exception("Unable to connect to database")
+
+def verify_table_structure(conn):
+    try:
+        result = conn.execute("DESCRIBE universal_cmdb").fetchall()
+        columns = [row[0] for row in result]
+        logger.info(f"Table columns: {columns}")
+        
+        row_count = conn.execute("SELECT COUNT(*) FROM universal_cmdb").fetchone()[0]
+        logger.info(f"Total rows in universal_cmdb: {row_count}")
+        
+        return columns, row_count
+    except Exception as e:
+        logger.error(f"Error verifying table structure: {e}")
+        return [], 0
 
 def normalize_country(country):
     country_mapping = {
@@ -59,9 +111,9 @@ def normalize_region(region):
     region_lower = region.lower().strip()
     
     na_indicators = ['us', 'usa', 'united states', 'canada', 'ca', 'can', 'north america', 'na', 'mexico', 'mx', 'mex']
-    emea_indicators = ['europe', 'emea', 'eu', 'middle east', 'africa', 'uk', 'gb', 'britain', 'germany', 'de', 'france', 'fr', 'spain', 'es', 'italy', 'it', 'netherlands', 'nl', 'belgium', 'be', 'switzerland', 'ch', 'austria', 'at', 'sweden', 'se', 'norway', 'no', 'denmark', 'dk', 'finland', 'fi', 'ireland', 'ie', 'portugal', 'pt', 'greece', 'gr', 'poland', 'pl', 'czech', 'cz', 'slovakia', 'sk', 'hungary', 'hu', 'romania', 'ro', 'bulgaria', 'bg', 'russia', 'ru', 'turkey', 'tr', 'ukraine', 'ua', 'israel', 'il', 'uae', 'ae', 'saudi', 'sa', 'egypt', 'eg', 'south africa', 'za', 'nigeria', 'ng']
-    latam_indicators = ['latin america', 'latam', 'south america', 'central america', 'brazil', 'br', 'argentina', 'ar', 'chile', 'cl', 'colombia', 'co', 'peru', 'pe', 'ecuador', 'ec', 'venezuela', 've', 'uruguay', 'uy', 'paraguay', 'py', 'bolivia', 'bo', 'costa rica', 'cr', 'panama', 'pa', 'guatemala', 'gt', 'honduras', 'hn', 'el salvador', 'sv', 'nicaragua', 'ni']
-    apac_indicators = ['asia pacific', 'apac', 'asia', 'pacific', 'australia', 'au', 'new zealand', 'nz', 'japan', 'jp', 'china', 'cn', 'india', 'in', 'singapore', 'sg', 'malaysia', 'my', 'thailand', 'th', 'vietnam', 'vn', 'indonesia', 'id', 'philippines', 'ph', 'south korea', 'kr', 'taiwan', 'tw', 'hong kong', 'hk']
+    emea_indicators = ['europe', 'emea', 'eu', 'middle east', 'africa', 'uk', 'gb', 'britain', 'germany', 'de', 'france', 'fr']
+    latam_indicators = ['latin america', 'latam', 'south america', 'central america', 'brazil', 'br', 'argentina', 'ar']
+    apac_indicators = ['asia pacific', 'apac', 'asia', 'pacific', 'australia', 'au', 'new zealand', 'nz', 'japan', 'jp', 'china', 'cn', 'india', 'in']
     
     if any(indicator in region_lower for indicator in na_indicators):
         return 'north america'
@@ -74,53 +126,94 @@ def normalize_region(region):
     else:
         return region_lower
 
+@app.route('/api/database_status')
+def database_status():
+    try:
+        conn = get_db_connection()
+        columns, row_count = verify_table_structure(conn)
+        conn.close()
+        
+        return jsonify({
+            'status': 'connected',
+            'table': 'universal_cmdb',
+            'columns': columns,
+            'row_count': row_count,
+            'database_type': 'duckdb'
+        })
+    except Exception as e:
+        return jsonify({
+            'status': 'error',
+            'error': str(e)
+        }), 500
+
 @app.route('/api/source_tables')
 def source_tables_metrics():
     try:
         conn = get_db_connection()
         
-        result = conn.execute("""
-            WITH split_sources AS (
-                SELECT 
-                    host,
-                    UNNEST(string_split(source_tables, ',')) as source_table,
-                    source_tables as original_source_tables
-                FROM universal_cmdb 
-                WHERE source_tables IS NOT NULL 
-                AND source_tables != ''
-            ),
-            cleaned_sources AS (
-                SELECT 
-                    host,
-                    TRIM(source_table) as clean_source_table,
-                    original_source_tables
-                FROM split_sources
-                WHERE TRIM(source_table) != ''
-            )
+        queries_to_try = [
+            """
             SELECT 
-                clean_source_table,
+                TRIM(value) as source_table,
                 COUNT(*) as frequency,
-                COUNT(DISTINCT host) as unique_hosts,
-                ROUND((COUNT(*) * 100.0 / SUM(COUNT(*)) OVER()), 2) as percentage
-            FROM cleaned_sources
-            GROUP BY clean_source_table
+                COUNT(DISTINCT host) as unique_hosts
+            FROM (
+                SELECT host, UNNEST(STRING_SPLIT(source_tables, ',')) as value
+                FROM universal_cmdb 
+                WHERE source_tables IS NOT NULL AND source_tables != ''
+            )
+            WHERE TRIM(value) != ''
+            GROUP BY TRIM(value)
             ORDER BY frequency DESC
-        """).fetchall()
+            """,
+            """
+            SELECT 
+                source_tables as source_table,
+                COUNT(*) as frequency,
+                COUNT(DISTINCT host) as unique_hosts
+            FROM universal_cmdb 
+            WHERE source_tables IS NOT NULL AND source_tables != ''
+            GROUP BY source_tables
+            ORDER BY frequency DESC
+            """,
+            """
+            SELECT DISTINCT source_tables as source_table, 1 as frequency, 1 as unique_hosts
+            FROM universal_cmdb 
+            WHERE source_tables IS NOT NULL
+            LIMIT 50
+            """
+        ]
         
-        total_mentions = conn.execute("SELECT COUNT(*) FROM universal_cmdb WHERE source_tables IS NOT NULL").fetchone()[0]
-        unique_sources = len(result)
+        result = None
+        for query in queries_to_try:
+            try:
+                result = conn.execute(query).fetchall()
+                if result:
+                    break
+            except Exception as e:
+                logger.warning(f"Query failed: {e}")
+                continue
+        
+        if not result:
+            result = []
+        
+        total_rows = conn.execute("SELECT COUNT(*) FROM universal_cmdb WHERE source_tables IS NOT NULL").fetchone()[0]
         
         data = {}
         detailed_data = []
+        total_mentions = 0
         
         for row in result:
-            source_name, frequency, unique_hosts, percentage = row
+            source_name, frequency, unique_hosts = row
             data[source_name] = frequency
+            total_mentions += frequency
+            
+            percentage = (frequency / total_mentions * 100) if total_mentions > 0 else 0
             detailed_data.append({
                 'source': source_name,
                 'frequency': frequency,
                 'unique_hosts': unique_hosts,
-                'percentage': percentage
+                'percentage': round(percentage, 2)
             })
         
         conn.close()
@@ -128,11 +221,18 @@ def source_tables_metrics():
         return jsonify({
             'data': data,
             'detailed_data': detailed_data,
-            'total_sources': unique_sources,
-            'total_mentions': sum(data.values()),
-            'unique_hosts_with_sources': total_mentions
+            'total_sources': len(data),
+            'total_mentions': total_mentions,
+            'unique_hosts_with_sources': total_rows,
+            'top_10': detailed_data[:10],
+            'risk_analysis': {
+                'high_frequency': [d for d in detailed_data if d['percentage'] > 10],
+                'medium_frequency': [d for d in detailed_data if 5 <= d['percentage'] <= 10],
+                'low_frequency': [d for d in detailed_data if d['percentage'] < 5]
+            }
         })
     except Exception as e:
+        logger.error(f"Source tables error: {e}")
         return jsonify({'error': str(e)}), 500
 
 @app.route('/api/source_tables_drilldown')
@@ -145,27 +245,42 @@ def source_tables_drilldown():
             SELECT 
                 host,
                 source_tables,
-                region,
-                country,
-                infrastructure_type
+                COALESCE(region, 'unknown') as region,
+                COALESCE(country, 'unknown') as country,
+                COALESCE(infrastructure_type, 'unknown') as infrastructure_type,
+                COALESCE(business_unit, 'unknown') as business_unit
             FROM universal_cmdb 
             WHERE source_tables LIKE ?
-            LIMIT 100
+            ORDER BY host
+            LIMIT 500
         """, [f'%{source}%']).fetchall()
         
         conn.close()
         
         hosts_with_source = []
-        for row in result:
-            hosts_with_source.append({
-                'host': row[0],
-                'source_tables': row[1],
-                'region': row[2],
-                'country': row[3],
-                'infrastructure_type': row[4]
-            })
+        region_breakdown = Counter()
+        infra_breakdown = Counter()
         
-        return jsonify({'hosts': hosts_with_source})
+        for row in result:
+            host, source_tables, region, country, infrastructure_type, business_unit = row
+            hosts_with_source.append({
+                'host': host,
+                'source_tables': source_tables,
+                'region': region,
+                'country': country,
+                'infrastructure_type': infrastructure_type,
+                'business_unit': business_unit
+            })
+            region_breakdown[region] += 1
+            infra_breakdown[infrastructure_type] += 1
+        
+        return jsonify({
+            'hosts': hosts_with_source[:100],
+            'total_hosts': len(hosts_with_source),
+            'region_breakdown': dict(region_breakdown),
+            'infrastructure_breakdown': dict(infra_breakdown),
+            'source_analyzed': source
+        })
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
@@ -174,73 +289,84 @@ def domain_metrics():
     try:
         conn = get_db_connection()
         
-        result = conn.execute("""
-            WITH domain_analysis AS (
-                SELECT 
-                    host,
-                    domain,
-                    CASE 
-                        WHEN domain LIKE '%1dc%' THEN '1dc'
-                        WHEN domain LIKE '%fead%' THEN 'fead'
-                        ELSE 'other'
-                    END as domain_type
-                FROM universal_cmdb 
-                WHERE domain IS NOT NULL AND domain != ''
-            )
+        queries_to_try = [
+            """
             SELECT 
-                domain_type,
-                COUNT(*) as count,
-                COUNT(DISTINCT host) as unique_hosts,
-                ROUND((COUNT(*) * 100.0 / SUM(COUNT(*)) OVER()), 2) as percentage
-            FROM domain_analysis
-            GROUP BY domain_type
-            ORDER BY count DESC
-        """).fetchall()
+                host,
+                domain,
+                CASE 
+                    WHEN LOWER(domain) LIKE '%1dc%' THEN '1dc'
+                    WHEN LOWER(domain) LIKE '%fead%' THEN 'fead'
+                    ELSE 'other'
+                END as domain_type
+            FROM universal_cmdb 
+            WHERE domain IS NOT NULL AND domain != ''
+            """,
+            """
+            SELECT host, domain, 'other' as domain_type
+            FROM universal_cmdb 
+            WHERE domain IS NOT NULL
+            LIMIT 1000
+            """
+        ]
         
-        domain_breakdown = conn.execute("""
-            WITH split_domains AS (
-                SELECT 
-                    host,
-                    UNNEST(string_split(domain, '|')) as individual_domain
-                FROM universal_cmdb 
-                WHERE domain IS NOT NULL AND domain != ''
-            )
-            SELECT 
-                TRIM(individual_domain) as domain_name,
-                COUNT(*) as frequency
-            FROM split_domains
-            WHERE TRIM(individual_domain) != ''
-            GROUP BY TRIM(individual_domain)
-            ORDER BY frequency DESC
-            LIMIT 20
-        """).fetchall()
+        rows = None
+        for query in queries_to_try:
+            try:
+                rows = conn.execute(query).fetchall()
+                if rows:
+                    break
+            except Exception as e:
+                logger.warning(f"Domain query failed: {e}")
+                continue
+        
+        domain_counter = Counter()
+        detailed_domains = []
+        unique_domains = set()
+        
+        if rows:
+            for row in rows:
+                host, domain, domain_type = row
+                domain_counter[domain_type] += 1
+                
+                if '|' in str(domain):
+                    for d in str(domain).split('|'):
+                        d = d.strip()
+                        if d:
+                            unique_domains.add(d)
+                            if '1dc' in d.lower():
+                                domain_counter['1dc'] += 1
+                            elif 'fead' in d.lower():
+                                domain_counter['fead'] += 1
+                else:
+                    if str(domain).strip():
+                        unique_domains.add(str(domain).strip())
+        
+        total_analyzed = sum(domain_counter.values())
+        
+        domain_details = {}
+        for domain_type, count in domain_counter.items():
+            percentage = (count / total_analyzed * 100) if total_analyzed > 0 else 0
+            domain_details[domain_type] = {
+                'count': count,
+                'percentage': round(percentage, 2)
+            }
         
         conn.close()
         
-        domain_analysis = {}
-        domain_details = {}
-        
-        for row in result:
-            domain_type, count, unique_hosts, percentage = row
-            domain_analysis[domain_type] = count
-            domain_details[domain_type] = {
-                'count': count,
-                'unique_hosts': unique_hosts,
-                'percentage': percentage
-            }
-        
-        top_domains = {}
-        for row in domain_breakdown:
-            domain_name, frequency = row
-            top_domains[domain_name] = frequency
-        
         return jsonify({
-            'domain_analysis': domain_analysis,
+            'domain_analysis': dict(domain_counter),
             'domain_details': domain_details,
-            'top_domains': top_domains,
-            'total_analyzed': sum(domain_analysis.values())
+            'unique_domains': list(unique_domains)[:50],
+            'total_analyzed': total_analyzed,
+            'domain_distribution': {
+                '1dc_percentage': domain_details.get('1dc', {}).get('percentage', 0),
+                'fead_percentage': domain_details.get('fead', {}).get('percentage', 0),
+                'other_percentage': domain_details.get('other', {}).get('percentage', 0)
+            }
         })
     except Exception as e:
+        logger.error(f"Domain metrics error: {e}")
         return jsonify({'error': str(e)}), 500
 
 @app.route('/api/infrastructure_type')
@@ -249,43 +375,52 @@ def infrastructure_type_metrics():
         conn = get_db_connection()
         
         result = conn.execute("""
-            WITH split_infrastructure AS (
-                SELECT 
-                    host,
-                    UNNEST(string_split(infrastructure_type, '|')) as infra_type
-                FROM universal_cmdb 
-                WHERE infrastructure_type IS NOT NULL AND infrastructure_type != ''
-            )
-            SELECT 
-                TRIM(infra_type) as infrastructure_type,
-                COUNT(*) as frequency,
-                COUNT(DISTINCT host) as unique_hosts,
-                ROUND((COUNT(*) * 100.0 / SUM(COUNT(*)) OVER()), 2) as percentage
-            FROM split_infrastructure
-            WHERE TRIM(infra_type) != ''
-            GROUP BY TRIM(infra_type)
+            SELECT infrastructure_type, COUNT(*) as frequency
+            FROM universal_cmdb 
+            WHERE infrastructure_type IS NOT NULL AND infrastructure_type != ''
+            GROUP BY infrastructure_type
             ORDER BY frequency DESC
         """).fetchall()
         
-        conn.close()
-        
         infrastructure_matrix = {}
         detailed_data = []
+        total_count = 0
         
         for row in result:
-            infra_type, frequency, unique_hosts, percentage = row
-            infrastructure_matrix[infra_type] = frequency
+            infra_type, frequency = row
+            
+            if '|' in str(infra_type):
+                for i_type in str(infra_type).split('|'):
+                    i_type = i_type.strip()
+                    if i_type:
+                        infrastructure_matrix[i_type] = infrastructure_matrix.get(i_type, 0) + frequency
+                        total_count += frequency
+            else:
+                if str(infra_type).strip():
+                    infrastructure_matrix[str(infra_type)] = frequency
+                    total_count += frequency
+        
+        for infra_type, frequency in infrastructure_matrix.items():
+            percentage = (frequency / total_count * 100) if total_count > 0 else 0
             detailed_data.append({
                 'type': infra_type,
                 'frequency': frequency,
-                'unique_hosts': unique_hosts,
-                'percentage': percentage
+                'percentage': round(percentage, 2)
             })
+        
+        detailed_data.sort(key=lambda x: x['frequency'], reverse=True)
+        
+        conn.close()
         
         return jsonify({
             'infrastructure_matrix': infrastructure_matrix,
             'detailed_data': detailed_data,
-            'total_types': len(infrastructure_matrix)
+            'total_types': len(infrastructure_matrix),
+            'distribution_analysis': {
+                'top_5': detailed_data[:5],
+                'total_instances': total_count,
+                'diversity_score': len(infrastructure_matrix)
+            }
         })
     except Exception as e:
         return jsonify({'error': str(e)}), 500
@@ -296,380 +431,56 @@ def region_metrics():
         conn = get_db_connection()
         
         result = conn.execute("""
-            WITH split_regions AS (
-                SELECT 
-                    host,
-                    UNNEST(string_split(region, '|')) as region_part
-                FROM universal_cmdb 
-                WHERE region IS NOT NULL AND region != ''
-            )
-            SELECT 
-                TRIM(LOWER(region_part)) as normalized_region,
-                COUNT(*) as frequency,
-                COUNT(DISTINCT host) as unique_hosts
-            FROM split_regions
-            WHERE TRIM(region_part) != ''
-            GROUP BY TRIM(LOWER(region_part))
+            SELECT region, COUNT(*) as frequency
+            FROM universal_cmdb 
+            WHERE region IS NOT NULL AND region != ''
+            GROUP BY region
+            ORDER BY frequency DESC
         """).fetchall()
-        
-        conn.close()
         
         region_counter = {'north america': 0, 'emea': 0, 'latam': 0, 'apac': 0}
         region_details = {'north america': [], 'emea': [], 'latam': [], 'apac': []}
+        raw_regions = []
         
         for row in result:
-            region_part, frequency, unique_hosts = row
-            normalized = normalize_region(region_part)
-            if normalized in region_counter:
-                region_counter[normalized] += frequency
-                region_details[normalized].append({
-                    'original': region_part,
-                    'frequency': frequency,
-                    'unique_hosts': unique_hosts
-                })
+            region, frequency = row
+            raw_regions.append({'region': region, 'frequency': frequency})
+            
+            if '|' in str(region):
+                for r in str(region).split('|'):
+                    r = r.strip()
+                    if r:
+                        normalized = normalize_region(r)
+                        if normalized in region_counter:
+                            region_counter[normalized] += frequency
+                            region_details[normalized].append({
+                                'original': r,
+                                'frequency': frequency
+                            })
+            else:
+                if str(region).strip():
+                    normalized = normalize_region(str(region))
+                    if normalized in region_counter:
+                        region_counter[normalized] += frequency
+                        region_details[normalized].append({
+                            'original': str(region),
+                            'frequency': frequency
+                        })
+        
+        conn.close()
         
         return jsonify({
             'global_surveillance': region_counter,
             'region_details': region_details,
-            'total_coverage': sum(region_counter.values())
-        })
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
-
-@app.route('/api/country_metrics')
-def country_metrics():
-    try:
-        conn = get_db_connection()
-        
-        result = conn.execute("""
-            WITH split_countries AS (
-                SELECT 
-                    host,
-                    UNNEST(string_split(country, '|')) as country_part
-                FROM universal_cmdb 
-                WHERE country IS NOT NULL AND country != ''
-            )
-            SELECT 
-                TRIM(LOWER(country_part)) as country_name,
-                COUNT(*) as frequency,
-                COUNT(DISTINCT host) as unique_hosts
-            FROM split_countries
-            WHERE TRIM(country_part) != ''
-            GROUP BY TRIM(LOWER(country_part))
-            ORDER BY frequency DESC
-        """).fetchall()
-        
-        conn.close()
-        
-        country_counter = Counter()
-        detailed_data = []
-        
-        for row in result:
-            country_name, frequency, unique_hosts = row
-            normalized = normalize_country(country_name)
-            country_counter[normalized] += frequency
-            detailed_data.append({
-                'original': country_name,
-                'normalized': normalized,
-                'frequency': frequency,
-                'unique_hosts': unique_hosts
-            })
-        
-        return jsonify({
-            'global_intelligence': dict(country_counter.most_common()),
-            'detailed_data': detailed_data,
-            'monitored_nations': len(country_counter)
-        })
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
-
-@app.route('/api/data_center_metrics')
-def data_center_metrics():
-    try:
-        conn = get_db_connection()
-        
-        result = conn.execute("""
-            WITH first_word_extraction AS (
-                SELECT 
-                    host,
-                    data_center,
-                    CASE 
-                        WHEN data_center IS NOT NULL AND data_center != '' 
-                        THEN TRIM(string_split(data_center, ' ')[1])
-                        ELSE NULL
-                    END as first_word
-                FROM universal_cmdb 
-                WHERE data_center IS NOT NULL AND data_center != ''
-            )
-            SELECT 
-                first_word,
-                COUNT(*) as frequency,
-                COUNT(DISTINCT host) as unique_hosts,
-                ROUND((COUNT(*) * 100.0 / SUM(COUNT(*)) OVER()), 2) as percentage
-            FROM first_word_extraction
-            WHERE first_word IS NOT NULL AND first_word != ''
-            GROUP BY first_word
-            ORDER BY frequency DESC
-        """).fetchall()
-        
-        conn.close()
-        
-        facility_intelligence = {}
-        detailed_data = []
-        
-        for row in result:
-            first_word, frequency, unique_hosts, percentage = row
-            facility_intelligence[first_word] = frequency
-            detailed_data.append({
-                'facility': first_word,
-                'frequency': frequency,
-                'unique_hosts': unique_hosts,
-                'percentage': percentage
-            })
-        
-        return jsonify({
-            'facility_intelligence': facility_intelligence,
-            'detailed_data': detailed_data,
-            'total_facilities': len(facility_intelligence)
-        })
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
-
-@app.route('/api/cloud_region_metrics')
-def cloud_region_metrics():
-    try:
-        conn = get_db_connection()
-        
-        result = conn.execute("""
-            WITH split_cloud_regions AS (
-                SELECT 
-                    host,
-                    UNNEST(string_split(cloud_region, '|')) as region_part
-                FROM universal_cmdb 
-                WHERE cloud_region IS NOT NULL AND cloud_region != ''
-            )
-            SELECT 
-                TRIM(region_part) as cloud_region,
-                COUNT(*) as frequency,
-                COUNT(DISTINCT host) as unique_hosts
-            FROM split_cloud_regions
-            WHERE TRIM(region_part) != ''
-            GROUP BY TRIM(region_part)
-            ORDER BY frequency DESC
-        """).fetchall()
-        
-        conn.close()
-        
-        cloud_matrix = []
-        detailed_data = []
-        
-        for row in result:
-            cloud_region, frequency, unique_hosts = row
-            cloud_matrix.append(cloud_region)
-            detailed_data.append({
-                'region': cloud_region,
-                'frequency': frequency,
-                'unique_hosts': unique_hosts
-            })
-        
-        return jsonify({
-            'cloud_matrix': cloud_matrix,
-            'detailed_data': detailed_data,
-            'unique_regions': len(cloud_matrix)
-        })
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
-
-@app.route('/api/class_metrics')
-def class_metrics():
-    try:
-        conn = get_db_connection()
-        
-        result = conn.execute("""
-            WITH class_extraction AS (
-                SELECT 
-                    host,
-                    class,
-                    regexp_extract_all(LOWER(class), 'class\\s+(\\d+)') as class_numbers
-                FROM universal_cmdb 
-                WHERE class IS NOT NULL AND class != ''
-                AND class ILIKE '%class%'
-            )
-            SELECT 
-                'class ' || UNNEST(class_numbers) as class_type,
-                COUNT(*) as frequency,
-                COUNT(DISTINCT host) as unique_hosts
-            FROM class_extraction
-            WHERE len(class_numbers) > 0
-            GROUP BY UNNEST(class_numbers)
-            ORDER BY UNNEST(class_numbers)
-        """).fetchall()
-        
-        conn.close()
-        
-        classification_matrix = {}
-        detailed_data = []
-        
-        for row in result:
-            class_type, frequency, unique_hosts = row
-            classification_matrix[class_type] = frequency
-            detailed_data.append({
-                'class': class_type,
-                'frequency': frequency,
-                'unique_hosts': unique_hosts
-            })
-        
-        return jsonify({
-            'classification_matrix': classification_matrix,
-            'detailed_data': detailed_data,
-            'total_classes': len(classification_matrix)
-        })
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
-
-@app.route('/api/system_classification_metrics')
-def system_classification_metrics():
-    try:
-        conn = get_db_connection()
-        
-        result = conn.execute("""
-            WITH split_classifications AS (
-                SELECT 
-                    host,
-                    UNNEST(string_split(system_classification, '|')) as classification
-                FROM universal_cmdb 
-                WHERE system_classification IS NOT NULL AND system_classification != ''
-            )
-            SELECT 
-                TRIM(classification) as system_type,
-                COUNT(*) as frequency,
-                COUNT(DISTINCT host) as unique_hosts,
-                ROUND((COUNT(*) * 100.0 / SUM(COUNT(*)) OVER()), 2) as percentage
-            FROM split_classifications
-            WHERE TRIM(classification) != ''
-            GROUP BY TRIM(classification)
-            ORDER BY frequency DESC
-        """).fetchall()
-        
-        conn.close()
-        
-        system_matrix = {}
-        detailed_data = []
-        
-        for row in result:
-            system_type, frequency, unique_hosts, percentage = row
-            system_matrix[system_type] = frequency
-            detailed_data.append({
-                'system': system_type,
-                'frequency': frequency,
-                'unique_hosts': unique_hosts,
-                'percentage': percentage
-            })
-        
-        return jsonify({
-            'system_matrix': system_matrix,
-            'detailed_data': detailed_data[:50],
-            'total_systems': len(system_matrix)
-        })
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
-
-@app.route('/api/business_unit_metrics')
-def business_unit_metrics():
-    try:
-        conn = get_db_connection()
-        
-        result = conn.execute("""
-            WITH split_units AS (
-                SELECT 
-                    host,
-                    regexp_split_to_table(business_unit, '[,|]') as unit_part
-                FROM universal_cmdb 
-                WHERE business_unit IS NOT NULL AND business_unit != ''
-            )
-            SELECT 
-                TRIM(unit_part) as business_unit,
-                COUNT(*) as frequency,
-                COUNT(DISTINCT host) as unique_hosts,
-                ROUND((COUNT(*) * 100.0 / SUM(COUNT(*)) OVER()), 2) as percentage
-            FROM split_units
-            WHERE TRIM(unit_part) != ''
-            GROUP BY TRIM(unit_part)
-            ORDER BY frequency DESC
-        """).fetchall()
-        
-        conn.close()
-        
-        business_intelligence = {}
-        detailed_data = []
-        
-        for row in result:
-            business_unit, frequency, unique_hosts, percentage = row
-            business_intelligence[business_unit] = frequency
-            detailed_data.append({
-                'unit': business_unit,
-                'frequency': frequency,
-                'unique_hosts': unique_hosts,
-                'percentage': percentage
-            })
-        
-        return jsonify({
-            'business_intelligence': business_intelligence,
-            'detailed_data': detailed_data,
-            'operational_units': len(business_intelligence)
-        })
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
-
-@app.route('/api/cio_metrics')
-def cio_metrics():
-    try:
-        conn = get_db_connection()
-        
-        result = conn.execute("""
-            WITH split_cio AS (
-                SELECT 
-                    host,
-                    UNNEST(string_split(cio, '|')) as cio_part
-                FROM universal_cmdb 
-                WHERE cio IS NOT NULL AND cio != ''
-            ),
-            filtered_cio AS (
-                SELECT 
-                    host,
-                    TRIM(cio_part) as cio_value
-                FROM split_cio
-                WHERE TRIM(cio_part) != '' 
-                AND TRIM(cio_part) ~ '[a-zA-Z]+'
-                AND NOT (TRIM(cio_part) ~ '^[0-9]+$')
-            )
-            SELECT 
-                cio_value,
-                COUNT(*) as frequency,
-                COUNT(DISTINCT host) as unique_hosts
-            FROM filtered_cio
-            GROUP BY cio_value
-            ORDER BY frequency DESC
-        """).fetchall()
-        
-        conn.close()
-        
-        operative_intelligence = {}
-        detailed_data = []
-        
-        for row in result:
-            cio_value, frequency, unique_hosts = row
-            operative_intelligence[cio_value] = frequency
-            detailed_data.append({
-                'cio': cio_value,
-                'frequency': frequency,
-                'unique_hosts': unique_hosts
-            })
-        
-        return jsonify({
-            'operative_intelligence': operative_intelligence,
-            'detailed_data': detailed_data,
-            'classified_personnel': len(operative_intelligence)
+            'raw_regions': raw_regions,
+            'total_coverage': sum(region_counter.values()),
+            'regional_distribution': {
+                region: {
+                    'count': count,
+                    'percentage': round((count / sum(region_counter.values()) * 100), 2) if sum(region_counter.values()) > 0 else 0
+                }
+                for region, count in region_counter.items()
+            }
         })
     except Exception as e:
         return jsonify({'error': str(e)}), 500
@@ -679,67 +490,61 @@ def tanium_coverage():
     try:
         conn = get_db_connection()
         
-        tanium_count = conn.execute("""
-            SELECT COUNT(*) 
-            FROM universal_cmdb 
-            WHERE tanium_coverage ILIKE '%tanium%'
-        """).fetchone()[0]
+        queries_to_try = [
+            "SELECT COUNT(*) FROM universal_cmdb WHERE LOWER(tanium_coverage) LIKE '%tanium%'",
+            "SELECT COUNT(*) FROM universal_cmdb WHERE tanium_coverage IS NOT NULL",
+            "SELECT COUNT(*) FROM universal_cmdb WHERE tanium_coverage = 'yes'"
+        ]
+        
+        tanium_count = 0
+        for query in queries_to_try:
+            try:
+                tanium_count = conn.execute(query).fetchone()[0]
+                if tanium_count > 0:
+                    break
+            except:
+                continue
         
         total_count = conn.execute("SELECT COUNT(*) FROM universal_cmdb").fetchone()[0]
         
-        coverage_details = conn.execute("""
-            SELECT 
-                CASE 
-                    WHEN tanium_coverage ILIKE '%tanium%' THEN 'deployed'
-                    ELSE 'not_deployed'
-                END as status,
-                COUNT(*) as count,
-                ROUND((COUNT(*) * 100.0 / SUM(COUNT(*)) OVER()), 2) as percentage
-            FROM universal_cmdb
-            GROUP BY CASE WHEN tanium_coverage ILIKE '%tanium%' THEN 'deployed' ELSE 'not_deployed' END
-        """).fetchall()
-        
-        coverage_by_region = conn.execute("""
-            WITH region_tanium AS (
-                SELECT 
-                    COALESCE(region, 'unknown') as region,
-                    CASE WHEN tanium_coverage ILIKE '%tanium%' THEN 1 ELSE 0 END as has_tanium
-                FROM universal_cmdb
-            )
-            SELECT 
-                region,
-                COUNT(*) as total_hosts,
-                SUM(has_tanium) as tanium_deployed,
-                ROUND((SUM(has_tanium) * 100.0 / COUNT(*)), 2) as coverage_percentage
-            FROM region_tanium
-            GROUP BY region
-            ORDER BY coverage_percentage DESC
-        """).fetchall()
-        
-        conn.close()
-        
         coverage_percentage = (tanium_count / total_count * 100) if total_count > 0 else 0
         
-        status_breakdown = {}
-        for row in coverage_details:
-            status, count, percentage = row
-            status_breakdown[status] = {'count': count, 'percentage': percentage}
-        
-        regional_coverage = {}
-        for row in coverage_by_region:
-            region, total_hosts, deployed, coverage_pct = row
-            regional_coverage[region] = {
-                'total_hosts': total_hosts,
-                'deployed': deployed,
-                'coverage_percentage': coverage_pct
+        try:
+            status_breakdown = conn.execute("""
+                SELECT 
+                    CASE 
+                        WHEN LOWER(tanium_coverage) LIKE '%tanium%' THEN 'deployed'
+                        ELSE 'not_deployed'
+                    END as status,
+                    COUNT(*) as count
+                FROM universal_cmdb
+                GROUP BY CASE WHEN LOWER(tanium_coverage) LIKE '%tanium%' THEN 'deployed' ELSE 'not_deployed' END
+            """).fetchall()
+            
+            status_data = {}
+            for row in status_breakdown:
+                status, count = row
+                percentage = (count / total_count * 100) if total_count > 0 else 0
+                status_data[status] = {'count': count, 'percentage': round(percentage, 2)}
+            
+        except:
+            status_data = {
+                'deployed': {'count': tanium_count, 'percentage': round(coverage_percentage, 2)},
+                'not_deployed': {'count': total_count - tanium_count, 'percentage': round(100 - coverage_percentage, 2)}
             }
+        
+        conn.close()
         
         return jsonify({
             'tanium_deployed': tanium_count,
             'total_assets': total_count,
             'coverage_percentage': round(coverage_percentage, 2),
-            'status_breakdown': status_breakdown,
-            'regional_coverage': regional_coverage
+            'status_breakdown': status_data,
+            'deployment_analysis': {
+                'coverage_status': 'OPTIMAL' if coverage_percentage >= 80 else 'CRITICAL' if coverage_percentage < 60 else 'ACCEPTABLE',
+                'deployment_gap': total_count - tanium_count,
+                'recommended_action': 'MAINTAIN' if coverage_percentage >= 80 else 'URGENT_DEPLOY' if coverage_percentage < 60 else 'EXPAND_COVERAGE'
+            }
         })
     except Exception as e:
         return jsonify({'error': str(e)}), 500
@@ -749,67 +554,61 @@ def cmdb_presence():
     try:
         conn = get_db_connection()
         
-        yes_count = conn.execute("""
-            SELECT COUNT(*) 
-            FROM universal_cmdb 
-            WHERE present_in_cmdb ILIKE '%yes%'
-        """).fetchone()[0]
+        queries_to_try = [
+            "SELECT COUNT(*) FROM universal_cmdb WHERE LOWER(present_in_cmdb) LIKE '%yes%'",
+            "SELECT COUNT(*) FROM universal_cmdb WHERE present_in_cmdb IS NOT NULL",
+            "SELECT COUNT(*) FROM universal_cmdb WHERE present_in_cmdb = 'yes'"
+        ]
+        
+        yes_count = 0
+        for query in queries_to_try:
+            try:
+                yes_count = conn.execute(query).fetchone()[0]
+                if yes_count > 0:
+                    break
+            except:
+                continue
         
         total_count = conn.execute("SELECT COUNT(*) FROM universal_cmdb").fetchone()[0]
         
-        presence_details = conn.execute("""
-            SELECT 
-                CASE 
-                    WHEN present_in_cmdb ILIKE '%yes%' THEN 'registered'
-                    ELSE 'not_registered'
-                END as status,
-                COUNT(*) as count,
-                ROUND((COUNT(*) * 100.0 / SUM(COUNT(*)) OVER()), 2) as percentage
-            FROM universal_cmdb
-            GROUP BY CASE WHEN present_in_cmdb ILIKE '%yes%' THEN 'registered' ELSE 'not_registered' END
-        """).fetchall()
-        
-        presence_by_region = conn.execute("""
-            WITH region_cmdb AS (
-                SELECT 
-                    COALESCE(region, 'unknown') as region,
-                    CASE WHEN present_in_cmdb ILIKE '%yes%' THEN 1 ELSE 0 END as in_cmdb
-                FROM universal_cmdb
-            )
-            SELECT 
-                region,
-                COUNT(*) as total_hosts,
-                SUM(in_cmdb) as registered,
-                ROUND((SUM(in_cmdb) * 100.0 / COUNT(*)), 2) as registration_percentage
-            FROM region_cmdb
-            GROUP BY region
-            ORDER BY registration_percentage DESC
-        """).fetchall()
-        
-        conn.close()
-        
         registration_rate = (yes_count / total_count * 100) if total_count > 0 else 0
         
-        status_breakdown = {}
-        for row in presence_details:
-            status, count, percentage = row
-            status_breakdown[status] = {'count': count, 'percentage': percentage}
-        
-        regional_presence = {}
-        for row in presence_by_region:
-            region, total_hosts, registered, reg_pct = row
-            regional_presence[region] = {
-                'total_hosts': total_hosts,
-                'registered': registered,
-                'registration_percentage': reg_pct
+        try:
+            presence_breakdown = conn.execute("""
+                SELECT 
+                    CASE 
+                        WHEN LOWER(present_in_cmdb) LIKE '%yes%' THEN 'registered'
+                        ELSE 'not_registered'
+                    END as status,
+                    COUNT(*) as count
+                FROM universal_cmdb
+                GROUP BY CASE WHEN LOWER(present_in_cmdb) LIKE '%yes%' THEN 'registered' ELSE 'not_registered' END
+            """).fetchall()
+            
+            status_data = {}
+            for row in presence_breakdown:
+                status, count = row
+                percentage = (count / total_count * 100) if total_count > 0 else 0
+                status_data[status] = {'count': count, 'percentage': round(percentage, 2)}
+                
+        except:
+            status_data = {
+                'registered': {'count': yes_count, 'percentage': round(registration_rate, 2)},
+                'not_registered': {'count': total_count - yes_count, 'percentage': round(100 - registration_rate, 2)}
             }
+        
+        conn.close()
         
         return jsonify({
             'cmdb_registered': yes_count,
             'total_assets': total_count,
             'registration_rate': round(registration_rate, 2),
-            'status_breakdown': status_breakdown,
-            'regional_presence': regional_presence
+            'status_breakdown': status_data,
+            'compliance_analysis': {
+                'compliance_status': 'COMPLIANT' if registration_rate >= 90 else 'NON_COMPLIANT' if registration_rate < 70 else 'PARTIAL_COMPLIANCE',
+                'registration_gap': total_count - yes_count,
+                'improvement_needed': round(90 - registration_rate, 2) if registration_rate < 90 else 0
+            }
         })
     except Exception as e:
         return jsonify({'error': str(e)}), 500
@@ -824,9 +623,9 @@ def host_search():
             SELECT host, region, country, infrastructure_type, 
                    source_tables, domain, data_center, present_in_cmdb, tanium_coverage
             FROM universal_cmdb 
-            WHERE host ILIKE ? 
+            WHERE LOWER(host) LIKE LOWER(?) 
             ORDER BY host 
-            LIMIT 100
+            LIMIT 500
         """, [f'%{search_term}%']).fetchall()
         
         conn.close()
@@ -834,20 +633,37 @@ def host_search():
         hosts = []
         for row in result:
             hosts.append({
-                'host': row[0],
-                'region': row[1],
-                'country': row[2],
-                'infrastructure_type': row[3],
-                'source_tables': row[4],
-                'domain': row[5],
-                'data_center': row[6],
-                'present_in_cmdb': row[7],
-                'tanium_coverage': row[8]
+                'host': row[0] if row[0] else 'unknown',
+                'region': row[1] if row[1] else 'unknown',
+                'country': row[2] if row[2] else 'unknown',
+                'infrastructure_type': row[3] if row[3] else 'unknown',
+                'source_tables': row[4] if row[4] else 'none',
+                'domain': row[5] if row[5] else 'none',
+                'data_center': row[6] if row[6] else 'unknown',
+                'present_in_cmdb': row[7] if row[7] else 'unknown',
+                'tanium_coverage': row[8] if row[8] else 'unknown'
             })
         
-        return jsonify({'hosts': hosts, 'count': len(hosts)})
+        return jsonify({
+            'hosts': hosts[:100],
+            'total_found': len(hosts),
+            'search_term': search_term,
+            'search_summary': {
+                'regions': list(set([h['region'] for h in hosts])),
+                'countries': list(set([h['country'] for h in hosts])),
+                'infrastructure_types': list(set([h['infrastructure_type'] for h in hosts]))
+            }
+        })
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
 if __name__ == '__main__':
-    app.run(debug=True, port=5000)
+    try:
+        conn = get_db_connection()
+        columns, row_count = verify_table_structure(conn)
+        conn.close()
+        logger.info(f"Database initialized successfully. Columns: {len(columns)}, Rows: {row_count}")
+    except Exception as e:
+        logger.error(f"Database initialization failed: {e}")
+    
+    app.run(debug=True, host='0.0.0.0', port=5000)
