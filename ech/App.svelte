@@ -49,7 +49,7 @@
 <main class="cyberpunk-interface">
 	<!-- Animated background particles -->
 	<div class="matrix-rain">
-		{#each Array(30) as _, i}
+		{#each Array(50) as _, i}
 			<div class="rain-drop" style="left: {Math.random() * 100}%; animation-delay: {Math.random() * 5}s; animation-duration: {3 + Math.random() * 4}s;"></div>
 		{/each}
 	</div>
@@ -64,7 +64,7 @@
 		{/each}
 	</div>
 
-	<!-- Header with navigation -->
+	<!-- Header with title and navigation tabs -->
 	<header class="cyber-header">
 		<div class="header-content">
 			<div class="brand-section">
@@ -81,7 +81,7 @@
 				</div>
 			</div>
 			
-			<!-- Navigation tabs -->
+			<!-- Navigation modules in header -->
 			<nav class="tab-navigation">
 				{#each modules as module}
 					<button 
@@ -96,9 +96,11 @@
 				{/each}
 			</nav>
 			
-			<div class="time-display">
-				<div class="time-label">TIME</div>
-				<div class="time-value">{currentTime}</div>
+			<div class="time-panel">
+				<div class="time-display">
+					<span class="time-label">TIME</span>
+					<span class="time-value">{currentTime}</span>
+				</div>
 			</div>
 		</div>
 	</header>
@@ -147,12 +149,11 @@
 <style>
 	:global(body) {
 		font-family: 'Orbitron', 'Exo 2', 'Rajdhani', monospace;
-		background: radial-gradient(ellipse at center, #1a0d2e 0%, #0f0520 40%, #000000 100%);
-		color: #ffffff;
+		background: #000;
+		color: #fff;
 		overflow: hidden;
 		margin: 0;
 		padding: 0;
-		font-weight: 400;
 	}
 
 	.cyberpunk-interface {
@@ -161,6 +162,7 @@
 		position: relative;
 		display: flex;
 		flex-direction: column;
+		background: radial-gradient(ellipse at center, #1a0d2e 0%, #0f0520 40%, #000000 100%);
 		overflow: hidden;
 	}
 
@@ -227,22 +229,22 @@
 	.header-content {
 		display: flex;
 		align-items: center;
-		justify-content: space-between;
 		padding: 1rem 2rem;
+		gap: 2rem;
 		min-height: 80px;
 	}
 
 	.brand-section {
 		display: flex;
 		align-items: center;
-		gap: 1.5rem;
+		gap: 1rem;
 		flex-shrink: 0;
 	}
 
 	.neural-logo {
 		position: relative;
-		width: 60px;
-		height: 60px;
+		width: 50px;
+		height: 50px;
 		display: flex;
 		align-items: center;
 		justify-content: center;
@@ -257,7 +259,7 @@
 	.ring {
 		position: absolute;
 		border-radius: 50%;
-		border: 2px solid;
+		border: 1px solid;
 		top: 50%;
 		left: 50%;
 		transform: translate(-50%, -50%);
@@ -265,22 +267,22 @@
 	}
 
 	.ring-outer {
-		width: 60px;
-		height: 60px;
+		width: 50px;
+		height: 50px;
 		border-color: rgba(0, 255, 255, 0.6);
 	}
 
 	.ring-middle {
-		width: 45px;
-		height: 45px;
+		width: 35px;
+		height: 35px;
 		border-color: rgba(255, 0, 255, 0.4);
 		animation-direction: reverse;
 		animation-duration: 6s;
 	}
 
 	.ring-inner {
-		width: 30px;
-		height: 30px;
+		width: 20px;
+		height: 20px;
 		border-color: rgba(0, 150, 255, 0.8);
 		animation-duration: 4s;
 	}
@@ -300,24 +302,22 @@
 	}
 
 	.title {
-		font-size: 1.5rem;
+		font-size: 1.3rem;
 		font-weight: 700;
 		color: #ffffff;
 		margin: 0;
 		text-shadow: 0 0 20px rgba(0, 255, 255, 0.5);
-		letter-spacing: 0.1em;
-		text-transform: uppercase;
+		letter-spacing: 0.02em;
 	}
 
 	.tab-navigation {
 		display: flex;
 		flex: 1;
-		gap: 0.5rem;
+		gap: 0.3rem;
 		overflow-x: auto;
-		padding: 0.5rem 2rem;
+		padding: 0.5rem 0;
 		scrollbar-width: none;
 		-ms-overflow-style: none;
-		justify-content: center;
 	}
 
 	.tab-navigation::-webkit-scrollbar {
@@ -343,7 +343,7 @@
 		align-items: center;
 		gap: 0.5rem;
 		text-transform: uppercase;
-		letter-spacing: 0.05em;
+		letter-spacing: 0.02em;
 	}
 
 	.cyber-tab::before {
@@ -384,6 +384,7 @@
 		position: relative;
 		z-index: 2;
 		letter-spacing: 0.02em;
+		font-size: 0.65rem;
 	}
 
 	.tab-glow {
@@ -403,12 +404,22 @@
 		opacity: 0.05;
 	}
 
+	.time-panel {
+		display: flex;
+		align-items: center;
+		flex-shrink: 0;
+		background: linear-gradient(135deg, rgba(0, 0, 0, 0.6), rgba(0, 255, 255, 0.03));
+		border: 1px solid rgba(0, 255, 255, 0.3);
+		border-radius: 8px;
+		padding: 1rem;
+		backdrop-filter: blur(10px);
+	}
+
 	.time-display {
 		display: flex;
 		flex-direction: column;
-		align-items: flex-end;
-		gap: 0.2rem;
-		flex-shrink: 0;
+		gap: 0.3rem;
+		text-align: center;
 	}
 
 	.time-label {
@@ -420,11 +431,9 @@
 	}
 
 	.time-value {
-		font-size: 0.8rem;
+		font-size: 0.7rem;
 		font-weight: 600;
-		color: #00ffff;
-		text-shadow: 0 0 8px rgba(0, 255, 255, 0.5);
-		font-family: 'JetBrains Mono', monospace;
+		color: #ffffff;
 	}
 
 	.data-viewport {
@@ -551,7 +560,7 @@
 		}
 	}
 
-	@media (max-width: 1200px) {
+	@media (max-width: 1400px) {
 		.header-content {
 			flex-wrap: wrap;
 			padding: 1rem;
@@ -561,7 +570,6 @@
 			order: 3;
 			width: 100%;
 			margin-top: 0.5rem;
-			padding: 0.5rem 0;
 		}
 	}
 
@@ -574,7 +582,7 @@
 
 		.cyber-tab {
 			padding: 0.5rem 0.8rem;
-			font-size: 0.65rem;
+			font-size: 0.6rem;
 		}
 
 		.data-viewport {
