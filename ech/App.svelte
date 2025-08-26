@@ -1,4 +1,3 @@
-<!-- App.svelte - Optimized for Maximum Data Density -->
 <script>
 	import { onMount } from 'svelte';
 	import SourceTables from './SourceTables.svelte';
@@ -156,7 +155,9 @@
 	.cyberpunk-interface {
 		width: 100vw;
 		height: 100vh;
-		position: relative;
+		position: fixed;
+		top: 0;
+		left: 0;
 		display: flex;
 		flex-direction: column;
 		background: radial-gradient(ellipse at center, #1a0d2e 0%, #0f0520 40%, #000000 100%);
@@ -223,6 +224,7 @@
 		box-shadow: 0 2px 20px rgba(0, 255, 255, 0.15);
 		padding: 0.3rem 0;
 		flex-shrink: 0;
+		height: 55px;
 	}
 
 	.header-content {
@@ -230,7 +232,7 @@
 		align-items: center;
 		padding: 0.3rem 0.6rem;
 		gap: 0.6rem;
-		min-height: 45px;
+		height: 100%;
 	}
 
 	.brand-section {
@@ -317,6 +319,8 @@
 		padding: 0.2rem 0;
 		scrollbar-width: none;
 		-ms-overflow-style: none;
+		align-items: center;
+		justify-content: center;
 	}
 
 	.tab-navigation::-webkit-scrollbar {
@@ -444,6 +448,7 @@
 		padding: 0.4rem;
 		overflow: hidden;
 		min-height: 0;
+		height: calc(100vh - 55px);
 	}
 
 	.viewport-frame {
@@ -575,6 +580,14 @@
 			width: 100%;
 			margin-top: 0.3rem;
 		}
+
+		.cyber-header {
+			height: auto;
+		}
+
+		.data-viewport {
+			height: calc(100vh - 80px);
+		}
 	}
 
 	@media (max-width: 768px) {
@@ -596,41 +609,5 @@
 		.content-stream {
 			padding: 0.5rem;
 		}
-	}
-
-	/* Global optimizations for maximum data density */
-	:global(.source-intel-matrix .grid-row),
-	:global(.domain-warfare-matrix .readout-node),
-	:global(.infra-command-center .infra-node),
-	:global(.global-command-matrix .region-sector) {
-		min-height: 24px !important;
-		padding: 0.3rem !important;
-	}
-
-	:global(.data-cell),
-	:global(.node-data),
-	:global(.sector-metrics) {
-		font-size: 0.55rem !important;
-		line-height: 1.2 !important;
-	}
-
-	:global(.matrix-header),
-	:global(.command-header),
-	:global(.hub-header) {
-		padding: 0.5rem 0.8rem !important;
-		margin-bottom: 0.6rem !important;
-	}
-
-	:global(.metric-value),
-	:global(.terminal-value),
-	:global(.coverage-value) {
-		font-size: 1.2rem !important;
-	}
-
-	:global(.analysis-panel),
-	:global(.warfare-analysis),
-	:global(.surveillance-summary) {
-		padding: 0.6rem !important;
-		margin-bottom: 0.6rem !important;
 	}
 </style>
