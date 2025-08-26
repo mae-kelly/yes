@@ -12,9 +12,11 @@
 	import CioMetrics from './CioMetrics.svelte';
 	import TaniumCoverage from './TaniumCoverage.svelte';
 	import CmdbPresence from './CmdbPresence.svelte';
+	import CloudRegionMetrics from './CloudRegionMetrics.svelte';
+	import AdvancedAnalytics from './AdvancedAnalytics.svelte';
 
 	let currentView = 'source_tables';
-
+	let currentTime = '';
 	let modules = [
 		{ id: 'source_tables', name: 'SRC', color: '#00ffff', icon: '◈' },
 		{ id: 'domain_metrics', name: 'DOM', color: '#ff00ff', icon: '◆' },
@@ -22,15 +24,15 @@
 		{ id: 'region_metrics', name: 'REG', color: '#00ffff', icon: '◉' },
 		{ id: 'country_metrics', name: 'CTY', color: '#ff00ff', icon: '⬟' },
 		{ id: 'data_center', name: 'DC', color: '#0096ff', icon: '⬡' },
+		{ id: 'cloud_regions', name: 'CLD', color: '#00ffff', icon: '◯' },
 		{ id: 'class_metrics', name: 'CLS', color: '#ff00ff', icon: '◐' },
 		{ id: 'system_classification', name: 'SYS', color: '#0096ff', icon: '◑' },
 		{ id: 'business_unit', name: 'BIZ', color: '#00ffff', icon: '◒' },
 		{ id: 'cio_metrics', name: 'CIO', color: '#ff00ff', icon: '◓' },
 		{ id: 'tanium_coverage', name: 'TAN', color: '#0096ff', icon: '⬠' },
-		{ id: 'cmdb_presence', name: 'CMB', color: '#00ffff', icon: '⬢' }
+		{ id: 'cmdb_presence', name: 'CMB', color: '#00ffff', icon: '⬢' },
+		{ id: 'advanced_analytics', name: 'ADV', color: '#ff00ff', icon: '◎' }
 	];
-
-	let currentTime = '';
 
 	onMount(() => {
 		let updateTime = () => {
@@ -47,17 +49,17 @@
 
 <main class="cyberpunk-interface">
 	<div class="matrix-rain">
-		{#each Array(30) as _, i}
-			<div class="rain-drop" style="left: {Math.random() * 100}%; animation-delay: {Math.random() * 5}s; animation-duration: {3 + Math.random() * 4}s;"></div>
+		{#each Array(50) as _, i}
+			<div class="rain-drop" style="left: {Math.random() * 100}%; animation-delay: {Math.random() * 5}s; animation-duration: {2 + Math.random() * 4}s;"></div>
 		{/each}
 	</div>
 
 	<div class="neural-grid">
-		{#each Array(20) as _, i}
-			<div class="grid-line horizontal" style="top: {i * 5}%;"></div>
+		{#each Array(25) as _, i}
+			<div class="grid-line horizontal" style="top: {i * 4}%;"></div>
 		{/each}
-		{#each Array(20) as _, i}
-			<div class="grid-line vertical" style="left: {i * 5}%;"></div>
+		{#each Array(25) as _, i}
+			<div class="grid-line vertical" style="left: {i * 4}%;"></div>
 		{/each}
 	</div>
 
@@ -74,6 +76,7 @@
 				</div>
 				<div class="brand-text">
 					<h1 class="title">AO1 VISIBILITY</h1>
+					<span class="subtitle">NEURAL THREAT INTELLIGENCE</span>
 				</div>
 			</div>
 			
@@ -95,6 +98,11 @@
 				<div class="time-display">
 					<span class="time-label">TIME</span>
 					<span class="time-value">{currentTime}</span>
+				</div>
+				<div class="status-indicators">
+					<div class="indicator active"></div>
+					<div class="indicator active"></div>
+					<div class="indicator"></div>
 				</div>
 			</div>
 		</div>
@@ -122,6 +130,8 @@
 					<CountryMetrics />
 				{:else if currentView === 'data_center'}
 					<DataCenterMetrics />
+				{:else if currentView === 'cloud_regions'}
+					<CloudRegionMetrics />
 				{:else if currentView === 'class_metrics'}
 					<ClassMetrics />
 				{:else if currentView === 'system_classification'}
@@ -134,6 +144,8 @@
 					<TaniumCoverage />
 				{:else if currentView === 'cmdb_presence'}
 					<CmdbPresence />
+				{:else if currentView === 'advanced_analytics'}
+					<AdvancedAnalytics />
 				{/if}
 			</div>
 		</div>
@@ -177,10 +189,10 @@
 	.rain-drop {
 		position: absolute;
 		width: 1px;
-		height: 12px;
+		height: 15px;
 		background: linear-gradient(180deg, transparent, #00ffff, transparent);
 		animation: rainfall linear infinite;
-		opacity: 0.15;
+		opacity: 0.12;
 	}
 
 	@keyframes rainfall {
@@ -196,7 +208,7 @@
 		height: 100%;
 		pointer-events: none;
 		z-index: 1;
-		opacity: 0.05;
+		opacity: 0.03;
 	}
 
 	.grid-line {
@@ -222,30 +234,30 @@
 		z-index: 10;
 		position: relative;
 		box-shadow: 0 2px 20px rgba(0, 255, 255, 0.15);
-		padding: 0.3rem 0;
+		padding: 0.4rem 0;
 		flex-shrink: 0;
-		height: 55px;
+		height: 60px;
 	}
 
 	.header-content {
 		display: flex;
 		align-items: center;
-		padding: 0.3rem 0.6rem;
-		gap: 0.6rem;
+		padding: 0.4rem 0.8rem;
+		gap: 0.8rem;
 		height: 100%;
 	}
 
 	.brand-section {
 		display: flex;
 		align-items: center;
-		gap: 0.5rem;
+		gap: 0.6rem;
 		flex-shrink: 0;
 	}
 
 	.neural-logo {
 		position: relative;
-		width: 28px;
-		height: 28px;
+		width: 32px;
+		height: 32px;
 		display: flex;
 		align-items: center;
 		justify-content: center;
@@ -268,30 +280,30 @@
 	}
 
 	.ring-outer {
-		width: 28px;
-		height: 28px;
+		width: 32px;
+		height: 32px;
 		border-color: rgba(0, 255, 255, 0.6);
 	}
 
 	.ring-middle {
-		width: 20px;
-		height: 20px;
+		width: 22px;
+		height: 22px;
 		border-color: rgba(255, 0, 255, 0.4);
 		animation-direction: reverse;
 		animation-duration: 6s;
 	}
 
 	.ring-inner {
-		width: 12px;
-		height: 12px;
+		width: 14px;
+		height: 14px;
 		border-color: rgba(0, 150, 255, 0.8);
 		animation-duration: 4s;
 	}
 
 	.logo-center {
-		font-size: 0.9rem;
+		font-size: 1rem;
 		color: rgba(0, 255, 255, 0.9);
-		text-shadow: 0 0 10px rgba(0, 255, 255, 0.8);
+		text-shadow: 0 0 12px rgba(0, 255, 255, 0.8);
 		z-index: 3;
 		position: relative;
 		animation: corePulse 3s ease-in-out infinite;
@@ -300,23 +312,31 @@
 	.brand-text {
 		display: flex;
 		flex-direction: column;
+		gap: 0.1rem;
 	}
 
 	.title {
-		font-size: 0.8rem;
+		font-size: 0.9rem;
 		font-weight: 700;
 		color: #ffffff;
 		margin: 0;
 		text-shadow: 0 0 10px rgba(0, 255, 255, 0.5);
-		letter-spacing: 0.02em;
+		letter-spacing: 0.03em;
+	}
+
+	.subtitle {
+		font-size: 0.4rem;
+		color: rgba(255, 255, 255, 0.6);
+		text-transform: uppercase;
+		letter-spacing: 0.05em;
 	}
 
 	.tab-navigation {
 		display: flex;
 		flex: 1;
-		gap: 0.15rem;
+		gap: 0.2rem;
 		overflow-x: auto;
-		padding: 0.2rem 0;
+		padding: 0.3rem 0;
 		scrollbar-width: none;
 		-ms-overflow-style: none;
 		align-items: center;
@@ -330,12 +350,12 @@
 	.cyber-tab {
 		background: linear-gradient(135deg, rgba(0, 0, 0, 0.7) 0%, rgba(255, 255, 255, 0.02) 100%);
 		border: 1px solid rgba(255, 255, 255, 0.1);
-		border-radius: 3px;
-		padding: 0.25rem 0.4rem;
+		border-radius: 4px;
+		padding: 0.3rem 0.5rem;
 		color: #ffffff;
 		font-family: inherit;
-		font-size: 0.45rem;
-		font-weight: 500;
+		font-size: 0.5rem;
+		font-weight: 600;
 		cursor: pointer;
 		position: relative;
 		transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
@@ -344,11 +364,11 @@
 		overflow: hidden;
 		display: flex;
 		align-items: center;
-		gap: 0.2rem;
+		gap: 0.3rem;
 		text-transform: uppercase;
 		letter-spacing: 0.02em;
 		min-width: fit-content;
-		height: 28px;
+		height: 32px;
 	}
 
 	.cyber-tab::before {
@@ -370,26 +390,26 @@
 		border-color: var(--tab-color);
 		background: linear-gradient(135deg, rgba(0, 0, 0, 0.8) 0%, rgba(255, 255, 255, 0.05) 100%);
 		transform: translateY(-1px);
-		box-shadow: 0 3px 12px rgba(0, 0, 0, 0.4);
+		box-shadow: 0 4px 15px rgba(0, 0, 0, 0.4);
 	}
 
 	.cyber-tab.active {
 		border-color: var(--tab-color);
 		background: linear-gradient(135deg, rgba(0, 0, 0, 0.9) 0%, rgba(255, 255, 255, 0.08) 100%);
-		box-shadow: 0 0 15px rgba(0, 255, 255, 0.3);
+		box-shadow: 0 0 20px rgba(0, 255, 255, 0.3);
 	}
 
 	.tab-icon {
-		font-size: 0.6rem;
+		font-size: 0.7rem;
 		color: var(--tab-color);
-		text-shadow: 0 0 6px var(--tab-color);
+		text-shadow: 0 0 8px var(--tab-color);
 	}
 
 	.tab-name {
 		position: relative;
 		z-index: 2;
-		letter-spacing: 0.02em;
-		font-size: 0.45rem;
+		letter-spacing: 0.03em;
+		font-size: 0.5rem;
 	}
 
 	.tab-glow {
@@ -401,22 +421,23 @@
 		background: radial-gradient(circle, var(--tab-color), transparent);
 		opacity: 0;
 		transition: opacity 0.3s ease;
-		border-radius: 3px;
+		border-radius: 4px;
 	}
 
 	.cyber-tab:hover .tab-glow,
 	.cyber-tab.active .tab-glow {
-		opacity: 0.05;
+		opacity: 0.06;
 	}
 
 	.time-panel {
 		display: flex;
 		align-items: center;
+		gap: 0.8rem;
 		flex-shrink: 0;
 		background: linear-gradient(135deg, rgba(0, 0, 0, 0.7), rgba(0, 255, 255, 0.03));
 		border: 1px solid rgba(0, 255, 255, 0.3);
 		border-radius: 4px;
-		padding: 0.4rem 0.5rem;
+		padding: 0.5rem 0.7rem;
 		backdrop-filter: blur(10px);
 	}
 
@@ -436,19 +457,39 @@
 	}
 
 	.time-value {
-		font-size: 0.45rem;
+		font-size: 0.5rem;
 		font-weight: 600;
 		color: #ffffff;
+	}
+
+	.status-indicators {
+		display: flex;
+		flex-direction: column;
+		gap: 0.2rem;
+	}
+
+	.indicator {
+		width: 4px;
+		height: 4px;
+		background: rgba(255, 255, 255, 0.2);
+		border-radius: 50%;
+		transition: all 0.3s ease;
+	}
+
+	.indicator.active {
+		background: #00ff85;
+		box-shadow: 0 0 6px #00ff85;
+		animation: indicatorPulse 2s ease-in-out infinite;
 	}
 
 	.data-viewport {
 		flex: 1;
 		position: relative;
 		z-index: 5;
-		padding: 0.4rem;
+		padding: 0.5rem;
 		overflow: hidden;
 		min-height: 0;
-		height: calc(100vh - 55px);
+		height: calc(100vh - 60px);
 	}
 
 	.viewport-frame {
@@ -480,38 +521,38 @@
 
 	.corner {
 		position: absolute;
-		width: 10px;
-		height: 10px;
+		width: 12px;
+		height: 12px;
 		border: 1px solid rgba(0, 255, 255, 0.6);
 	}
 
 	.corner.tl {
-		top: 6px;
-		left: 6px;
+		top: 8px;
+		left: 8px;
 		border-right: none;
 		border-bottom: none;
 		border-top-left-radius: 2px;
 	}
 
 	.corner.tr {
-		top: 6px;
-		right: 6px;
+		top: 8px;
+		right: 8px;
 		border-left: none;
 		border-bottom: none;
 		border-top-right-radius: 2px;
 	}
 
 	.corner.bl {
-		bottom: 6px;
-		left: 6px;
+		bottom: 8px;
+		left: 8px;
 		border-right: none;
 		border-top: none;
 		border-bottom-left-radius: 2px;
 	}
 
 	.corner.br {
-		bottom: 6px;
-		right: 6px;
+		bottom: 8px;
+		right: 8px;
 		border-left: none;
 		border-top: none;
 		border-bottom-right-radius: 2px;
@@ -522,26 +563,26 @@
 		z-index: 2;
 		width: 100%;
 		height: 100%;
-		padding: 0.6rem;
+		padding: 0.8rem;
 		overflow-y: auto;
 		overflow-x: hidden;
 	}
 
 	:global(::-webkit-scrollbar) {
-		width: 4px;
+		width: 6px;
 	}
 
 	:global(::-webkit-scrollbar-track) {
 		background: rgba(0, 0, 0, 0.2);
-		border-radius: 2px;
+		border-radius: 3px;
 	}
 
 	:global(::-webkit-scrollbar-thumb) {
 		background: linear-gradient(135deg, 
 			rgba(0, 255, 255, 0.6), 
 			rgba(255, 0, 255, 0.4));
-		border-radius: 2px;
-		box-shadow: 0 0 6px rgba(0, 255, 255, 0.3);
+		border-radius: 3px;
+		box-shadow: 0 0 8px rgba(0, 255, 255, 0.3);
 	}
 
 	:global(::-webkit-scrollbar-thumb:hover) {
@@ -559,26 +600,31 @@
 		0%, 100% { 
 			opacity: 0.9; 
 			transform: scale(1);
-			text-shadow: 0 0 10px rgba(0, 255, 255, 0.8);
+			text-shadow: 0 0 12px rgba(0, 255, 255, 0.8);
 		}
 		50% { 
 			opacity: 1; 
 			transform: scale(1.05);
-			text-shadow: 0 0 15px rgba(0, 255, 255, 1);
+			text-shadow: 0 0 18px rgba(0, 255, 255, 1);
 		}
+	}
+
+	@keyframes indicatorPulse {
+		0%, 100% { opacity: 1; transform: scale(1); }
+		50% { opacity: 0.6; transform: scale(1.2); }
 	}
 
 	@media (max-width: 1400px) {
 		.header-content {
 			flex-wrap: wrap;
-			padding: 0.5rem;
-			gap: 0.4rem;
+			padding: 0.6rem;
+			gap: 0.5rem;
 		}
 
 		.tab-navigation {
 			order: 3;
 			width: 100%;
-			margin-top: 0.3rem;
+			margin-top: 0.4rem;
 		}
 
 		.cyber-header {
@@ -586,7 +632,7 @@
 		}
 
 		.data-viewport {
-			height: calc(100vh - 80px);
+			height: calc(100vh - 85px);
 		}
 	}
 
@@ -594,20 +640,20 @@
 		.brand-section {
 			flex-direction: column;
 			text-align: center;
-			gap: 0.2rem;
+			gap: 0.3rem;
 		}
 
 		.cyber-tab {
-			padding: 0.3rem 0.4rem;
-			font-size: 0.4rem;
+			padding: 0.4rem 0.5rem;
+			font-size: 0.45rem;
 		}
 
 		.data-viewport {
-			padding: 0.3rem;
+			padding: 0.4rem;
 		}
 
 		.content-stream {
-			padding: 0.5rem;
+			padding: 0.6rem;
 		}
 	}
 </style>
