@@ -1,4 +1,4 @@
-<!-- SourceTables.svelte -->
+<!-- SourceTables.svelte - Optimized for Maximum Data Density -->
 <script>
 	import { onMount } from 'svelte';
 	
@@ -61,7 +61,7 @@
 	}
 
 	function getCircularProgress(percentage) {
-		const circumference = 2 * Math.PI * 25;
+		const circumference = 2 * Math.PI * 18;
 		const strokeDashoffset = circumference - (percentage / 100) * circumference;
 		return { strokeDashoffset };
 	}
@@ -79,39 +79,39 @@
 			</div>
 			<div class="metrics-display">
 				<div class="metric-ring">
-					<svg width="60" height="60" viewBox="0 0 60 60">
-						<circle cx="30" cy="30" r="25" fill="none" stroke="rgba(0, 255, 255, 0.2)" stroke-width="1.5"/>
+					<svg width="40" height="40" viewBox="0 0 40 40">
+						<circle cx="20" cy="20" r="18" fill="none" stroke="rgba(0, 255, 255, 0.2)" stroke-width="1"/>
 						<circle 
-							cx="30" cy="30" r="25" 
+							cx="20" cy="20" r="18" 
 							fill="none" 
 							stroke="#00ffff" 
 							stroke-width="2"
-							stroke-dasharray="157"
+							stroke-dasharray="113"
 							stroke-dashoffset={getCircularProgress(85).strokeDashoffset}
-							transform="rotate(-90 30 30)"
+							transform="rotate(-90 20 20)"
 						/>
 					</svg>
 					<div class="ring-content">
 						<div class="ring-value">{(data.unique_sources || 0).toLocaleString()}</div>
-						<div class="ring-label">SOURCES</div>
+						<div class="ring-label">SRC</div>
 					</div>
 				</div>
 				<div class="metric-ring">
-					<svg width="60" height="60" viewBox="0 0 60 60">
-						<circle cx="30" cy="30" r="25" fill="none" stroke="rgba(255, 0, 255, 0.2)" stroke-width="1.5"/>
+					<svg width="40" height="40" viewBox="0 0 40 40">
+						<circle cx="20" cy="20" r="18" fill="none" stroke="rgba(255, 0, 255, 0.2)" stroke-width="1"/>
 						<circle 
-							cx="30" cy="30" r="25" 
+							cx="20" cy="20" r="18" 
 							fill="none" 
 							stroke="#ff00ff" 
 							stroke-width="2"
-							stroke-dasharray="157"
+							stroke-dasharray="113"
 							stroke-dashoffset={getCircularProgress(92).strokeDashoffset}
-							transform="rotate(-90 30 30)"
+							transform="rotate(-90 20 20)"
 						/>
 					</svg>
 					<div class="ring-content">
 						<div class="ring-value">{(data.total_mentions || 0).toLocaleString()}</div>
-						<div class="ring-label">MENTIONS</div>
+						<div class="ring-label">TOT</div>
 					</div>
 				</div>
 			</div>
@@ -124,7 +124,7 @@
 				<input 
 					type="text" 
 					bind:value={searchTerm}
-					placeholder="SEARCH SOURCE INTELLIGENCE..."
+					placeholder="SEARCH SOURCE..."
 					class="console-input"
 				/>
 				<div class="search-scanner"></div>
@@ -149,10 +149,10 @@
 		<div class="loading-interface">
 			<div class="loading-rings">
 				{#each Array(3) as _, i}
-					<div class="loading-ring" style="--delay: {i * 0.2}s; --size: {40 + i * 15}px"></div>
+					<div class="loading-ring" style="--delay: {i * 0.2}s; --size: {25 + i * 8}px"></div>
 				{/each}
 			</div>
-			<div class="loading-text">SCANNING SOURCE INTELLIGENCE...</div>
+			<div class="loading-text">SCANNING...</div>
 		</div>
 	{:else if selectedSource}
 		<div class="drill-interface">
@@ -194,10 +194,10 @@
 							<div class="header-cell">COUNTRY</div>
 							<div class="header-cell">INFRA</div>
 							<div class="header-cell">CMDB</div>
-							<div class="header-cell">TANIUM</div>
+							<div class="header-cell">TAN</div>
 						</div>
-						{#each hostDetails.slice(0, 50) as host, i}
-							<div class="grid-row" style="animation-delay: {i * 0.03}s">
+						{#each hostDetails.slice(0, 100) as host, i}
+							<div class="grid-row" style="animation-delay: {i * 0.01}s">
 								<div class="data-cell host-cell">{host.host}</div>
 								<div class="data-cell">{host.region}</div>
 								<div class="data-cell">{host.country}</div>
@@ -225,12 +225,12 @@
 					<div class="header-cell">SOURCE TABLE</div>
 					<div class="header-cell">FREQ</div>
 					<div class="header-cell">COV%</div>
-					<div class="header-cell">THREAT</div>
-					<div class="header-cell">ACTION</div>
+					<div class="header-cell">THR</div>
+					<div class="header-cell">ACT</div>
 				</div>
 				
-				{#each filteredSources.slice(0, 12) as [source, frequency], i}
-					<div class="grid-row" style="--threat-color: {getThreatLevel(frequency).color}; animation-delay: {i * 0.02}s">
+				{#each filteredSources.slice(0, 25) as [source, frequency], i}
+					<div class="grid-row" style="--threat-color: {getThreatLevel(frequency).color}; animation-delay: {i * 0.01}s">
 						<div class="data-cell source-cell">
 							<div class="source-indicator" style="background: {getThreatLevel(frequency).color}"></div>
 							<span class="source-name">{source}</span>
@@ -253,7 +253,6 @@
 						<div class="data-cell action-cell">
 							<button class="drill-button" on:click={() => drillDownSource(source, frequency)}>
 								<span class="drill-icon">⚡</span>
-								DRILL
 							</button>
 						</div>
 					</div>
@@ -264,11 +263,11 @@
 
 	<div class="interface-footer">
 		<div class="footer-stats">
-			<span>SHOWING {Math.min(filteredSources.length, 12)} OF {filteredSources.length}</span>
+			<span>SHOWING {Math.min(filteredSources.length, 25)} OF {filteredSources.length}</span>
 			<span>AVG: {((data.total_mentions || 0) / (data.unique_sources || 1)).toFixed(0)}/SRC</span>
 		</div>
 		<div class="neural-signature">
-			◈ SOURCE INTELLIGENCE PROTOCOL ACTIVE
+			◈ SOURCE INTELLIGENCE ACTIVE
 		</div>
 	</div>
 </div>
@@ -283,8 +282,8 @@
 		flex-direction: column;
 		background: transparent;
 		text-transform: uppercase;
-		letter-spacing: 0.03em;
-		font-size: 0.75rem;
+		letter-spacing: 0.02em;
+		font-size: 0.65rem;
 	}
 
 	.matrix-header {
@@ -292,12 +291,12 @@
 			rgba(0, 0, 0, 0.8) 0%, 
 			rgba(0, 255, 255, 0.05) 50%,
 			rgba(0, 0, 0, 0.8) 100%);
-		border: 2px solid #00ffff;
-		border-radius: 8px;
-		padding: 0.8rem 1.2rem;
-		margin-bottom: 1rem;
+		border: 1px solid #00ffff;
+		border-radius: 6px;
+		padding: 0.5rem 0.8rem;
+		margin-bottom: 0.6rem;
 		backdrop-filter: blur(20px);
-		box-shadow: 0 0 25px rgba(0, 255, 255, 0.2);
+		box-shadow: 0 0 15px rgba(0, 255, 255, 0.2);
 	}
 
 	.header-hud {
@@ -309,44 +308,44 @@
 	.hud-element {
 		display: flex;
 		align-items: center;
-		gap: 0.8rem;
+		gap: 0.6rem;
 	}
 
 	.hud-icon {
-		font-size: 1.5rem;
+		font-size: 1.2rem;
 		color: #00ffff;
-		text-shadow: 0 0 15px #00ffff;
+		text-shadow: 0 0 10px #00ffff;
 		animation: iconPulse 3s ease-in-out infinite;
 	}
 
 	.hud-data {
 		display: flex;
 		flex-direction: column;
-		gap: 0.2rem;
+		gap: 0.1rem;
 	}
 
 	.data-label {
-		font-size: 0.9rem;
+		font-size: 0.7rem;
 		font-weight: 700;
 		color: #fff;
-		text-shadow: 0 0 10px rgba(0, 255, 255, 0.5);
+		text-shadow: 0 0 8px rgba(0, 255, 255, 0.5);
 	}
 
 	.data-value {
-		font-size: 0.65rem;
+		font-size: 0.5rem;
 		color: rgba(255, 255, 255, 0.6);
 		font-weight: 400;
 	}
 
 	.metrics-display {
 		display: flex;
-		gap: 1.5rem;
+		gap: 1rem;
 	}
 
 	.metric-ring {
 		position: relative;
-		width: 60px;
-		height: 60px;
+		width: 40px;
+		height: 40px;
 	}
 
 	.ring-content {
@@ -358,36 +357,36 @@
 	}
 
 	.ring-value {
-		font-size: 0.7rem;
+		font-size: 0.55rem;
 		font-weight: 700;
 		color: #00ffff;
-		text-shadow: 0 0 8px #00ffff;
+		text-shadow: 0 0 6px #00ffff;
 	}
 
 	.ring-label {
-		font-size: 0.45rem;
+		font-size: 0.35rem;
 		color: rgba(255, 255, 255, 0.6);
-		margin-top: 0.1rem;
+		margin-top: 0.05rem;
 	}
 
 	.control-matrix {
 		display: flex;
 		justify-content: space-between;
 		align-items: center;
-		margin-bottom: 1rem;
-		gap: 1rem;
+		margin-bottom: 0.6rem;
+		gap: 0.8rem;
 	}
 
 	.search-console {
 		flex: 1;
-		max-width: 350px;
+		max-width: 280px;
 	}
 
 	.console-frame {
 		position: relative;
 		background: linear-gradient(135deg, rgba(0, 0, 0, 0.8), rgba(0, 255, 255, 0.05));
-		border: 2px solid #00ffff;
-		border-radius: 6px;
+		border: 1px solid #00ffff;
+		border-radius: 4px;
 		overflow: hidden;
 	}
 
@@ -395,19 +394,19 @@
 		width: 100%;
 		background: transparent;
 		border: none;
-		padding: 0.6rem 1rem;
+		padding: 0.4rem 0.7rem;
 		color: #fff;
 		font-family: inherit;
-		font-size: 0.65rem;
+		font-size: 0.55rem;
 		font-weight: 600;
 		outline: none;
 		text-transform: uppercase;
-		letter-spacing: 0.05em;
+		letter-spacing: 0.03em;
 	}
 
 	.console-input::placeholder {
 		color: rgba(255, 255, 255, 0.4);
-		text-shadow: 0 0 6px rgba(0, 255, 255, 0.3);
+		text-shadow: 0 0 4px rgba(0, 255, 255, 0.3);
 	}
 
 	.search-scanner {
@@ -423,37 +422,37 @@
 
 	.view-selector {
 		display: flex;
-		gap: 0.3rem;
+		gap: 0.2rem;
 	}
 
 	.selector-btn {
 		background: linear-gradient(135deg, rgba(0, 0, 0, 0.6), rgba(255, 255, 255, 0.02));
-		border: 2px solid rgba(255, 255, 255, 0.1);
-		border-radius: 4px;
-		padding: 0.5rem 0.8rem;
+		border: 1px solid rgba(255, 255, 255, 0.1);
+		border-radius: 3px;
+		padding: 0.3rem 0.6rem;
 		color: rgba(255, 255, 255, 0.7);
 		font-family: inherit;
-		font-size: 0.6rem;
+		font-size: 0.5rem;
 		font-weight: 600;
 		cursor: pointer;
 		transition: all 0.3s ease;
 		text-transform: uppercase;
-		letter-spacing: 0.03em;
+		letter-spacing: 0.02em;
 		display: flex;
 		align-items: center;
-		gap: 0.3rem;
+		gap: 0.2rem;
 	}
 
 	.selector-btn:hover,
 	.selector-btn.active {
 		border-color: #00ffff;
 		color: #00ffff;
-		box-shadow: 0 0 15px rgba(0, 255, 255, 0.3);
-		text-shadow: 0 0 6px #00ffff;
+		box-shadow: 0 0 10px rgba(0, 255, 255, 0.3);
+		text-shadow: 0 0 4px #00ffff;
 	}
 
 	.btn-icon {
-		font-size: 0.7rem;
+		font-size: 0.6rem;
 		animation: iconFloat 2s ease-in-out infinite;
 	}
 
@@ -463,21 +462,21 @@
 		flex-direction: column;
 		align-items: center;
 		justify-content: center;
-		gap: 1.5rem;
+		gap: 1rem;
 	}
 
 	.loading-rings {
 		position: relative;
-		width: 80px;
-		height: 80px;
+		width: 60px;
+		height: 60px;
 	}
 
 	.loading-ring {
 		position: absolute;
 		width: var(--size);
 		height: var(--size);
-		border: 2px solid transparent;
-		border-top: 2px solid #00ffff;
+		border: 1px solid transparent;
+		border-top: 1px solid #00ffff;
 		border-radius: 50%;
 		top: 50%;
 		left: 50%;
@@ -488,7 +487,7 @@
 
 	.loading-text {
 		color: #00ffff;
-		font-size: 0.7rem;
+		font-size: 0.6rem;
 		font-weight: 600;
 		letter-spacing: 0.05em;
 		animation: textGlow 2s ease-in-out infinite;
@@ -497,8 +496,8 @@
 	.data-matrix {
 		flex: 1;
 		background: linear-gradient(135deg, rgba(0, 0, 0, 0.6), rgba(0, 255, 255, 0.02));
-		border: 2px solid #00ffff;
-		border-radius: 8px;
+		border: 1px solid #00ffff;
+		border-radius: 6px;
 		overflow: hidden;
 	}
 
@@ -510,33 +509,34 @@
 
 	.grid-header {
 		display: grid;
-		grid-template-columns: 2fr 0.8fr 0.8fr 0.6fr 0.8fr;
+		grid-template-columns: 2fr 0.6fr 0.6fr 0.4fr 0.4fr;
 		background: linear-gradient(135deg, rgba(0, 0, 0, 0.9), rgba(0, 255, 255, 0.1));
-		border-bottom: 2px solid #00ffff;
-		gap: 1px;
+		border-bottom: 1px solid #00ffff;
+		gap: 0.5px;
 	}
 
 	.header-cell {
-		padding: 0.6rem 0.8rem;
-		font-size: 0.6rem;
+		padding: 0.4rem 0.5rem;
+		font-size: 0.5rem;
 		font-weight: 700;
 		color: #00ffff;
-		text-shadow: 0 0 6px #00ffff;
+		text-shadow: 0 0 4px #00ffff;
 		border-right: 1px solid rgba(0, 255, 255, 0.2);
 		display: flex;
 		align-items: center;
-		letter-spacing: 0.03em;
+		letter-spacing: 0.02em;
 	}
 
 	.grid-row {
 		display: grid;
-		grid-template-columns: 2fr 0.8fr 0.8fr 0.6fr 0.8fr;
-		border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+		grid-template-columns: 2fr 0.6fr 0.6fr 0.4fr 0.4fr;
+		border-bottom: 1px solid rgba(255, 255, 255, 0.03);
 		transition: all 0.3s ease;
-		animation: rowEntrance 0.5s ease-out;
+		animation: rowEntrance 0.4s ease-out;
 		animation-fill-mode: both;
 		opacity: 0;
-		gap: 1px;
+		gap: 0.5px;
+		min-height: 28px;
 	}
 
 	.grid-row:hover {
@@ -544,16 +544,17 @@
 			rgba(0, 255, 255, 0.05), 
 			rgba(255, 0, 255, 0.02), 
 			transparent);
-		box-shadow: inset 3px 0 0 var(--threat-color);
+		box-shadow: inset 2px 0 0 var(--threat-color);
 	}
 
 	.data-cell {
-		padding: 0.6rem 0.8rem;
-		font-size: 0.65rem;
+		padding: 0.3rem 0.5rem;
+		font-size: 0.55rem;
 		color: rgba(255, 255, 255, 0.8);
-		border-right: 1px solid rgba(255, 255, 255, 0.05);
+		border-right: 1px solid rgba(255, 255, 255, 0.03);
 		display: flex;
 		align-items: center;
+		line-height: 1.2;
 	}
 
 	.source-cell {
@@ -561,14 +562,14 @@
 		color: #fff;
 		display: flex;
 		align-items: center;
-		gap: 0.6rem;
+		gap: 0.4rem;
 	}
 
 	.source-indicator {
-		width: 6px;
-		height: 6px;
+		width: 4px;
+		height: 4px;
 		border-radius: 50%;
-		box-shadow: 0 0 8px currentColor;
+		box-shadow: 0 0 6px currentColor;
 		animation: indicatorPulse 2s ease-in-out infinite;
 		flex-shrink: 0;
 	}
@@ -586,7 +587,7 @@
 	.frequency-value {
 		font-weight: 700;
 		color: #00ffff;
-		text-shadow: 0 0 6px #00ffff;
+		text-shadow: 0 0 4px #00ffff;
 	}
 
 	.coverage-cell {
@@ -595,19 +596,19 @@
 
 	.coverage-bar {
 		position: relative;
-		width: 60px;
-		height: 12px;
+		width: 45px;
+		height: 8px;
 		background: rgba(0, 0, 0, 0.5);
-		border-radius: 6px;
+		border-radius: 4px;
 		border: 1px solid rgba(255, 255, 255, 0.1);
 		overflow: hidden;
 	}
 
 	.coverage-fill {
 		height: 100%;
-		border-radius: 6px;
+		border-radius: 4px;
 		transition: width 1s ease-out;
-		box-shadow: 0 0 10px currentColor;
+		box-shadow: 0 0 8px currentColor;
 	}
 
 	.coverage-text {
@@ -615,7 +616,7 @@
 		top: 50%;
 		left: 50%;
 		transform: translate(-50%, -50%);
-		font-size: 0.5rem;
+		font-size: 0.4rem;
 		font-weight: 600;
 		color: #fff;
 		text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.8);
@@ -626,15 +627,15 @@
 	}
 
 	.threat-badge {
-		padding: 0.2rem 0.5rem;
+		padding: 0.15rem 0.35rem;
 		border: 1px solid;
-		border-radius: 3px;
-		font-size: 0.5rem;
+		border-radius: 2px;
+		font-size: 0.4rem;
 		font-weight: 700;
 		text-transform: uppercase;
-		letter-spacing: 0.03em;
+		letter-spacing: 0.02em;
 		background: rgba(0, 0, 0, 0.4);
-		text-shadow: 0 0 6px currentColor;
+		text-shadow: 0 0 4px currentColor;
 		animation: badgeGlow 3s ease-in-out infinite;
 	}
 
@@ -644,31 +645,31 @@
 
 	.drill-button {
 		background: linear-gradient(135deg, rgba(0, 255, 255, 0.1), rgba(0, 255, 255, 0.05));
-		border: 2px solid #00ffff;
-		border-radius: 4px;
-		padding: 0.3rem 0.6rem;
+		border: 1px solid #00ffff;
+		border-radius: 3px;
+		padding: 0.2rem 0.4rem;
 		color: #00ffff;
 		font-family: inherit;
-		font-size: 0.55rem;
+		font-size: 0.45rem;
 		font-weight: 600;
 		cursor: pointer;
 		transition: all 0.3s ease;
 		text-transform: uppercase;
 		display: flex;
 		align-items: center;
-		gap: 0.3rem;
-		letter-spacing: 0.03em;
+		gap: 0.2rem;
+		letter-spacing: 0.02em;
 	}
 
 	.drill-button:hover {
 		background: linear-gradient(135deg, rgba(0, 255, 255, 0.2), rgba(0, 255, 255, 0.1));
-		box-shadow: 0 0 15px rgba(0, 255, 255, 0.4);
+		box-shadow: 0 0 10px rgba(0, 255, 255, 0.4);
 		transform: translateY(-1px);
-		text-shadow: 0 0 6px #00ffff;
+		text-shadow: 0 0 4px #00ffff;
 	}
 
 	.drill-icon {
-		font-size: 0.6rem;
+		font-size: 0.5rem;
 		animation: iconSpark 2s ease-in-out infinite;
 	}
 
@@ -677,15 +678,15 @@
 		display: flex;
 		flex-direction: column;
 		background: linear-gradient(135deg, rgba(0, 0, 0, 0.8), rgba(255, 0, 255, 0.02));
-		border: 2px solid #ff00ff;
-		border-radius: 8px;
+		border: 1px solid #ff00ff;
+		border-radius: 6px;
 		overflow: hidden;
 	}
 
 	.drill-header {
 		background: linear-gradient(135deg, rgba(0, 0, 0, 0.9), rgba(255, 0, 255, 0.05));
-		border-bottom: 2px solid #ff00ff;
-		padding: 0.8rem 1.2rem;
+		border-bottom: 1px solid #ff00ff;
+		padding: 0.5rem 0.8rem;
 		display: flex;
 		justify-content: space-between;
 		align-items: center;
@@ -694,68 +695,68 @@
 	.target-display {
 		display: flex;
 		align-items: center;
-		gap: 1rem;
+		gap: 0.8rem;
 	}
 
 	.target-badge {
 		position: relative;
-		padding: 0.6rem;
-		border: 2px solid var(--threat-color);
-		border-radius: 6px;
+		padding: 0.4rem;
+		border: 1px solid var(--threat-color);
+		border-radius: 4px;
 		background: rgba(0, 0, 0, 0.6);
 		text-align: center;
 	}
 
 	.badge-ring {
 		position: absolute;
-		top: -2px;
-		left: -2px;
-		right: -2px;
-		bottom: -2px;
+		top: -1px;
+		left: -1px;
+		right: -1px;
+		bottom: -1px;
 		border: 1px solid var(--threat-color);
-		border-radius: 6px;
+		border-radius: 4px;
 		animation: ringRotate 4s linear infinite;
 		opacity: 0.5;
 	}
 
 	.threat-level {
-		font-size: 0.6rem;
+		font-size: 0.5rem;
 		font-weight: 700;
 		color: var(--threat-color);
-		text-shadow: 0 0 8px var(--threat-color);
+		text-shadow: 0 0 6px var(--threat-color);
 		z-index: 2;
 		position: relative;
 	}
 
 	.target-info h3 {
 		margin: 0;
-		font-size: 1rem;
+		font-size: 0.8rem;
 		color: #fff;
-		text-shadow: 0 0 10px rgba(255, 255, 255, 0.3);
+		text-shadow: 0 0 8px rgba(255, 255, 255, 0.3);
 	}
 
 	.target-stats {
 		display: flex;
-		gap: 1rem;
-		margin-top: 0.3rem;
-		font-size: 0.6rem;
+		gap: 0.8rem;
+		margin-top: 0.2rem;
+		font-size: 0.5rem;
 		color: rgba(255, 255, 255, 0.6);
 	}
 
 	.stat {
 		color: #ff00ff;
 		font-weight: 600;
-		text-shadow: 0 0 6px #ff00ff;
+		text-shadow: 0 0 4px #ff00ff;
 	}
 
 	.close-terminal {
 		background: linear-gradient(135deg, rgba(255, 0, 102, 0.2), rgba(255, 0, 102, 0.1));
-		border: 2px solid #ff0066;
+		border: 1px solid #ff0066;
 		border-radius: 50%;
-		width: 35px;
-		height: 35px;
+		width: 26px;
+		height: 26px;
 		color: #ff0066;
-		font-size: 1rem;
+		font-size: 0.8rem;
 		cursor: pointer;
 		transition: all 0.3s ease;
 		display: flex;
@@ -765,12 +766,12 @@
 
 	.close-terminal:hover {
 		background: linear-gradient(135deg, rgba(255, 0, 102, 0.3), rgba(255, 0, 102, 0.2));
-		box-shadow: 0 0 20px rgba(255, 0, 102, 0.5);
+		box-shadow: 0 0 15px rgba(255, 0, 102, 0.5);
 		transform: rotate(90deg);
 	}
 
 	.close-icon {
-		text-shadow: 0 0 8px #ff0066;
+		text-shadow: 0 0 6px #ff0066;
 	}
 
 	.scanning-hosts {
@@ -779,44 +780,49 @@
 		flex-direction: column;
 		align-items: center;
 		justify-content: center;
-		gap: 1.5rem;
+		gap: 1rem;
 		color: #ff00ff;
 	}
 
 	.scan-grid {
 		display: grid;
 		grid-template-columns: repeat(3, 1fr);
-		gap: 0.3rem;
-		width: 80px;
-		height: 80px;
+		gap: 0.2rem;
+		width: 60px;
+		height: 60px;
 	}
 
 	.scan-cell {
 		background: #ff00ff;
-		border-radius: 2px;
+		border-radius: 1px;
 		animation: cellFlicker 1.5s ease-in-out infinite;
 		opacity: 0.3;
 	}
 
 	.host-matrix {
 		flex: 1;
-		padding: 0.8rem;
+		padding: 0.5rem;
 		overflow-y: auto;
+		max-height: 60vh;
 	}
 
 	.host-matrix .grid-header {
-		grid-template-columns: 2fr 1fr 1fr 1fr 0.6fr 0.6fr;
+		grid-template-columns: 2fr 0.8fr 0.8fr 0.8fr 0.4fr 0.4fr;
 		background: linear-gradient(135deg, rgba(0, 0, 0, 0.9), rgba(255, 0, 255, 0.1));
-		border-bottom: 2px solid #ff00ff;
+		border-bottom: 1px solid #ff00ff;
+		position: sticky;
+		top: 0;
+		z-index: 2;
 	}
 
 	.host-matrix .header-cell {
 		color: #ff00ff;
-		text-shadow: 0 0 6px #ff00ff;
+		text-shadow: 0 0 4px #ff00ff;
 	}
 
 	.host-matrix .grid-row {
-		grid-template-columns: 2fr 1fr 1fr 1fr 0.6fr 0.6fr;
+		grid-template-columns: 2fr 0.8fr 0.8fr 0.8fr 0.4fr 0.4fr;
+		min-height: 24px;
 	}
 
 	.host-cell {
@@ -825,12 +831,12 @@
 	}
 
 	.status-chip {
-		padding: 0.2rem 0.4rem;
-		border-radius: 3px;
-		font-size: 0.5rem;
+		padding: 0.1rem 0.25rem;
+		border-radius: 2px;
+		font-size: 0.4rem;
 		font-weight: 600;
 		text-transform: uppercase;
-		letter-spacing: 0.03em;
+		letter-spacing: 0.02em;
 		border: 1px solid;
 	}
 
@@ -838,42 +844,42 @@
 		background: rgba(0, 255, 133, 0.1);
 		color: #00ff85;
 		border-color: #00ff85;
-		text-shadow: 0 0 6px #00ff85;
+		text-shadow: 0 0 4px #00ff85;
 	}
 
 	.status-chip.inactive {
 		background: rgba(255, 0, 102, 0.1);
 		color: #ff0066;
 		border-color: #ff0066;
-		text-shadow: 0 0 6px #ff0066;
+		text-shadow: 0 0 4px #ff0066;
 	}
 
 	.interface-footer {
 		display: flex;
 		justify-content: space-between;
 		align-items: center;
-		padding: 0.6rem 0;
-		margin-top: 1rem;
+		padding: 0.4rem 0;
+		margin-top: 0.6rem;
 		border-top: 1px solid rgba(255, 255, 255, 0.1);
-		font-size: 0.55rem;
+		font-size: 0.45rem;
 		color: rgba(255, 255, 255, 0.5);
 	}
 
 	.footer-stats {
 		display: flex;
-		gap: 1.5rem;
+		gap: 1rem;
 	}
 
 	.neural-signature {
 		color: #00ffff;
 		font-weight: 600;
-		letter-spacing: 0.03em;
-		text-shadow: 0 0 6px #00ffff;
+		letter-spacing: 0.02em;
+		text-shadow: 0 0 4px #00ffff;
 	}
 
 	@keyframes iconPulse {
-		0%, 100% { transform: scale(1); text-shadow: 0 0 15px #00ffff; }
-		50% { transform: scale(1.05); text-shadow: 0 0 20px #00ffff; }
+		0%, 100% { transform: scale(1); text-shadow: 0 0 10px #00ffff; }
+		50% { transform: scale(1.05); text-shadow: 0 0 15px #00ffff; }
 	}
 
 	@keyframes scannerSweep {
@@ -883,7 +889,7 @@
 
 	@keyframes iconFloat {
 		0%, 100% { transform: translateY(0px); }
-		50% { transform: translateY(-2px); }
+		50% { transform: translateY(-1px); }
 	}
 
 	@keyframes ringSpin {
@@ -892,14 +898,14 @@
 	}
 
 	@keyframes textGlow {
-		0%, 100% { text-shadow: 0 0 8px #00ffff; }
-		50% { text-shadow: 0 0 15px #00ffff; }
+		0%, 100% { text-shadow: 0 0 6px #00ffff; }
+		50% { text-shadow: 0 0 10px #00ffff; }
 	}
 
 	@keyframes rowEntrance {
 		0% { 
 			opacity: 0; 
-			transform: translateX(-15px);
+			transform: translateX(-10px);
 		}
 		100% { 
 			opacity: 1; 
@@ -913,13 +919,13 @@
 	}
 
 	@keyframes badgeGlow {
-		0%, 100% { box-shadow: 0 0 6px currentColor; }
-		50% { box-shadow: 0 0 12px currentColor; }
+		0%, 100% { box-shadow: 0 0 4px currentColor; }
+		50% { box-shadow: 0 0 8px currentColor; }
 	}
 
 	@keyframes iconSpark {
-		0%, 100% { text-shadow: 0 0 4px currentColor; }
-		50% { text-shadow: 0 0 12px currentColor; }
+		0%, 100% { text-shadow: 0 0 3px currentColor; }
+		50% { text-shadow: 0 0 8px currentColor; }
 	}
 
 	@keyframes ringRotate {
@@ -932,21 +938,21 @@
 		50% { opacity: 1; background: #fff; }
 	}
 
-	@media (max-width: 1200px) {
+	@media (max-width: 1400px) {
 		.header-hud {
 			flex-direction: column;
-			gap: 0.8rem;
+			gap: 0.5rem;
 		}
 
 		.control-matrix {
 			flex-direction: column;
-			gap: 0.8rem;
+			gap: 0.5rem;
 		}
 
 		.matrix-grid .grid-header,
 		.matrix-grid .grid-row {
 			grid-template-columns: 1fr;
-			gap: 0.3rem;
+			gap: 0.2rem;
 		}
 
 		.data-cell {
@@ -956,19 +962,21 @@
 
 	@media (max-width: 768px) {
 		.matrix-header {
-			padding: 0.6rem;
+			padding: 0.4rem;
 		}
 
 		.drill-header {
 			flex-direction: column;
-			gap: 0.8rem;
+			gap: 0.5rem;
 			align-items: flex-start;
 		}
 
 		.target-display {
 			flex-direction: column;
 			align-items: flex-start;
-			gap: 0.8rem;
+			gap: 0.5rem;
 		}
+
+		.font-size: 0.6rem;
 	}
 </style>
