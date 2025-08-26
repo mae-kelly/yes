@@ -1,3 +1,4 @@
+// client/src/components/GlobalView.svelte
 <script>
   import { onMount } from 'svelte';
 
@@ -20,14 +21,14 @@
   onMount(fetchData);
 
   function getStatusColor(percentage) {
-    if (percentage >= 90) return 'var(--status-secure)';
+    if (percentage >= 90) return 'var(--status-good)';
     if (percentage >= 75) return 'var(--status-adequate)';
     if (percentage >= 50) return 'var(--status-warning)';
     return 'var(--status-critical)';
   }
 
   function getStatusLabel(percentage) {
-    if (percentage >= 90) return 'SECURE';
+    if (percentage >= 90) return 'OPTIMAL';
     if (percentage >= 75) return 'ADEQUATE';
     if (percentage >= 50) return 'WARNING';
     return 'CRITICAL';
@@ -55,6 +56,10 @@
     </div>
   </div>
 {:else if data.total_hosts}
+  <div class="main-header-title" style="margin-bottom: 2rem;">
+    GLOBAL SECURITY POSTURE ANALYSIS
+  </div>
+
   <div class="stats-overview">
     <div class="stat-card primary">
       <div class="stat-icon">
@@ -74,7 +79,7 @@
       <div class="stat-card">
         <div class="circular-progress">
           <svg width="80" height="80">
-            <circle cx="40" cy="40" r="35" stroke="var(--glass-border)" stroke-width="3" fill="none"/>
+            <circle cx="40" cy="40" r="35" stroke="var(--border-dark)" stroke-width="3" fill="none"/>
             <circle 
               cx="40" cy="40" r="35" 
               stroke={getStatusColor(stats.percentage)}
@@ -158,216 +163,3 @@
     </div>
   </div>
 {/if}
-
-<style>
-  .stats-overview {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-    gap: 1.5rem;
-    margin-bottom: 2rem;
-  }
-
-  .stat-card {
-    background: var(--bg-glass);
-    backdrop-filter: blur(20px);
-    border: 1px solid var(--glass-border);
-    border-radius: 16px;
-    padding: 1.5rem;
-    display: flex;
-    gap: 1.5rem;
-    align-items: center;
-    transition: all 0.3s ease;
-  }
-
-  .stat-card:hover {
-    transform: translateY(-4px);
-    box-shadow: 0 12px 40px rgba(0, 217, 255, 0.15);
-    border-color: rgba(0, 217, 255, 0.3);
-  }
-
-  .stat-card.primary {
-    grid-column: span 2;
-    background: linear-gradient(135deg, rgba(0, 217, 255, 0.1), rgba(0, 217, 255, 0.05));
-    border-color: rgba(0, 217, 255, 0.3);
-  }
-
-  .stat-icon {
-    color: var(--cyan-primary);
-    width: 48px;
-    height: 48px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    background: rgba(0, 217, 255, 0.1);
-    border-radius: 12px;
-  }
-
-  .circular-progress {
-    position: relative;
-    width: 80px;
-    height: 80px;
-  }
-
-  .progress-text {
-    position: absolute;
-    inset: 0;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-  }
-
-  .progress-value {
-    font-size: 1.25rem;
-    font-weight: 600;
-    color: var(--text-primary);
-  }
-
-  .stat-content {
-    flex: 1;
-  }
-
-  .stat-label {
-    font-size: 0.75rem;
-    font-weight: 500;
-    text-transform: uppercase;
-    letter-spacing: 0.1em;
-    color: var(--text-tertiary);
-    margin-bottom: 0.25rem;
-  }
-
-  .stat-value {
-    font-size: 2rem;
-    font-weight: 600;
-    background: linear-gradient(135deg, var(--cyan-primary), var(--cyan-glow));
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    line-height: 1;
-  }
-
-  .stat-detail, .stat-count {
-    font-size: 0.875rem;
-    color: var(--text-secondary);
-    margin-top: 0.25rem;
-  }
-
-  .stat-status {
-    font-size: 0.75rem;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-    margin-top: 0.5rem;
-  }
-
-  .detailed-metrics {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 1.5rem;
-  }
-
-  .card-title {
-    font-size: 0.875rem;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.1em;
-    color: var(--cyan-primary);
-    margin-bottom: 1.5rem;
-  }
-
-  .coverage-grid {
-    display: flex;
-    flex-direction: column;
-    gap: 1.5rem;
-  }
-
-  .coverage-header {
-    display: flex;
-    justify-content: space-between;
-    margin-bottom: 0.5rem;
-  }
-
-  .coverage-name {
-    font-size: 0.75rem;
-    font-weight: 500;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-    color: var(--text-secondary);
-  }
-
-  .coverage-percentage {
-    font-size: 0.875rem;
-    font-weight: 600;
-  }
-
-  .coverage-stats {
-    font-size: 0.75rem;
-    color: var(--text-tertiary);
-    margin-top: 0.5rem;
-  }
-
-  .security-summary {
-    display: grid;
-    grid-template-columns: 1fr 2fr;
-    gap: 2rem;
-  }
-
-  .security-score {
-    text-align: center;
-    padding: 1.5rem;
-    background: linear-gradient(135deg, rgba(0, 217, 255, 0.1), transparent);
-    border-radius: 12px;
-    border: 1px solid rgba(0, 217, 255, 0.2);
-  }
-
-  .score-value {
-    font-size: 2.5rem;
-    font-weight: 600;
-    background: linear-gradient(135deg, var(--cyan-primary), var(--cyan-glow));
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-  }
-
-  .score-label {
-    font-size: 0.75rem;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-    color: var(--text-tertiary);
-    margin-top: 0.5rem;
-  }
-
-  .security-breakdown {
-    display: flex;
-    flex-direction: column;
-    gap: 1rem;
-    justify-content: center;
-  }
-
-  .breakdown-item {
-    display: flex;
-    justify-content: space-between;
-    padding: 0.75rem;
-    background: rgba(255, 255, 255, 0.02);
-    border-radius: 8px;
-    border: 1px solid var(--glass-border);
-  }
-
-  .breakdown-label {
-    font-size: 0.875rem;
-    color: var(--text-secondary);
-  }
-
-  .breakdown-value {
-    font-size: 1.25rem;
-    font-weight: 600;
-    color: var(--text-primary);
-  }
-
-  @media (max-width: 1024px) {
-    .stat-card.primary {
-      grid-column: span 1;
-    }
-    
-    .detailed-metrics {
-      grid-template-columns: 1fr;
-    }
-  }
-</style>
