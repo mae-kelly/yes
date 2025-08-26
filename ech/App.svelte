@@ -17,18 +17,18 @@
 	let currentView = 'source_tables';
 
 	let modules = [
-		{ id: 'source_tables', name: 'SOURCE INTEL', color: '#00ffff', icon: '◈' },
-		{ id: 'domain_metrics', name: '1DC vs FEAD', color: '#ff00ff', icon: '◆' },
-		{ id: 'infrastructure_type', name: 'INFRASTRUCTURE', color: '#0096ff', icon: '⬢' },
-		{ id: 'region_metrics', name: 'GLOBAL REGIONS', color: '#00ffff', icon: '◉' },
-		{ id: 'country_metrics', name: 'COUNTRY SCAN', color: '#ff00ff', icon: '⬟' },
-		{ id: 'data_center', name: 'DATA CENTERS', color: '#0096ff', icon: '⬡' },
-		{ id: 'class_metrics', name: 'CLASS ANALYSIS', color: '#ff00ff', icon: '◐' },
-		{ id: 'system_classification', name: 'SYSTEM TYPES', color: '#0096ff', icon: '◑' },
-		{ id: 'business_unit', name: 'BUSINESS UNITS', color: '#00ffff', icon: '◒' },
-		{ id: 'cio_metrics', name: 'CIO ANALYSIS', color: '#ff00ff', icon: '◓' },
+		{ id: 'source_tables', name: 'SOURCE', color: '#00ffff', icon: '◈' },
+		{ id: 'domain_metrics', name: '1DC/FEAD', color: '#ff00ff', icon: '◆' },
+		{ id: 'infrastructure_type', name: 'INFRA', color: '#0096ff', icon: '⬢' },
+		{ id: 'region_metrics', name: 'REGIONS', color: '#00ffff', icon: '◉' },
+		{ id: 'country_metrics', name: 'COUNTRIES', color: '#ff00ff', icon: '⬟' },
+		{ id: 'data_center', name: 'CENTERS', color: '#0096ff', icon: '⬡' },
+		{ id: 'class_metrics', name: 'CLASSES', color: '#ff00ff', icon: '◐' },
+		{ id: 'system_classification', name: 'SYSTEMS', color: '#0096ff', icon: '◑' },
+		{ id: 'business_unit', name: 'BIZ UNITS', color: '#00ffff', icon: '◒' },
+		{ id: 'cio_metrics', name: 'CIO', color: '#ff00ff', icon: '◓' },
 		{ id: 'tanium_coverage', name: 'TANIUM', color: '#0096ff', icon: '⬠' },
-		{ id: 'cmdb_presence', name: 'CMDB STATUS', color: '#00ffff', icon: '⬢' }
+		{ id: 'cmdb_presence', name: 'CMDB', color: '#00ffff', icon: '⬢' }
 	];
 
 	let currentTime = '';
@@ -47,24 +47,21 @@
 </script>
 
 <main class="cyberpunk-interface">
-	<!-- Animated background particles -->
 	<div class="matrix-rain">
-		{#each Array(50) as _, i}
+		{#each Array(40) as _, i}
 			<div class="rain-drop" style="left: {Math.random() * 100}%; animation-delay: {Math.random() * 5}s; animation-duration: {3 + Math.random() * 4}s;"></div>
 		{/each}
 	</div>
 
-	<!-- Neural grid pattern -->
 	<div class="neural-grid">
-		{#each Array(20) as _, i}
-			<div class="grid-line horizontal" style="top: {i * 5}%;"></div>
+		{#each Array(15) as _, i}
+			<div class="grid-line horizontal" style="top: {i * 6.67}%;"></div>
 		{/each}
-		{#each Array(20) as _, i}
-			<div class="grid-line vertical" style="left: {i * 5}%;"></div>
+		{#each Array(15) as _, i}
+			<div class="grid-line vertical" style="left: {i * 6.67}%;"></div>
 		{/each}
 	</div>
 
-	<!-- Header with title and navigation tabs -->
 	<header class="cyber-header">
 		<div class="header-content">
 			<div class="brand-section">
@@ -81,7 +78,6 @@
 				</div>
 			</div>
 			
-			<!-- Navigation modules in header -->
 			<nav class="tab-navigation">
 				{#each modules as module}
 					<button 
@@ -105,7 +101,6 @@
 		</div>
 	</header>
 
-	<!-- Main content viewport -->
 	<section class="data-viewport">
 		<div class="viewport-frame">
 			<div class="frame-corners">
@@ -148,12 +143,13 @@
 
 <style>
 	:global(body) {
-		font-family: 'Orbitron', 'Exo 2', 'Rajdhani', monospace;
+		font-family: 'JetBrains Mono', 'Consolas', 'Monaco', monospace;
 		background: #000;
 		color: #fff;
 		overflow: hidden;
 		margin: 0;
 		padding: 0;
+		font-size: 13px;
 	}
 
 	.cyberpunk-interface {
@@ -178,11 +174,11 @@
 
 	.rain-drop {
 		position: absolute;
-		width: 2px;
-		height: 20px;
+		width: 1px;
+		height: 15px;
 		background: linear-gradient(180deg, transparent, #00ffff, transparent);
 		animation: rainfall linear infinite;
-		opacity: 0.3;
+		opacity: 0.2;
 	}
 
 	@keyframes rainfall {
@@ -198,7 +194,7 @@
 		height: 100%;
 		pointer-events: none;
 		z-index: 1;
-		opacity: 0.1;
+		opacity: 0.08;
 	}
 
 	.grid-line {
@@ -218,33 +214,34 @@
 	}
 
 	.cyber-header {
-		background: linear-gradient(135deg, rgba(0, 0, 0, 0.9), rgba(26, 13, 46, 0.8));
+		background: linear-gradient(135deg, rgba(0, 0, 0, 0.95), rgba(26, 13, 46, 0.85));
 		border-bottom: 2px solid #00ffff;
-		backdrop-filter: blur(20px);
+		backdrop-filter: blur(25px);
 		z-index: 10;
 		position: relative;
-		box-shadow: 0 4px 32px rgba(0, 255, 255, 0.1);
+		box-shadow: 0 4px 32px rgba(0, 255, 255, 0.15);
+		padding: 0.5rem 0;
 	}
 
 	.header-content {
 		display: flex;
 		align-items: center;
-		padding: 1rem 2rem;
-		gap: 2rem;
-		min-height: 80px;
+		padding: 0.5rem 1rem;
+		gap: 1rem;
+		min-height: 60px;
 	}
 
 	.brand-section {
 		display: flex;
 		align-items: center;
-		gap: 1rem;
+		gap: 0.8rem;
 		flex-shrink: 0;
 	}
 
 	.neural-logo {
 		position: relative;
-		width: 50px;
-		height: 50px;
+		width: 40px;
+		height: 40px;
 		display: flex;
 		align-items: center;
 		justify-content: center;
@@ -267,30 +264,30 @@
 	}
 
 	.ring-outer {
-		width: 50px;
-		height: 50px;
+		width: 40px;
+		height: 40px;
 		border-color: rgba(0, 255, 255, 0.6);
 	}
 
 	.ring-middle {
-		width: 35px;
-		height: 35px;
+		width: 28px;
+		height: 28px;
 		border-color: rgba(255, 0, 255, 0.4);
 		animation-direction: reverse;
 		animation-duration: 6s;
 	}
 
 	.ring-inner {
-		width: 20px;
-		height: 20px;
+		width: 16px;
+		height: 16px;
 		border-color: rgba(0, 150, 255, 0.8);
 		animation-duration: 4s;
 	}
 
 	.logo-center {
-		font-size: 1.5rem;
+		font-size: 1.2rem;
 		color: rgba(0, 255, 255, 0.9);
-		text-shadow: 0 0 20px rgba(0, 255, 255, 0.8);
+		text-shadow: 0 0 15px rgba(0, 255, 255, 0.8);
 		z-index: 3;
 		position: relative;
 		animation: corePulse 3s ease-in-out infinite;
@@ -302,20 +299,20 @@
 	}
 
 	.title {
-		font-size: 1.3rem;
+		font-size: 1.1rem;
 		font-weight: 700;
 		color: #ffffff;
 		margin: 0;
-		text-shadow: 0 0 20px rgba(0, 255, 255, 0.5);
+		text-shadow: 0 0 15px rgba(0, 255, 255, 0.5);
 		letter-spacing: 0.02em;
 	}
 
 	.tab-navigation {
 		display: flex;
 		flex: 1;
-		gap: 0.3rem;
+		gap: 0.2rem;
 		overflow-x: auto;
-		padding: 0.5rem 0;
+		padding: 0.3rem 0;
 		scrollbar-width: none;
 		-ms-overflow-style: none;
 	}
@@ -325,13 +322,13 @@
 	}
 
 	.cyber-tab {
-		background: linear-gradient(135deg, rgba(0, 0, 0, 0.6) 0%, rgba(255, 255, 255, 0.03) 100%);
+		background: linear-gradient(135deg, rgba(0, 0, 0, 0.7) 0%, rgba(255, 255, 255, 0.02) 100%);
 		border: 1px solid rgba(255, 255, 255, 0.1);
-		border-radius: 6px;
-		padding: 0.6rem 1rem;
+		border-radius: 4px;
+		padding: 0.4rem 0.6rem;
 		color: #ffffff;
-		font-family: 'Orbitron', monospace;
-		font-size: 0.7rem;
+		font-family: inherit;
+		font-size: 0.55rem;
 		font-weight: 500;
 		cursor: pointer;
 		position: relative;
@@ -341,9 +338,10 @@
 		overflow: hidden;
 		display: flex;
 		align-items: center;
-		gap: 0.5rem;
+		gap: 0.3rem;
 		text-transform: uppercase;
 		letter-spacing: 0.02em;
+		min-width: fit-content;
 	}
 
 	.cyber-tab::before {
@@ -365,26 +363,26 @@
 		border-color: var(--tab-color);
 		background: linear-gradient(135deg, rgba(0, 0, 0, 0.8) 0%, rgba(255, 255, 255, 0.05) 100%);
 		transform: translateY(-1px);
-		box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+		box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
 	}
 
 	.cyber-tab.active {
 		border-color: var(--tab-color);
 		background: linear-gradient(135deg, rgba(0, 0, 0, 0.9) 0%, rgba(255, 255, 255, 0.08) 100%);
-		box-shadow: 0 0 20px rgba(0, 255, 255, 0.2);
+		box-shadow: 0 0 20px rgba(0, 255, 255, 0.3);
 	}
 
 	.tab-icon {
-		font-size: 1rem;
+		font-size: 0.8rem;
 		color: var(--tab-color);
-		text-shadow: 0 0 10px var(--tab-color);
+		text-shadow: 0 0 8px var(--tab-color);
 	}
 
 	.tab-name {
 		position: relative;
 		z-index: 2;
 		letter-spacing: 0.02em;
-		font-size: 0.65rem;
+		font-size: 0.55rem;
 	}
 
 	.tab-glow {
@@ -396,7 +394,7 @@
 		background: radial-gradient(circle, var(--tab-color), transparent);
 		opacity: 0;
 		transition: opacity 0.3s ease;
-		border-radius: 6px;
+		border-radius: 4px;
 	}
 
 	.cyber-tab:hover .tab-glow,
@@ -408,22 +406,22 @@
 		display: flex;
 		align-items: center;
 		flex-shrink: 0;
-		background: linear-gradient(135deg, rgba(0, 0, 0, 0.6), rgba(0, 255, 255, 0.03));
+		background: linear-gradient(135deg, rgba(0, 0, 0, 0.7), rgba(0, 255, 255, 0.03));
 		border: 1px solid rgba(0, 255, 255, 0.3);
-		border-radius: 8px;
-		padding: 1rem;
+		border-radius: 6px;
+		padding: 0.6rem 0.8rem;
 		backdrop-filter: blur(10px);
 	}
 
 	.time-display {
 		display: flex;
 		flex-direction: column;
-		gap: 0.3rem;
+		gap: 0.2rem;
 		text-align: center;
 	}
 
 	.time-label {
-		font-size: 0.6rem;
+		font-size: 0.5rem;
 		color: rgba(255, 255, 255, 0.5);
 		font-weight: 400;
 		text-transform: uppercase;
@@ -431,7 +429,7 @@
 	}
 
 	.time-value {
-		font-size: 0.7rem;
+		font-size: 0.6rem;
 		font-weight: 600;
 		color: #ffffff;
 	}
@@ -440,7 +438,7 @@
 		flex: 1;
 		position: relative;
 		z-index: 5;
-		padding: 1rem;
+		padding: 0.8rem;
 		overflow: hidden;
 	}
 
@@ -453,7 +451,7 @@
 			rgba(0, 255, 255, 0.02) 50%,
 			rgba(255, 0, 255, 0.02) 100%);
 		border: 1px solid rgba(0, 255, 255, 0.2);
-		border-radius: 16px;
+		border-radius: 12px;
 		backdrop-filter: blur(20px);
 		box-shadow: 
 			0 8px 32px rgba(0, 0, 0, 0.3),
@@ -473,41 +471,41 @@
 
 	.corner {
 		position: absolute;
-		width: 20px;
-		height: 20px;
+		width: 15px;
+		height: 15px;
 		border: 2px solid rgba(0, 255, 255, 0.6);
 	}
 
 	.corner.tl {
-		top: 10px;
-		left: 10px;
+		top: 8px;
+		left: 8px;
 		border-right: none;
 		border-bottom: none;
-		border-top-left-radius: 4px;
+		border-top-left-radius: 3px;
 	}
 
 	.corner.tr {
-		top: 10px;
-		right: 10px;
+		top: 8px;
+		right: 8px;
 		border-left: none;
 		border-bottom: none;
-		border-top-right-radius: 4px;
+		border-top-right-radius: 3px;
 	}
 
 	.corner.bl {
-		bottom: 10px;
-		left: 10px;
+		bottom: 8px;
+		left: 8px;
 		border-right: none;
 		border-top: none;
-		border-bottom-left-radius: 4px;
+		border-bottom-left-radius: 3px;
 	}
 
 	.corner.br {
-		bottom: 10px;
-		right: 10px;
+		bottom: 8px;
+		right: 8px;
 		border-left: none;
 		border-top: none;
-		border-bottom-right-radius: 4px;
+		border-bottom-right-radius: 3px;
 	}
 
 	.content-stream {
@@ -515,25 +513,25 @@
 		z-index: 2;
 		width: 100%;
 		height: 100%;
-		padding: 2rem;
+		padding: 1.5rem;
 		overflow-y: auto;
 	}
 
 	:global(::-webkit-scrollbar) {
-		width: 8px;
+		width: 6px;
 	}
 
 	:global(::-webkit-scrollbar-track) {
 		background: rgba(0, 0, 0, 0.2);
-		border-radius: 4px;
+		border-radius: 3px;
 	}
 
 	:global(::-webkit-scrollbar-thumb) {
 		background: linear-gradient(135deg, 
 			rgba(0, 255, 255, 0.6), 
 			rgba(255, 0, 255, 0.4));
-		border-radius: 4px;
-		box-shadow: 0 0 10px rgba(0, 255, 255, 0.3);
+		border-radius: 3px;
+		box-shadow: 0 0 8px rgba(0, 255, 255, 0.3);
 	}
 
 	:global(::-webkit-scrollbar-thumb:hover) {
@@ -551,19 +549,19 @@
 		0%, 100% { 
 			opacity: 0.9; 
 			transform: scale(1);
-			text-shadow: 0 0 20px rgba(0, 255, 255, 0.8);
+			text-shadow: 0 0 15px rgba(0, 255, 255, 0.8);
 		}
 		50% { 
 			opacity: 1; 
 			transform: scale(1.05);
-			text-shadow: 0 0 30px rgba(0, 255, 255, 1);
+			text-shadow: 0 0 25px rgba(0, 255, 255, 1);
 		}
 	}
 
 	@media (max-width: 1400px) {
 		.header-content {
 			flex-wrap: wrap;
-			padding: 1rem;
+			padding: 0.8rem;
 		}
 
 		.tab-navigation {
@@ -577,16 +575,16 @@
 		.brand-section {
 			flex-direction: column;
 			text-align: center;
-			gap: 0.5rem;
+			gap: 0.3rem;
 		}
 
 		.cyber-tab {
-			padding: 0.5rem 0.8rem;
-			font-size: 0.6rem;
+			padding: 0.4rem 0.5rem;
+			font-size: 0.5rem;
 		}
 
 		.data-viewport {
-			padding: 0.5rem;
+			padding: 0.4rem;
 		}
 
 		.content-stream {
