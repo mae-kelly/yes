@@ -19,29 +19,60 @@
 	let systemStatus = 'OPERATIONAL';
 
 	const modules = [
-		{ id: 'source_tables', name: 'SOURCE INTEL', icon: '◈', color: '#00D4FF' },
-		{ id: 'domain_metrics', name: '1DC vs FEAD', icon: '◆', color: '#FF0080' },
-		{ id: 'infrastructure_type', name: 'INFRASTRUCTURE', icon: '⬢', color: '#8B5CF6' },
-		{ id: 'region_metrics', name: 'GLOBAL REGIONS', icon: '◉', color: '#00FF85' },
-		{ id: 'country_metrics', name: 'COUNTRY INTEL', icon: '⬟', color: '#FFE500' },
-		{ id: 'data_center', name: 'DATA CENTERS', icon: '⬡', color: '#FF4500' },
-		{ id: 'cloud_region', name: 'CLOUD MATRIX', icon: '◯', color: '#00D4FF' },
-		{ id: 'class_metrics', name: 'CLASS ANALYSIS', icon: '◐', color: '#FF0080' },
-		{ id: 'system_classification', name: 'SYSTEM TYPES', icon: '◑', color: '#8B5CF6' },
-		{ id: 'business_unit', name: 'BUSINESS UNITS', icon: '◒', color: '#00FF85' },
-		{ id: 'cio_metrics', name: 'CIO INTELLIGENCE', icon: '◓', color: '#FFE500' },
-		{ id: 'tanium_coverage', name: 'TANIUM AGENTS', icon: '⬠', color: '#FF4500' },
-		{ id: 'cmdb_presence', name: 'CMDB STATUS', icon: '⬢', color: '#00D4FF' }
+		{ id: 'source_tables', name: 'SOURCE INTEL', icon: '◈', color: '#00ffff', desc: 'Data Source Analysis' },
+		{ id: 'domain_metrics', name: 'DOMAIN MATRIX', icon: '◆', color: '#ff00ff', desc: '1DC vs FEAD Classification' },
+		{ id: 'infrastructure_type', name: 'INFRA NODES', icon: '⬢', color: '#0096ff', desc: 'Infrastructure Mapping' },
+		{ id: 'region_metrics', name: 'GEO SECTORS', icon: '◉', color: '#00ffff', desc: 'Global Regions' },
+		{ id: 'country_metrics', name: 'NATION STATE', icon: '⬟', color: '#ff00ff', desc: 'Country Intelligence' },
+		{ id: 'data_center', name: 'DATA CORES', icon: '⬡', color: '#0096ff', desc: 'Facility Networks' },
+		{ id: 'cloud_region', name: 'CLOUD MATRIX', icon: '◯', color: '#00ffff', desc: 'Cloud Infrastructure' },
+		{ id: 'class_metrics', name: 'CLASS CIPHER', icon: '◐', color: '#ff00ff', desc: 'Classification Analysis' },
+		{ id: 'system_classification', name: 'SYS TAXONOMY', icon: '◑', color: '#0096ff', desc: 'System Types' },
+		{ id: 'business_unit', name: 'BIZ UNITS', icon: '◒', color: '#00ffff', desc: 'Business Intelligence' },
+		{ id: 'cio_metrics', name: 'CIO INTEL', icon: '◓', color: '#ff00ff', desc: 'Executive Analysis' },
+		{ id: 'tanium_coverage', name: 'TANIUM NET', icon: '⬠', color: '#0096ff', desc: 'Agent Coverage' },
+		{ id: 'cmdb_presence', name: 'CMDB STATUS', icon: '⬢', color: '#00ffff', desc: 'Database Presence' }
 	];
 
 	let currentTime = '';
+	let particles = [];
 
 	onMount(() => {
 		const updateTime = () => {
-			currentTime = new Date().toISOString().slice(0, 19) + 'Z';
+			currentTime = new Date().toISOString().slice(0, 19).replace('T', ' ') + 'Z';
 		};
 		updateTime();
 		setInterval(updateTime, 1000);
+
+		for (let i = 0; i < 50; i++) {
+			particles.push({
+				x: Math.random() * window.innerWidth,
+				y: Math.random() * window.innerHeight,
+				vx: (Math.random() - 0.5) * 0.5,
+				vy: (Math.random() - 0.5) * 0.5,
+				life: Math.random() * 100,
+				maxLife: 100 + Math.random() * 200
+			});
+		}
+
+		const animateParticles = () => {
+			particles.forEach(particle => {
+				particle.x += particle.vx;
+				particle.y += particle.vy;
+				particle.life++;
+
+				if (particle.x < 0 || particle.x > window.innerWidth) particle.vx *= -1;
+				if (particle.y < 0 || particle.y > window.innerHeight) particle.vy *= -1;
+
+				if (particle.life > particle.maxLife) {
+					particle.x = Math.random() * window.innerWidth;
+					particle.y = Math.random() * window.innerHeight;
+					particle.life = 0;
+				}
+			});
+			requestAnimationFrame(animateParticles);
+		};
+		animateParticles();
 	});
 
 	function switchView(moduleId) {
@@ -49,115 +80,124 @@
 	}
 </script>
 
-<main class="cyber-terminal">
-	<div class="hex-background"></div>
-	<div class="neural-particles"></div>
+<main class="holographic-interface">
+	<div class="quantum-background"></div>
+	<div class="neural-particles">
+		{#each particles as particle}
+			<div 
+				class="particle-dot" 
+				style="left: {particle.x}px; top: {particle.y}px; opacity: {1 - (particle.life / particle.maxLife)}"
+			></div>
+		{/each}
+	</div>
 	
-	<header class="cyber-header">
-		<div class="header-left">
-			<div class="neural-brand">
-				<div class="brand-core">
-					<span class="core-icon">◈</span>
-					<div class="core-rings">
-						<div class="ring ring-1"></div>
-						<div class="ring ring-2"></div>
-						<div class="ring ring-3"></div>
-					</div>
+	<header class="holo-header">
+		<div class="header-core">
+			<div class="neural-logo">
+				<div class="logo-rings">
+					<div class="ring ring-1"></div>
+					<div class="ring ring-2"></div>
+					<div class="ring ring-3"></div>
 				</div>
-				<div class="brand-text">
-					<h1 class="main-title">AO1 NEURAL INTELLIGENCE</h1>
-					<span class="sub-title">CSOC VISIBILITY MATRIX</span>
+				<div class="logo-center">
+					<span class="core-symbol">◈</span>
 				</div>
 			</div>
 			
-			<nav class="inline-nav">
-				<div class="nav-modules">
-					{#each modules as module}
-						<button 
-							class="nav-tab {currentView === module.id ? 'active' : ''}"
-							style="--module-color: {module.color}"
-							on:click={() => switchView(module.id)}
-						>
-							<span class="tab-icon">{module.icon}</span>
-							<span class="tab-name">{module.name}</span>
-							<div class="tab-glow"></div>
-						</button>
-					{/each}
-				</div>
-			</nav>
+			<div class="system-identity">
+				<h1 class="main-title">AO1 HOLOGRAPHIC INTELLIGENCE</h1>
+				<span class="sub-title">NEURAL THREAT ANALYSIS MATRIX</span>
+			</div>
 		</div>
 		
-		<div class="header-right">
-			<div class="system-metrics">
-				<div class="metric-pod">
-					<span class="metric-label">STATUS</span>
-					<span class="metric-value status-operational">{systemStatus}</span>
-				</div>
-				<div class="metric-pod">
-					<span class="metric-label">CLEARANCE</span>
-					<span class="metric-value">TOP SECRET</span>
-				</div>
-				<div class="metric-pod">
-					<span class="metric-label">NEURAL LINK</span>
-					<span class="metric-value neural-time">{currentTime}</span>
+		<div class="status-cluster">
+			<div class="status-node">
+				<div class="node-ring"></div>
+				<div class="node-data">
+					<span class="node-label">SYSTEM</span>
+					<span class="node-value">{systemStatus}</span>
 				</div>
 			</div>
-			
-			<div class="classification-banner">
-				<div class="class-indicator"></div>
-				<span class="class-text">CLASSIFIED</span>
+			<div class="status-node">
+				<div class="node-ring"></div>
+				<div class="node-data">
+					<span class="node-label">CLEARANCE</span>
+					<span class="node-value">COSMIC</span>
+				</div>
+			</div>
+			<div class="status-node">
+				<div class="node-ring"></div>
+				<div class="node-data">
+					<span class="node-label">NEURAL SYNC</span>
+					<span class="node-value time-display">{currentTime}</span>
+				</div>
 			</div>
 		</div>
 	</header>
 
-	<section class="cyber-workspace">
-		<div class="workspace-header">
-			<div class="current-module">
-				<span class="module-breadcrumb">NEURAL MATRIX /</span>
-				<span class="module-current">{modules.find(m => m.id === currentView)?.name || 'UNKNOWN'}</span>
+	<nav class="module-grid">
+		{#each modules as module}
+			<button 
+				class="module-node {currentView === module.id ? 'active' : ''}"
+				style="--module-color: {module.color}"
+				on:click={() => switchView(module.id)}
+			>
+				<div class="node-hologram">
+					<div class="holo-ring"></div>
+					<div class="holo-core">
+						<span class="module-icon">{module.icon}</span>
+					</div>
+				</div>
+				<div class="node-info">
+					<span class="module-name">{module.name}</span>
+					<span class="module-desc">{module.desc}</span>
+				</div>
+				<div class="connection-lines">
+					<div class="line line-1"></div>
+					<div class="line line-2"></div>
+				</div>
+			</button>
+		{/each}
+	</nav>
+
+	<section class="data-viewport">
+		<div class="viewport-frame">
+			<div class="frame-corners">
+				<div class="corner corner-tl"></div>
+				<div class="corner corner-tr"></div>
+				<div class="corner corner-bl"></div>
+				<div class="corner corner-br"></div>
 			</div>
 			
-			<div class="workspace-controls">
-				<button class="cyber-button refresh-btn" on:click={() => location.reload()}>
-					<span class="btn-icon">⟲</span>
-					<span class="btn-text">REFRESH</span>
-				</button>
-				
-				<div class="connection-status">
-					<div class="status-pulse"></div>
-					<span class="status-text">QUANTUM LINK ACTIVE</span>
-				</div>
+			<div class="data-stream">
+				{#if currentView === 'source_tables'}
+					<SourceTables />
+				{:else if currentView === 'domain_metrics'}
+					<DomainMetrics />
+				{:else if currentView === 'infrastructure_type'}
+					<InfrastructureType />
+				{:else if currentView === 'region_metrics'}
+					<RegionMetrics />
+				{:else if currentView === 'country_metrics'}
+					<CountryMetrics />
+				{:else if currentView === 'data_center'}
+					<DataCenterMetrics />
+				{:else if currentView === 'cloud_region'}
+					<CloudRegionMetrics />
+				{:else if currentView === 'class_metrics'}
+					<ClassMetrics />
+				{:else if currentView === 'system_classification'}
+					<SystemClassification />
+				{:else if currentView === 'business_unit'}
+					<BusinessUnitMetrics />
+				{:else if currentView === 'cio_metrics'}
+					<CioMetrics />
+				{:else if currentView === 'tanium_coverage'}
+					<TaniumCoverage />
+				{:else if currentView === 'cmdb_presence'}
+					<CmdbPresence />
+				{/if}
 			</div>
-		</div>
-
-		<div class="workspace-content">
-			{#if currentView === 'source_tables'}
-				<SourceTables />
-			{:else if currentView === 'domain_metrics'}
-				<DomainMetrics />
-			{:else if currentView === 'infrastructure_type'}
-				<InfrastructureType />
-			{:else if currentView === 'region_metrics'}
-				<RegionMetrics />
-			{:else if currentView === 'country_metrics'}
-				<CountryMetrics />
-			{:else if currentView === 'data_center'}
-				<DataCenterMetrics />
-			{:else if currentView === 'cloud_region'}
-				<CloudRegionMetrics />
-			{:else if currentView === 'class_metrics'}
-				<ClassMetrics />
-			{:else if currentView === 'system_classification'}
-				<SystemClassification />
-			{:else if currentView === 'business_unit'}
-				<BusinessUnitMetrics />
-			{:else if currentView === 'cio_metrics'}
-				<CioMetrics />
-			{:else if currentView === 'tanium_coverage'}
-				<TaniumCoverage />
-			{:else if currentView === 'cmdb_presence'}
-				<CmdbPresence />
-			{/if}
 		</div>
 	</section>
 </main>
@@ -165,35 +205,50 @@
 <style>
 	:global(body) {
 		font-family: 'JetBrains Mono', monospace;
-		background: #000;
-		color: #fff;
-		overflow: hidden;
+		background: radial-gradient(ellipse at center, #1a0d2e 0%, #0f0520 40%, #000000 100%);
+		color: #ffffff;
+		overflow-x: hidden;
 		margin: 0;
 		padding: 0;
 	}
 
-	.cyber-terminal {
+	.holographic-interface {
 		width: 100vw;
-		height: 100vh;
-		background: radial-gradient(ellipse at center, #001122 0%, #000000 100%);
+		min-height: 100vh;
 		position: relative;
 		display: flex;
 		flex-direction: column;
+		background: transparent;
 	}
 
-	.hex-background {
+	.quantum-background {
 		position: fixed;
 		top: 0;
 		left: 0;
 		width: 100%;
 		height: 100%;
-		background-image: 
-			radial-gradient(circle at 20px 20px, rgba(0, 212, 255, 0.03) 1px, transparent 1px),
-			radial-gradient(circle at 60px 60px, rgba(255, 0, 128, 0.03) 1px, transparent 1px);
-		background-size: 40px 40px;
-		animation: hexShift 30s linear infinite;
+		background: 
+			radial-gradient(circle at 15% 25%, rgba(0, 255, 255, 0.05) 0%, transparent 50%),
+			radial-gradient(circle at 85% 75%, rgba(255, 0, 255, 0.03) 0%, transparent 50%),
+			radial-gradient(circle at 50% 50%, rgba(0, 150, 255, 0.02) 0%, transparent 50%);
+		animation: quantumShift 12s ease-in-out infinite alternate;
 		pointer-events: none;
 		z-index: 1;
+	}
+
+	@keyframes quantumShift {
+		0% { 
+			background: 
+				radial-gradient(circle at 15% 25%, rgba(0, 255, 255, 0.05) 0%, transparent 50%),
+				radial-gradient(circle at 85% 75%, rgba(255, 0, 255, 0.03) 0%, transparent 50%),
+				radial-gradient(circle at 50% 50%, rgba(0, 150, 255, 0.02) 0%, transparent 50%);
+		}
+		100% { 
+			background: 
+				radial-gradient(circle at 85% 15%, rgba(0, 255, 255, 0.08) 0%, transparent 50%),
+				radial-gradient(circle at 15% 85%, rgba(255, 0, 255, 0.06) 0%, transparent 50%),
+				radial-gradient(circle at 70% 30%, rgba(0, 150, 255, 0.04) 0%, transparent 50%);
+		}
 	}
 
 	.neural-particles {
@@ -204,64 +259,55 @@
 		height: 100%;
 		pointer-events: none;
 		z-index: 2;
-		background: 
-			radial-gradient(2px 2px at 100px 150px, #00D4FF, transparent),
-			radial-gradient(2px 2px at 400px 50px, #FF0080, transparent),
-			radial-gradient(1px 1px at 300px 300px, #8B5CF6, transparent),
-			radial-gradient(1px 1px at 800px 200px, #00FF85, transparent);
-		animation: particleFloat 25s ease-in-out infinite;
 	}
 
-	.cyber-header {
-		background: linear-gradient(135deg, rgba(0, 20, 40, 0.95) 0%, rgba(0, 10, 20, 0.95) 100%);
-		border-bottom: 1px solid rgba(0, 212, 255, 0.3);
-		padding: 0.5rem 1.5rem;
+	.particle-dot {
+		position: absolute;
+		width: 1px;
+		height: 1px;
+		background: radial-gradient(circle, rgba(0, 255, 255, 0.6), transparent);
+		border-radius: 50%;
+	}
+
+	.holo-header {
+		background: linear-gradient(135deg, 
+			rgba(0, 255, 255, 0.08) 0%, 
+			rgba(0, 150, 255, 0.06) 50%,
+			rgba(255, 0, 255, 0.08) 100%);
+		border-bottom: 1px solid rgba(0, 255, 255, 0.2);
+		backdrop-filter: blur(20px);
+		padding: 1rem 2rem;
 		display: flex;
 		justify-content: space-between;
 		align-items: center;
-		backdrop-filter: blur(20px);
 		position: relative;
 		z-index: 10;
-		box-shadow: 0 4px 32px rgba(0, 212, 255, 0.1);
-		height: 70px;
+		box-shadow: 
+			0 4px 32px rgba(0, 255, 255, 0.1),
+			inset 0 1px 0 rgba(255, 255, 255, 0.1);
 	}
 
-	.header-left {
+	.header-core {
 		display: flex;
 		align-items: center;
-		gap: 2rem;
-		flex: 1;
+		gap: 1.5rem;
 	}
 
-	.neural-brand {
-		display: flex;
-		align-items: center;
-		gap: 1rem;
-		flex-shrink: 0;
-	}
-
-	.brand-core {
+	.neural-logo {
 		position: relative;
-		width: 40px;
-		height: 40px;
+		width: 60px;
+		height: 60px;
 		display: flex;
 		align-items: center;
 		justify-content: center;
 	}
 
-	.core-icon {
-		color: #00D4FF;
-		font-size: 1.5rem;
-		z-index: 3;
-		position: relative;
-		animation: coreRotate 8s linear infinite;
-	}
-
-	.core-rings {
+	.logo-rings {
 		position: absolute;
-		top: 50%;
-		left: 50%;
-		transform: translate(-50%, -50%);
+		top: 0;
+		left: 0;
+		width: 100%;
+		height: 100%;
 	}
 
 	.ring {
@@ -274,297 +320,355 @@
 	}
 
 	.ring-1 {
-		width: 30px;
-		height: 30px;
-		border-color: rgba(0, 212, 255, 0.4);
-		animation: ringRotate1 6s linear infinite;
+		width: 60px;
+		height: 60px;
+		border-color: rgba(0, 255, 255, 0.6);
+		animation: logoRotate1 8s linear infinite;
 	}
 
 	.ring-2 {
-		width: 38px;
-		height: 38px;
-		border-color: rgba(255, 0, 128, 0.3);
-		animation: ringRotate2 8s linear infinite reverse;
+		width: 45px;
+		height: 45px;
+		border-color: rgba(255, 0, 255, 0.4);
+		animation: logoRotate2 6s linear infinite reverse;
 	}
 
 	.ring-3 {
-		width: 46px;
-		height: 46px;
-		border-color: rgba(139, 92, 246, 0.2);
-		animation: ringRotate3 10s linear infinite;
+		width: 30px;
+		height: 30px;
+		border-color: rgba(0, 150, 255, 0.8);
+		animation: logoRotate3 4s linear infinite;
 	}
 
-	.brand-text {
+	.logo-center {
+		position: relative;
+		z-index: 3;
+		width: 20px;
+		height: 20px;
+		background: radial-gradient(circle, rgba(0, 255, 255, 0.3), transparent);
+		border-radius: 50%;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+	}
+
+	.core-symbol {
+		font-size: 1.2rem;
+		color: rgba(0, 255, 255, 0.9);
+		text-shadow: 0 0 20px rgba(0, 255, 255, 0.8);
+		animation: symbolPulse 3s ease-in-out infinite;
+	}
+
+	.system-identity {
 		display: flex;
 		flex-direction: column;
 	}
 
 	.main-title {
-		font-size: 1.1rem;
+		font-size: 1.4rem;
 		font-weight: 700;
-		color: #fff;
-		margin: 0;
-		text-shadow: 0 0 20px rgba(0, 212, 255, 0.5);
+		color: #ffffff;
+		text-shadow: 0 0 20px rgba(0, 255, 255, 0.5);
 		letter-spacing: 0.05em;
+		margin: 0;
 	}
 
 	.sub-title {
-		font-size: 0.6rem;
+		font-size: 0.75rem;
 		color: rgba(255, 255, 255, 0.6);
-		font-weight: 400;
+		font-weight: 300;
 		letter-spacing: 0.1em;
 		margin-top: 0.25rem;
 	}
 
-	.inline-nav {
-		flex: 1;
-		margin-left: 2rem;
-	}
-
-	.nav-modules {
+	.status-cluster {
 		display: flex;
-		gap: 0.5rem;
-		overflow-x: auto;
-		padding: 0.25rem 0;
+		gap: 2rem;
 	}
 
-	.nav-tab {
-		background: linear-gradient(135deg, rgba(255, 255, 255, 0.05) 0%, rgba(255, 255, 255, 0.02) 100%);
-		border: 1px solid rgba(255, 255, 255, 0.1);
-		border-radius: 6px;
-		padding: 0.4rem 0.8rem;
-		color: #fff;
-		font-family: inherit;
-		font-size: 0.7rem;
-		font-weight: 500;
-		cursor: pointer;
+	.status-node {
 		position: relative;
 		display: flex;
 		align-items: center;
-		gap: 0.4rem;
-		transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-		white-space: nowrap;
+		gap: 1rem;
+		padding: 0.75rem 1.25rem;
+		background: linear-gradient(135deg, 
+			rgba(0, 0, 0, 0.3) 0%, 
+			rgba(0, 255, 255, 0.05) 100%);
+		border: 1px solid rgba(0, 255, 255, 0.2);
+		border-radius: 8px;
+		backdrop-filter: blur(10px);
+	}
+
+	.node-ring {
+		width: 12px;
+		height: 12px;
+		border: 2px solid rgba(0, 255, 255, 0.8);
+		border-radius: 50%;
+		animation: nodeRingPulse 2s ease-in-out infinite;
+	}
+
+	.node-data {
+		display: flex;
+		flex-direction: column;
+		align-items: flex-start;
+	}
+
+	.node-label {
+		font-size: 0.6rem;
+		color: rgba(255, 255, 255, 0.5);
+		font-weight: 400;
+		letter-spacing: 0.05em;
+		margin-bottom: 0.1rem;
+	}
+
+	.node-value {
+		font-size: 0.8rem;
+		font-weight: 600;
+		color: rgba(0, 255, 255, 0.9);
+		text-shadow: 0 0 10px rgba(0, 255, 255, 0.5);
+	}
+
+	.time-display {
+		font-family: 'JetBrains Mono', monospace;
+		font-size: 0.7rem;
+		color: rgba(255, 255, 255, 0.8);
+	}
+
+	.module-grid {
+		display: grid;
+		grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+		gap: 1rem;
+		padding: 1.5rem 2rem;
+		z-index: 5;
+		max-height: 25vh;
+		overflow-y: auto;
+	}
+
+	.module-node {
+		position: relative;
+		background: linear-gradient(135deg, 
+			rgba(0, 0, 0, 0.4) 0%, 
+			rgba(255, 255, 255, 0.02) 100%);
+		border: 1px solid rgba(255, 255, 255, 0.1);
+		border-radius: 12px;
+		padding: 1rem;
+		cursor: pointer;
+		transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+		backdrop-filter: blur(20px);
+		display: flex;
+		align-items: center;
+		gap: 1rem;
 		overflow: hidden;
 	}
 
-	.nav-tab:hover {
-		border-color: var(--module-color);
-		background: linear-gradient(135deg, rgba(255, 255, 255, 0.08) 0%, rgba(255, 255, 255, 0.04) 100%);
-		transform: translateY(-1px);
-		box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
-	}
-
-	.nav-tab.active {
-		border-color: var(--module-color);
-		background: linear-gradient(135deg, rgba(255, 255, 255, 0.1) 0%, rgba(255, 255, 255, 0.05) 100%);
-		box-shadow: 0 0 20px rgba(0, 212, 255, 0.2);
-	}
-
-	.tab-icon {
-		font-size: 1rem;
-		color: var(--module-color);
-		z-index: 2;
-		position: relative;
-	}
-
-	.tab-name {
-		color: #fff;
-		font-weight: 600;
-		letter-spacing: 0.02em;
-		z-index: 2;
-		position: relative;
-	}
-
-	.tab-glow {
+	.module-node::before {
+		content: '';
 		position: absolute;
-		top: 50%;
-		left: 50%;
-		transform: translate(-50%, -50%);
+		top: 0;
+		left: -100%;
 		width: 100%;
 		height: 100%;
+		background: linear-gradient(90deg, 
+			transparent, 
+			rgba(255, 255, 255, 0.05), 
+			transparent);
+		transition: left 0.6s ease;
+	}
+
+	.module-node:hover::before {
+		left: 100%;
+	}
+
+	.module-node:hover {
+		border-color: var(--module-color);
+		box-shadow: 
+			0 8px 32px rgba(0, 0, 0, 0.3),
+			0 0 20px rgba(0, 255, 255, 0.2);
+		transform: translateY(-2px);
+	}
+
+	.module-node.active {
+		border-color: var(--module-color);
+		background: linear-gradient(135deg, 
+			rgba(0, 0, 0, 0.6) 0%, 
+			rgba(255, 255, 255, 0.05) 100%);
+		box-shadow: 
+			0 0 30px rgba(0, 255, 255, 0.3),
+			inset 0 0 20px rgba(0, 255, 255, 0.05);
+	}
+
+	.node-hologram {
+		position: relative;
+		width: 50px;
+		height: 50px;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+	}
+
+	.holo-ring {
+		position: absolute;
+		top: 0;
+		left: 0;
+		width: 100%;
+		height: 100%;
+		border: 2px solid var(--module-color);
+		border-radius: 50%;
+		opacity: 0.3;
+		animation: holoRingRotate 4s linear infinite;
+	}
+
+	.holo-core {
+		position: relative;
+		z-index: 2;
+		width: 30px;
+		height: 30px;
 		background: radial-gradient(circle, var(--module-color), transparent);
-		opacity: 0;
-		transition: opacity 0.3s ease;
-		border-radius: 6px;
-	}
-
-	.nav-tab:hover .tab-glow,
-	.nav-tab.active .tab-glow {
-		opacity: 0.08;
-	}
-
-	.header-right {
-		display: flex;
-		align-items: center;
-		gap: 1.5rem;
-		flex-shrink: 0;
-	}
-
-	.system-metrics {
-		display: flex;
-		gap: 1rem;
-	}
-
-	.metric-pod {
-		display: flex;
-		flex-direction: column;
-		align-items: center;
-		gap: 0.2rem;
-	}
-
-	.metric-label {
-		font-size: 0.55rem;
-		color: rgba(255, 255, 255, 0.5);
-		font-weight: 400;
-		letter-spacing: 0.1em;
-	}
-
-	.metric-value {
-		font-size: 0.7rem;
-		font-weight: 600;
-		color: #fff;
-	}
-
-	.status-operational {
-		color: #00FF85;
-		text-shadow: 0 0 10px rgba(0, 255, 133, 0.5);
-		animation: statusPulse 2s ease-in-out infinite;
-	}
-
-	.neural-time {
-		color: #00D4FF;
-		font-family: 'JetBrains Mono', monospace;
-		font-size: 0.6rem;
-	}
-
-	.classification-banner {
-		display: flex;
-		align-items: center;
-		gap: 0.5rem;
-		padding: 0.4rem 0.8rem;
-		background: linear-gradient(45deg, rgba(255, 0, 128, 0.1), rgba(255, 69, 0, 0.1));
-		border: 1px solid rgba(255, 0, 128, 0.3);
-		border-radius: 4px;
-		backdrop-filter: blur(10px);
-	}
-
-	.class-indicator {
-		width: 6px;
-		height: 6px;
-		background: #FF0080;
 		border-radius: 50%;
-		animation: classificationPulse 1.5s ease-in-out infinite;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		opacity: 0.8;
 	}
 
-	.class-text {
-		font-size: 0.6rem;
-		color: #FF0080;
-		font-weight: 600;
-		letter-spacing: 0.05em;
+	.module-icon {
+		font-size: 1.2rem;
+		color: var(--module-color);
+		text-shadow: 0 0 15px var(--module-color);
 	}
 
-	.cyber-nav {
-		display: none;
-	}
-
-	.cyber-workspace {
+	.node-info {
 		flex: 1;
 		display: flex;
 		flex-direction: column;
-		background: rgba(0, 0, 0, 0.3);
-		position: relative;
-		z-index: 8;
+		gap: 0.25rem;
 	}
 
-	.workspace-header {
-		background: linear-gradient(135deg, rgba(0, 10, 20, 0.9) 0%, rgba(0, 5, 10, 0.9) 100%);
-		border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-		padding: 1rem 1.5rem;
-		display: flex;
-		justify-content: space-between;
-		align-items: center;
-		backdrop-filter: blur(10px);
-	}
-
-	.current-module {
-		display: flex;
-		align-items: center;
-		gap: 0.5rem;
-	}
-
-	.module-breadcrumb {
-		font-size: 0.8rem;
-		color: rgba(255, 255, 255, 0.5);
-		font-weight: 400;
-	}
-
-	.module-current {
-		font-size: 1rem;
-		color: #00D4FF;
+	.module-name {
+		font-size: 0.9rem;
 		font-weight: 700;
-		text-shadow: 0 0 15px rgba(0, 212, 255, 0.5);
-		letter-spacing: 0.05em;
+		color: #ffffff;
+		letter-spacing: 0.02em;
 	}
 
-	.workspace-controls {
-		display: flex;
-		align-items: center;
-		gap: 1.5rem;
+	.module-desc {
+		font-size: 0.7rem;
+		color: rgba(255, 255, 255, 0.5);
+		font-weight: 300;
 	}
 
-	.cyber-button {
-		background: linear-gradient(135deg, rgba(0, 212, 255, 0.1) 0%, rgba(0, 212, 255, 0.05) 100%);
-		border: 1px solid rgba(0, 212, 255, 0.3);
-		border-radius: 6px;
-		color: #00D4FF;
-		font-family: inherit;
-		font-size: 0.8rem;
-		font-weight: 600;
-		padding: 0.5rem 1rem;
-		cursor: pointer;
-		display: flex;
-		align-items: center;
-		gap: 0.5rem;
-		transition: all 0.3s ease;
-		letter-spacing: 0.05em;
+	.connection-lines {
+		position: absolute;
+		right: 0;
+		top: 0;
+		width: 30px;
+		height: 100%;
+		pointer-events: none;
 	}
 
-	.cyber-button:hover {
-		background: linear-gradient(135deg, rgba(0, 212, 255, 0.2) 0%, rgba(0, 212, 255, 0.1) 100%);
-		box-shadow: 0 0 20px rgba(0, 212, 255, 0.3);
-		transform: translateY(-1px);
+	.line {
+		position: absolute;
+		right: 10px;
+		width: 20px;
+		height: 1px;
+		background: linear-gradient(90deg, 
+			var(--module-color), 
+			transparent);
+		opacity: 0.3;
+		animation: connectionPulse 3s ease-in-out infinite;
 	}
 
-	.btn-icon {
-		font-size: 1rem;
+	.line-1 {
+		top: 30%;
+		animation-delay: 0s;
 	}
 
-	.connection-status {
-		display: flex;
-		align-items: center;
-		gap: 0.75rem;
+	.line-2 {
+		top: 70%;
+		animation-delay: 1.5s;
 	}
 
-	.status-pulse {
-		width: 8px;
-		height: 8px;
-		background: #00FF85;
-		border-radius: 50%;
-		animation: connectionPulse 1.5s ease-in-out infinite;
-	}
-
-	.status-text {
-		font-size: 0.75rem;
-		color: rgba(255, 255, 255, 0.7);
-		font-weight: 500;
-		letter-spacing: 0.05em;
-	}
-
-	.workspace-content {
+	.data-viewport {
 		flex: 1;
-		padding: 1.5rem;
-		overflow-y: auto;
+		padding: 1.5rem 2rem 2rem;
 		position: relative;
+		z-index: 5;
+	}
+
+	.viewport-frame {
+		position: relative;
+		width: 100%;
+		height: 100%;
+		background: linear-gradient(135deg, 
+			rgba(0, 0, 0, 0.4) 0%, 
+			rgba(0, 255, 255, 0.02) 50%,
+			rgba(255, 0, 255, 0.02) 100%);
+		border: 1px solid rgba(0, 255, 255, 0.2);
+		border-radius: 16px;
+		backdrop-filter: blur(20px);
+		box-shadow: 
+			0 8px 32px rgba(0, 0, 0, 0.3),
+			inset 0 1px 0 rgba(255, 255, 255, 0.1);
+		overflow: hidden;
+	}
+
+	.frame-corners {
+		position: absolute;
+		top: 0;
+		left: 0;
+		width: 100%;
+		height: 100%;
+		pointer-events: none;
+		z-index: 1;
+	}
+
+	.corner {
+		position: absolute;
+		width: 20px;
+		height: 20px;
+		border: 2px solid rgba(0, 255, 255, 0.6);
+	}
+
+	.corner-tl {
+		top: 10px;
+		left: 10px;
+		border-right: none;
+		border-bottom: none;
+		border-top-left-radius: 4px;
+	}
+
+	.corner-tr {
+		top: 10px;
+		right: 10px;
+		border-left: none;
+		border-bottom: none;
+		border-top-right-radius: 4px;
+	}
+
+	.corner-bl {
+		bottom: 10px;
+		left: 10px;
+		border-right: none;
+		border-top: none;
+		border-bottom-left-radius: 4px;
+	}
+
+	.corner-br {
+		bottom: 10px;
+		right: 10px;
+		border-left: none;
+		border-top: none;
+		border-bottom-right-radius: 4px;
+	}
+
+	.data-stream {
+		position: relative;
+		z-index: 2;
+		width: 100%;
+		height: 100%;
+		padding: 2rem;
+		overflow-y: auto;
 	}
 
 	:global(::-webkit-scrollbar) {
@@ -572,70 +676,83 @@
 	}
 
 	:global(::-webkit-scrollbar-track) {
-		background: rgba(0, 0, 0, 0.3);
-	}
-
-	:global(::-webkit-scrollbar-thumb) {
-		background: linear-gradient(135deg, #00D4FF, #8B5CF6);
+		background: rgba(0, 0, 0, 0.2);
 		border-radius: 4px;
 	}
 
+	:global(::-webkit-scrollbar-thumb) {
+		background: linear-gradient(135deg, 
+			rgba(0, 255, 255, 0.6), 
+			rgba(255, 0, 255, 0.4));
+		border-radius: 4px;
+		box-shadow: 0 0 10px rgba(0, 255, 255, 0.3);
+	}
+
 	:global(::-webkit-scrollbar-thumb:hover) {
-		background: linear-gradient(135deg, #FF0080, #00D4FF);
+		background: linear-gradient(135deg, 
+			rgba(0, 255, 255, 0.8), 
+			rgba(255, 0, 255, 0.6));
 	}
 
-	@keyframes hexShift {
-		0% { transform: translate(0, 0); }
-		100% { transform: translate(40px, 40px); }
-	}
-
-	@keyframes particleFloat {
-		0%, 100% { opacity: 0.3; transform: translateY(0px); }
-		50% { opacity: 0.6; transform: translateY(-20px); }
-	}
-
-	@keyframes coreRotate {
-		0% { transform: rotate(0deg); }
-		100% { transform: rotate(360deg); }
-	}
-
-	@keyframes ringRotate1 {
+	@keyframes logoRotate1 {
 		0% { transform: translate(-50%, -50%) rotate(0deg); }
 		100% { transform: translate(-50%, -50%) rotate(360deg); }
 	}
 
-	@keyframes ringRotate2 {
+	@keyframes logoRotate2 {
 		0% { transform: translate(-50%, -50%) rotate(0deg); }
 		100% { transform: translate(-50%, -50%) rotate(-360deg); }
 	}
 
-	@keyframes ringRotate3 {
+	@keyframes logoRotate3 {
 		0% { transform: translate(-50%, -50%) rotate(0deg); }
 		100% { transform: translate(-50%, -50%) rotate(360deg); }
 	}
 
-	@keyframes statusPulse {
-		0%, 100% { opacity: 1; }
-		50% { opacity: 0.7; }
+	@keyframes symbolPulse {
+		0%, 100% { opacity: 0.9; transform: scale(1); }
+		50% { opacity: 1; transform: scale(1.1); }
 	}
 
-	@keyframes classificationPulse {
-		0%, 100% { opacity: 1; transform: scale(1); }
-		50% { opacity: 0.6; transform: scale(1.1); }
+	@keyframes nodeRingPulse {
+		0%, 100% { 
+			border-color: rgba(0, 255, 255, 0.8); 
+			box-shadow: 0 0 10px rgba(0, 255, 255, 0.3);
+		}
+		50% { 
+			border-color: rgba(0, 255, 255, 1); 
+			box-shadow: 0 0 20px rgba(0, 255, 255, 0.6);
+		}
 	}
 
-	@keyframes moduleFloat {
-		0%, 100% { transform: translateY(0px); }
-		50% { transform: translateY(-3px); }
-	}
-
-	@keyframes statusDotPulse {
-		0%, 100% { opacity: 1; transform: scale(1); }
-		50% { opacity: 0.5; transform: scale(0.8); }
+	@keyframes holoRingRotate {
+		0% { transform: rotate(0deg); }
+		100% { transform: rotate(360deg); }
 	}
 
 	@keyframes connectionPulse {
-		0%, 100% { opacity: 1; transform: scale(1); }
-		50% { opacity: 0.6; transform: scale(1.2); }
+		0%, 100% { opacity: 0.3; }
+		50% { opacity: 0.8; }
+	}
+
+	@media (max-width: 768px) {
+		.holo-header {
+			flex-direction: column;
+			gap: 1rem;
+			padding: 1rem;
+		}
+
+		.status-cluster {
+			gap: 1rem;
+		}
+
+		.module-grid {
+			grid-template-columns: 1fr;
+			padding: 1rem;
+		}
+
+		.data-viewport {
+			padding: 1rem;
+		}
 	}
 </style>
