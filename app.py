@@ -1,476 +1,720 @@
-# /src/app.py
-
-from flask import Flask, jsonify, request, render_template
+# /server/app.py
 import duckdb
-import numpy as np
-from datetime import datetime, timedelta
-import requests
+from flask import Flask, jsonify
+from flask_cors import CORS
+import re
+from collections import defaultdict
 import json
-import os
-from typing import Dict, List, Any
+from datetime import datetime, timedelta
 
 app = Flask(__name__)
-
-# Database configuration
-DB_PATH = 'data/universal_cmdb.duckdb'
+CORS(app)
 
 def get_db_connection():
-    """Create and return a DuckDB connection."""
-    try:
-        return duckdb.connect(DB_PATH)
-    except Exception as e:
-        print(f"Database connection error: {e}")
-        return None
+    return duckdb.connect('universal_cmdb.db')
 
-def execute_query(query: str, params: tuple = None) -> List[Dict]:
-    """Execute a query and return results as a list of dictionaries."""
-    conn = get_db_connection()
-    if not conn:
+def parse_multi_values(value, delimiters=['|', ',']):
+    if not value or value == 'null':
         return []
-    
-    try:
-        if params:
-            result = conn.execute(query, params).fetchall()
-        else:
-            result = conn.execute(query).fetchall()
-        
-        # Get column names
-        columns = [desc[0] for desc in conn.description]
-        
-        # Convert to list of dictionaries
-        data = [dict(zip(columns, row)) for row in result]
-        
-        conn.close()
-        return data
-        
-    except Exception as e:
-        print(f"Query execution error: {e}")
-        conn.close()
-        return []
+    for delimiter in delimiters:
+        if delimiter in str(value):
+            return [v.strip() for v in str(value).split(delimiter) if v.strip()]
+    return [str(value).strip()]
 
-def execute_single_query(query: str, params: tuple = None) -> Dict:
-    """Execute a query and return a single result as a dictionary."""
+@app.route('/api/global-view')
+def global_view():
     conn = get_db_connection()
-    if not conn:
-        return {}
     
-    try:
-        if params:
-            result = conn.execute(query, params).fetchone()
-        else:
-            result = conn.execute(query).fetchone()
-        
-        if result:
-            columns = [desc[0] for desc in conn.description]
-            data = dict(zip(columns, result))
-        else:
-            data = {}
-        
-        conn.close()
-        return data
-        
-    except Exception as e:
-        print(f"Single query execution error: {e}")
-        conn.close()
-        return {}
-
-@app.route('/')
-def index():
-    """Serve the main dashboard page."""
-    return render_template('index.html')
-
-@app.route('/api/overall-coverage-totals')
-def get_overall_coverage_totals():
-    """Get overall coverage statistics for all monitoring tools."""
-    query = """
-    SELECT 
-        COUNT(*) as total_hosts,
-        COUNT(CASE WHEN logging_in_splunk = 'yes' THEN 1 END) as total_splunk_logging,
-        ROUND(COUNT(CASE WHEN logging_in_splunk = 'yes' THEN 1 END) * 100.0 / COUNT(*), 2) as splunk_coverage_pct,
-        COUNT(CASE WHEN present_in_cmdb = 'yes' THEN 1 END) as total_cmdb_present,
-        ROUND(COUNT(CASE WHEN present_in_cmdb = 'yes' THEN 1 END) * 100.0 / COUNT(*), 2) as cmdb_coverage_pct,
-        COUNT(CASE WHEN LOWER(edr_coverage) LIKE '%crowdstrike agent%' THEN 1 END) as total_crowdstrike,
-        ROUND(COUNT(CASE WHEN LOWER(edr_coverage) LIKE '%crowdstrike agent%' THEN 1 END) * 100.0 / COUNT(*), 2) as crowdstrike_coverage_pct,
-        COUNT(CASE WHEN LOWER(tanium_coverage) LIKE '%tanium%' THEN 1 END) as total_tanium,
-        ROUND(COUNT(CASE WHEN LOWER(tanium_coverage) LIKE '%tanium%' THEN 1 END) * 100.0 / COUNT(*), 2) as tanium_coverage_pct,
-        COUNT(CASE WHEN LOWER(apm) LIKE '%apm%' THEN 1 END) as total_apm,
-        ROUND(COUNT(CASE WHEN LOWER(apm) LIKE '%apm%' THEN 1 END) * 100.0 / COUNT(*), 2) as apm_coverage_pct
-    FROM universal_cmdb_copy2
-    """
+    total_assets = conn.execute("SELECT COUNT(*) FROM universal_cmdb").fetchone()[0]
     
-    data = execute_single_query(query)
+    coverage_matrix = conn.execute("""
+        SELECT 
+            COUNT(*) as total,
+            SUM(CASE WHEN logging_in_splunk = 'yes' THEN 1 ELSE 0 END) as splunk_count,
+            SUM(CASE WHEN present_in_cmdb = 'yes' THEN 1 ELSE 0 END) as cmdb_count,
+            SUM(CASE WHEN edr_coverage LIKE '%crowdstrike%' THEN 1 ELSE 0 END) as edr_count,
+            SUM(CASE WHEN tanium_coverage LIKE '%tanium%' THEN 1 ELSE 0 END) as tanium_count,
+            SUM(CASE WHEN logging_in_splunk = 'yes' AND present_in_cmdb = 'yes' AND edr_coverage LIKE '%crowdstrike%' THEN 1 ELSE 0 END) as triple_coverage,
+            SUM(CASE WHEN logging_in_splunk != 'yes' AND present_in_cmdb != 'yes' AND edr_coverage NOT LIKE '%crowdstrike%' THEN 1 ELSE 0 END) as zero_coverage
+        FROM universal_cmdb
+    """).fetchone()
     
-    # Add AI predictions if service is available
-    try:
-        ai_response = requests.get('http://localhost:5001/api/predict-missing-visibility', timeout=2)
-        if ai_response.status_code == 200:
-            predicted_assets = ai_response.json()
-            data['ai_predicted_missing'] = len(predicted_assets)
-            data['high_risk_predictions'] = len([p for p in predicted_assets if p.get('visibility_risk_score', 0) > 0.8])
-        else:
-            data['ai_predicted_missing'] = 0
-            data['high_risk_predictions'] = 0
-    except:
-        data['ai_predicted_missing'] = 0
-        data['high_risk_predictions'] = 0
+    visibility_by_hour = conn.execute("""
+        SELECT 
+            EXTRACT(hour FROM CAST(last_updated AS TIMESTAMP)) as hour,
+            COUNT(*) as discoveries,
+            AVG(data_quality_score) as avg_quality
+        FROM universal_cmdb 
+        WHERE last_updated IS NOT NULL
+        GROUP BY EXTRACT(hour FROM CAST(last_updated AS TIMESTAMP))
+        ORDER BY hour
+    """).fetchall()
     
-    return jsonify(data)
-
-@app.route('/api/domain-analysis')
-def get_domain_analysis():
-    """Analyze coverage by domain (1DC and FEAD)."""
-    query = """
-    SELECT 
-        '1DC Domain Analysis' as analysis_type,
-        COUNT(CASE WHEN LOWER(domain) LIKE '%1dc%' THEN 1 END) as total_hosts,
-        COUNT(CASE WHEN LOWER(domain) LIKE '%1dc%' AND logging_in_splunk = 'yes' THEN 1 END) as splunk_covered,
-        COUNT(CASE WHEN LOWER(domain) LIKE '%1dc%' AND present_in_cmdb = 'yes' THEN 1 END) as cmdb_covered,
-        COUNT(CASE WHEN LOWER(domain) LIKE '%1dc%' AND LOWER(edr_coverage) LIKE '%crowdstrike agent%' THEN 1 END) as crowdstrike_covered,
-        ROUND(COUNT(CASE WHEN LOWER(domain) LIKE '%1dc%' AND logging_in_splunk = 'yes' THEN 1 END) * 100.0 / 
-              NULLIF(COUNT(CASE WHEN LOWER(domain) LIKE '%1dc%' THEN 1 END), 0), 2) as splunk_pct,
-        ROUND(COUNT(CASE WHEN LOWER(domain) LIKE '%1dc%' AND present_in_cmdb = 'yes' THEN 1 END) * 100.0 / 
-              NULLIF(COUNT(CASE WHEN LOWER(domain) LIKE '%1dc%' THEN 1 END), 0), 2) as cmdb_pct
-    FROM universal_cmdb_copy2
+    infrastructure_heatmap = conn.execute("""
+        SELECT 
+            infrastructure_type,
+            region,
+            COUNT(*) as asset_count,
+            AVG(CASE WHEN logging_in_splunk = 'yes' THEN 100.0 ELSE 0.0 END) as splunk_coverage,
+            AVG(CASE WHEN edr_coverage LIKE '%crowdstrike%' THEN 100.0 ELSE 0.0 END) as edr_coverage,
+            AVG(data_quality_score) as quality_score
+        FROM universal_cmdb 
+        WHERE infrastructure_type IS NOT NULL AND region IS NOT NULL
+        GROUP BY infrastructure_type, region
+        HAVING asset_count > 5
+        ORDER BY asset_count DESC
+        LIMIT 100
+    """).fetchall()
     
-    UNION ALL
+    risk_correlation = conn.execute("""
+        SELECT 
+            business_unit,
+            COUNT(*) as assets,
+            AVG(CASE WHEN logging_in_splunk = 'yes' THEN 1 ELSE 0 END) as log_rate,
+            AVG(CASE WHEN edr_coverage LIKE '%crowdstrike%' THEN 1 ELSE 0 END) as security_rate,
+            COUNT(DISTINCT country) as geographic_spread,
+            COUNT(DISTINCT infrastructure_type) as infra_diversity
+        FROM universal_cmdb 
+        WHERE business_unit IS NOT NULL
+        GROUP BY business_unit
+        HAVING assets > 100
+        ORDER BY (log_rate + security_rate) / 2 ASC
+        LIMIT 15
+    """).fetchall()
     
-    SELECT 
-        'FEAD Domain Analysis' as analysis_type,
-        COUNT(CASE WHEN LOWER(domain) LIKE '%fead%' THEN 1 END) as total_hosts,
-        COUNT(CASE WHEN LOWER(domain) LIKE '%fead%' AND logging_in_splunk = 'yes' THEN 1 END) as splunk_covered,
-        COUNT(CASE WHEN LOWER(domain) LIKE '%fead%' AND present_in_cmdb = 'yes' THEN 1 END) as cmdb_covered,
-        COUNT(CASE WHEN LOWER(domain) LIKE '%fead%' AND LOWER(edr_coverage) LIKE '%crowdstrike agent%' THEN 1 END) as crowdstrike_covered,
-        ROUND(COUNT(CASE WHEN LOWER(domain) LIKE '%fead%' AND logging_in_splunk = 'yes' THEN 1 END) * 100.0 / 
-              NULLIF(COUNT(CASE WHEN LOWER(domain) LIKE '%fead%' THEN 1 END), 0), 2) as splunk_pct,
-        ROUND(COUNT(CASE WHEN LOWER(domain) LIKE '%fead%' AND present_in_cmdb = 'yes' THEN 1 END) * 100.0 / 
-              NULLIF(COUNT(CASE WHEN LOWER(domain) LIKE '%fead%' THEN 1 END), 0), 2) as cmdb_pct
-    FROM universal_cmdb_copy2
-    """
-    
-    data = execute_query(query)
-    return jsonify(data)
-
-@app.route('/api/regional-analysis')
-def get_regional_analysis():
-    """Get coverage analysis by geographical region."""
-    query = """
-    SELECT 
-        CASE 
-            WHEN LOWER(region) LIKE '%north america%' OR LOWER(region) LIKE '%usa%' OR LOWER(region) LIKE '%us%' THEN 'North America'
-            WHEN LOWER(region) LIKE '%latam%' OR LOWER(region) LIKE '%latin%' OR LOWER(region) LIKE '%south america%' THEN 'LATAM'
-            WHEN LOWER(region) LIKE '%emea%' OR LOWER(region) LIKE '%europe%' OR LOWER(region) LIKE '%africa%' OR LOWER(region) LIKE '%middle east%' THEN 'EMEA'
-            WHEN LOWER(region) LIKE '%apac%' OR LOWER(region) LIKE '%asia%' OR LOWER(region) LIKE '%pacific%' THEN 'APAC'
-            ELSE COALESCE(region, 'Unknown')
-        END as standardized_region,
-        COUNT(*) as total_hosts_region,
-        COUNT(CASE WHEN present_in_cmdb = 'yes' THEN 1 END) as cmdb_covered_region,
-        ROUND(COUNT(CASE WHEN present_in_cmdb = 'yes' THEN 1 END) * 100.0 / COUNT(*), 2) as cmdb_region_pct,
-        COUNT(CASE WHEN logging_in_splunk = 'yes' THEN 1 END) as splunk_covered_region,
-        ROUND(COUNT(CASE WHEN logging_in_splunk = 'yes' THEN 1 END) * 100.0 / COUNT(*), 2) as splunk_region_pct,
-        COUNT(CASE WHEN LOWER(edr_coverage) LIKE '%crowdstrike agent%' THEN 1 END) as crowdstrike_covered_region,
-        ROUND(COUNT(CASE WHEN LOWER(edr_coverage) LIKE '%crowdstrike agent%' THEN 1 END) * 100.0 / COUNT(*), 2) as crowdstrike_region_pct
-    FROM universal_cmdb_copy2
-    GROUP BY standardized_region
-    ORDER BY total_hosts_region DESC
-    """
-    
-    data = execute_query(query)
-    return jsonify(data)
-
-@app.route('/api/cio-analysis')
-def get_cio_analysis():
-    """Get coverage analysis by CIO organization."""
-    query = """
-    SELECT 
-        cio,
-        COUNT(*) as total_hosts_cio,
-        COUNT(CASE WHEN logging_in_splunk = 'yes' THEN 1 END) as splunk_coverage_cio,
-        COUNT(CASE WHEN present_in_cmdb = 'yes' THEN 1 END) as cmdb_coverage_cio,
-        COUNT(CASE WHEN LOWER(edr_coverage) LIKE '%crowdstrike agent%' THEN 1 END) as crowdstrike_coverage_cio,
-        ROUND(COUNT(CASE WHEN logging_in_splunk = 'yes' THEN 1 END) * 100.0 / COUNT(*), 2) as splunk_cio_pct,
-        ROUND(COUNT(CASE WHEN present_in_cmdb = 'yes' THEN 1 END) * 100.0 / COUNT(*), 2) as cmdb_cio_pct,
-        ROUND(COUNT(CASE WHEN LOWER(edr_coverage) LIKE '%crowdstrike agent%' THEN 1 END) * 100.0 / COUNT(*), 2) as crowdstrike_cio_pct
-    FROM universal_cmdb_copy2
-    WHERE cio IS NOT NULL 
-        AND TRIM(cio) != '' 
-        AND regexp_matches(cio, '^[A-Za-z ]+$')
-    GROUP BY cio
-    ORDER BY total_hosts_cio DESC
-    """
-    
-    data = execute_query(query)
-    return jsonify(data)
-
-@app.route('/api/business-unit-analysis')
-def get_business_unit_analysis():
-    """Get coverage analysis by business unit."""
-    query = """
-    SELECT 
-        TRIM(business_unit) as business_unit_clean,
-        COUNT(*) as total_hosts_bu,
-        COUNT(CASE WHEN present_in_cmdb = 'yes' THEN 1 END) as cmdb_coverage_bu,
-        COUNT(CASE WHEN logging_in_splunk = 'yes' THEN 1 END) as splunk_coverage_bu,
-        COUNT(CASE WHEN LOWER(edr_coverage) LIKE '%crowdstrike agent%' THEN 1 END) as crowdstrike_coverage_bu,
-        ROUND(COUNT(CASE WHEN present_in_cmdb = 'yes' THEN 1 END) * 100.0 / COUNT(*), 2) as cmdb_bu_pct,
-        ROUND(COUNT(CASE WHEN logging_in_splunk = 'yes' THEN 1 END) * 100.0 / COUNT(*), 2) as splunk_bu_pct,
-        ROUND(COUNT(CASE WHEN LOWER(edr_coverage) LIKE '%crowdstrike agent%' THEN 1 END) * 100.0 / COUNT(*), 2) as crowdstrike_bu_pct
-    FROM universal_cmdb_copy2
-    WHERE business_unit IS NOT NULL AND TRIM(business_unit) != ''
-    GROUP BY TRIM(business_unit)
-    ORDER BY total_hosts_bu DESC
-    """
-    
-    data = execute_query(query)
-    return jsonify(data)
-
-@app.route('/api/system-classification-analysis')
-def get_system_classification_analysis():
-    """Get coverage analysis by system classification."""
-    query = """
-    SELECT 
-        TRIM(system_classification) as system_class_clean,
-        COUNT(*) as total_hosts_class,
-        COUNT(CASE WHEN present_in_cmdb = 'yes' THEN 1 END) as cmdb_coverage_class,
-        COUNT(CASE WHEN logging_in_splunk = 'yes' THEN 1 END) as splunk_coverage_class,
-        COUNT(CASE WHEN LOWER(edr_coverage) LIKE '%crowdstrike agent%' THEN 1 END) as crowdstrike_coverage_class,
-        COUNT(CASE WHEN LOWER(tanium_coverage) LIKE '%tanium%' THEN 1 END) as tanium_coverage_class,
-        COUNT(CASE WHEN LOWER(dlp_agent_coverage) LIKE '%dlp%' THEN 1 END) as dlp_coverage_class,
-        ROUND(COUNT(CASE WHEN present_in_cmdb = 'yes' THEN 1 END) * 100.0 / COUNT(*), 2) as cmdb_class_pct,
-        ROUND(COUNT(CASE WHEN logging_in_splunk = 'yes' THEN 1 END) * 100.0 / COUNT(*), 2) as splunk_class_pct,
-        ROUND(COUNT(CASE WHEN LOWER(edr_coverage) LIKE '%crowdstrike agent%' THEN 1 END) * 100.0 / COUNT(*), 2) as crowdstrike_class_pct,
-        ROUND(COUNT(CASE WHEN LOWER(tanium_coverage) LIKE '%tanium%' THEN 1 END) * 100.0 / COUNT(*), 2) as tanium_class_pct,
-        ROUND(COUNT(CASE WHEN LOWER(dlp_agent_coverage) LIKE '%dlp%' THEN 1 END) * 100.0 / COUNT(*), 2) as dlp_class_pct
-    FROM universal_cmdb_copy2
-    WHERE system_classification IS NOT NULL AND TRIM(system_classification) != ''
-    GROUP BY TRIM(system_classification)
-    ORDER BY total_hosts_class DESC
-    """
-    
-    data = execute_query(query)
-    return jsonify(data)
-
-@app.route('/api/log-type-visibility')
-def get_log_type_visibility():
-    """Get visibility analysis by predicted log type."""
-    query = """
-    SELECT 
-        CASE 
-            WHEN LOWER(system_classification) LIKE '%firewall%' OR LOWER(fqdn) LIKE '%fw%' THEN 'Firewall Traffic'
-            WHEN LOWER(system_classification) LIKE '%server%' THEN 'OS logs'
-            WHEN LOWER(system_classification) LIKE '%cloud%' OR LOWER(infrastructure_type) LIKE '%cloud%' THEN 'Cloud Event'
-            WHEN LOWER(fqdn) LIKE '%web%' OR LOWER(fqdn) LIKE '%www%' THEN 'Web Logs'
-            WHEN LOWER(system_classification) LIKE '%auth%' OR LOWER(fqdn) LIKE '%auth%' THEN 'Authentication attempts'
-            WHEN LOWER(system_classification) LIKE '%database%' OR LOWER(fqdn) LIKE '%db%' THEN 'Theom'
-            WHEN LOWER(system_classification) LIKE '%network%' OR LOWER(fqdn) LIKE '%ndr%' THEN 'NDR'
-            WHEN LOWER(system_classification) LIKE '%endpoint%' OR LOWER(system_classification) LIKE '%workstation%' THEN 'EDR'
-            ELSE 'Other'
-        END as predicted_log_type,
-        COUNT(*) as total_assets,
-        COUNT(CASE WHEN logging_in_splunk = 'yes' THEN 1 END) as splunk_visibility,
-        COUNT(CASE WHEN logging_in_gso = 'yes' THEN 1 END) as gso_visibility,
-        ROUND(COUNT(CASE WHEN logging_in_splunk = 'yes' THEN 1 END) * 100.0 / COUNT(*), 2) as splunk_coverage_pct,
-        ROUND(COUNT(CASE WHEN logging_in_gso = 'yes' THEN 1 END) * 100.0 / COUNT(*), 2) as gso_coverage_pct
-    FROM universal_cmdb_copy2
-    GROUP BY predicted_log_type
-    ORDER BY total_assets DESC
-    """
-    
-    data = execute_query(query)
-    return jsonify(data)
-
-@app.route('/api/visibility-factor-metrics')
-def get_visibility_factor_metrics():
-    """Get various visibility factor metrics."""
-    query = """
-    SELECT 
-        'Host Parity Coverage' as metric_type,
-        COUNT(*) as total_hosts,
-        COUNT(CASE WHEN present_in_cmdb = 'yes' THEN 1 END) as cmdb_mapped_hosts,
-        ROUND(COUNT(CASE WHEN present_in_cmdb = 'yes' THEN 1 END) * 100.0 / COUNT(*), 2) as host_parity_pct
-    FROM universal_cmdb_copy2
-    
-    UNION ALL
-    
-    SELECT 
-        'URL/FQDN Coverage' as metric_type,
-        COUNT(CASE WHEN fqdn IS NOT NULL AND fqdn != '' THEN 1 END) as total_with_fqdn,
-        COUNT(CASE WHEN fqdn IS NOT NULL AND fqdn != '' AND logging_in_splunk = 'yes' THEN 1 END) as fqdn_logged,
-        ROUND(COUNT(CASE WHEN fqdn IS NOT NULL AND fqdn != '' AND logging_in_splunk = 'yes' THEN 1 END) * 100.0 / 
-              NULLIF(COUNT(CASE WHEN fqdn IS NOT NULL AND fqdn != '' THEN 1 END), 0), 2) as url_fqdn_coverage_pct
-    FROM universal_cmdb_copy2
-    
-    UNION ALL
-    
-    SELECT 
-        'Security Control Coverage' as metric_type,
-        COUNT(*) as total_assets,
-        COUNT(CASE WHEN LOWER(edr_coverage) LIKE '%crowdstrike agent%' 
-                    OR LOWER(tanium_coverage) LIKE '%tanium%' 
-                    OR LOWER(dlp_agent_coverage) LIKE '%dlp%' THEN 1 END) as security_covered,
-        ROUND(COUNT(CASE WHEN LOWER(edr_coverage) LIKE '%crowdstrike agent%' 
-                          OR LOWER(tanium_coverage) LIKE '%tanium%' 
-                          OR LOWER(dlp_agent_coverage) LIKE '%dlp%' THEN 1 END) * 100.0 / COUNT(*), 2) as security_coverage_pct
-    FROM universal_cmdb_copy2
-    """
-    
-    data = execute_query(query)
-    return jsonify(data)
-
-@app.route('/api/search-assets')
-def search_assets():
-    """Search for assets based on query parameters."""
-    search_term = request.args.get('q', '').strip()
-    limit = min(int(request.args.get('limit', 50)), 100)  # Cap at 100 results
-    
-    if not search_term:
-        return jsonify([])
-    
-    query = """
-    SELECT 
-        fqdn,
-        business_unit,
-        system_classification,
-        region,
-        logging_in_splunk,
-        present_in_cmdb,
-        edr_coverage,
-        data_quality_score
-    FROM universal_cmdb_copy2
-    WHERE LOWER(fqdn) LIKE LOWER(?) 
-       OR LOWER(business_unit) LIKE LOWER(?)
-       OR LOWER(system_classification) LIKE LOWER(?)
-    ORDER BY data_quality_score DESC, fqdn ASC
-    LIMIT ?
-    """
-    
-    search_pattern = f'%{search_term}%'
-    data = execute_query(query, (search_pattern, search_pattern, search_pattern, limit))
-    return jsonify(data)
-
-@app.route('/api/asset-details/<asset_id>')
-def get_asset_details(asset_id):
-    """Get detailed information about a specific asset."""
-    query = """
-    SELECT *
-    FROM universal_cmdb_copy2
-    WHERE fqdn = ?
-    LIMIT 1
-    """
-    
-    data = execute_single_query(query, (asset_id,))
-    if not data:
-        return jsonify({'error': 'Asset not found'}), 404
-    
-    return jsonify(data)
-
-# AI Integration Endpoints
-@app.route('/api/ai-visibility-insights')
-def get_ai_visibility_insights():
-    """Get AI-generated visibility insights."""
-    try:
-        ai_response = requests.get('http://localhost:5001/api/visibility-gap-analysis', timeout=10)
-        if ai_response.status_code == 200:
-            return ai_response.json()
-        else:
-            return jsonify({'error': 'AI visibility service unavailable'}), 503
-    except Exception as e:
-        return jsonify({'error': 'AI visibility service connection failed'}), 503
-
-@app.route('/api/missing-asset-predictions')
-def get_missing_asset_predictions():
-    """Get AI predictions for missing assets."""
-    try:
-        business_unit = request.args.get('business_unit')
-        if business_unit:
-            ai_response = requests.get(f'http://localhost:5001/api/predict-missing-visibility/{business_unit}', timeout=10)
-        else:
-            ai_response = requests.get('http://localhost:5001/api/predict-missing-visibility', timeout=10)
-        
-        if ai_response.status_code == 200:
-            return ai_response.json()
-        else:
-            return jsonify([])
-    except Exception as e:
-        return jsonify([])
-
-@app.route('/api/train-visibility-ai')
-def train_visibility_ai():
-    """Trigger AI model training."""
-    try:
-        response = requests.get('http://localhost:5001/api/train-visibility-model', timeout=5)
-        return response.json()
-    except Exception as e:
-        return jsonify({'error': 'AI visibility service unavailable'}), 503
-
-# Database Management Endpoints
-@app.route('/api/database-stats')
-def get_database_stats():
-    """Get database statistics and health information."""
-    stats_query = """
-    SELECT 
-        COUNT(*) as total_records,
-        COUNT(DISTINCT fqdn) as unique_hostnames,
-        COUNT(DISTINCT business_unit) as unique_business_units,
-        COUNT(DISTINCT system_classification) as unique_system_classes,
-        COUNT(DISTINCT region) as unique_regions,
-        MIN(first_seen_ts) as earliest_record,
-        MAX(last_updated_ts) as latest_update,
-        AVG(data_quality_score) as avg_quality_score
-    FROM universal_cmdb_copy2
-    """
-    
-    coverage_query = """
-    SELECT 
-        ROUND(COUNT(CASE WHEN logging_in_splunk = 'yes' THEN 1 END) * 100.0 / COUNT(*), 2) as splunk_coverage,
-        ROUND(COUNT(CASE WHEN present_in_cmdb = 'yes' THEN 1 END) * 100.0 / COUNT(*), 2) as cmdb_coverage,
-        ROUND(COUNT(CASE WHEN LOWER(edr_coverage) LIKE '%crowdstrike agent%' THEN 1 END) * 100.0 / COUNT(*), 2) as edr_coverage
-    FROM universal_cmdb_copy2
-    """
-    
-    stats_data = execute_single_query(stats_query)
-    coverage_data = execute_single_query(coverage_query)
-    
-    # Combine results
-    result = {**stats_data, **coverage_data}
-    result['database_path'] = DB_PATH
-    result['database_exists'] = os.path.exists(DB_PATH)
-    
-    return jsonify(result)
-
-# Error handlers
-@app.errorhandler(404)
-def not_found_error(error):
-    return jsonify({'error': 'Endpoint not found'}), 404
-
-@app.errorhandler(500)
-def internal_error(error):
-    return jsonify({'error': 'Internal server error'}), 500
-
-# Health check endpoint
-@app.route('/api/health')
-def health_check():
-    """Health check endpoint."""
-    try:
-        conn = get_db_connection()
-        if conn:
-            # Test database connection
-            conn.execute("SELECT 1").fetchone()
-            conn.close()
-            db_status = 'healthy'
-        else:
-            db_status = 'unhealthy'
-    except:
-        db_status = 'error'
+    conn.close()
     
     return jsonify({
-        'status': 'healthy' if db_status == 'healthy' else 'degraded',
-        'database': db_status,
-        'timestamp': datetime.now().isoformat()
+        'executive_summary': {
+            'total_assets': total_assets,
+            'visibility_score': round(((coverage_matrix[1] + coverage_matrix[2] + coverage_matrix[3]) / (3 * total_assets)) * 100, 2),
+            'security_posture': round(((coverage_matrix[3] + coverage_matrix[4]) / (2 * total_assets)) * 100, 2),
+            'triple_coverage': coverage_matrix[5],
+            'blind_spots': coverage_matrix[6]
+        },
+        'coverage_breakdown': {
+            'splunk': {'count': coverage_matrix[1], 'percentage': round((coverage_matrix[1] / total_assets) * 100, 2)},
+            'cmdb': {'count': coverage_matrix[2], 'percentage': round((coverage_matrix[2] / total_assets) * 100, 2)},
+            'edr': {'count': coverage_matrix[3], 'percentage': round((coverage_matrix[3] / total_assets) * 100, 2)},
+            'tanium': {'count': coverage_matrix[4], 'percentage': round((coverage_matrix[4] / total_assets) * 100, 2)}
+        },
+        'discovery_timeline': [
+            {
+                'hour': row[0],
+                'discoveries': row[1],
+                'quality_score': round(row[2], 2) if row[2] else 0
+            } for row in visibility_by_hour
+        ],
+        'infrastructure_heatmap': [
+            {
+                'infrastructure': row[0],
+                'region': row[1],
+                'asset_count': row[2],
+                'splunk_coverage': round(row[3], 1),
+                'edr_coverage': round(row[4], 1),
+                'quality_score': round(row[5], 1) if row[5] else 0,
+                'risk_score': round(100 - ((row[3] + row[4]) / 2), 1)
+            } for row in infrastructure_heatmap
+        ],
+        'business_risk_analysis': [
+            {
+                'business_unit': row[0],
+                'asset_count': row[1],
+                'logging_coverage': round(row[2] * 100, 1),
+                'security_coverage': round(row[3] * 100, 1),
+                'geographic_footprint': row[4],
+                'infrastructure_complexity': row[5],
+                'risk_score': round((1 - ((row[2] + row[3]) / 2)) * 100, 1)
+            } for row in risk_correlation
+        ]
+    })
+
+@app.route('/api/security-control-coverage')
+def security_control_coverage():
+    conn = get_db_connection()
+    
+    control_effectiveness = conn.execute("""
+        SELECT 
+            infrastructure_type,
+            COUNT(*) as total_assets,
+            SUM(CASE WHEN edr_coverage LIKE '%crowdstrike%' THEN 1 ELSE 0 END) as edr_deployed,
+            SUM(CASE WHEN tanium_coverage LIKE '%tanium%' THEN 1 ELSE 0 END) as tanium_deployed,
+            SUM(CASE WHEN dlp_agent_coverage LIKE '%dlp%' THEN 1 ELSE 0 END) as dlp_deployed,
+            SUM(CASE WHEN logging_in_splunk = 'yes' THEN 1 ELSE 0 END) as logging_enabled,
+            AVG(data_quality_score) as avg_data_quality
+        FROM universal_cmdb 
+        WHERE infrastructure_type IS NOT NULL
+        GROUP BY infrastructure_type
+        HAVING total_assets > 50
+        ORDER BY total_assets DESC
+    """).fetchall()
+    
+    security_stack_analysis = conn.execute("""
+        SELECT 
+            CASE 
+                WHEN edr_coverage LIKE '%crowdstrike%' AND tanium_coverage LIKE '%tanium%' AND dlp_agent_coverage LIKE '%dlp%' AND logging_in_splunk = 'yes' THEN 'full_stack'
+                WHEN edr_coverage LIKE '%crowdstrike%' AND tanium_coverage LIKE '%tanium%' AND logging_in_splunk = 'yes' THEN 'core_security'
+                WHEN edr_coverage LIKE '%crowdstrike%' AND logging_in_splunk = 'yes' THEN 'basic_security'
+                WHEN logging_in_splunk = 'yes' THEN 'logging_only'
+                ELSE 'unprotected'
+            END as security_tier,
+            COUNT(*) as asset_count,
+            AVG(data_quality_score) as avg_quality
+        FROM universal_cmdb
+        GROUP BY security_tier
+    """).fetchall()
+    
+    geographic_security_map = conn.execute("""
+        SELECT 
+            region,
+            country,
+            COUNT(*) as assets,
+            AVG(CASE WHEN edr_coverage LIKE '%crowdstrike%' THEN 100.0 ELSE 0.0 END) as edr_coverage,
+            AVG(CASE WHEN tanium_coverage LIKE '%tanium%' THEN 100.0 ELSE 0.0 END) as tanium_coverage,
+            AVG(CASE WHEN logging_in_splunk = 'yes' THEN 100.0 ELSE 0.0 END) as logging_coverage,
+            COUNT(DISTINCT infrastructure_type) as infra_diversity
+        FROM universal_cmdb 
+        WHERE region IS NOT NULL AND country IS NOT NULL
+        GROUP BY region, country
+        HAVING assets > 20
+        ORDER BY assets DESC
+        LIMIT 50
+    """).fetchall()
+    
+    threat_surface_analysis = conn.execute("""
+        SELECT 
+            system_classification,
+            COUNT(*) as total,
+            COUNT(CASE WHEN ip_address LIKE '10.%' OR ip_address LIKE '192.168.%' OR ip_address LIKE '172.%' THEN 1 END) as internal_ips,
+            COUNT(CASE WHEN ip_address NOT LIKE '10.%' AND ip_address NOT LIKE '192.168.%' AND ip_address NOT LIKE '172.%' AND ip_address IS NOT NULL THEN 1 END) as external_ips,
+            AVG(CASE WHEN edr_coverage LIKE '%crowdstrike%' THEN 100.0 ELSE 0.0 END) as edr_protection,
+            SUM(CASE WHEN logging_in_splunk = 'yes' THEN 1 ELSE 0 END) as monitored
+        FROM universal_cmdb 
+        WHERE system_classification IS NOT NULL
+        GROUP BY system_classification
+        HAVING total > 10
+        ORDER BY external_ips DESC, total DESC
+        LIMIT 30
+    """).fetchall()
+    
+    conn.close()
+    
+    return jsonify({
+        'control_effectiveness': [
+            {
+                'infrastructure': row[0],
+                'total_assets': row[1],
+                'edr_coverage': round((row[2] / row[1]) * 100, 1),
+                'tanium_coverage': round((row[3] / row[1]) * 100, 1),
+                'dlp_coverage': round((row[4] / row[1]) * 100, 1),
+                'logging_coverage': round((row[5] / row[1]) * 100, 1),
+                'data_quality': round(row[6], 1) if row[6] else 0,
+                'security_score': round(((row[2] + row[3] + row[4] + row[5]) / (4 * row[1])) * 100, 1)
+            } for row in control_effectiveness
+        ],
+        'security_stack_tiers': [
+            {
+                'tier': row[0],
+                'asset_count': row[1],
+                'data_quality': round(row[2], 1) if row[2] else 0,
+                'tier_percentage': round((row[1] / sum([r[1] for r in security_stack_analysis])) * 100, 1)
+            } for row in security_stack_analysis
+        ],
+        'geographic_security_map': [
+            {
+                'region': row[0],
+                'country': row[1],
+                'asset_count': row[2],
+                'edr_coverage': round(row[3], 1),
+                'tanium_coverage': round(row[4], 1),
+                'logging_coverage': round(row[5], 1),
+                'infrastructure_diversity': row[6],
+                'composite_security_score': round((row[3] + row[4] + row[5]) / 3, 1)
+            } for row in geographic_security_map
+        ],
+        'threat_surface': [
+            {
+                'system_type': row[0],
+                'total_systems': row[1],
+                'internal_exposure': row[2],
+                'external_exposure': row[3],
+                'exposure_ratio': round((row[3] / row[1]) * 100, 1) if row[1] > 0 else 0,
+                'edr_protection': round(row[4], 1),
+                'monitoring_coverage': round((row[5] / row[1]) * 100, 1),
+                'threat_level': 'critical' if row[3] > row[2] else 'medium' if row[3] > 0 else 'low'
+            } for row in threat_surface_analysis
+        ]
+    })
+
+@app.route('/api/infrastructure-type')
+def infrastructure_type():
+    conn = get_db_connection()
+    
+    infrastructure_performance = conn.execute("""
+        SELECT 
+            infrastructure_type,
+            COUNT(*) as total,
+            AVG(CASE WHEN logging_in_splunk = 'yes' THEN 100.0 ELSE 0.0 END) as logging_rate,
+            AVG(CASE WHEN present_in_cmdb = 'yes' THEN 100.0 ELSE 0.0 END) as cmdb_rate,
+            AVG(CASE WHEN edr_coverage LIKE '%crowdstrike%' THEN 100.0 ELSE 0.0 END) as edr_rate,
+            AVG(data_quality_score) as quality_score,
+            COUNT(DISTINCT region) as geographic_spread,
+            COUNT(DISTINCT business_unit) as business_spread,
+            MIN(CAST(first_seen AS DATE)) as first_discovered,
+            MAX(CAST(last_updated AS DATE)) as last_activity
+        FROM universal_cmdb 
+        WHERE infrastructure_type IS NOT NULL
+        GROUP BY infrastructure_type
+        HAVING total > 10
+        ORDER BY total DESC
+    """).fetchall()
+    
+    infrastructure_correlation = conn.execute("""
+        WITH infra_pairs AS (
+            SELECT 
+                i1.infrastructure_type as type1,
+                i2.infrastructure_type as type2,
+                COUNT(*) as co_occurrence,
+                AVG(CASE WHEN i1.logging_in_splunk = 'yes' AND i2.logging_in_splunk = 'yes' THEN 100.0 ELSE 0.0 END) as joint_logging
+            FROM universal_cmdb i1
+            JOIN universal_cmdb i2 ON i1.business_unit = i2.business_unit 
+            WHERE i1.infrastructure_type != i2.infrastructure_type 
+                AND i1.infrastructure_type IS NOT NULL 
+                AND i2.infrastructure_type IS NOT NULL
+            GROUP BY i1.infrastructure_type, i2.infrastructure_type
+            HAVING co_occurrence > 20
+        )
+        SELECT * FROM infra_pairs ORDER BY co_occurrence DESC LIMIT 25
+    """).fetchall()
+    
+    deployment_timeline = conn.execute("""
+        SELECT 
+            DATE_TRUNC('month', CAST(first_seen AS DATE)) as month,
+            infrastructure_type,
+            COUNT(*) as new_deployments
+        FROM universal_cmdb 
+        WHERE first_seen IS NOT NULL AND infrastructure_type IS NOT NULL
+        GROUP BY DATE_TRUNC('month', CAST(first_seen AS DATE)), infrastructure_type
+        ORDER BY month DESC, new_deployments DESC
+        LIMIT 200
+    """).fetchall()
+    
+    conn.close()
+    
+    return jsonify({
+        'infrastructure_analytics': [
+            {
+                'type': row[0],
+                'total_assets': row[1],
+                'logging_coverage': round(row[2], 1),
+                'cmdb_coverage': round(row[3], 1),
+                'edr_coverage': round(row[4], 1),
+                'data_quality': round(row[5], 1) if row[5] else 0,
+                'geographic_presence': row[6],
+                'business_penetration': row[7],
+                'age_days': (datetime.now() - datetime.strptime(str(row[8]), '%Y-%m-%d')).days if row[8] else 0,
+                'last_activity_days': (datetime.now() - datetime.strptime(str(row[9]), '%Y-%m-%d')).days if row[9] else 0,
+                'security_maturity': round((row[2] + row[3] + row[4]) / 3, 1),
+                'risk_exposure': round(100 - ((row[2] + row[4]) / 2), 1)
+            } for row in infrastructure_performance
+        ],
+        'infrastructure_relationships': [
+            {
+                'primary_type': row[0],
+                'secondary_type': row[1],
+                'co_occurrence_count': row[2],
+                'joint_logging_rate': round(row[3], 1),
+                'relationship_strength': round((row[2] / 1000) * 100, 1)
+            } for row in infrastructure_correlation
+        ],
+        'deployment_timeline': [
+            {
+                'month': row[0].strftime('%Y-%m') if row[0] else 'unknown',
+                'infrastructure': row[1],
+                'deployments': row[2]
+            } for row in deployment_timeline
+        ]
+    })
+
+@app.route('/api/domain-visibility')
+def domain_visibility():
+    conn = get_db_connection()
+    
+    domain_risk_assessment = conn.execute("""
+        SELECT 
+            domain,
+            COUNT(*) as assets,
+            AVG(CASE WHEN logging_in_splunk = 'yes' THEN 100.0 ELSE 0.0 END) as logging_rate,
+            AVG(CASE WHEN edr_coverage LIKE '%crowdstrike%' THEN 100.0 ELSE 0.0 END) as security_rate,
+            COUNT(DISTINCT ip_address) as unique_ips,
+            COUNT(DISTINCT country) as countries,
+            MAX(CAST(last_updated AS DATE)) as last_seen,
+            AVG(data_quality_score) as data_quality
+        FROM universal_cmdb 
+        WHERE domain IS NOT NULL
+        GROUP BY domain
+        HAVING assets > 5
+        ORDER BY assets DESC
+        LIMIT 100
+    """).fetchall()
+    
+    dns_security_analysis = conn.execute("""
+        SELECT 
+            CASE 
+                WHEN domain LIKE '%.corp.%' THEN 'corporate'
+                WHEN domain LIKE '%.dev.%' THEN 'development' 
+                WHEN domain LIKE '%.prod.%' THEN 'production'
+                WHEN domain LIKE '%.test.%' THEN 'testing'
+                WHEN domain LIKE '%1dc%' THEN 'datacenter'
+                WHEN domain LIKE '%fead%' THEN 'federated'
+                ELSE 'standard'
+            END as domain_category,
+            COUNT(*) as domain_count,
+            COUNT(DISTINCT domain) as unique_domains,
+            AVG(CASE WHEN logging_in_splunk = 'yes' THEN 100.0 ELSE 0.0 END) as avg_logging,
+            AVG(CASE WHEN edr_coverage LIKE '%crowdstrike%' THEN 100.0 ELSE 0.0 END) as avg_security
+        FROM universal_cmdb 
+        WHERE domain IS NOT NULL
+        GROUP BY domain_category
+        ORDER BY domain_count DESC
+    """).fetchall()
+    
+    subdomain_exposure = conn.execute("""
+        SELECT 
+            REGEXP_EXTRACT(domain, '([^.]+\.[^.]+)$') as root_domain,
+            COUNT(DISTINCT domain) as subdomains,
+            COUNT(*) as total_assets,
+            AVG(CASE WHEN edr_coverage LIKE '%crowdstrike%' THEN 100.0 ELSE 0.0 END) as protection_rate,
+            COUNT(CASE WHEN ip_address NOT LIKE '10.%' AND ip_address NOT LIKE '192.168.%' THEN 1 END) as external_facing
+        FROM universal_cmdb 
+        WHERE domain IS NOT NULL AND domain LIKE '%.%.%'
+        GROUP BY REGEXP_EXTRACT(domain, '([^.]+\.[^.]+)$')
+        HAVING subdomains > 3
+        ORDER BY external_facing DESC, subdomains DESC
+        LIMIT 30
+    """).fetchall()
+    
+    conn.close()
+    
+    return jsonify({
+        'domain_intelligence': [
+            {
+                'domain': row[0],
+                'asset_count': row[1],
+                'logging_coverage': round(row[2], 1),
+                'security_coverage': round(row[3], 1),
+                'ip_diversity': row[4],
+                'geographic_spread': row[5],
+                'last_activity': str(row[6]) if row[6] else 'unknown',
+                'data_quality': round(row[7], 1) if row[7] else 0,
+                'exposure_score': round(((row[4] * row[5]) / row[1]) * 10, 1),
+                'protection_gap': round(100 - ((row[2] + row[3]) / 2), 1)
+            } for row in domain_risk_assessment
+        ],
+        'domain_categories': [
+            {
+                'category': row[0],
+                'domain_count': row[1],
+                'unique_domains': row[2],
+                'avg_logging': round(row[3], 1),
+                'avg_security': round(row[4], 1),
+                'security_posture': round((row[3] + row[4]) / 2, 1)
+            } for row in dns_security_analysis
+        ],
+        'subdomain_analysis': [
+            {
+                'root_domain': row[0] if row[0] else 'unknown',
+                'subdomain_count': row[1],
+                'total_assets': row[2],
+                'protection_rate': round(row[3], 1),
+                'external_exposure': row[4],
+                'attack_surface': round((row[1] * row[4]) / max(row[2], 1), 2)
+            } for row in subdomain_exposure
+        ]
+    })
+
+@app.route('/api/regional-country-view')
+def regional_country_view():
+    conn = get_db_connection()
+    
+    geopolitical_risk = conn.execute("""
+        SELECT 
+            region,
+            country,
+            COUNT(*) as assets,
+            COUNT(DISTINCT business_unit) as business_units,
+            COUNT(DISTINCT infrastructure_type) as infrastructure_types,
+            AVG(CASE WHEN logging_in_splunk = 'yes' THEN 100.0 ELSE 0.0 END) as logging_coverage,
+            AVG(CASE WHEN edr_coverage LIKE '%crowdstrike%' THEN 100.0 ELSE 0.0 END) as edr_coverage,
+            COUNT(CASE WHEN ip_address NOT LIKE '10.%' AND ip_address NOT LIKE '192.168.%' THEN 1 END) as external_assets,
+            AVG(data_quality_score) as data_quality
+        FROM universal_cmdb 
+        WHERE region IS NOT NULL AND country IS NOT NULL
+        GROUP BY region, country
+        HAVING assets > 50
+        ORDER BY assets DESC
+    """).fetchall()
+    
+    compliance_by_region = conn.execute("""
+        SELECT 
+            region,
+            COUNT(*) as total,
+            SUM(CASE WHEN logging_in_splunk = 'yes' OR logging_in_chronicle = 'yes' THEN 1 ELSE 0 END) as compliant_logging,
+            SUM(CASE WHEN present_in_cmdb = 'yes' THEN 1 ELSE 0 END) as documented,
+            SUM(CASE WHEN edr_coverage LIKE '%crowdstrike%' THEN 1 ELSE 0 END) as protected,
+            COUNT(DISTINCT business_unit) as business_coverage
+        FROM universal_cmdb 
+        WHERE region IS NOT NULL
+        GROUP BY region
+        ORDER BY total DESC
+    """).fetchall()
+    
+    cross_border_analysis = conn.execute("""
+        SELECT 
+            b1.business_unit,
+            COUNT(DISTINCT b1.country) as countries_count,
+            COUNT(DISTINCT b1.region) as regions_count,
+            COUNT(*) as total_assets,
+            AVG(CASE WHEN b1.logging_in_splunk = 'yes' THEN 100.0 ELSE 0.0 END) as global_logging,
+            AVG(CASE WHEN b1.edr_coverage LIKE '%crowdstrike%' THEN 100.0 ELSE 0.0 END) as global_security
+        FROM universal_cmdb b1
+        WHERE b1.business_unit IS NOT NULL AND b1.country IS NOT NULL
+        GROUP BY b1.business_unit
+        HAVING countries_count > 1
+        ORDER BY countries_count DESC, total_assets DESC
+        LIMIT 20
+    """).fetchall()
+    
+    conn.close()
+    
+    return jsonify({
+        'geopolitical_matrix': [
+            {
+                'region': row[0],
+                'country': row[1],
+                'asset_portfolio': row[2],
+                'business_diversity': row[3],
+                'infrastructure_complexity': row[4],
+                'logging_posture': round(row[5], 1),
+                'security_posture': round(row[6], 1),
+                'external_exposure': row[7],
+                'data_integrity': round(row[8], 1) if row[8] else 0,
+                'geopolitical_risk': round(((row[7] / max(row[2], 1)) * 100) + (100 - row[5]) + (100 - row[6]), 1),
+                'strategic_importance': round((row[2] * row[3] * row[4]) / 10000, 1)
+            } for row in geopolitical_risk
+        ],
+        'regional_compliance': [
+            {
+                'region': row[0],
+                'total_assets': row[1],
+                'logging_compliance': round((row[2] / row[1]) * 100, 1),
+                'documentation_rate': round((row[3] / row[1]) * 100, 1),
+                'protection_rate': round((row[4] / row[1]) * 100, 1),
+                'business_coverage': row[5],
+                'compliance_score': round(((row[2] + row[3] + row[4]) / (3 * row[1])) * 100, 1)
+            } for row in compliance_by_region
+        ],
+        'multinational_operations': [
+            {
+                'business_unit': row[0],
+                'countries_operated': row[1],
+                'regions_operated': row[2],
+                'global_asset_count': row[3],
+                'standardized_logging': round(row[4], 1),
+                'standardized_security': round(row[5], 1),
+                'operational_complexity': round((row[1] * row[2]) / 10, 1),
+                'governance_risk': round(100 - ((row[4] + row[5]) / 2), 1)
+            } for row in cross_border_analysis
+        ]
+    })
+
+@app.route('/api/bu-application-view')
+def bu_application_view():
+    conn = get_db_connection()
+    
+    business_risk_portfolio = conn.execute("""
+        SELECT 
+            business_unit,
+            COUNT(*) as assets,
+            COUNT(DISTINCT infrastructure_type) as tech_diversity,
+            COUNT(DISTINCT country) as geographic_reach,
+            AVG(CASE WHEN logging_in_splunk = 'yes' THEN 100.0 ELSE 0.0 END) as logging_maturity,
+            AVG(CASE WHEN edr_coverage LIKE '%crowdstrike%' THEN 100.0 ELSE 0.0 END) as security_maturity,
+            SUM(CASE WHEN apm LIKE '%apm%' THEN 1 ELSE 0 END) as apm_coverage,
+            AVG(data_quality_score) as data_governance
+        FROM universal_cmdb 
+        WHERE business_unit IS NOT NULL
+        GROUP BY business_unit
+        HAVING assets > 100
+        ORDER BY assets DESC
+    """).fetchall()
+    
+    application_dependency_map = conn.execute("""
+        SELECT 
+            apm,
+            COUNT(*) as instances,
+            COUNT(DISTINCT business_unit) as business_dependencies,
+            COUNT(DISTINCT infrastructure_type) as infrastructure_dependencies,
+            AVG(CASE WHEN logging_in_splunk = 'yes' THEN 100.0 ELSE 0.0 END) as observability,
+            AVG(CASE WHEN edr_coverage LIKE '%crowdstrike%' THEN 100.0 ELSE 0.0 END) as security_coverage
+        FROM universal_cmdb 
+        WHERE apm IS NOT NULL AND apm != 'null'
+        GROUP BY apm
+        HAVING instances > 5
+        ORDER BY business_dependencies DESC, instances DESC
+        LIMIT 50
+    """).fetchall()
+    
+    cio_governance_metrics = conn.execute("""
+        SELECT 
+            cio,
+            COUNT(*) as managed_assets,
+            COUNT(DISTINCT business_unit) as business_units_overseen,
+            COUNT(DISTINCT infrastructure_type) as technology_portfolio,
+            AVG(CASE WHEN present_in_cmdb = 'yes' THEN 100.0 ELSE 0.0 END) as governance_score,
+            AVG(CASE WHEN logging_in_splunk = 'yes' THEN 100.0 ELSE 0.0 END) as monitoring_score,
+            AVG(data_quality_score) as data_stewardship
+        FROM universal_cmdb 
+        WHERE cio IS NOT NULL AND cio != 'null'
+        GROUP BY cio
+        HAVING managed_assets > 200
+        ORDER BY managed_assets DESC
+        LIMIT 20
+    """).fetchall()
+    
+    conn.close()
+    
+    return jsonify({
+        'business_portfolio': [
+            {
+                'unit': row[0],
+                'asset_portfolio': row[1],
+                'technology_diversification': row[2],
+                'global_footprint': row[3],
+                'operational_visibility': round(row[4], 1),
+                'security_resilience': round(row[5], 1),
+                'application_monitoring': row[6],
+                'data_governance': round(row[7], 1) if row[7] else 0,
+                'business_risk_score': round((100 - row[4]) + (100 - row[5]) + (row[2] * 5) + (row[3] * 3), 1),
+                'maturity_index': round((row[4] + row[5] + (row[7] if row[7] else 0)) / 3, 1)
+            } for row in business_risk_portfolio
+        ],
+        'application_architecture': [
+            {
+                'application': row[0],
+                'deployment_scale': row[1],
+                'business_criticality': row[2],
+                'infrastructure_spread': row[3],
+                'observability_score': round(row[4], 1),
+                'security_score': round(row[5], 1),
+                'dependency_risk': round((row[2] * row[3]) / max(row[1], 1) * 100, 1),
+                'resilience_factor': round((row[4] + row[5]) / 2, 1)
+            } for row in application_dependency_map
+        ],
+        'executive_oversight': [
+            {
+                'cio': row[0],
+                'asset_responsibility': row[1],
+                'organizational_scope': row[2],
+                'technology_breadth': row[3],
+                'governance_effectiveness': round(row[4], 1),
+                'operational_oversight': round(row[5], 1),
+                'data_stewardship': round(row[6], 1) if row[6] else 0,
+                'leadership_score': round((row[4] + row[5] + (row[6] if row[6] else 0)) / 3, 1)
+            } for row in cio_governance_metrics
+        ]
+    })
+
+@app.route('/api/logging-compliance')
+def logging_compliance():
+    conn = get_db_connection()
+    
+    platform_performance = conn.execute("""
+        SELECT 
+            infrastructure_type,
+            COUNT(*) as total,
+            SUM(CASE WHEN logging_in_splunk = 'yes' THEN 1 ELSE 0 END) as splunk_logs,
+            SUM(CASE WHEN logging_in_chronicle = 'yes' THEN 1 ELSE 0 END) as chronicle_logs,
+            SUM(CASE WHEN logging_in_splunk = 'yes' AND logging_in_chronicle = 'yes' THEN 1 ELSE 0 END) as dual_platform,
+            AVG(data_quality_score) as log_quality,
+            COUNT(DISTINCT business_unit) as business_coverage
+        FROM universal_cmdb 
+        WHERE infrastructure_type IS NOT NULL
+        GROUP BY infrastructure_type
+        HAVING total > 20
+        ORDER BY total DESC
+    """).fetchall()
+    
+    log_volume_analysis = conn.execute("""
+        SELECT 
+            business_unit,
+            region,
+            COUNT(*) as systems,
+            SUM(CASE WHEN logging_in_splunk = 'yes' THEN 1 ELSE 0 END) as logging_systems,
+            AVG(data_quality_score) as quality_index,
+            COUNT(DISTINCT infrastructure_type) as source_diversity
+        FROM universal_cmdb 
+        WHERE business_unit IS NOT NULL AND region IS NOT NULL
+        GROUP BY business_unit, region
+        HAVING systems > 30
+        ORDER BY systems DESC
+        LIMIT 50
+    """).fetchall()
+    
+    compliance_gaps = conn.execute("""
+        SELECT 
+            country,
+            COUNT(*) as assets,
+            SUM(CASE WHEN logging_in_splunk != 'yes' AND logging_in_chronicle != 'yes' THEN 1 ELSE 0 END) as no_logging,
+            SUM(CASE WHEN present_in_cmdb != 'yes' THEN 1 ELSE 0 END) as undocumented,
+            AVG(data_quality_score) as governance_score
+        FROM universal_cmdb 
+        WHERE country IS NOT NULL
+        GROUP BY country
+        HAVING assets > 100 AND (no_logging > assets * 0.2 OR undocumented > assets * 0.3)
+        ORDER BY no_logging + undocumented DESC
+        LIMIT 20
+    """).fetchall()
+    
+    conn.close()
+    
+    return jsonify({
+        'platform_analytics': [
+            {
+                'infrastructure': row[0],
+                'total_systems': row[1],
+                'splunk_adoption': round((row[2] / row[1]) * 100, 1),
+                'chronicle_adoption': round((row[3] / row[1]) * 100, 1),
+                'dual_platform_rate': round((row[4] / row[1]) * 100, 1),
+                'log_quality_index': round(row[5], 1) if row[5] else 0,
+                'business_penetration': row[6],
+                'platform_maturity': round(((row[2] + row[3]) / (2 * row[1])) * 100, 1)
+            } for row in platform_performance
+        ],
+        'log_volume_heatmap': [
+            {
+                'business_unit': row[0],
+                'region': row[1],
+                'system_count': row[2],
+                'logging_rate': round((row[3] / row[2]) * 100, 1),
+                'quality_score': round(row[4], 1) if row[4] else 0,
+                'source_diversity': row[5],
+                'volume_risk': round((row[2] - row[3]) / max(row[2], 1) * 100, 1),
+                'complexity_factor': round((row[5] * row[2]) / 100, 1)
+            } for row in log_volume_analysis
+        ],
+        'compliance_violations': [
+            {
+                'country': row[0],
+                'total_assets': row[1],
+                'logging_violations': row[2],
+                'documentation_gaps': row[3],
+                'governance_maturity': round(row[4], 1) if row[4] else 0,
+                'compliance_risk': round(((row[2] + row[3]) / row[1]) * 100, 1),
+                'regulatory_exposure': round((row[1] - (row[1] - row[2] - row[3])) / max(row[1], 1) * 100, 1)
+            } for row in compliance_gaps
+        ]
     })
 
 if __name__ == '__main__':
-    # Ensure data directory exists
-    os.makedirs('data', exist_ok=True)
-    
-    # Run the app
-    app.run(debug=True, host='0.0.0.0', port=5000)
+    app.run(debug=True, port=5000)
