@@ -49,7 +49,7 @@
 <main class="cyberpunk-interface">
 	<!-- Animated background particles -->
 	<div class="matrix-rain">
-		{#each Array(50) as _, i}
+		{#each Array(30) as _, i}
 			<div class="rain-drop" style="left: {Math.random() * 100}%; animation-delay: {Math.random() * 5}s; animation-duration: {3 + Math.random() * 4}s;"></div>
 		{/each}
 	</div>
@@ -64,45 +64,44 @@
 		{/each}
 	</div>
 
-	<!-- Header with branding and time -->
+	<!-- Header with navigation -->
 	<header class="cyber-header">
-		<div class="header-left">
-			<div class="neural-logo">
-				<div class="logo-rings">
-					<div class="ring ring-outer"></div>
-					<div class="ring ring-middle"></div>
-					<div class="ring ring-inner"></div>
+		<div class="header-content">
+			<div class="brand-section">
+				<div class="neural-logo">
+					<div class="logo-rings">
+						<div class="ring ring-outer"></div>
+						<div class="ring ring-middle"></div>
+						<div class="ring ring-inner"></div>
+					</div>
+					<div class="logo-center">◆</div>
 				</div>
-				<div class="logo-center">◆</div>
+				<div class="brand-text">
+					<h1 class="title">AO1 VISIBILITY</h1>
+				</div>
 			</div>
-			<div class="system-title">
-				<h1>AO1 VISIBILITY</h1>
-				<p>CYBERSECURITY OPERATIONS CENTER</p>
-			</div>
-		</div>
-
-		<div class="header-right">
+			
+			<!-- Navigation tabs -->
+			<nav class="tab-navigation">
+				{#each modules as module}
+					<button 
+						class="cyber-tab {currentView === module.id ? 'active' : ''}"
+						style="--tab-color: {module.color}"
+						on:click={() => switchView(module.id)}
+					>
+						<span class="tab-icon">{module.icon}</span>
+						<span class="tab-name">{module.name}</span>
+						<div class="tab-glow"></div>
+					</button>
+				{/each}
+			</nav>
+			
 			<div class="time-display">
-				<div class="time-label">SYSTEM TIME</div>
+				<div class="time-label">TIME</div>
 				<div class="time-value">{currentTime}</div>
 			</div>
 		</div>
 	</header>
-
-	<!-- Top navigation tabs -->
-	<nav class="top-navigation">
-		{#each modules as module, i}
-			<button 
-				class="cyber-tab {currentView === module.id ? 'active' : ''}"
-				style="--tab-color: {module.color}; --delay: {i * 0.1}s"
-				on:click={() => switchView(module.id)}
-			>
-				<div class="tab-icon">{module.icon}</div>
-				<span class="tab-name">{module.name}</span>
-				<div class="tab-glow"></div>
-			</button>
-		{/each}
-	</nav>
 
 	<!-- Main content viewport -->
 	<section class="data-viewport">
@@ -148,11 +147,12 @@
 <style>
 	:global(body) {
 		font-family: 'Orbitron', 'Exo 2', 'Rajdhani', monospace;
-		background: #000;
-		color: #fff;
-		overflow-x: hidden;
+		background: radial-gradient(ellipse at center, #1a0d2e 0%, #0f0520 40%, #000000 100%);
+		color: #ffffff;
+		overflow: hidden;
 		margin: 0;
 		padding: 0;
+		font-weight: 400;
 	}
 
 	.cyberpunk-interface {
@@ -161,7 +161,6 @@
 		position: relative;
 		display: flex;
 		flex-direction: column;
-		background: radial-gradient(ellipse at center, #1a0d2e 0%, #0f0520 40%, #000000 100%);
 		overflow: hidden;
 	}
 
@@ -221,17 +220,23 @@
 		border-bottom: 2px solid #00ffff;
 		backdrop-filter: blur(20px);
 		z-index: 10;
+		position: relative;
+		box-shadow: 0 4px 32px rgba(0, 255, 255, 0.1);
+	}
+
+	.header-content {
 		display: flex;
 		align-items: center;
 		justify-content: space-between;
 		padding: 1rem 2rem;
-		position: relative;
+		min-height: 80px;
 	}
 
-	.header-left {
+	.brand-section {
 		display: flex;
 		align-items: center;
 		gap: 1.5rem;
+		flex-shrink: 0;
 	}
 
 	.neural-logo {
@@ -262,15 +267,13 @@
 	.ring-outer {
 		width: 60px;
 		height: 60px;
-		border-color: #00ffff;
-		opacity: 0.8;
+		border-color: rgba(0, 255, 255, 0.6);
 	}
 
 	.ring-middle {
 		width: 45px;
 		height: 45px;
-		border-color: #ff00ff;
-		opacity: 0.6;
+		border-color: rgba(255, 0, 255, 0.4);
 		animation-direction: reverse;
 		animation-duration: 6s;
 	}
@@ -278,79 +281,46 @@
 	.ring-inner {
 		width: 30px;
 		height: 30px;
-		border-color: #0096ff;
+		border-color: rgba(0, 150, 255, 0.8);
 		animation-duration: 4s;
 	}
 
 	.logo-center {
 		font-size: 1.5rem;
-		color: #00ffff;
-		text-shadow: 0 0 20px #00ffff;
+		color: rgba(0, 255, 255, 0.9);
+		text-shadow: 0 0 20px rgba(0, 255, 255, 0.8);
 		z-index: 3;
 		position: relative;
 		animation: corePulse 3s ease-in-out infinite;
 	}
 
-	.system-title h1 {
+	.brand-text {
+		display: flex;
+		flex-direction: column;
+	}
+
+	.title {
 		font-size: 1.5rem;
 		font-weight: 700;
-		color: #fff;
+		color: #ffffff;
 		margin: 0;
-		text-shadow: 0 0 20px #00ffff;
-		letter-spacing: 0.2em;
-	}
-
-	.system-title p {
-		font-size: 0.8rem;
-		color: rgba(255, 255, 255, 0.6);
-		margin: 0;
-		letter-spacing: 0.15em;
-	}
-
-	.header-right {
-		display: flex;
-		align-items: center;
-	}
-
-	.time-display {
-		background: linear-gradient(135deg, rgba(0, 0, 0, 0.6), rgba(0, 255, 255, 0.03));
-		border: 1px solid rgba(0, 255, 255, 0.3);
-		border-radius: 8px;
-		padding: 1rem;
-		backdrop-filter: blur(10px);
-		text-align: center;
-	}
-
-	.time-label {
-		font-size: 0.6rem;
-		color: rgba(255, 255, 255, 0.5);
-		font-weight: 600;
-		text-transform: uppercase;
+		text-shadow: 0 0 20px rgba(0, 255, 255, 0.5);
 		letter-spacing: 0.1em;
-		margin-bottom: 0.3rem;
+		text-transform: uppercase;
 	}
 
-	.time-value {
-		font-size: 0.9rem;
-		font-weight: 600;
-		color: #00ffff;
-		text-shadow: 0 0 8px #00ffff;
-	}
-
-	.top-navigation {
-		background: linear-gradient(135deg, rgba(0, 0, 0, 0.8), rgba(26, 13, 46, 0.6));
-		border-bottom: 1px solid rgba(0, 255, 255, 0.2);
-		backdrop-filter: blur(20px);
-		z-index: 10;
+	.tab-navigation {
 		display: flex;
-		padding: 0.5rem 2rem;
+		flex: 1;
 		gap: 0.5rem;
 		overflow-x: auto;
+		padding: 0.5rem 2rem;
 		scrollbar-width: none;
 		-ms-overflow-style: none;
+		justify-content: center;
 	}
 
-	.top-navigation::-webkit-scrollbar {
+	.tab-navigation::-webkit-scrollbar {
 		display: none;
 	}
 
@@ -358,9 +328,9 @@
 		background: linear-gradient(135deg, rgba(0, 0, 0, 0.6) 0%, rgba(255, 255, 255, 0.03) 100%);
 		border: 1px solid rgba(255, 255, 255, 0.1);
 		border-radius: 6px;
-		padding: 0.8rem 1.2rem;
+		padding: 0.6rem 1rem;
 		color: #ffffff;
-		font-family: inherit;
+		font-family: 'Orbitron', monospace;
 		font-size: 0.7rem;
 		font-weight: 500;
 		cursor: pointer;
@@ -372,10 +342,8 @@
 		display: flex;
 		align-items: center;
 		gap: 0.5rem;
-		animation: tabEntrance 0.5s ease-out;
-		animation-delay: var(--delay);
-		animation-fill-mode: both;
-		opacity: 0;
+		text-transform: uppercase;
+		letter-spacing: 0.05em;
 	}
 
 	.cyber-tab::before {
@@ -396,14 +364,14 @@
 	.cyber-tab:hover {
 		border-color: var(--tab-color);
 		background: linear-gradient(135deg, rgba(0, 0, 0, 0.8) 0%, rgba(255, 255, 255, 0.05) 100%);
-		transform: translateY(-2px);
+		transform: translateY(-1px);
 		box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
 	}
 
 	.cyber-tab.active {
 		border-color: var(--tab-color);
 		background: linear-gradient(135deg, rgba(0, 0, 0, 0.9) 0%, rgba(255, 255, 255, 0.08) 100%);
-		box-shadow: 0 0 20px var(--tab-color);
+		box-shadow: 0 0 20px rgba(0, 255, 255, 0.2);
 	}
 
 	.tab-icon {
@@ -416,12 +384,6 @@
 		position: relative;
 		z-index: 2;
 		letter-spacing: 0.02em;
-		text-transform: uppercase;
-	}
-
-	.cyber-tab.active .tab-name {
-		color: var(--tab-color);
-		text-shadow: 0 0 8px var(--tab-color);
 	}
 
 	.tab-glow {
@@ -438,7 +400,31 @@
 
 	.cyber-tab:hover .tab-glow,
 	.cyber-tab.active .tab-glow {
-		opacity: 0.1;
+		opacity: 0.05;
+	}
+
+	.time-display {
+		display: flex;
+		flex-direction: column;
+		align-items: flex-end;
+		gap: 0.2rem;
+		flex-shrink: 0;
+	}
+
+	.time-label {
+		font-size: 0.6rem;
+		color: rgba(255, 255, 255, 0.5);
+		font-weight: 400;
+		text-transform: uppercase;
+		letter-spacing: 0.1em;
+	}
+
+	.time-value {
+		font-size: 0.8rem;
+		font-weight: 600;
+		color: #00ffff;
+		text-shadow: 0 0 8px rgba(0, 255, 255, 0.5);
+		font-family: 'JetBrains Mono', monospace;
 	}
 
 	.data-viewport {
@@ -457,7 +443,7 @@
 			rgba(0, 0, 0, 0.4) 0%, 
 			rgba(0, 255, 255, 0.02) 50%,
 			rgba(255, 0, 255, 0.02) 100%);
-		border: 2px solid #00ffff;
+		border: 1px solid rgba(0, 255, 255, 0.2);
 		border-radius: 16px;
 		backdrop-filter: blur(20px);
 		box-shadow: 
@@ -478,41 +464,41 @@
 
 	.corner {
 		position: absolute;
-		width: 30px;
-		height: 30px;
-		border: 3px solid #00ffff;
+		width: 20px;
+		height: 20px;
+		border: 2px solid rgba(0, 255, 255, 0.6);
 	}
 
 	.corner.tl {
-		top: 15px;
-		left: 15px;
+		top: 10px;
+		left: 10px;
 		border-right: none;
 		border-bottom: none;
-		border-top-left-radius: 8px;
+		border-top-left-radius: 4px;
 	}
 
 	.corner.tr {
-		top: 15px;
-		right: 15px;
+		top: 10px;
+		right: 10px;
 		border-left: none;
 		border-bottom: none;
-		border-top-right-radius: 8px;
+		border-top-right-radius: 4px;
 	}
 
 	.corner.bl {
-		bottom: 15px;
-		left: 15px;
+		bottom: 10px;
+		left: 10px;
 		border-right: none;
 		border-top: none;
-		border-bottom-left-radius: 8px;
+		border-bottom-left-radius: 4px;
 	}
 
 	.corner.br {
-		bottom: 15px;
-		right: 15px;
+		bottom: 10px;
+		right: 10px;
 		border-left: none;
 		border-top: none;
-		border-bottom-right-radius: 8px;
+		border-bottom-right-radius: 4px;
 	}
 
 	.content-stream {
@@ -534,13 +520,17 @@
 	}
 
 	:global(::-webkit-scrollbar-thumb) {
-		background: linear-gradient(135deg, #00ffff, #ff00ff);
+		background: linear-gradient(135deg, 
+			rgba(0, 255, 255, 0.6), 
+			rgba(255, 0, 255, 0.4));
 		border-radius: 4px;
 		box-shadow: 0 0 10px rgba(0, 255, 255, 0.3);
 	}
 
 	:global(::-webkit-scrollbar-thumb:hover) {
-		background: linear-gradient(135deg, #ff00ff, #00ffff);
+		background: linear-gradient(135deg, 
+			rgba(0, 255, 255, 0.8), 
+			rgba(255, 0, 255, 0.6));
 	}
 
 	@keyframes ringRotate {
@@ -552,45 +542,38 @@
 		0%, 100% { 
 			opacity: 0.9; 
 			transform: scale(1);
-			text-shadow: 0 0 20px #00ffff;
+			text-shadow: 0 0 20px rgba(0, 255, 255, 0.8);
 		}
 		50% { 
 			opacity: 1; 
 			transform: scale(1.05);
-			text-shadow: 0 0 30px #00ffff;
-		}
-	}
-
-	@keyframes tabEntrance {
-		0% { 
-			opacity: 0; 
-			transform: translateY(-10px);
-		}
-		100% { 
-			opacity: 1; 
-			transform: translateY(0);
+			text-shadow: 0 0 30px rgba(0, 255, 255, 1);
 		}
 	}
 
 	@media (max-width: 1200px) {
-		.cyber-header {
-			flex-direction: column;
-			gap: 1rem;
+		.header-content {
+			flex-wrap: wrap;
 			padding: 1rem;
+		}
+
+		.tab-navigation {
+			order: 3;
+			width: 100%;
+			margin-top: 0.5rem;
+			padding: 0.5rem 0;
 		}
 	}
 
 	@media (max-width: 768px) {
-		.system-title {
+		.brand-section {
+			flex-direction: column;
 			text-align: center;
-		}
-
-		.top-navigation {
-			padding: 0.5rem 1rem;
+			gap: 0.5rem;
 		}
 
 		.cyber-tab {
-			padding: 0.6rem 1rem;
+			padding: 0.5rem 0.8rem;
 			font-size: 0.65rem;
 		}
 
