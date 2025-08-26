@@ -1,0 +1,17 @@
+/* Import the comprehensive cybersecurity CSS framework */
+@import './styles/global.css';
+
+/* Additional component-specific styles */
+body {
+  margin: 0;
+  font-family: 'JetBrains Mono', monospace, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  background: var(--gradient-primary);
+  color: var(--text-primary);
+}
+
+#app {
+  width: 100%;
+  min-height: 100vh;
+}
