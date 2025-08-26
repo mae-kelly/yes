@@ -1,0 +1,40 @@
+/* Global styles with debug logging */
+console.log('🔍 app.css: Loading global styles...');
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+#app {
+  width: 100%;
+  min-height: 100vh;
+}
+
+/* Debug indicator that CSS loaded */
+body::before {
+  content: "✅ CSS Loaded";
+  position: fixed;
+  top: 10px;
+  right: 10px;
+  background: green;
+  color: white;
+  padding: 5px 10px;
+  border-radius: 4px;
+  font-size: 12px;
+  z-index: 9999;
+  animation: fadeOut 3s ease-in-out 2s forwards;
+}
+
+@keyframes fadeOut {
+  to {
+    opacity: 0;
+    pointer-events: none;
+  }
+}

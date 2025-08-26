@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Vite + Svelte Debug</title>
+    <script>
+      console.log('🔍 HTML loaded, starting debug trace...');
+      console.log('🔍 Document ready state:', document.readyState);
+      
+      // Log when DOM is ready
+      document.addEventListener('DOMContentLoaded', () => {
+        console.log('🔍 DOMContentLoaded event fired');
+        console.log('🔍 App div exists:', !!document.getElementById('app'));
+      });
+      
+      // Log any errors
+      window.addEventListener('error', (e) => {
+        console.error('🚨 Global error:', e.error);
+        console.error('🚨 Error message:', e.message);
+        console.error('🚨 Error source:', e.filename, 'line', e.lineno);
+      });
+      
+      window.addEventListener('unhandledrejection', (e) => {
+        console.error('🚨 Unhandled promise rejection:', e.reason);
+      });
+    </script>
+  </head>
+  <body>
+    <div id="app">
+      <div style="padding: 20px; text-align: center; color: #666;">
+        <p>Loading Svelte app...</p>
+        <p><small>If you see this message, the HTML loaded but Svelte hasn't mounted yet.</small></p>
+      </div>
+    </div>
+    <script type="module" src="/src/main.js"></script>
+    <script>
+      console.log('🔍 Script tags processed');
+    </script>
+  </body>
+</html>

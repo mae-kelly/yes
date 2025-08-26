@@ -1,0 +1,19 @@
+{
+  "name": "loglens2-frontend",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --debug --force",
+    "build": "vite build",
+    "preview": "vite preview",
+    "debug": "vite --debug --force --clearScreen false"
+  },
+  "devDependencies": {
+    "@sveltejs/vite-plugin-svelte": "^3.0.0",
+    "svelte": "^4.0.0",
+    "vite": "^5.0.0"
+  },
+  "engines": {
+    "node": ">=16"
+  }
+}
