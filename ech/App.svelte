@@ -19,19 +19,19 @@
 	let systemStatus = 'OPERATIONAL';
 
 	let modules = [
-		{ id: 'source_tables', name: 'Source Intelligence', icon: '◈', color: '#00ffff' },
-		{ id: 'domain_metrics', name: '1DC vs FEAD', icon: '◆', color: '#ff00ff' },
-		{ id: 'infrastructure_type', name: 'Infrastructure', icon: '⬢', color: '#0096ff' },
-		{ id: 'region_metrics', name: 'Global Regions', icon: '◉', color: '#00ffff' },
-		{ id: 'country_metrics', name: 'Country Analysis', icon: '⬟', color: '#ff00ff' },
-		{ id: 'data_center', name: 'Data Centers', icon: '⬡', color: '#0096ff' },
-		{ id: 'cloud_region', name: 'Cloud Regions', icon: '◯', color: '#00ffff' },
-		{ id: 'class_metrics', name: 'Class Analysis', icon: '◐', color: '#ff00ff' },
-		{ id: 'system_classification', name: 'System Types', icon: '◑', color: '#0096ff' },
-		{ id: 'business_unit', name: 'Business Units', icon: '◒', color: '#00ffff' },
-		{ id: 'cio_metrics', name: 'CIO Analysis', icon: '◓', color: '#ff00ff' },
-		{ id: 'tanium_coverage', name: 'Tanium Coverage', icon: '⬠', color: '#0096ff' },
-		{ id: 'cmdb_presence', name: 'CMDB Status', icon: '⬢', color: '#00ffff' }
+		{ id: 'source_tables', name: 'Source Intelligence', color: '#00ffff' },
+		{ id: 'domain_metrics', name: '1DC vs FEAD', color: '#ff00ff' },
+		{ id: 'infrastructure_type', name: 'Infrastructure', color: '#0096ff' },
+		{ id: 'region_metrics', name: 'Global Regions', color: '#00ffff' },
+		{ id: 'country_metrics', name: 'Country Analysis', color: '#ff00ff' },
+		{ id: 'data_center', name: 'Data Centers', color: '#0096ff' },
+		{ id: 'cloud_region', name: 'Cloud Regions', color: '#00ffff' },
+		{ id: 'class_metrics', name: 'Class Analysis', color: '#ff00ff' },
+		{ id: 'system_classification', name: 'System Types', color: '#0096ff' },
+		{ id: 'business_unit', name: 'Business Units', color: '#00ffff' },
+		{ id: 'cio_metrics', name: 'CIO Analysis', color: '#ff00ff' },
+		{ id: 'tanium_coverage', name: 'Tanium Coverage', color: '#0096ff' },
+		{ id: 'cmdb_presence', name: 'CMDB Status', color: '#00ffff' }
 	];
 
 	let currentTime = '';
@@ -49,13 +49,24 @@
 	}
 </script>
 
-<main class="dashboard">
-	<header class="header">
-		<div class="header-left">
-			<div class="brand">
-				<div class="brand-icon">
-					<div class="icon-ring"></div>
-					<span class="icon-center">◈</span>
+<main class="cyberpunk-interface">
+	<div class="matrix-background"></div>
+	<div class="floating-particles">
+		{#each Array(20) as _, i}
+			<div class="particle" style="left: {Math.random() * 100}%; animation-delay: {Math.random() * 5}s;"></div>
+		{/each}
+	</div>
+	
+	<header class="cyber-header">
+		<div class="header-content">
+			<div class="brand-section">
+				<div class="neural-logo">
+					<div class="logo-rings">
+						<div class="ring ring-outer"></div>
+						<div class="ring ring-middle"></div>
+						<div class="ring ring-inner"></div>
+					</div>
+					<div class="logo-center">◈</div>
 				</div>
 				<div class="brand-text">
 					<h1 class="title">AO1 Log Visibility Dashboard</h1>
@@ -63,63 +74,73 @@
 				</div>
 			</div>
 			
-			<nav class="navigation">
+			<nav class="tab-navigation">
 				{#each modules as module}
 					<button 
-						class="nav-tab {currentView === module.id ? 'active' : ''}"
-						style="--module-color: {module.color}"
+						class="cyber-tab {currentView === module.id ? 'active' : ''}"
+						style="--tab-color: {module.color}"
 						on:click={() => switchView(module.id)}
 					>
-						<span class="tab-icon">{module.icon}</span>
 						<span class="tab-name">{module.name}</span>
+						<div class="tab-glow"></div>
 					</button>
 				{/each}
 			</nav>
-		</div>
-		
-		<div class="header-right">
-			<div class="status-info">
-				<div class="status-item">
-					<span class="status-label">Status</span>
-					<span class="status-value operational">{systemStatus}</span>
-				</div>
-				<div class="status-item">
-					<span class="status-label">Time</span>
-					<span class="status-value">{currentTime}</span>
+			
+			<div class="status-panel">
+				<div class="status-ring"></div>
+				<div class="status-info">
+					<div class="status-item">
+						<span class="status-label">STATUS</span>
+						<span class="status-value operational">{systemStatus}</span>
+					</div>
+					<div class="status-item">
+						<span class="status-label">TIME</span>
+						<span class="status-value">{currentTime}</span>
+					</div>
 				</div>
 			</div>
 		</div>
 	</header>
 
-	<section class="content">
-		<div class="content-wrapper">
-			{#if currentView === 'source_tables'}
-				<SourceTables />
-			{:else if currentView === 'domain_metrics'}
-				<DomainMetrics />
-			{:else if currentView === 'infrastructure_type'}
-				<InfrastructureType />
-			{:else if currentView === 'region_metrics'}
-				<RegionMetrics />
-			{:else if currentView === 'country_metrics'}
-				<CountryMetrics />
-			{:else if currentView === 'data_center'}
-				<DataCenterMetrics />
-			{:else if currentView === 'cloud_region'}
-				<CloudRegionMetrics />
-			{:else if currentView === 'class_metrics'}
-				<ClassMetrics />
-			{:else if currentView === 'system_classification'}
-				<SystemClassification />
-			{:else if currentView === 'business_unit'}
-				<BusinessUnitMetrics />
-			{:else if currentView === 'cio_metrics'}
-				<CioMetrics />
-			{:else if currentView === 'tanium_coverage'}
-				<TaniumCoverage />
-			{:else if currentView === 'cmdb_presence'}
-				<CmdbPresence />
-			{/if}
+	<section class="data-viewport">
+		<div class="viewport-frame">
+			<div class="frame-corners">
+				<div class="corner tl"></div>
+				<div class="corner tr"></div>
+				<div class="corner bl"></div>
+				<div class="corner br"></div>
+			</div>
+			
+			<div class="content-stream">
+				{#if currentView === 'source_tables'}
+					<SourceTables />
+				{:else if currentView === 'domain_metrics'}
+					<DomainMetrics />
+				{:else if currentView === 'infrastructure_type'}
+					<InfrastructureType />
+				{:else if currentView === 'region_metrics'}
+					<RegionMetrics />
+				{:else if currentView === 'country_metrics'}
+					<CountryMetrics />
+				{:else if currentView === 'data_center'}
+					<DataCenterMetrics />
+				{:else if currentView === 'cloud_region'}
+					<CloudRegionMetrics />
+				{:else if currentView === 'class_metrics'}
+					<ClassMetrics />
+				{:else if currentView === 'system_classification'}
+					<SystemClassification />
+				{:else if currentView === 'business_unit'}
+					<BusinessUnitMetrics />
+				{:else if currentView === 'cio_metrics'}
+					<CioMetrics />
+				{:else if currentView === 'tanium_coverage'}
+					<TaniumCoverage />
+				{:else if currentView === 'cmdb_presence'}
+					<CmdbPresence />
+				{/if}
+			</div>
 		</div>
 	</section>
 </main>
@@ -127,70 +148,137 @@
 <style>
 	:global(body) {
 		font-family: 'JetBrains Mono', monospace;
-		background: #0a0a0a;
+		background: radial-gradient(ellipse at center, #1a0d2e 0%, #0f0520 40%, #000000 100%);
 		color: #ffffff;
-		overflow-x: hidden;
+		overflow: hidden;
 		margin: 0;
 		padding: 0;
+		font-weight: 400;
 	}
 
-	.dashboard {
+	.cyberpunk-interface {
 		width: 100vw;
-		min-height: 100vh;
-		background: linear-gradient(135deg, #0a0a0a 0%, #1a1a2e 100%);
+		height: 100vh;
+		position: relative;
 		display: flex;
 		flex-direction: column;
+		overflow: hidden;
 	}
 
-	.header {
-		background: linear-gradient(135deg, rgba(0, 0, 0, 0.9) 0%, rgba(26, 26, 46, 0.8) 100%);
-		border-bottom: 1px solid rgba(0, 255, 255, 0.2);
-		padding: 1rem 2rem;
-		display: flex;
-		justify-content: space-between;
-		align-items: center;
+	.matrix-background {
+		position: fixed;
+		top: 0;
+		left: 0;
+		width: 100%;
+		height: 100%;
+		background: 
+			radial-gradient(circle at 20% 30%, rgba(0, 255, 255, 0.1) 0%, transparent 50%),
+			radial-gradient(circle at 80% 70%, rgba(255, 0, 255, 0.08) 0%, transparent 50%),
+			radial-gradient(circle at 40% 80%, rgba(0, 150, 255, 0.06) 0%, transparent 50%);
+		pointer-events: none;
+		z-index: 1;
+		animation: ambientPulse 8s ease-in-out infinite alternate;
+	}
+
+	.floating-particles {
+		position: fixed;
+		top: 0;
+		left: 0;
+		width: 100%;
+		height: 100%;
+		pointer-events: none;
+		z-index: 2;
+	}
+
+	.particle {
+		position: absolute;
+		width: 2px;
+		height: 2px;
+		background: radial-gradient(circle, rgba(0, 255, 255, 0.8), transparent);
+		border-radius: 50%;
+		animation: floatUp 6s linear infinite;
+	}
+
+	.cyber-header {
+		background: linear-gradient(135deg, 
+			rgba(0, 0, 0, 0.9) 0%, 
+			rgba(26, 13, 46, 0.8) 50%,
+			rgba(0, 0, 0, 0.9) 100%);
+		border-bottom: 1px solid rgba(0, 255, 255, 0.3);
 		backdrop-filter: blur(20px);
-		box-shadow: 0 2px 10px rgba(0, 0, 0, 0.5);
+		z-index: 10;
+		position: relative;
+		box-shadow: 0 4px 32px rgba(0, 255, 255, 0.1);
 	}
 
-	.header-left {
+	.header-content {
 		display: flex;
 		align-items: center;
+		padding: 1rem 2rem;
 		gap: 2rem;
-		flex: 1;
+		min-height: 80px;
 	}
 
-	.brand {
+	.brand-section {
 		display: flex;
 		align-items: center;
 		gap: 1rem;
 		flex-shrink: 0;
 	}
 
-	.brand-icon {
+	.neural-logo {
 		position: relative;
-		width: 40px;
-		height: 40px;
+		width: 50px;
+		height: 50px;
 		display: flex;
 		align-items: center;
 		justify-content: center;
 	}
 
-	.icon-ring {
+	.logo-rings {
 		position: absolute;
 		width: 100%;
 		height: 100%;
-		border: 2px solid rgba(0, 255, 255, 0.6);
-		border-radius: 50%;
-		animation: rotate 6s linear infinite;
 	}
 
-	.icon-center {
-		color: #00ffff;
-		font-size: 1.2rem;
-		text-shadow: 0 0 10px #00ffff;
+	.ring {
+		position: absolute;
+		border-radius: 50%;
+		border: 1px solid;
+		top: 50%;
+		left: 50%;
+		transform: translate(-50%, -50%);
+		animation: ringRotate 8s linear infinite;
+	}
+
+	.ring-outer {
+		width: 50px;
+		height: 50px;
+		border-color: rgba(0, 255, 255, 0.6);
+	}
+
+	.ring-middle {
+		width: 35px;
+		height: 35px;
+		border-color: rgba(255, 0, 255, 0.4);
+		animation-direction: reverse;
+		animation-duration: 6s;
+	}
+
+	.ring-inner {
+		width: 20px;
+		height: 20px;
+		border-color: rgba(0, 150, 255, 0.8);
+		animation-duration: 4s;
+	}
+
+	.logo-center {
+		font-size: 1.5rem;
+		color: rgba(0, 255, 255, 0.9);
+		text-shadow: 0 0 20px rgba(0, 255, 255, 0.8);
+		z-index: 3;
 		position: relative;
-		z-index: 2;
+		animation: corePulse 3s ease-in-out infinite;
 	}
 
 	.brand-text {
@@ -199,86 +287,130 @@
 	}
 
 	.title {
-		font-size: 1.2rem;
+		font-size: 1.3rem;
 		font-weight: 700;
 		color: #ffffff;
 		margin: 0;
-		text-shadow: 0 0 15px rgba(0, 255, 255, 0.3);
+		text-shadow: 0 0 20px rgba(0, 255, 255, 0.5);
+		letter-spacing: 0.02em;
 	}
 
 	.subtitle {
 		font-size: 0.7rem;
 		color: rgba(255, 255, 255, 0.6);
-		font-weight: 400;
+		font-weight: 300;
 		margin-top: 0.2rem;
 	}
 
-	.navigation {
+	.tab-navigation {
 		display: flex;
-		gap: 0.5rem;
-		flex-wrap: wrap;
 		flex: 1;
-		margin-left: 1rem;
+		gap: 0.3rem;
+		overflow-x: auto;
+		padding: 0.5rem 0;
+		scrollbar-width: none;
+		-ms-overflow-style: none;
 	}
 
-	.nav-tab {
-		background: linear-gradient(135deg, rgba(255, 255, 255, 0.05) 0%, rgba(255, 255, 255, 0.02) 100%);
+	.tab-navigation::-webkit-scrollbar {
+		display: none;
+	}
+
+	.cyber-tab {
+		background: linear-gradient(135deg, rgba(0, 0, 0, 0.6) 0%, rgba(255, 255, 255, 0.03) 100%);
 		border: 1px solid rgba(255, 255, 255, 0.1);
 		border-radius: 6px;
-		padding: 0.5rem 1rem;
+		padding: 0.6rem 1rem;
 		color: #ffffff;
-		font-family: inherit;
-		font-size: 0.75rem;
+		font-family: 'JetBrains Mono', monospace;
+		font-size: 0.7rem;
 		font-weight: 500;
 		cursor: pointer;
 		position: relative;
-		display: flex;
-		align-items: center;
-		gap: 0.5rem;
-		transition: all 0.3s ease;
+		transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 		white-space: nowrap;
+		backdrop-filter: blur(10px);
+		overflow: hidden;
 	}
 
-	.nav-tab:hover {
-		border-color: var(--module-color);
-		background: linear-gradient(135deg, rgba(255, 255, 255, 0.08) 0%, rgba(255, 255, 255, 0.04) 100%);
+	.cyber-tab::before {
+		content: '';
+		position: absolute;
+		top: 0;
+		left: -100%;
+		width: 100%;
+		height: 100%;
+		background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.1), transparent);
+		transition: left 0.6s ease;
+	}
+
+	.cyber-tab:hover::before {
+		left: 100%;
+	}
+
+	.cyber-tab:hover {
+		border-color: var(--tab-color);
+		background: linear-gradient(135deg, rgba(0, 0, 0, 0.8) 0%, rgba(255, 255, 255, 0.05) 100%);
 		transform: translateY(-1px);
-		box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+		box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
 	}
 
-	.nav-tab.active {
-		border-color: var(--module-color);
-		background: linear-gradient(135deg, rgba(255, 255, 255, 0.1) 0%, rgba(255, 255, 255, 0.05) 100%);
-		box-shadow: 0 0 15px rgba(0, 255, 255, 0.2);
-	}
-
-	.tab-icon {
-		font-size: 0.9rem;
-		color: var(--module-color);
+	.cyber-tab.active {
+		border-color: var(--tab-color);
+		background: linear-gradient(135deg, rgba(0, 0, 0, 0.9) 0%, rgba(255, 255, 255, 0.08) 100%);
+		box-shadow: 0 0 20px rgba(0, 255, 255, 0.2);
 	}
 
 	.tab-name {
-		color: #ffffff;
-		font-weight: 500;
+		position: relative;
+		z-index: 2;
 		letter-spacing: 0.02em;
 	}
 
-	.header-right {
+	.tab-glow {
+		position: absolute;
+		top: 0;
+		left: 0;
+		width: 100%;
+		height: 100%;
+		background: radial-gradient(circle, var(--tab-color), transparent);
+		opacity: 0;
+		transition: opacity 0.3s ease;
+		border-radius: 6px;
+	}
+
+	.cyber-tab:hover .tab-glow,
+	.cyber-tab.active .tab-glow {
+		opacity: 0.05;
+	}
+
+	.status-panel {
+		position: relative;
 		display: flex;
 		align-items: center;
+		gap: 1rem;
 		flex-shrink: 0;
+	}
+
+	.status-ring {
+		width: 12px;
+		height: 12px;
+		border: 2px solid rgba(0, 255, 133, 0.8);
+		border-radius: 50%;
+		animation: statusPulse 2s ease-in-out infinite;
+		box-shadow: 0 0 10px rgba(0, 255, 133, 0.5);
 	}
 
 	.status-info {
 		display: flex;
-		gap: 1.5rem;
+		flex-direction: column;
+		gap: 0.3rem;
 	}
 
 	.status-item {
 		display: flex;
-		flex-direction: column;
 		align-items: center;
-		gap: 0.2rem;
+		gap: 0.5rem;
 	}
 
 	.status-label {
@@ -299,16 +431,86 @@
 		text-shadow: 0 0 8px rgba(0, 255, 133, 0.5);
 	}
 
-	.content {
+	.data-viewport {
 		flex: 1;
-		background: rgba(0, 0, 0, 0.3);
 		position: relative;
+		z-index: 5;
+		padding: 1rem;
+		overflow: hidden;
 	}
 
-	.content-wrapper {
+	.viewport-frame {
+		position: relative;
 		width: 100%;
 		height: 100%;
-		padding: 1.5rem;
+		background: linear-gradient(135deg, 
+			rgba(0, 0, 0, 0.4) 0%, 
+			rgba(0, 255, 255, 0.02) 50%,
+			rgba(255, 0, 255, 0.02) 100%);
+		border: 1px solid rgba(0, 255, 255, 0.2);
+		border-radius: 16px;
+		backdrop-filter: blur(20px);
+		box-shadow: 
+			0 8px 32px rgba(0, 0, 0, 0.3),
+			inset 0 1px 0 rgba(255, 255, 255, 0.1);
+		overflow: hidden;
+	}
+
+	.frame-corners {
+		position: absolute;
+		top: 0;
+		left: 0;
+		width: 100%;
+		height: 100%;
+		pointer-events: none;
+		z-index: 1;
+	}
+
+	.corner {
+		position: absolute;
+		width: 20px;
+		height: 20px;
+		border: 2px solid rgba(0, 255, 255, 0.6);
+	}
+
+	.corner.tl {
+		top: 10px;
+		left: 10px;
+		border-right: none;
+		border-bottom: none;
+		border-top-left-radius: 4px;
+	}
+
+	.corner.tr {
+		top: 10px;
+		right: 10px;
+		border-left: none;
+		border-bottom: none;
+		border-top-right-radius: 4px;
+	}
+
+	.corner.bl {
+		bottom: 10px;
+		left: 10px;
+		border-right: none;
+		border-top: none;
+		border-bottom-left-radius: 4px;
+	}
+
+	.corner.br {
+		bottom: 10px;
+		right: 10px;
+		border-left: none;
+		border-top: none;
+		border-bottom-right-radius: 4px;
+	}
+
+	.content-stream {
+		position: relative;
+		z-index: 2;
+		width: 100%;
+		height: 100%;
+		padding: 2rem;
 		overflow-y: auto;
 	}
 
@@ -317,62 +519,102 @@
 	}
 
 	:global(::-webkit-scrollbar-track) {
-		background: rgba(0, 0, 0, 0.3);
-	}
-
-	:global(::-webkit-scrollbar-thumb) {
-		background: linear-gradient(135deg, #00ffff, #ff00ff);
+		background: rgba(0, 0, 0, 0.2);
 		border-radius: 4px;
 	}
 
-	:global(::-webkit-scrollbar-thumb:hover) {
-		background: linear-gradient(135deg, #ff00ff, #00ffff);
+	:global(::-webkit-scrollbar-thumb) {
+		background: linear-gradient(135deg, 
+			rgba(0, 255, 255, 0.6), 
+			rgba(255, 0, 255, 0.4));
+		border-radius: 4px;
+		box-shadow: 0 0 10px rgba(0, 255, 255, 0.3);
 	}
 
-	@keyframes rotate {
-		0% { transform: rotate(0deg); }
-		100% { transform: rotate(360deg); }
+	:global(::-webkit-scrollbar-thumb:hover) {
+		background: linear-gradient(135deg, 
+			rgba(0, 255, 255, 0.8), 
+			rgba(255, 0, 255, 0.6));
+	}
+
+	@keyframes ambientPulse {
+		0% { opacity: 0.3; }
+		100% { opacity: 0.7; }
+	}
+
+	@keyframes floatUp {
+		0% { 
+			transform: translateY(100vh) translateX(0);
+			opacity: 0;
+		}
+		10% { opacity: 1; }
+		90% { opacity: 1; }
+		100% { 
+			transform: translateY(-10vh) translateX(50px);
+			opacity: 0;
+		}
+	}
+
+	@keyframes ringRotate {
+		0% { transform: translate(-50%, -50%) rotate(0deg); }
+		100% { transform: translate(-50%, -50%) rotate(360deg); }
+	}
+
+	@keyframes corePulse {
+		0%, 100% { 
+			opacity: 0.9; 
+			transform: scale(1);
+			text-shadow: 0 0 20px rgba(0, 255, 255, 0.8);
+		}
+		50% { 
+			opacity: 1; 
+			transform: scale(1.05);
+			text-shadow: 0 0 30px rgba(0, 255, 255, 1);
+		}
+	}
+
+	@keyframes statusPulse {
+		0%, 100% { 
+			opacity: 1; 
+			box-shadow: 0 0 10px rgba(0, 255, 133, 0.5);
+		}
+		50% { 
+			opacity: 0.7; 
+			box-shadow: 0 0 20px rgba(0, 255, 133, 0.8);
+		}
 	}
 
 	@media (max-width: 1200px) {
-		.navigation {
+		.header-content {
 			flex-wrap: wrap;
+			padding: 1rem;
+		}
+
+		.tab-navigation {
+			order: 3;
+			width: 100%;
+			margin-top: 0.5rem;
 		}
 	}
 
 	@media (max-width: 768px) {
-		.header {
+		.brand-section {
 			flex-direction: column;
-			gap: 1rem;
-			padding: 1rem;
-		}
-
-		.header-left {
-			flex-direction: column;
-			width: 100%;
-		}
-
-		.navigation {
-			justify-content: center;
-			margin-left: 0;
-		}
-
-		.nav-tab {
-			padding: 0.4rem 0.8rem;
-			font-size: 0.7rem;
-		}
-	}
-
-	@media (max-width: 480px) {
-		.navigation {
-			grid-template-columns: repeat(2, 1fr);
-			display: grid;
+			text-align: center;
 			gap: 0.5rem;
-			width: 100%;
 		}
 
-		.nav-tab {
-			justify-content: center;
+		.cyber-tab {
+			padding: 0.5rem 0.8rem;
+			font-size: 0.65rem;
+		}
+
+		.data-viewport {
+			padding: 0.5rem;
+		}
+
+		.content-stream {
+			padding: 1rem;
 		}
 	}
 </style>
