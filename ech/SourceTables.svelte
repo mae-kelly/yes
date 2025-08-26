@@ -91,7 +91,6 @@
 					{#each filteredSources.slice(0, 50) as [source, frequency]}
 						{@const threat = getThreatLevel(frequency)}
 						{@const percentage = ((frequency / data.total_mentions) * 100).toFixed(2)}
-						
 						<div 
 							class="source-crystal"
 							style="--threat-color: {threat.color}; --bar-width: {(frequency / maxFrequency) * 100}%"
@@ -142,7 +141,6 @@
 						</div>
 						
 						<div class="threat-assessment">
-							{@const threat = getThreatLevel(selectedSource.frequency)}
 							<div class="assessment-level" style="--level-color: {threat.color}">
 								<div class="level-indicator"></div>
 								<span class="level-text">THREAT LEVEL: {threat.level}</span>
@@ -158,14 +156,13 @@
 
 				<div class="distribution-chart">
 					<div class="chart-title">THREAT DISTRIBUTION</div>
-					{@const threatStats = filteredSources.reduce((acc, [source, freq]) => {
-						const threat = getThreatLevel(freq);
-						acc[threat.level] = (acc[threat.level] || 0) + 1;
-						return acc;
-					}, {})}
-					
 					<div class="threat-bars">
 						{#each [['CRITICAL', '#FF0080'], ['HIGH', '#FF4500'], ['MEDIUM', '#FFE500'], ['LOW', '#00FF85']] as [level, color]}
+							{@const threatStats = filteredSources.reduce((acc, [source, freq]) => {
+								const threat = getThreatLevel(freq);
+								acc[threat.level] = (acc[threat.level] || 0) + 1;
+								return acc;
+							}, {})}
 							{@const count = threatStats[level] || 0}
 							{@const maxCount = Math.max(...Object.values(threatStats))}
 							<div class="threat-bar">
