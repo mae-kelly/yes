@@ -9,7 +9,6 @@ import traceback
 from datetime import datetime
 from collections import defaultdict
 import glob
-import sqlite3
 
 logging.basicConfig(
     level=logging.DEBUG,
@@ -25,321 +24,261 @@ CORS(app)
 logger = logging.getLogger(__name__)
 
 # Global connection state
-CONNECTION_INFO = {
+DB_CONFIG = {
     'db_path': None,
-    'db_type': None,  # 'duckdb' or 'sqlite'
-    'table_name': None,
+    'full_table_name': None,  # e.g., "main.universal_cmdb" or "catalog.schema.table"
+    'simple_table_name': None,  # e.g., "universal_cmdb"
     'columns': {},
-    'connection_method': None
+    'column_mapping': {}
 }
 
-def find_database_files():
-    """Find all possible database files"""
-    search_patterns = [
-        "universal_cmdb.db",
-        "*.db",
-        "../universal_cmdb.db", 
-        "../*.db",
-        "../../universal_cmdb.db",
-        "../../*.db",
-        "server/universal_cmdb.db",
-        "./server/universal_cmdb.db",
-        "database/universal_cmdb.db",
-        "data/universal_cmdb.db",
-        "db/universal_cmdb.db"
-    ]
+def discover_schema_structure():
+    """Discover database, catalogs, schemas, and tables"""
     
-    found_files = []
-    for pattern in search_patterns:
-        matches = glob.glob(pattern)
-        for match in matches:
-            if os.path.isfile(match):
-                found_files.append(os.path.abspath(match))
+    # Find database files
+    search_paths = ["*.db", "../*.db", "../../*.db", "server/*.db", "./server/*.db"]
+    db_files = []
+    for pattern in search_paths:
+        db_files.extend(glob.glob(pattern))
     
-    # Remove duplicates and sort by preference
-    found_files = list(set(found_files))
+    if not db_files:
+        raise Exception("No database files found")
     
-    # Prioritize files with 'universal_cmdb' in name
-    priority_files = [f for f in found_files if 'universal_cmdb' in f.lower()]
-    other_files = [f for f in found_files if 'universal_cmdb' not in f.lower()]
-    
-    return priority_files + other_files
-
-def try_duckdb_connection(db_path):
-    """Try connecting with DuckDB using multiple methods"""
-    methods = [
-        lambda: duckdb.connect(db_path, read_only=True),
-        lambda: duckdb.connect(db_path),
-        lambda: duckdb.connect(f"file:{db_path}", read_only=True),
-        lambda: duckdb.connect(f"file:{db_path}"),
-    ]
-    
-    for i, method in enumerate(methods):
+    # Try each database
+    for db_file in db_files:
+        logger.info(f"Analyzing database: {db_file}")
+        
         try:
-            conn = method()
-            logger.info(f"DuckDB connection successful with method {i+1}")
-            return conn, f"duckdb_method_{i+1}"
+            conn = duckdb.connect(db_file, read_only=True)
+            
+            # Strategy 1: Check catalogs and schemas
+            try:
+                catalogs = conn.execute("SHOW DATABASES").fetchall()
+                logger.info(f"Available catalogs: {[c[0] for c in catalogs]}")
+                
+                for catalog in catalogs:
+                    catalog_name = catalog[0]
+                    try:
+                        # Switch to catalog
+                        conn.execute(f"USE {catalog_name}")
+                        
+                        # Check schemas
+                        schemas = conn.execute("SHOW SCHEMAS").fetchall()
+                        logger.info(f"Schemas in {catalog_name}: {[s[0] for s in schemas]}")
+                        
+                        for schema in schemas:
+                            schema_name = schema[0]
+                            try:
+                                # Check tables in this schema
+                                conn.execute(f"USE {schema_name}")
+                                tables = conn.execute("SHOW TABLES").fetchall()
+                                table_names = [t[0] for t in tables]
+                                logger.info(f"Tables in {catalog_name}.{schema_name}: {table_names}")
+                                
+                                # Look for our table
+                                if 'universal_cmdb' in table_names:
+                                    full_name = f"{catalog_name}.{schema_name}.universal_cmdb"
+                                    logger.info(f"Found table at: {full_name}")
+                                    
+                                    # Test the table
+                                    if test_table_access(conn, full_name, 'universal_cmdb'):
+                                        DB_CONFIG['db_path'] = db_file
+                                        DB_CONFIG['full_table_name'] = full_name
+                                        DB_CONFIG['simple_table_name'] = 'universal_cmdb'
+                                        analyze_columns(conn, full_name)
+                                        conn.close()
+                                        return True
+                                        
+                            except Exception as e:
+                                logger.debug(f"Error in schema {schema_name}: {str(e)}")
+                                continue
+                                
+                    except Exception as e:
+                        logger.debug(f"Error in catalog {catalog_name}: {str(e)}")
+                        continue
+                        
+            except Exception as e:
+                logger.debug(f"Catalog/schema discovery failed: {str(e)}")
+            
+            # Strategy 2: Try default context
+            try:
+                tables = conn.execute("SHOW TABLES").fetchall()
+                table_names = [t[0] for t in tables]
+                logger.info(f"Tables in default context: {table_names}")
+                
+                if 'universal_cmdb' in table_names:
+                    if test_table_access(conn, 'universal_cmdb', 'universal_cmdb'):
+                        DB_CONFIG['db_path'] = db_file
+                        DB_CONFIG['full_table_name'] = 'universal_cmdb'
+                        DB_CONFIG['simple_table_name'] = 'universal_cmdb'
+                        analyze_columns(conn, 'universal_cmdb')
+                        conn.close()
+                        return True
+                        
+            except Exception as e:
+                logger.debug(f"Default context failed: {str(e)}")
+            
+            # Strategy 3: Try information schema queries
+            try:
+                info_tables = conn.execute("""
+                    SELECT table_catalog, table_schema, table_name 
+                    FROM information_schema.tables 
+                    WHERE table_name LIKE '%cmdb%'
+                """).fetchall()
+                
+                logger.info(f"Information schema results: {info_tables}")
+                
+                for catalog, schema, table in info_tables:
+                    if table.lower() == 'universal_cmdb':
+                        full_name = f"{catalog}.{schema}.{table}"
+                        if test_table_access(conn, full_name, table):
+                            DB_CONFIG['db_path'] = db_file
+                            DB_CONFIG['full_table_name'] = full_name
+                            DB_CONFIG['simple_table_name'] = table
+                            analyze_columns(conn, full_name)
+                            conn.close()
+                            return True
+                            
+            except Exception as e:
+                logger.debug(f"Information schema query failed: {str(e)}")
+            
+            # Strategy 4: Brute force with different name variations
+            name_variations = [
+                'universal_cmdb',
+                '"universal_cmdb"',
+                'main.universal_cmdb',
+                'main."universal_cmdb"',
+                'memory.main.universal_cmdb',
+                'temp.main.universal_cmdb'
+            ]
+            
+            for name_var in name_variations:
+                if test_table_access(conn, name_var, 'universal_cmdb'):
+                    DB_CONFIG['db_path'] = db_file
+                    DB_CONFIG['full_table_name'] = name_var
+                    DB_CONFIG['simple_table_name'] = 'universal_cmdb'
+                    analyze_columns(conn, name_var)
+                    conn.close()
+                    return True
+            
+            conn.close()
+            
         except Exception as e:
-            logger.debug(f"DuckDB method {i+1} failed: {str(e)}")
+            logger.error(f"Failed to analyze {db_file}: {str(e)}")
             continue
     
-    return None, None
+    return False
 
-def try_sqlite_connection(db_path):
-    """Try connecting with SQLite as fallback"""
+def test_table_access(conn, table_name, simple_name):
+    """Test if we can access a table"""
     try:
-        conn = sqlite3.connect(db_path)
-        conn.row_factory = sqlite3.Row
-        logger.info("SQLite connection successful")
-        return conn, "sqlite"
+        count = conn.execute(f"SELECT COUNT(*) FROM {table_name}").fetchone()[0]
+        logger.info(f"Successfully accessed {table_name} with {count} rows")
+        return True
     except Exception as e:
-        logger.debug(f"SQLite connection failed: {str(e)}")
-        return None, None
+        logger.debug(f"Cannot access {table_name}: {str(e)}")
+        return False
 
-def find_cmdb_table(conn, db_type):
-    """Find table containing CMDB data using multiple strategies"""
-    
-    if db_type.startswith('duckdb'):
-        show_tables_query = "SHOW TABLES"
-    else:  # sqlite
-        show_tables_query = "SELECT name FROM sqlite_master WHERE type='table'"
-    
+def analyze_columns(conn, table_name):
+    """Analyze table columns and create mapping"""
     try:
-        if db_type.startswith('duckdb'):
-            tables = [row[0] for row in conn.execute(show_tables_query).fetchall()]
-        else:
-            cursor = conn.execute(show_tables_query)
-            tables = [row[0] for row in cursor.fetchall()]
+        columns = conn.execute(f'DESCRIBE {table_name}').fetchall()
+        DB_CONFIG['columns'] = {col[0]: col[1] for col in columns}
         
-        logger.info(f"Found tables: {tables}")
+        logger.info(f"Table {table_name} columns: {list(DB_CONFIG['columns'].keys())}")
         
-        # Strategy 1: Look for exact match
-        if 'universal_cmdb' in tables:
-            return 'universal_cmdb'
-        
-        # Strategy 2: Look for tables with 'cmdb' in name
-        cmdb_tables = [t for t in tables if 'cmdb' in t.lower()]
-        if cmdb_tables:
-            return cmdb_tables[0]
-        
-        # Strategy 3: Look for tables with typical CMDB columns
-        for table in tables:
-            try:
-                if db_type.startswith('duckdb'):
-                    columns = conn.execute(f'DESCRIBE "{table}"').fetchall()
-                    col_names = [col[0].lower() for col in columns]
-                else:
-                    cursor = conn.execute(f'PRAGMA table_info("{table}")')
-                    col_names = [col[1].lower() for col in cursor.fetchall()]
-                
-                # Check for CMDB-like column patterns
-                cmdb_indicators = ['host', 'hostname', 'domain', 'infrastructure_type', 'business_unit', 'region']
-                matches = sum(1 for indicator in cmdb_indicators if any(indicator in col for col in col_names))
-                
-                if matches >= 3:  # If at least 3 CMDB-like columns found
-                    logger.info(f"Found CMDB-like table: {table} with {matches} matching columns")
-                    return table
-                    
-            except Exception as e:
-                logger.debug(f"Error checking table {table}: {str(e)}")
-                continue
-        
-        # Strategy 4: Just use the first table if nothing else works
-        if tables:
-            logger.warning(f"No obvious CMDB table found, using first table: {tables[0]}")
-            return tables[0]
-            
-    except Exception as e:
-        logger.error(f"Error finding tables: {str(e)}")
-        
-    return None
-
-def analyze_table_structure(conn, table_name, db_type):
-    """Analyze table structure and map columns"""
-    column_info = {}
-    
-    try:
-        # Get column information
-        if db_type.startswith('duckdb'):
-            columns = conn.execute(f'DESCRIBE "{table_name}"').fetchall()
-            for col in columns:
-                column_info[col[0]] = {'type': col[1], 'nullable': col[2]}
-        else:  # sqlite
-            cursor = conn.execute(f'PRAGMA table_info("{table_name}")')
-            for col in cursor.fetchall():
-                column_info[col[1]] = {'type': col[2], 'nullable': not col[3]}
-        
-        logger.info(f"Table {table_name} has columns: {list(column_info.keys())}")
-        
-        # Create smart column mapping
-        col_names_lower = [col.lower() for col in column_info.keys()]
-        column_mapping = {}
+        # Create column mapping
+        col_names_lower = [col.lower() for col in DB_CONFIG['columns'].keys()]
+        mapping = {}
         
         mapping_patterns = {
-            'host': ['host', 'hostname', 'fqdn', 'server_name', 'computer_name', 'machine_name'],
+            'host': ['host', 'hostname', 'fqdn', 'server_name'],
             'domain': ['domain', 'dns_domain', 'ad_domain'],
-            'region': ['region', 'location', 'geographic_region', 'area'],
+            'region': ['region', 'location', 'geographic_region'],
             'country': ['country', 'nation', 'country_code'],
-            'infrastructure_type': ['infrastructure_type', 'infra_type', 'server_type', 'platform'],
-            'business_unit': ['business_unit', 'bu', 'business', 'department'],
-            'present_in_cmdb': ['present_in_cmdb', 'cmdb_present', 'in_cmdb', 'cmdb_status', 'cmdb'],
-            'logging_in_splunk': ['logging_in_splunk', 'splunk_logging', 'splunk', 'logs_in_splunk'],
+            'infrastructure_type': ['infrastructure_type', 'infra_type', 'server_type'],
+            'business_unit': ['business_unit', 'bu', 'business'],
+            'present_in_cmdb': ['present_in_cmdb', 'cmdb_present', 'in_cmdb'],
+            'logging_in_splunk': ['logging_in_splunk', 'splunk_logging', 'splunk'],
             'logging_in_gso': ['logging_in_gso', 'gso_logging', 'gso'],
-            'edr_coverage': ['edr_coverage', 'crowdstrike_coverage', 'endpoint_detection', 'edr'],
-            'tanium_coverage': ['tanium_coverage', 'tanium', 'tanium_agent'],
-            'apm': ['apm', 'application_monitoring', 'monitoring']
+            'edr_coverage': ['edr_coverage', 'crowdstrike_coverage', 'edr'],
+            'tanium_coverage': ['tanium_coverage', 'tanium'],
+            'apm': ['apm', 'application_monitoring']
         }
         
         for field, patterns in mapping_patterns.items():
             for pattern in patterns:
-                for actual_col in column_info.keys():
+                for actual_col in DB_CONFIG['columns'].keys():
                     if pattern.lower() in actual_col.lower():
-                        column_mapping[field] = actual_col
+                        mapping[field] = actual_col
                         break
-                if field in column_mapping:
+                if field in mapping:
                     break
         
-        logger.info(f"Column mapping: {column_mapping}")
-        return column_info, column_mapping
+        DB_CONFIG['column_mapping'] = mapping
+        logger.info(f"Column mapping: {mapping}")
         
     except Exception as e:
-        logger.error(f"Error analyzing table structure: {str(e)}")
-        return {}, {}
-
-def establish_connection():
-    """Try all strategies to establish database connection"""
-    global CONNECTION_INFO
-    
-    if CONNECTION_INFO['db_path']:  # Already connected
-        return True
-    
-    logger.info("Attempting to establish database connection...")
-    
-    db_files = find_database_files()
-    logger.info(f"Found potential database files: {db_files}")
-    
-    for db_path in db_files:
-        logger.info(f"Trying database file: {db_path}")
-        
-        # Try DuckDB first
-        conn, method = try_duckdb_connection(db_path)
-        db_type = method
-        
-        # If DuckDB fails, try SQLite
-        if not conn:
-            conn, method = try_sqlite_connection(db_path)
-            db_type = method
-        
-        if conn:
-            logger.info(f"Connected to {db_path} using {method}")
-            
-            # Find the CMDB table
-            table_name = find_cmdb_table(conn, db_type)
-            
-            if table_name:
-                logger.info(f"Found CMDB table: {table_name}")
-                
-                # Analyze table structure
-                columns, column_mapping = analyze_table_structure(conn, table_name, db_type)
-                
-                if columns:
-                    # Store connection info
-                    CONNECTION_INFO = {
-                        'db_path': db_path,
-                        'db_type': db_type,
-                        'table_name': table_name,
-                        'columns': columns,
-                        'column_mapping': column_mapping,
-                        'connection_method': method
-                    }
-                    
-                    # Test a basic query
-                    try:
-                        if db_type.startswith('duckdb'):
-                            test_count = conn.execute(f'SELECT COUNT(*) FROM "{table_name}"').fetchone()[0]
-                        else:
-                            cursor = conn.execute(f'SELECT COUNT(*) FROM "{table_name}"')
-                            test_count = cursor.fetchone()[0]
-                        
-                        logger.info(f"Connection successful! Table has {test_count} rows")
-                        conn.close()
-                        return True
-                        
-                    except Exception as e:
-                        logger.error(f"Test query failed: {str(e)}")
-            
-            conn.close()
-    
-    logger.error("Failed to establish any database connection")
-    return False
+        logger.error(f"Error analyzing columns: {str(e)}")
 
 def get_connection():
-    """Get database connection using established method"""
-    if not CONNECTION_INFO['db_path']:
-        if not establish_connection():
-            raise Exception("No database connection available")
+    """Get database connection"""
+    if not DB_CONFIG['db_path']:
+        if not discover_schema_structure():
+            raise Exception("Cannot establish database connection")
     
-    db_path = CONNECTION_INFO['db_path']
-    db_type = CONNECTION_INFO['db_type']
-    
-    if db_type.startswith('duckdb'):
-        return duckdb.connect(db_path, read_only=True)
-    else:
-        conn = sqlite3.connect(db_path)
-        conn.row_factory = sqlite3.Row
-        return conn
+    return duckdb.connect(DB_CONFIG['db_path'], read_only=True)
 
-def execute_query(query, params=None):
-    """Execute query with proper error handling"""
+def execute_query(query):
+    """Execute query with error handling"""
     conn = get_connection()
     try:
-        if CONNECTION_INFO['db_type'].startswith('duckdb'):
-            if params:
-                result = conn.execute(query, params).fetchall()
-            else:
-                result = conn.execute(query).fetchall()
-        else:  # sqlite
-            cursor = conn.execute(query, params or [])
-            result = cursor.fetchall()
-        
+        result = conn.execute(query).fetchall()
         return result
+    except Exception as e:
+        logger.error(f"Query failed: {query}")
+        logger.error(f"Error: {str(e)}")
+        raise
     finally:
         conn.close()
 
-def get_column_name(field_name):
-    """Get actual column name for a field"""
-    return CONNECTION_INFO['column_mapping'].get(field_name, field_name)
+def get_column_name(field):
+    """Get mapped column name"""
+    return DB_CONFIG['column_mapping'].get(field, field)
 
 def calculate_coverage_percentage(count, total):
     return round((count / total) * 100, 2) if total > 0 else 0
 
+@app.route('/api/debug/schema')
+def debug_schema():
+    """Debug endpoint to show schema discovery"""
+    try:
+        if not discover_schema_structure():
+            return jsonify({'error': 'Schema discovery failed'})
+        
+        return jsonify({
+            'db_config': DB_CONFIG,
+            'discovery_successful': True
+        })
+        
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
 @app.route('/api/health')
 def health_check():
     try:
-        if not establish_connection():
-            raise Exception("Cannot establish database connection")
+        if not DB_CONFIG['db_path']:
+            if not discover_schema_structure():
+                raise Exception("Database discovery failed")
         
-        table_name = CONNECTION_INFO['table_name']
-        total_hosts = execute_query(f'SELECT COUNT(*) FROM "{table_name}"')[0][0]
-        
-        # Test key column detection
-        detection_tests = {}
-        
-        for field in ['logging_in_splunk', 'present_in_cmdb', 'edr_coverage']:
-            col_name = get_column_name(field)
-            if col_name and col_name in CONNECTION_INFO['columns']:
-                try:
-                    count = execute_query(f'SELECT COUNT(*) FROM "{table_name}" WHERE LOWER("{col_name}") = ?', ['yes'])[0][0]
-                    detection_tests[field] = count
-                except:
-                    detection_tests[field] = 'query_failed'
+        table_name = DB_CONFIG['full_table_name']
+        total_hosts = execute_query(f'SELECT COUNT(*) FROM {table_name}')[0][0]
         
         return jsonify({
             'status': 'healthy',
             'database': 'connected',
-            'connection_info': CONNECTION_INFO,
+            'db_config': DB_CONFIG,
             'total_hosts': total_hosts,
-            'detection_tests': detection_tests,
             'timestamp': datetime.now().isoformat()
         })
         
@@ -348,53 +287,46 @@ def health_check():
         return jsonify({
             'status': 'unhealthy',
             'error': str(e),
-            'connection_attempts': CONNECTION_INFO,
+            'db_config': DB_CONFIG,
             'timestamp': datetime.now().isoformat()
         }), 500
 
 @app.route('/api/global-view')
 def global_view():
     try:
-        if not establish_connection():
-            raise Exception("No database connection")
+        if not DB_CONFIG['db_path']:
+            if not discover_schema_structure():
+                raise Exception("Database not available")
         
-        table_name = CONNECTION_INFO['table_name']
-        total_hosts = execute_query(f'SELECT COUNT(*) FROM "{table_name}"')[0][0]
+        table_name = DB_CONFIG['full_table_name']
+        total_hosts = execute_query(f'SELECT COUNT(*) FROM {table_name}')[0][0]
         
         coverage = {}
         
-        # Check each coverage type
-        coverage_fields = {
-            'splunk_logging': 'logging_in_splunk',
-            'cmdb_present': 'present_in_cmdb',
-            'edr_coverage': 'edr_coverage',
-            'tanium_coverage': 'tanium_coverage',
-            'apm_coverage': 'apm'
+        # Test each coverage metric
+        coverage_tests = {
+            'splunk_logging': ('logging_in_splunk', "LOWER({col}) = 'yes'"),
+            'cmdb_present': ('present_in_cmdb', "LOWER({col}) = 'yes'"),
+            'edr_coverage': ('edr_coverage', "{col} IS NOT NULL AND {col} != ''"),
+            'tanium_coverage': ('tanium_coverage', "{col} IS NOT NULL AND {col} != ''"),
+            'apm_coverage': ('apm', "{col} IS NOT NULL AND {col} != ''")
         }
         
-        for coverage_name, field in coverage_fields.items():
+        for metric_name, (field, condition) in coverage_tests.items():
             col_name = get_column_name(field)
-            if col_name and col_name in CONNECTION_INFO['columns']:
+            if col_name and col_name in DB_CONFIG['columns']:
                 try:
-                    # Try different detection patterns
-                    if field in ['logging_in_splunk', 'present_in_cmdb']:
-                        count = execute_query(f'SELECT COUNT(*) FROM "{table_name}" WHERE LOWER("{col_name}") = ?', ['yes'])[0][0]
-                    elif 'coverage' in field or field == 'edr_coverage':
-                        count = execute_query(f'SELECT COUNT(*) FROM "{table_name}" WHERE "{col_name}" IS NOT NULL AND "{col_name}" != ?', [''])[0][0]
-                    else:
-                        count = execute_query(f'SELECT COUNT(*) FROM "{table_name}" WHERE "{col_name}" IS NOT NULL AND "{col_name}" != ?', [''])[0][0]
+                    where_clause = condition.format(col=col_name)
+                    query = f'SELECT COUNT(*) FROM {table_name} WHERE {where_clause}'
+                    count = execute_query(query)[0][0]
                     
-                    coverage[coverage_name] = {
+                    coverage[metric_name] = {
                         'count': count,
                         'percentage': calculate_coverage_percentage(count, total_hosts)
                     }
                 except Exception as e:
-                    logger.error(f"Error calculating {coverage_name}: {str(e)}")
-                    coverage[coverage_name] = {
-                        'count': 0,
-                        'percentage': 0,
-                        'error': str(e)
-                    }
+                    logger.error(f"Error calculating {metric_name}: {str(e)}")
+                    coverage[metric_name] = {'count': 0, 'percentage': 0, 'error': str(e)}
         
         return jsonify({
             'total_hosts': total_hosts,
@@ -406,51 +338,6 @@ def global_view():
         logger.error(f"Global view failed: {str(e)}")
         return jsonify({'error': str(e)}), 500
 
-@app.route('/api/regional-country-view')
-def regional_country_view():
-    try:
-        if not establish_connection():
-            raise Exception("No database connection")
-        
-        table_name = CONNECTION_INFO['table_name']
-        region_col = get_column_name('region')
-        country_col = get_column_name('country')
-        
-        if not region_col and not country_col:
-            return jsonify({'regions': {}, 'countries': {}, 'message': 'No regional data columns found'})
-        
-        # Simple regional analysis
-        regions = defaultdict(lambda: {'total': 0})
-        
-        if region_col:
-            region_data = execute_query(f'SELECT "{region_col}" FROM "{table_name}" WHERE "{region_col}" IS NOT NULL')
-            
-            for row in region_data:
-                region = row[0] if row[0] else 'Unknown'
-                regions[region]['total'] += 1
-        
-        # Convert to percentage format
-        region_result = {}
-        for region, data in regions.items():
-            region_result[region] = {
-                'total': data['total'],
-                'cmdb_coverage': 0,  # Placeholder
-                'splunk_coverage': 0,  # Placeholder
-                'edr_coverage': 0,  # Placeholder
-                'overall_coverage': 0
-            }
-        
-        return jsonify({
-            'regions': region_result,
-            'countries': {}  # Placeholder
-        })
-        
-    except Exception as e:
-        logger.error(f"Regional view failed: {str(e)}")
-        return jsonify({'error': str(e)}), 500
-
-# Add other endpoints with similar multi-strategy approach...
-
 if __name__ == '__main__':
-    logger.info("Starting multi-strategy Flask server")
+    logger.info("Starting schema-aware Flask server")
     app.run(debug=True, host='0.0.0.0', port=5000)
