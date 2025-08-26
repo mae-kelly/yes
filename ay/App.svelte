@@ -1,810 +1,528 @@
 <script>
   import { onMount } from 'svelte';
   
-  let selectedView = 'global';
   let serverStatus = 'checking';
-  let currentData = {};
-  let matrixChars = [];
-  let terminalOutput = [];
+  let apiResults = {};
+  let currentView = 'health';
+  let debugLogs = [];
   
-  const views = [
-    { key: 'global', label: 'GLOBAL_COVERAGE', endpoint: '/api/global-view' },
-    { key: 'domains', label: 'DOMAIN_ANALYSIS', endpoint: '/api/domain-visibility' },
-    { key: 'regional', label: 'REGIONAL_MATRIX', endpoint: '/api/regional-country-view' },
-    { key: 'organizational', label: 'ORG_METRICS', endpoint: '/api/bu-application-view' },
-    { key: 'systems', label: 'SYSTEM_CLASS', endpoint: '/api/system-classification' },
-    { key: 'security', label: 'SECURITY_GRID', endpoint: '/api/security-control-coverage' },
-    { key: 'logging', label: 'LOG_COMPLIANCE', endpoint: '/api/logging-compliance-gso-splunk' },
-    { key: 'priority', label: 'LOG_PRIORITY', endpoint: '/api/log-type-priority' }
+  const endpoints = [
+    { name: 'health', url: '/api/health', description: 'Server health check' },
+    { name: 'global', url: '/api/global-view', description: 'Global coverage metrics' },
+    { name: 'domain', url: '/api/domain-visibility', description: 'Domain analysis' },
+    { name: 'regional', url: '/api/regional-country-view', description: 'Regional breakdown' },
+    { name: 'business', url: '/api/bu-application-view', description: 'Business units' },
+    { name: 'systems', url: '/api/system-classification', description: 'System classification' },
+    { name: 'security', url: '/api/security-control-coverage', description: 'Security coverage' },
+    { name: 'logging', url: '/api/logging-compliance-gso-splunk', description: 'Logging compliance' },
+    { name: 'priority', url: '/api/log-type-priority', description: 'Log priorities' }
   ];
   
-  let currentViewData = views[0];
+  function log(message, type = 'info') {
+    const timestamp = new Date().toLocaleTimeString();
+    debugLogs = [...debugLogs, { timestamp, message, type }];
+    console.log(`[${timestamp}] ${message}`);
+  }
   
-  function generateMatrixChars() {
-    const chars = 'アイウエオカキクケコサシスセソタチツテトナニヌネノハヒフヘホマミムメモヤユヨラリルレロワヲン0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ';
-    matrixChars = [];
+  async function testEndpoint(endpoint) {
+    log(`Testing ${endpoint.name}: ${endpoint.url}`, 'info');
     
-    for (let i = 0; i < 150; i++) {
-      matrixChars.push({
-        char: chars[Math.floor(Math.random() * chars.length)],
-        x: Math.random() * 100,
-        y: Math.random() * 100,
-        speed: Math.random() * 1.5 + 0.3,
-        opacity: Math.random() * 0.8 + 0.2
-      });
+    try {
+      const startTime = Date.now();
+      const response = await fetch(endpoint.url);
+      const duration = Date.now() - startTime;
+      
+      if (response.ok) {
+        const data = await response.json();
+        apiResults[endpoint.name] = {
+          status: 'success',
+          data: data,
+          duration: duration,
+          timestamp: new Date().toISOString()
+        };
+        log(`✅ ${endpoint.name} - ${response.status} (${duration}ms)`, 'success');
+      } else {
+        const errorText = await response.text();
+        apiResults[endpoint.name] = {
+          status: 'error',
+          error: `HTTP ${response.status}: ${errorText}`,
+          duration: duration,
+          timestamp: new Date().toISOString()
+        };
+        log(`❌ ${endpoint.name} - HTTP ${response.status} (${duration}ms)`, 'error');
+      }
+    } catch (error) {
+      apiResults[endpoint.name] = {
+        status: 'failed',
+        error: error.message,
+        timestamp: new Date().toISOString()
+      };
+      log(`💥 ${endpoint.name} - ${error.message}`, 'error');
     }
   }
   
-  function animateMatrix() {
-    matrixChars = matrixChars.map(char => ({
-      ...char,
-      y: (char.y + char.speed) % 100,
-      char: Math.random() > 0.98 ? 
-        'アイウエオカキクケコサシスセソタチツテトナニヌネノハヒフヘホマミムメモヤユヨラリルレロワヲン0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ'[Math.floor(Math.random() * 100)] : 
-        char.char,
-      opacity: Math.random() > 0.95 ? Math.random() * 0.8 + 0.2 : char.opacity
-    }));
+  async function testAllEndpoints() {
+    log('Starting API endpoint tests...', 'info');
+    apiResults = {};
+    
+    for (const endpoint of endpoints) {
+      await testEndpoint(endpoint);
+      await new Promise(resolve => setTimeout(resolve, 100)); // Small delay between requests
+    }
+    
+    log('All endpoint tests completed', 'info');
   }
   
-  async function checkServerStatus() {
+  async function checkDatabaseConnection() {
+    log('Checking database connection...', 'info');
+    
     try {
       const response = await fetch('/api/health');
       if (response.ok) {
         const data = await response.json();
         serverStatus = 'connected';
-        addTerminalLine(`> MATRIX_CONNECTION_ESTABLISHED`);
-        addTerminalLine(`> HOSTS_IN_SYSTEM: ${data.total_hosts}`);
-        addTerminalLine(`> DETECTION_PROTOCOLS_ACTIVE`);
+        log(`Database connected: ${data.total_hosts} hosts found`, 'success');
+        
+        if (data.detection_test) {
+          log('Detection rules test:', 'info');
+          Object.entries(data.detection_test).forEach(([key, count]) => {
+            log(`  ${key}: ${count} hosts`, 'info');
+          });
+        }
       } else {
         serverStatus = 'error';
-        addTerminalLine(`> CONNECTION_ERROR`);
+        log(`Health check failed: ${response.status}`, 'error');
       }
     } catch (error) {
       serverStatus = 'disconnected';
-      addTerminalLine(`> MATRIX_UNREACHABLE`);
+      log(`Connection failed: ${error.message}`, 'error');
     }
   }
   
-  async function loadViewData(viewKey) {
-    const view = views.find(v => v.key === viewKey);
-    if (!view) return;
+  function clearLogs() {
+    debugLogs = [];
+  }
+  
+  function exportResults() {
+    const results = {
+      timestamp: new Date().toISOString(),
+      serverStatus: serverStatus,
+      apiResults: apiResults,
+      debugLogs: debugLogs
+    };
     
-    addTerminalLine(`> ACCESSING ${view.label}_PROTOCOL...`);
-    
-    try {
-      const response = await fetch(view.endpoint);
-      if (response.ok) {
-        currentData = await response.json();
-        currentViewData = view;
-        addTerminalLine(`> DATA_MATRIX_LOADED: ${Object.keys(currentData).length} DIMENSIONS`);
-      } else {
-        addTerminalLine(`> ACCESS_DENIED: ERROR_${response.status}`);
-      }
-    } catch (error) {
-      addTerminalLine(`> DATA_STREAM_INTERRUPTED`);
-    }
-  }
-  
-  function addTerminalLine(text) {
-    terminalOutput = [...terminalOutput.slice(-8), text];
-  }
-  
-  function selectView(viewKey) {
-    if (selectedView === viewKey) return;
-    selectedView = viewKey;
-    loadViewData(viewKey);
-  }
-  
-  function getThreatLevel(percentage) {
-    if (percentage >= 90) return { color: '#00ff41', status: 'OPTIMAL', glow: '0 0 20px #00ff41' };
-    if (percentage >= 75) return { color: '#00ffff', status: 'SECURE', glow: '0 0 20px #00ffff' };
-    if (percentage >= 50) return { color: '#ffff00', status: 'CAUTION', glow: '0 0 20px #ffff00' };
-    if (percentage >= 25) return { color: '#ff9900', status: 'WARNING', glow: '0 0 20px #ff9900' };
-    return { color: '#ff0066', status: 'CRITICAL', glow: '0 0 20px #ff0066' };
-  }
-  
-  function formatNumber(num) {
-    return num?.toLocaleString() || '0';
+    const blob = new Blob([JSON.stringify(results, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `cmdb_debug_${Date.now()}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
   }
   
   onMount(() => {
-    generateMatrixChars();
-    checkServerStatus();
-    loadViewData('global');
-    
-    const matrixInterval = setInterval(animateMatrix, 100);
-    const statusInterval = setInterval(() => {
-      addTerminalLine(`> ${new Date().toISOString().slice(11,19)} STATUS_CHECK`);
-    }, 15000);
-    
-    return () => {
-      clearInterval(matrixInterval);
-      clearInterval(statusInterval);
-    };
+    log('Debug app started', 'info');
+    checkDatabaseConnection();
   });
 </script>
 
-<div class="matrix-container">
-  <!-- Matrix Rain Background -->
-  <div class="matrix-rain">
-    {#each matrixChars as char}
-      <div class="matrix-char" style="left: {char.x}%; top: {char.y}%; opacity: {char.opacity};">{char.char}</div>
-    {/each}
-  </div>
+<div class="debug-container">
+  <header class="debug-header">
+    <h1>CMDB API Debug Tool</h1>
+    <div class="status">
+      Server: <span class="status-{serverStatus}">{serverStatus}</span>
+    </div>
+  </header>
   
-  <!-- Scanlines Effect -->
-  <div class="scanlines"></div>
+  <nav class="debug-nav">
+    <button on:click={() => currentView = 'health'} class:active={currentView === 'health'}>
+      Health Check
+    </button>
+    <button on:click={() => currentView = 'endpoints'} class:active={currentView === 'endpoints'}>
+      API Tests
+    </button>
+    <button on:click={() => currentView = 'logs'} class:active={currentView === 'logs'}>
+      Debug Logs ({debugLogs.length})
+    </button>
+  </nav>
   
-  <!-- Main Interface -->
-  <div class="interface">
-    <!-- Header -->
-    <header class="matrix-header">
-      <div class="system-title">
-        <span class="matrix-text">UNIVERSAL_CMDB_MATRIX</span>
-        <div class="subtitle">REAL_TIME_CYBERSECURITY_GRID</div>
+  <main class="debug-content">
+    {#if currentView === 'health'}
+      <div class="section">
+        <h2>Database Health Check</h2>
+        <button on:click={checkDatabaseConnection} class="btn-primary">
+          Refresh Health Check
+        </button>
+        
+        {#if apiResults.health}
+          <div class="health-results">
+            <h3>Connection Status: {apiResults.health.status}</h3>
+            
+            {#if apiResults.health.data}
+              <div class="health-data">
+                <p><strong>Total Hosts:</strong> {apiResults.health.data.total_hosts?.toLocaleString()}</p>
+                <p><strong>Database:</strong> {apiResults.health.data.database}</p>
+                
+                {#if apiResults.health.data.detection_test}
+                  <h4>Detection Rules Test:</h4>
+                  <ul>
+                    {#each Object.entries(apiResults.health.data.detection_test) as [rule, count]}
+                      <li>{rule}: <strong>{count.toLocaleString()}</strong> hosts</li>
+                    {/each}
+                  </ul>
+                {/if}
+              </div>
+            {/if}
+            
+            {#if apiResults.health.error}
+              <div class="error">
+                <strong>Error:</strong> {apiResults.health.error}
+              </div>
+            {/if}
+          </div>
+        {/if}
       </div>
       
-      <div class="system-status">
-        <div class="status-indicator" class:online={serverStatus === 'connected'} class:offline={serverStatus !== 'connected'}>
-          <span class="status-dot"></span>
-          {serverStatus === 'connected' ? 'MATRIX_ONLINE' : serverStatus === 'checking' ? 'CONNECTING' : 'OFFLINE'}
-        </div>
-        <div class="timestamp">{new Date().toISOString().slice(0,19)}Z</div>
-      </div>
-    </header>
-    
-    <!-- Navigation Matrix -->
-    <nav class="nav-matrix">
-      {#each views as view}
-        <button 
-          class="nav-node" 
-          class:active={selectedView === view.key}
-          on:click={() => selectView(view.key)}
-        >
-          <div class="node-border"></div>
-          <span class="node-text">{view.label}</span>
+    {:else if currentView === 'endpoints'}
+      <div class="section">
+        <h2>API Endpoint Tests</h2>
+        <button on:click={testAllEndpoints} class="btn-primary">
+          Test All Endpoints
         </button>
-      {/each}
-    </nav>
-    
-    <!-- Terminal Output -->
-    <div class="terminal-output">
-      {#each terminalOutput as line}
-        <div class="terminal-line">{line}</div>
-      {/each}
-    </div>
-    
-    <!-- Main Data Display -->
-    <main class="data-matrix">
-      {#if serverStatus === 'disconnected'}
-        <div class="error-matrix">
-          <div class="error-code">MATRIX_DISCONNECTED</div>
-          <div class="error-msg">UNABLE_TO_ACCESS_CYBERSECURITY_GRID</div>
-          <button class="retry-btn" on:click={checkServerStatus}>RECONNECT_TO_MATRIX</button>
-        </div>
         
-      {:else if selectedView === 'global'}
-        <div class="metrics-grid">
-          <div class="grid-title">GLOBAL_COVERAGE_ANALYSIS</div>
-          
-          {#if currentData.coverage}
-            <div class="coverage-matrix">
-              <div class="total-hosts">
-                TOTAL_ENTITIES: <span class="highlight">{formatNumber(currentData.total_hosts)}</span>
+        <div class="endpoints-grid">
+          {#each endpoints as endpoint}
+            <div class="endpoint-card">
+              <div class="endpoint-header">
+                <h3>{endpoint.name}</h3>
+                <button on:click={() => testEndpoint(endpoint)} class="btn-small">
+                  Test
+                </button>
               </div>
               
-              <div class="metrics-grid-container">
-                {#each Object.entries(currentData.coverage) as [key, metric]}
-                  {@const threat = getThreatLevel(metric.percentage)}
-                  <div class="metric-cell" style="border-color: {threat.color};">
-                    <div class="cell-header" style="color: {threat.color}; text-shadow: {threat.glow};">
-                      {key.toUpperCase().replace(/_/g, '_')}
-                    </div>
-                    <div class="cell-value" style="color: {threat.color}; text-shadow: {threat.glow};">
-                      {formatNumber(metric.count)}
-                    </div>
-                    <div class="cell-percentage" style="color: {threat.color};">
-                      {metric.percentage}%
-                    </div>
-                    <div class="cell-status" style="color: {threat.color};">
-                      {threat.status}
-                    </div>
-                  </div>
-                {/each}
-              </div>
-            </div>
-          {/if}
-        </div>
-        
-      {:else if selectedView === 'domains'}
-        <div class="metrics-grid">
-          <div class="grid-title">DOMAIN_ANALYSIS_MATRIX</div>
-          
-          <div class="domain-analysis">
-            {#each ['1dc', 'fead'] as domain}
-              {#if currentData[domain]}
-                {@const domainData = currentData[domain]}
-                {@const threat = getThreatLevel(domainData.overall_coverage)}
-                <div class="domain-block" style="border-color: {threat.color};">
-                  <div class="domain-title" style="color: {threat.color}; text-shadow: {threat.glow};">
-                    {domain.toUpperCase()}_DOMAIN
-                  </div>
-                  <div class="domain-total">
-                    HOSTS: <span style="color: {threat.color};">{formatNumber(domainData.total)}</span>
-                  </div>
+              <p class="endpoint-url">{endpoint.url}</p>
+              <p class="endpoint-desc">{endpoint.description}</p>
+              
+              {#if apiResults[endpoint.name]}
+                {@const result = apiResults[endpoint.name]}
+                <div class="endpoint-result status-{result.status}">
+                  <p><strong>Status:</strong> {result.status}</p>
+                  {#if result.duration}
+                    <p><strong>Duration:</strong> {result.duration}ms</p>
+                  {/if}
                   
-                  <div class="coverage-bars">
-                    {#each [['SPLUNK', domainData.splunk_coverage], ['CMDB', domainData.cmdb_coverage], ['CROWDSTRIKE', domainData.crowdstrike_coverage]] as [tool, percentage]}
-                      {@const toolThreat = getThreatLevel(percentage)}
-                      <div class="coverage-bar">
-                        <span class="bar-label">{tool}</span>
-                        <div class="bar-container">
-                          <div class="bar-fill" style="width: {percentage}%; background: {toolThreat.color}; box-shadow: {toolThreat.glow};"></div>
-                        </div>
-                        <span class="bar-value" style="color: {toolThreat.color};">{percentage}%</span>
-                      </div>
-                    {/each}
-                  </div>
-                </div>
-              {/if}
-            {/each}
-          </div>
-        </div>
-        
-      {:else if selectedView === 'regional'}
-        <div class="metrics-grid">
-          <div class="grid-title">REGIONAL_COVERAGE_MATRIX</div>
-          
-          {#if currentData.regions}
-            <div class="regional-grid">
-              {#each Object.entries(currentData.regions) as [region, stats]}
-                {@const threat = getThreatLevel(stats.overall_coverage)}
-                <div class="region-cell" style="border-color: {threat.color};">
-                  <div class="region-header" style="color: {threat.color}; text-shadow: {threat.glow};">
-                    {region.toUpperCase()}
-                  </div>
-                  <div class="region-count">{formatNumber(stats.total)} HOSTS</div>
-                  <div class="mini-bars">
-                    <div class="mini-bar" style="width: {stats.cmdb_coverage}%; background: {getThreatLevel(stats.cmdb_coverage).color};"></div>
-                    <div class="mini-bar" style="width: {stats.splunk_coverage}%; background: {getThreatLevel(stats.splunk_coverage).color};"></div>
-                    <div class="mini-bar" style="width: {stats.crowdstrike_coverage}%; background: {getThreatLevel(stats.crowdstrike_coverage).color};"></div>
-                  </div>
-                  <div class="region-status" style="color: {threat.color};">
-                    {threat.status}
-                  </div>
-                </div>
-              {/each}
-            </div>
-          {/if}
-        </div>
-        
-      {:else if selectedView === 'security'}
-        <div class="metrics-grid">
-          <div class="grid-title">SECURITY_CONTROL_MATRIX</div>
-          
-          {#if currentData.individual_coverage}
-            <div class="security-matrix">
-              <div class="matrix-row">
-                {#each Object.entries(currentData.individual_coverage) as [tool, data]}
-                  {@const threat = getThreatLevel(data.percentage)}
-                  <div class="security-cell" style="border-color: {threat.color};">
-                    <div class="tool-name" style="color: {threat.color}; text-shadow: {threat.glow};">
-                      {tool.toUpperCase()}
-                    </div>
-                    <div class="tool-count" style="color: {threat.color};">
-                      {formatNumber(data.count)}
-                    </div>
-                    <div class="tool-percentage" style="color: {threat.color};">
-                      {data.percentage}%
-                    </div>
-                  </div>
-                {/each}
-              </div>
-              
-              {#if currentData.overlap_analysis}
-                <div class="overlap-title">OVERLAP_ANALYSIS</div>
-                <div class="overlap-grid">
-                  {#each Object.entries(currentData.overlap_analysis) as [overlap, data]}
-                    {@const threat = getThreatLevel(data.percentage)}
-                    <div class="overlap-cell" style="border-color: {threat.color};">
-                      <div class="overlap-name" style="color: {threat.color};">
-                        {overlap.toUpperCase().replace(/_/g, '_')}
-                      </div>
-                      <div class="overlap-value" style="color: {threat.color};">
-                        {formatNumber(data.count)} ({data.percentage}%)
-                      </div>
-                    </div>
-                  {/each}
+                  {#if result.data}
+                    <details>
+                      <summary>View Data ({Object.keys(result.data).length} keys)</summary>
+                      <pre>{JSON.stringify(result.data, null, 2)}</pre>
+                    </details>
+                  {/if}
+                  
+                  {#if result.error}
+                    <p class="error"><strong>Error:</strong> {result.error}</p>
+                  {/if}
                 </div>
               {/if}
             </div>
-          {/if}
+          {/each}
+        </div>
+      </div>
+      
+    {:else if currentView === 'logs'}
+      <div class="section">
+        <h2>Debug Logs</h2>
+        <div class="log-controls">
+          <button on:click={clearLogs} class="btn-secondary">
+            Clear Logs
+          </button>
+          <button on:click={exportResults} class="btn-primary">
+            Export Debug Data
+          </button>
         </div>
         
-      {:else}
-        <div class="loading-matrix">
-          <div class="loading-text">LOADING_DATA_STREAM...</div>
-          <div class="loading-bars">
-            <div class="loading-bar"></div>
-            <div class="loading-bar"></div>
-            <div class="loading-bar"></div>
-          </div>
+        <div class="log-container">
+          {#each debugLogs as logEntry}
+            <div class="log-entry log-{logEntry.type}">
+              <span class="log-timestamp">{logEntry.timestamp}</span>
+              <span class="log-message">{logEntry.message}</span>
+            </div>
+          {/each}
         </div>
-      {/if}
-    </main>
-  </div>
+      </div>
+    {/if}
+  </main>
 </div>
 
 <style>
-  .matrix-container {
-    position: fixed;
-    top: 0;
-    left: 0;
-    width: 100vw;
-    height: 100vh;
-    background: #000000;
-    color: #00ff41;
+  * {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+  }
+  
+  .debug-container {
     font-family: 'Courier New', monospace;
-    overflow: hidden;
-  }
-  
-  .matrix-rain {
-    position: absolute;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    z-index: 1;
-    pointer-events: none;
-  }
-  
-  .matrix-char {
-    position: absolute;
-    color: #00ff41;
-    font-size: 12px;
-    font-weight: bold;
-    text-shadow: 0 0 5px #00ff41;
-  }
-  
-  .scanlines {
-    position: absolute;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    background: repeating-linear-gradient(
-      0deg,
-      transparent,
-      transparent 2px,
-      rgba(0, 255, 65, 0.03) 2px,
-      rgba(0, 255, 65, 0.03) 4px
-    );
-    z-index: 2;
-    pointer-events: none;
-  }
-  
-  .interface {
-    position: relative;
-    z-index: 3;
-    height: 100vh;
-    display: flex;
-    flex-direction: column;
-    padding: 10px;
-    background: rgba(0, 0, 0, 0.8);
-  }
-  
-  .matrix-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    border-bottom: 1px solid #00ff41;
-    padding-bottom: 10px;
-    margin-bottom: 15px;
-  }
-  
-  .matrix-text {
-    font-size: 24px;
-    font-weight: bold;
-    text-shadow: 0 0 10px #00ff41;
-    letter-spacing: 2px;
-  }
-  
-  .subtitle {
-    font-size: 12px;
-    color: #00ffff;
-    letter-spacing: 1px;
-  }
-  
-  .system-status {
-    text-align: right;
-  }
-  
-  .status-indicator {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    font-size: 14px;
-    font-weight: bold;
-  }
-  
-  .status-dot {
-    width: 8px;
-    height: 8px;
-    border-radius: 50%;
-    background: #ff0066;
-  }
-  
-  .status-indicator.online .status-dot {
-    background: #00ff41;
-    box-shadow: 0 0 10px #00ff41;
-  }
-  
-  .timestamp {
-    font-size: 10px;
-    color: #888;
-    margin-top: 5px;
-  }
-  
-  .nav-matrix {
-    display: grid;
-    grid-template-columns: repeat(4, 1fr);
-    gap: 8px;
-    margin-bottom: 15px;
-  }
-  
-  .nav-node {
-    position: relative;
-    background: rgba(0, 255, 65, 0.1);
-    border: 1px solid #00ff41;
-    color: #00ff41;
-    padding: 8px;
-    font-size: 11px;
-    font-weight: bold;
-    cursor: pointer;
-    transition: all 0.2s;
-    font-family: 'Courier New', monospace;
-  }
-  
-  .nav-node:hover {
-    background: rgba(0, 255, 65, 0.2);
-    box-shadow: 0 0 15px rgba(0, 255, 65, 0.5);
-  }
-  
-  .nav-node.active {
-    background: rgba(0, 255, 65, 0.3);
-    box-shadow: 0 0 20px rgba(0, 255, 65, 0.8);
-  }
-  
-  .node-text {
-    position: relative;
-    z-index: 2;
-  }
-  
-  .terminal-output {
-    height: 120px;
-    background: rgba(0, 0, 0, 0.9);
-    border: 1px solid #00ff41;
-    padding: 8px;
-    margin-bottom: 15px;
-    overflow-y: auto;
-    font-size: 11px;
-  }
-  
-  .terminal-line {
-    color: #00ff41;
-    margin-bottom: 2px;
-    text-shadow: 0 0 5px #00ff41;
-  }
-  
-  .data-matrix {
-    flex: 1;
-    background: rgba(0, 0, 0, 0.9);
-    border: 1px solid #00ff41;
-    padding: 15px;
-    overflow-y: auto;
-  }
-  
-  .metrics-grid {
-    width: 100%;
-  }
-  
-  .grid-title {
-    font-size: 18px;
-    font-weight: bold;
-    text-align: center;
-    margin-bottom: 20px;
-    color: #00ffff;
-    text-shadow: 0 0 10px #00ffff;
-    letter-spacing: 2px;
-  }
-  
-  .total-hosts {
-    text-align: center;
-    font-size: 16px;
-    margin-bottom: 20px;
-  }
-  
-  .highlight {
-    color: #00ffff;
-    font-weight: bold;
-    text-shadow: 0 0 10px #00ffff;
-  }
-  
-  .metrics-grid-container {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-    gap: 15px;
-  }
-  
-  .metric-cell {
-    background: rgba(0, 0, 0, 0.8);
-    border: 2px solid;
-    padding: 15px;
-    text-align: center;
-  }
-  
-  .cell-header {
-    font-size: 12px;
-    font-weight: bold;
-    margin-bottom: 8px;
-  }
-  
-  .cell-value {
-    font-size: 20px;
-    font-weight: bold;
-    margin-bottom: 5px;
-  }
-  
-  .cell-percentage {
-    font-size: 14px;
-    margin-bottom: 5px;
-  }
-  
-  .cell-status {
-    font-size: 11px;
-    font-weight: bold;
-  }
-  
-  .domain-analysis {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 20px;
-  }
-  
-  .domain-block {
-    background: rgba(0, 0, 0, 0.8);
-    border: 2px solid;
+    background: #1a1a1a;
+    color: #e0e0e0;
+    min-height: 100vh;
     padding: 20px;
   }
   
-  .domain-title {
-    font-size: 16px;
-    font-weight: bold;
-    margin-bottom: 10px;
-    text-align: center;
-  }
-  
-  .domain-total {
-    text-align: center;
-    margin-bottom: 20px;
-    font-size: 14px;
-  }
-  
-  .coverage-bars {
+  .debug-header {
     display: flex;
-    flex-direction: column;
-    gap: 8px;
-  }
-  
-  .coverage-bar {
-    display: grid;
-    grid-template-columns: 80px 1fr 50px;
-    gap: 10px;
+    justify-content: space-between;
     align-items: center;
-    font-size: 11px;
-  }
-  
-  .bar-container {
-    height: 12px;
-    background: rgba(255, 255, 255, 0.1);
-    position: relative;
-  }
-  
-  .bar-fill {
-    height: 100%;
-    transition: all 0.3s;
-  }
-  
-  .regional-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-    gap: 15px;
-  }
-  
-  .region-cell {
-    background: rgba(0, 0, 0, 0.8);
-    border: 2px solid;
-    padding: 15px;
-    text-align: center;
-  }
-  
-  .region-header {
-    font-size: 14px;
-    font-weight: bold;
-    margin-bottom: 8px;
-  }
-  
-  .region-count {
-    font-size: 12px;
-    margin-bottom: 10px;
-  }
-  
-  .mini-bars {
-    display: flex;
-    flex-direction: column;
-    gap: 3px;
-    margin-bottom: 10px;
-  }
-  
-  .mini-bar {
-    height: 4px;
-    background: #00ff41;
-  }
-  
-  .security-matrix {
-    width: 100%;
-  }
-  
-  .matrix-row {
-    display: grid;
-    grid-template-columns: repeat(4, 1fr);
-    gap: 15px;
-    margin-bottom: 30px;
-  }
-  
-  .security-cell {
-    background: rgba(0, 0, 0, 0.8);
-    border: 2px solid;
-    padding: 15px;
-    text-align: center;
-  }
-  
-  .tool-name {
-    font-size: 12px;
-    font-weight: bold;
-    margin-bottom: 8px;
-  }
-  
-  .tool-count {
-    font-size: 16px;
-    font-weight: bold;
-    margin-bottom: 5px;
-  }
-  
-  .overlap-title {
-    font-size: 14px;
-    font-weight: bold;
-    margin-bottom: 15px;
-    color: #ffff00;
-    text-align: center;
-  }
-  
-  .overlap-grid {
-    display: grid;
-    grid-template-columns: repeat(2, 1fr);
-    gap: 15px;
-  }
-  
-  .overlap-cell {
-    background: rgba(0, 0, 0, 0.8);
-    border: 2px solid;
-    padding: 12px;
-    text-align: center;
-  }
-  
-  .overlap-name {
-    font-size: 11px;
-    font-weight: bold;
-    margin-bottom: 5px;
-  }
-  
-  .error-matrix {
-    text-align: center;
-    padding: 50px;
-  }
-  
-  .error-code {
-    font-size: 24px;
-    color: #ff0066;
-    font-weight: bold;
+    background: #2d2d2d;
+    padding: 15px 20px;
+    border-radius: 8px;
     margin-bottom: 20px;
-    text-shadow: 0 0 10px #ff0066;
   }
   
-  .error-msg {
+  .debug-header h1 {
+    color: #00ff41;
+    font-size: 24px;
+  }
+  
+  .status {
     font-size: 14px;
-    margin-bottom: 30px;
   }
   
-  .retry-btn {
-    background: rgba(255, 0, 102, 0.2);
-    border: 2px solid #ff0066;
-    color: #ff0066;
-    padding: 12px 24px;
-    font-family: 'Courier New', monospace;
+  .status-connected {
+    color: #00ff41;
     font-weight: bold;
+  }
+  
+  .status-error {
+    color: #ff6b6b;
+    font-weight: bold;
+  }
+  
+  .status-disconnected {
+    color: #ff6b6b;
+    font-weight: bold;
+  }
+  
+  .debug-nav {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 20px;
+  }
+  
+  .debug-nav button {
+    background: #2d2d2d;
+    border: 1px solid #444;
+    color: #e0e0e0;
+    padding: 10px 20px;
+    border-radius: 6px;
     cursor: pointer;
+    font-family: inherit;
     transition: all 0.2s;
   }
   
-  .retry-btn:hover {
-    background: rgba(255, 0, 102, 0.3);
-    box-shadow: 0 0 15px #ff0066;
+  .debug-nav button:hover {
+    background: #3d3d3d;
+    border-color: #666;
   }
   
-  .loading-matrix {
-    text-align: center;
-    padding: 50px;
-  }
-  
-  .loading-text {
-    font-size: 16px;
-    margin-bottom: 20px;
-    color: #00ffff;
-  }
-  
-  .loading-bars {
-    display: flex;
-    justify-content: center;
-    gap: 5px;
-  }
-  
-  .loading-bar {
-    width: 4px;
-    height: 20px;
+  .debug-nav button.active {
     background: #00ff41;
-    animation: pulse 1.5s infinite;
+    color: #000;
+    border-color: #00ff41;
   }
   
-  .loading-bar:nth-child(2) {
-    animation-delay: 0.5s;
+  .debug-content {
+    background: #2d2d2d;
+    border-radius: 8px;
+    padding: 20px;
   }
   
-  .loading-bar:nth-child(3) {
-    animation-delay: 1s;
+  .section h2 {
+    color: #00ffff;
+    margin-bottom: 20px;
+    font-size: 20px;
   }
   
-  @keyframes pulse {
-    0%, 100% { opacity: 0.3; }
-    50% { opacity: 1; }
+  .btn-primary {
+    background: #00ff41;
+    color: #000;
+    border: none;
+    padding: 10px 20px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-family: inherit;
+    font-weight: bold;
+    margin-bottom: 20px;
   }
   
-  /* Responsive adjustments */
-  @media (max-width: 1024px) {
-    .nav-matrix {
-      grid-template-columns: repeat(2, 1fr);
-    }
-    
-    .matrix-row {
-      grid-template-columns: repeat(2, 1fr);
-    }
-    
-    .domain-analysis {
-      grid-template-columns: 1fr;
-    }
+  .btn-primary:hover {
+    background: #00cc33;
   }
   
-  @media (max-width: 768px) {
-    .matrix-text {
-      font-size: 18px;
-    }
-    
-    .nav-matrix {
-      grid-template-columns: 1fr;
-    }
-    
-    .metrics-grid-container {
-      grid-template-columns: 1fr;
-    }
+  .btn-secondary {
+    background: #666;
+    color: #fff;
+    border: none;
+    padding: 8px 16px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-family: inherit;
+  }
+  
+  .btn-secondary:hover {
+    background: #777;
+  }
+  
+  .btn-small {
+    background: #444;
+    color: #fff;
+    border: 1px solid #666;
+    padding: 4px 8px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 12px;
+  }
+  
+  .btn-small:hover {
+    background: #555;
+  }
+  
+  .health-results {
+    background: #1a1a1a;
+    padding: 20px;
+    border-radius: 6px;
+    border-left: 4px solid #00ff41;
+  }
+  
+  .health-data ul {
+    list-style: none;
+    padding-left: 20px;
+  }
+  
+  .health-data li {
+    margin: 5px 0;
+  }
+  
+  .endpoints-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+    gap: 20px;
+    margin-top: 20px;
+  }
+  
+  .endpoint-card {
+    background: #1a1a1a;
+    border: 1px solid #444;
+    border-radius: 6px;
+    padding: 15px;
+  }
+  
+  .endpoint-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 10px;
+  }
+  
+  .endpoint-header h3 {
+    color: #00ffff;
+    font-size: 16px;
+  }
+  
+  .endpoint-url {
+    font-family: monospace;
+    color: #999;
+    font-size: 12px;
+    margin-bottom: 5px;
+  }
+  
+  .endpoint-desc {
+    font-size: 14px;
+    margin-bottom: 15px;
+  }
+  
+  .endpoint-result {
+    background: #333;
+    padding: 10px;
+    border-radius: 4px;
+    border-left: 4px solid #666;
+  }
+  
+  .endpoint-result.status-success {
+    border-left-color: #00ff41;
+  }
+  
+  .endpoint-result.status-error {
+    border-left-color: #ff6b6b;
+  }
+  
+  .endpoint-result.status-failed {
+    border-left-color: #ff6b6b;
+  }
+  
+  .endpoint-result p {
+    margin: 5px 0;
+    font-size: 12px;
+  }
+  
+  .endpoint-result details {
+    margin-top: 10px;
+  }
+  
+  .endpoint-result pre {
+    background: #1a1a1a;
+    padding: 10px;
+    border-radius: 4px;
+    font-size: 11px;
+    overflow: auto;
+    max-height: 200px;
+  }
+  
+  .error {
+    color: #ff6b6b;
+  }
+  
+  .log-controls {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 15px;
+  }
+  
+  .log-container {
+    background: #1a1a1a;
+    border: 1px solid #444;
+    border-radius: 6px;
+    height: 400px;
+    overflow-y: auto;
+    padding: 10px;
+  }
+  
+  .log-entry {
+    display: flex;
+    gap: 15px;
+    padding: 5px 0;
+    border-bottom: 1px solid #333;
+    font-size: 12px;
+  }
+  
+  .log-timestamp {
+    color: #999;
+    min-width: 80px;
+  }
+  
+  .log-message {
+    flex: 1;
+  }
+  
+  .log-info .log-message {
+    color: #e0e0e0;
+  }
+  
+  .log-success .log-message {
+    color: #00ff41;
+  }
+  
+  .log-error .log-message {
+    color: #ff6b6b;
   }
 </style>
