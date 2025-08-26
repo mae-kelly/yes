@@ -1,4 +1,4 @@
-<!-- App.svelte -->
+<!-- App.svelte - Optimized for Maximum Data Density -->
 <script>
 	import { onMount } from 'svelte';
 	import SourceTables from './SourceTables.svelte';
@@ -17,18 +17,18 @@
 	let currentView = 'source_tables';
 
 	let modules = [
-		{ id: 'source_tables', name: 'SOURCE', color: '#00ffff', icon: '◈' },
-		{ id: 'domain_metrics', name: '1DC/FEAD', color: '#ff00ff', icon: '◆' },
-		{ id: 'infrastructure_type', name: 'INFRA', color: '#0096ff', icon: '⬢' },
-		{ id: 'region_metrics', name: 'REGIONS', color: '#00ffff', icon: '◉' },
-		{ id: 'country_metrics', name: 'COUNTRIES', color: '#ff00ff', icon: '⬟' },
-		{ id: 'data_center', name: 'CENTERS', color: '#0096ff', icon: '⬡' },
-		{ id: 'class_metrics', name: 'CLASSES', color: '#ff00ff', icon: '◐' },
-		{ id: 'system_classification', name: 'SYSTEMS', color: '#0096ff', icon: '◑' },
-		{ id: 'business_unit', name: 'BIZ UNITS', color: '#00ffff', icon: '◒' },
+		{ id: 'source_tables', name: 'SRC', color: '#00ffff', icon: '◈' },
+		{ id: 'domain_metrics', name: 'DOM', color: '#ff00ff', icon: '◆' },
+		{ id: 'infrastructure_type', name: 'INF', color: '#0096ff', icon: '⬢' },
+		{ id: 'region_metrics', name: 'REG', color: '#00ffff', icon: '◉' },
+		{ id: 'country_metrics', name: 'CTY', color: '#ff00ff', icon: '⬟' },
+		{ id: 'data_center', name: 'DC', color: '#0096ff', icon: '⬡' },
+		{ id: 'class_metrics', name: 'CLS', color: '#ff00ff', icon: '◐' },
+		{ id: 'system_classification', name: 'SYS', color: '#0096ff', icon: '◑' },
+		{ id: 'business_unit', name: 'BIZ', color: '#00ffff', icon: '◒' },
 		{ id: 'cio_metrics', name: 'CIO', color: '#ff00ff', icon: '◓' },
-		{ id: 'tanium_coverage', name: 'TANIUM', color: '#0096ff', icon: '⬠' },
-		{ id: 'cmdb_presence', name: 'CMDB', color: '#00ffff', icon: '⬢' }
+		{ id: 'tanium_coverage', name: 'TAN', color: '#0096ff', icon: '⬠' },
+		{ id: 'cmdb_presence', name: 'CMB', color: '#00ffff', icon: '⬢' }
 	];
 
 	let currentTime = '';
@@ -48,17 +48,17 @@
 
 <main class="cyberpunk-interface">
 	<div class="matrix-rain">
-		{#each Array(40) as _, i}
+		{#each Array(30) as _, i}
 			<div class="rain-drop" style="left: {Math.random() * 100}%; animation-delay: {Math.random() * 5}s; animation-duration: {3 + Math.random() * 4}s;"></div>
 		{/each}
 	</div>
 
 	<div class="neural-grid">
-		{#each Array(15) as _, i}
-			<div class="grid-line horizontal" style="top: {i * 6.67}%;"></div>
+		{#each Array(20) as _, i}
+			<div class="grid-line horizontal" style="top: {i * 5}%;"></div>
 		{/each}
-		{#each Array(15) as _, i}
-			<div class="grid-line vertical" style="left: {i * 6.67}%;"></div>
+		{#each Array(20) as _, i}
+			<div class="grid-line vertical" style="left: {i * 5}%;"></div>
 		{/each}
 	</div>
 
@@ -149,7 +149,8 @@
 		overflow: hidden;
 		margin: 0;
 		padding: 0;
-		font-size: 13px;
+		font-size: 11px;
+		line-height: 1.3;
 	}
 
 	.cyberpunk-interface {
@@ -175,10 +176,10 @@
 	.rain-drop {
 		position: absolute;
 		width: 1px;
-		height: 15px;
+		height: 12px;
 		background: linear-gradient(180deg, transparent, #00ffff, transparent);
 		animation: rainfall linear infinite;
-		opacity: 0.2;
+		opacity: 0.15;
 	}
 
 	@keyframes rainfall {
@@ -194,7 +195,7 @@
 		height: 100%;
 		pointer-events: none;
 		z-index: 1;
-		opacity: 0.08;
+		opacity: 0.05;
 	}
 
 	.grid-line {
@@ -215,33 +216,34 @@
 
 	.cyber-header {
 		background: linear-gradient(135deg, rgba(0, 0, 0, 0.95), rgba(26, 13, 46, 0.85));
-		border-bottom: 2px solid #00ffff;
+		border-bottom: 1px solid #00ffff;
 		backdrop-filter: blur(25px);
 		z-index: 10;
 		position: relative;
-		box-shadow: 0 4px 32px rgba(0, 255, 255, 0.15);
-		padding: 0.5rem 0;
+		box-shadow: 0 2px 20px rgba(0, 255, 255, 0.15);
+		padding: 0.3rem 0;
+		flex-shrink: 0;
 	}
 
 	.header-content {
 		display: flex;
 		align-items: center;
-		padding: 0.5rem 1rem;
-		gap: 1rem;
-		min-height: 60px;
+		padding: 0.3rem 0.6rem;
+		gap: 0.6rem;
+		min-height: 45px;
 	}
 
 	.brand-section {
 		display: flex;
 		align-items: center;
-		gap: 0.8rem;
+		gap: 0.5rem;
 		flex-shrink: 0;
 	}
 
 	.neural-logo {
 		position: relative;
-		width: 40px;
-		height: 40px;
+		width: 28px;
+		height: 28px;
 		display: flex;
 		align-items: center;
 		justify-content: center;
@@ -264,30 +266,30 @@
 	}
 
 	.ring-outer {
-		width: 40px;
-		height: 40px;
+		width: 28px;
+		height: 28px;
 		border-color: rgba(0, 255, 255, 0.6);
 	}
 
 	.ring-middle {
-		width: 28px;
-		height: 28px;
+		width: 20px;
+		height: 20px;
 		border-color: rgba(255, 0, 255, 0.4);
 		animation-direction: reverse;
 		animation-duration: 6s;
 	}
 
 	.ring-inner {
-		width: 16px;
-		height: 16px;
+		width: 12px;
+		height: 12px;
 		border-color: rgba(0, 150, 255, 0.8);
 		animation-duration: 4s;
 	}
 
 	.logo-center {
-		font-size: 1.2rem;
+		font-size: 0.9rem;
 		color: rgba(0, 255, 255, 0.9);
-		text-shadow: 0 0 15px rgba(0, 255, 255, 0.8);
+		text-shadow: 0 0 10px rgba(0, 255, 255, 0.8);
 		z-index: 3;
 		position: relative;
 		animation: corePulse 3s ease-in-out infinite;
@@ -299,20 +301,20 @@
 	}
 
 	.title {
-		font-size: 1.1rem;
+		font-size: 0.8rem;
 		font-weight: 700;
 		color: #ffffff;
 		margin: 0;
-		text-shadow: 0 0 15px rgba(0, 255, 255, 0.5);
+		text-shadow: 0 0 10px rgba(0, 255, 255, 0.5);
 		letter-spacing: 0.02em;
 	}
 
 	.tab-navigation {
 		display: flex;
 		flex: 1;
-		gap: 0.2rem;
+		gap: 0.15rem;
 		overflow-x: auto;
-		padding: 0.3rem 0;
+		padding: 0.2rem 0;
 		scrollbar-width: none;
 		-ms-overflow-style: none;
 	}
@@ -324,11 +326,11 @@
 	.cyber-tab {
 		background: linear-gradient(135deg, rgba(0, 0, 0, 0.7) 0%, rgba(255, 255, 255, 0.02) 100%);
 		border: 1px solid rgba(255, 255, 255, 0.1);
-		border-radius: 4px;
-		padding: 0.4rem 0.6rem;
+		border-radius: 3px;
+		padding: 0.25rem 0.4rem;
 		color: #ffffff;
 		font-family: inherit;
-		font-size: 0.55rem;
+		font-size: 0.45rem;
 		font-weight: 500;
 		cursor: pointer;
 		position: relative;
@@ -338,10 +340,11 @@
 		overflow: hidden;
 		display: flex;
 		align-items: center;
-		gap: 0.3rem;
+		gap: 0.2rem;
 		text-transform: uppercase;
 		letter-spacing: 0.02em;
 		min-width: fit-content;
+		height: 28px;
 	}
 
 	.cyber-tab::before {
@@ -363,26 +366,26 @@
 		border-color: var(--tab-color);
 		background: linear-gradient(135deg, rgba(0, 0, 0, 0.8) 0%, rgba(255, 255, 255, 0.05) 100%);
 		transform: translateY(-1px);
-		box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+		box-shadow: 0 3px 12px rgba(0, 0, 0, 0.4);
 	}
 
 	.cyber-tab.active {
 		border-color: var(--tab-color);
 		background: linear-gradient(135deg, rgba(0, 0, 0, 0.9) 0%, rgba(255, 255, 255, 0.08) 100%);
-		box-shadow: 0 0 20px rgba(0, 255, 255, 0.3);
+		box-shadow: 0 0 15px rgba(0, 255, 255, 0.3);
 	}
 
 	.tab-icon {
-		font-size: 0.8rem;
+		font-size: 0.6rem;
 		color: var(--tab-color);
-		text-shadow: 0 0 8px var(--tab-color);
+		text-shadow: 0 0 6px var(--tab-color);
 	}
 
 	.tab-name {
 		position: relative;
 		z-index: 2;
 		letter-spacing: 0.02em;
-		font-size: 0.55rem;
+		font-size: 0.45rem;
 	}
 
 	.tab-glow {
@@ -394,7 +397,7 @@
 		background: radial-gradient(circle, var(--tab-color), transparent);
 		opacity: 0;
 		transition: opacity 0.3s ease;
-		border-radius: 4px;
+		border-radius: 3px;
 	}
 
 	.cyber-tab:hover .tab-glow,
@@ -408,20 +411,20 @@
 		flex-shrink: 0;
 		background: linear-gradient(135deg, rgba(0, 0, 0, 0.7), rgba(0, 255, 255, 0.03));
 		border: 1px solid rgba(0, 255, 255, 0.3);
-		border-radius: 6px;
-		padding: 0.6rem 0.8rem;
+		border-radius: 4px;
+		padding: 0.4rem 0.5rem;
 		backdrop-filter: blur(10px);
 	}
 
 	.time-display {
 		display: flex;
 		flex-direction: column;
-		gap: 0.2rem;
+		gap: 0.1rem;
 		text-align: center;
 	}
 
 	.time-label {
-		font-size: 0.5rem;
+		font-size: 0.4rem;
 		color: rgba(255, 255, 255, 0.5);
 		font-weight: 400;
 		text-transform: uppercase;
@@ -429,7 +432,7 @@
 	}
 
 	.time-value {
-		font-size: 0.6rem;
+		font-size: 0.45rem;
 		font-weight: 600;
 		color: #ffffff;
 	}
@@ -438,8 +441,9 @@
 		flex: 1;
 		position: relative;
 		z-index: 5;
-		padding: 0.8rem;
+		padding: 0.4rem;
 		overflow: hidden;
+		min-height: 0;
 	}
 
 	.viewport-frame {
@@ -451,10 +455,10 @@
 			rgba(0, 255, 255, 0.02) 50%,
 			rgba(255, 0, 255, 0.02) 100%);
 		border: 1px solid rgba(0, 255, 255, 0.2);
-		border-radius: 12px;
+		border-radius: 8px;
 		backdrop-filter: blur(20px);
 		box-shadow: 
-			0 8px 32px rgba(0, 0, 0, 0.3),
+			0 6px 25px rgba(0, 0, 0, 0.3),
 			inset 0 1px 0 rgba(255, 255, 255, 0.1);
 		overflow: hidden;
 	}
@@ -471,41 +475,41 @@
 
 	.corner {
 		position: absolute;
-		width: 15px;
-		height: 15px;
-		border: 2px solid rgba(0, 255, 255, 0.6);
+		width: 10px;
+		height: 10px;
+		border: 1px solid rgba(0, 255, 255, 0.6);
 	}
 
 	.corner.tl {
-		top: 8px;
-		left: 8px;
+		top: 6px;
+		left: 6px;
 		border-right: none;
 		border-bottom: none;
-		border-top-left-radius: 3px;
+		border-top-left-radius: 2px;
 	}
 
 	.corner.tr {
-		top: 8px;
-		right: 8px;
+		top: 6px;
+		right: 6px;
 		border-left: none;
 		border-bottom: none;
-		border-top-right-radius: 3px;
+		border-top-right-radius: 2px;
 	}
 
 	.corner.bl {
-		bottom: 8px;
-		left: 8px;
+		bottom: 6px;
+		left: 6px;
 		border-right: none;
 		border-top: none;
-		border-bottom-left-radius: 3px;
+		border-bottom-left-radius: 2px;
 	}
 
 	.corner.br {
-		bottom: 8px;
-		right: 8px;
+		bottom: 6px;
+		right: 6px;
 		border-left: none;
 		border-top: none;
-		border-bottom-right-radius: 3px;
+		border-bottom-right-radius: 2px;
 	}
 
 	.content-stream {
@@ -513,25 +517,26 @@
 		z-index: 2;
 		width: 100%;
 		height: 100%;
-		padding: 1.5rem;
+		padding: 0.6rem;
 		overflow-y: auto;
+		overflow-x: hidden;
 	}
 
 	:global(::-webkit-scrollbar) {
-		width: 6px;
+		width: 4px;
 	}
 
 	:global(::-webkit-scrollbar-track) {
 		background: rgba(0, 0, 0, 0.2);
-		border-radius: 3px;
+		border-radius: 2px;
 	}
 
 	:global(::-webkit-scrollbar-thumb) {
 		background: linear-gradient(135deg, 
 			rgba(0, 255, 255, 0.6), 
 			rgba(255, 0, 255, 0.4));
-		border-radius: 3px;
-		box-shadow: 0 0 8px rgba(0, 255, 255, 0.3);
+		border-radius: 2px;
+		box-shadow: 0 0 6px rgba(0, 255, 255, 0.3);
 	}
 
 	:global(::-webkit-scrollbar-thumb:hover) {
@@ -549,25 +554,26 @@
 		0%, 100% { 
 			opacity: 0.9; 
 			transform: scale(1);
-			text-shadow: 0 0 15px rgba(0, 255, 255, 0.8);
+			text-shadow: 0 0 10px rgba(0, 255, 255, 0.8);
 		}
 		50% { 
 			opacity: 1; 
 			transform: scale(1.05);
-			text-shadow: 0 0 25px rgba(0, 255, 255, 1);
+			text-shadow: 0 0 15px rgba(0, 255, 255, 1);
 		}
 	}
 
 	@media (max-width: 1400px) {
 		.header-content {
 			flex-wrap: wrap;
-			padding: 0.8rem;
+			padding: 0.5rem;
+			gap: 0.4rem;
 		}
 
 		.tab-navigation {
 			order: 3;
 			width: 100%;
-			margin-top: 0.5rem;
+			margin-top: 0.3rem;
 		}
 	}
 
@@ -575,20 +581,56 @@
 		.brand-section {
 			flex-direction: column;
 			text-align: center;
-			gap: 0.3rem;
+			gap: 0.2rem;
 		}
 
 		.cyber-tab {
-			padding: 0.4rem 0.5rem;
-			font-size: 0.5rem;
+			padding: 0.3rem 0.4rem;
+			font-size: 0.4rem;
 		}
 
 		.data-viewport {
-			padding: 0.4rem;
+			padding: 0.3rem;
 		}
 
 		.content-stream {
-			padding: 1rem;
+			padding: 0.5rem;
 		}
+	}
+
+	/* Global optimizations for maximum data density */
+	:global(.source-intel-matrix .grid-row),
+	:global(.domain-warfare-matrix .readout-node),
+	:global(.infra-command-center .infra-node),
+	:global(.global-command-matrix .region-sector) {
+		min-height: 24px !important;
+		padding: 0.3rem !important;
+	}
+
+	:global(.data-cell),
+	:global(.node-data),
+	:global(.sector-metrics) {
+		font-size: 0.55rem !important;
+		line-height: 1.2 !important;
+	}
+
+	:global(.matrix-header),
+	:global(.command-header),
+	:global(.hub-header) {
+		padding: 0.5rem 0.8rem !important;
+		margin-bottom: 0.6rem !important;
+	}
+
+	:global(.metric-value),
+	:global(.terminal-value),
+	:global(.coverage-value) {
+		font-size: 1.2rem !important;
+	}
+
+	:global(.analysis-panel),
+	:global(.warfare-analysis),
+	:global(.surveillance-summary) {
+		padding: 0.6rem !important;
+		margin-bottom: 0.6rem !important;
 	}
 </style>
