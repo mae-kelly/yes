@@ -986,12 +986,6 @@
 		.data-cell {
 			justify-content: space-between;
 		}
-
-		.data-cell::before {
-			content: attr(data-label);
-			font-weight: 600;
-			color: #00ffff;
-		}
 	}
 
 	@media (max-width: 768px) {
