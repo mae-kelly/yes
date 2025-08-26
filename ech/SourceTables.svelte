@@ -58,8 +58,14 @@
 	function getThreatBarWidth(level) {
 		const stats = getThreatStats();
 		const count = stats[level] || 0;
-		const maxCount = Math.max(...Object.values(stats));
+		const values = Object.values(stats);
+		const maxCount = values.length > 0 ? Math.max(...values) : 1;
 		return maxCount > 0 ? `${(count / maxCount) * 100}%` : '0%';
+	}
+
+	function getThreatCount(level) {
+		const stats = getThreatStats();
+		return stats[level] || 0;
 	}
 </script>
 
@@ -189,7 +195,7 @@
 										style="width: {getThreatBarWidth(level)}; background: {color}"
 									></div>
 								</div>
-								<span class="bar-count">{getThreatStats()[level] || 0}</span>
+								<span class="bar-count">{getThreatCount(level)}</span>
 							</div>
 						{/each}
 					</div>
