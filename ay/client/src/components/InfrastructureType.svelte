@@ -1,8 +1,3 @@
-// Note: Each component should be saved as a separate .svelte file in client/src/components/
-
-// =============================================================================
-// InfrastructureType.svelte
-// =============================================================================
 <!-- /client/src/components/InfrastructureType.svelte -->
 <script>
   import { onMount } from 'svelte';
@@ -91,82 +86,41 @@
               <th>INFRASTRUCTURE TYPE</th>
               <th class="text-center">TOTAL ASSETS</th>
               <th class="text-center">SPLUNK %</th>
-              <th class="text-center">EDR %</th>
-              <th class="text-center">STATUS</th>
-            </tr>
-          </thead>
-          <tbody>
-            {#each Object.entries(data.business_units || {}) as [bu, stats]}
-              {@const threat = getThreatLevel(stats.overall_coverage)}
-              <tr>
-                <td class="font-weight-bold">{bu.length > 30 ? bu.substring(0, 30) + '...' : bu.toUpperCase()}</td>
-                <td class="text-center">{formatNumber(stats.total)}</td>
-                <td class="text-center" style="color: {getThreatLevel(stats.splunk_coverage).color};">{stats.splunk_coverage}%</td>
-                <td class="text-center" style="color: {getThreatLevel(stats.cmdb_coverage).color};">{stats.cmdb_coverage}%</td>
-                <td class="text-center" style="color: {getThreatLevel(stats.edr_coverage).color};">{stats.edr_coverage}%</td>
-                <td class="text-center" style="color: {threat.color};">{threat.status}</td>
-              </tr>
-            {/each}
-          </tbody>
-        </table>
-      </div>
-    </div>
-  {:else if viewMode === 'cio'}
-    <div class="card" style="padding: 25px;">
-      <div class="table-container">
-        <table>
-          <thead>
-            <tr>
-              <th>CIO</th>
-              <th class="text-center">ASSETS</th>
-              <th class="text-center">SPLUNK %</th>
               <th class="text-center">CMDB %</th>
               <th class="text-center">EDR %</th>
               <th class="text-center">STATUS</th>
             </tr>
           </thead>
           <tbody>
-            {#each Object.entries(data.cio || {}) as [cio, stats]}
-              {@const threat = getThreatLevel(stats.overall_coverage)}
-              <tr>
-                <td class="font-weight-bold">{cio.toUpperCase()}</td>
-                <td class="text-center">{formatNumber(stats.total)}</td>
-                <td class="text-center" style="color: {getThreatLevel(stats.splunk_coverage).color};">{stats.splunk_coverage}%</td>
-                <td class="text-center" style="color: {getThreatLevel(stats.cmdb_coverage).color};">{stats.cmdb_coverage}%</td>
-                <td class="text-center" style="color: {getThreatLevel(stats.edr_coverage).color};">{stats.edr_coverage}%</td>
-                <td class="text-center" style="color: {threat.color};">{threat.status}</td>
-              </tr>
+            {#each getSortedEntries() as [type, stats]}
+              {#if stats}
+                <tr on:click={() => selectedType = selectedType === type ? null : type}>
+                  <td class="font-weight-bold">{type.toUpperCase()}</td>
+                  <td class="text-center">{formatNumber(stats.total)}</td>
+                  <td class="text-center font-weight-bold" style="color: {getThreatLevel(stats.splunk_coverage).color};">{stats.splunk_coverage}%</td>
+                  <td class="text-center font-weight-bold" style="color: {getThreatLevel(stats.cmdb_coverage).color};">{stats.cmdb_coverage}%</td>
+                  <td class="text-center font-weight-bold" style="color: {getThreatLevel(stats.edr_coverage).color};">{stats.edr_coverage}%</td>
+                  <td class="text-center font-weight-bold" style="color: {getThreatLevel(stats.overall_coverage).color};">{getThreatLevel(stats.overall_coverage).status}</td>
+                </tr>
+              {/if}
             {/each}
           </tbody>
         </table>
       </div>
     </div>
   {:else}
-    <div class="card" style="padding: 25px;">
-      <div class="header-title" style="margin-bottom: 20px;">APM MONITORING COVERAGE</div>
-      
-      {@const apmThreat = getThreatLevel(data.apm_coverage?.overall_coverage || 0)}
-      <div class="metric-card" style="border-color: {apmThreat.color};">
-        <div class="metric-content">
-          <div class="metric-label" style="color: {apmThreat.color};">APM MONITORED APPLICATIONS</div>
-          <div class="metric-value" style="color: {apmThreat.color};">{formatNumber(data.apm_coverage?.total || 0)}</div>
-          <div class="metric-detail">Applications with APM monitoring</div>
-        </div>
-      </div>
-
-      <div class="d-flex flex-column gap-3" style="margin-top: 20px;">
-        {#each [['APM + Splunk', data.apm_coverage?.splunk_coverage || 0], ['APM + CMDB', data.apm_coverage?.cmdb_coverage || 0], ['APM + EDR', data.apm_coverage?.edr_coverage || 0]] as [label, percentage]}
-          <div class="coverage-item">
-            <div class="coverage-header">
-              <span>{label}</span>
-              <span style="color: {getThreatLevel(percentage).color};">{percentage}%</span>
+    <div class="d-grid grid-cols-4 gap-3">
+      {#each Object.entries(data).slice(0, 20) as [type, stats]}
+        {#if stats}
+          <div class="card text-center" style="padding: 20px; border-color: {getThreatLevel(stats.overall_coverage).color};">
+            <div style="font-size: 24px; color: {getThreatLevel(stats.overall_coverage).color}; font-weight: bold; margin-bottom: 10px;">
+              {stats.overall_coverage}%
             </div>
-            <div class="progress-bar">
-              <div class="progress-fill" style="width: {percentage}%; background: {getThreatLevel(percentage).color};"></div>
-            </div>
+            <div style="font-size: 10px; margin-bottom: 10px;">{type.toUpperCase()}</div>
+            <div class="text-muted">{formatNumber(stats.total)} assets</div>
           </div>
-        {/each}
-      </div>
+        {/if}
+      {/each}
     </div>
   {/if}
 {/if}
