@@ -1,3 +1,4 @@
+<!-- BusinessUnitMetrics.svelte -->
 <script>
 	import { onMount } from 'svelte';
 	let data = {};
@@ -18,21 +19,41 @@
 		Object.entries(data.business_intelligence).sort((a, b) => b[1] - a[1]) : [];
 </script>
 
-<div class="bu-panel">
-	<header class="panel-header">
-		<span class="header-icon">◒</span>
-		<h2>BUSINESS UNIT ANALYSIS</h2>
-		<p>Comma and pipe-separated analysis</p>
-	</header>
-	
+<div class="business-command-center">
+	<div class="command-header">
+		<div class="business-core">
+			<div class="core-symbol">◒</div>
+		</div>
+		<div class="command-info">
+			<h2>BUSINESS UNITS</h2>
+			<p>COMMA AND PIPE-SEPARATED ANALYSIS</p>
+		</div>
+	</div>
+
 	{#if loading}
-		<div class="loading">Analyzing business units...</div>
+		<div class="business-scan">
+			<div class="org-chart">
+				{#each Array(8) as _, i}
+					<div class="org-node" style="animation-delay: {i * 0.2}s"></div>
+				{/each}
+			</div>
+			<p>ANALYZING BUSINESS UNITS...</p>
+		</div>
 	{:else}
-		<div class="bu-list">
-			{#each sortedUnits.slice(0, 20) as [unit, count]}
-				<div class="bu-row">
-					<span class="bu-name">{unit}</span>
-					<span class="bu-count">{count}</span>
+		<div class="unit-grid">
+			{#each sortedUnits.slice(0, 20) as [unit, count], i}
+				<div class="unit-card" style="animation-delay: {i * 0.1}s">
+					<div class="card-header">
+						<div class="unit-icon">🏢</div>
+						<div class="unit-rank">#{i + 1}</div>
+					</div>
+					<div class="unit-name">{unit.toUpperCase()}</div>
+					<div class="unit-count">{count.toLocaleString()}</div>
+					<div class="unit-connections">
+						{#each Array(5) as _, j}
+							<div class="connection-node" style="animation-delay: {j * 0.1}s"></div>
+						{/each}
+					</div>
 				</div>
 			{/each}
 		</div>
@@ -40,82 +61,169 @@
 </div>
 
 <style>
-	.bu-panel {
-		background: rgba(0, 26, 0, 0.95);
-		border: 1px solid #00ff41;
-		border-radius: 8px;
-		padding: 20px;
+	.business-command-center {
+		font-family: 'Orbitron', monospace;
+		color: #fff;
+		text-transform: uppercase;
+		letter-spacing: 0.05em;
 	}
-	
-	.panel-header {
+
+	.command-header {
 		display: flex;
 		align-items: center;
-		gap: 15px;
-		margin-bottom: 20px;
-		border-bottom: 1px solid #004400;
-		padding-bottom: 15px;
+		gap: 2rem;
+		padding: 1.5rem;
+		background: linear-gradient(135deg, rgba(0, 0, 0, 0.8), rgba(0, 255, 255, 0.05));
+		border: 2px solid #00ffff;
+		border-radius: 12px;
+		margin-bottom: 1.5rem;
 	}
-	
-	.header-icon {
-		font-size: 24px;
-		color: #00ff41;
-		animation: bu-rotate 8s linear infinite;
+
+	.business-core {
+		width: 80px;
+		height: 80px;
+		background: radial-gradient(circle, rgba(0, 255, 255, 0.2), transparent);
+		border: 3px solid #00ffff;
+		border-radius: 50%;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		font-size: 2rem;
+		color: #00ffff;
+		text-shadow: 0 0 20px #00ffff;
+		animation: businessPulse 3s ease-in-out infinite;
 	}
-	
-	@keyframes bu-rotate {
-		from { transform: rotate(0deg); }
-		to { transform: rotate(360deg); }
-	}
-	
-	.panel-header h2 {
+
+	.command-info h2 {
 		margin: 0;
-		color: #00ff41;
-		font-size: 16px;
-		letter-spacing: 1px;
+		font-size: 1.5rem;
+		color: #fff;
+		text-shadow: 0 0 15px rgba(0, 255, 255, 0.5);
 	}
-	
-	.panel-header p {
-		margin: 2px 0 0 0;
-		color: #66ff66;
-		font-size: 11px;
+
+	.command-info p {
+		margin: 0.3rem 0 0 0;
+		font-size: 0.9rem;
+		color: rgba(255, 255, 255, 0.6);
 	}
-	
-	.loading {
+
+	.business-scan {
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		gap: 2rem;
+		padding: 3rem;
+	}
+
+	.org-chart {
+		display: grid;
+		grid-template-columns: repeat(4, 1fr);
+		gap: 1rem;
+	}
+
+	.org-node {
+		width: 50px;
+		height: 50px;
+		background: #00ffff;
+		border-radius: 8px;
+		animation: orgPulse 2s ease-in-out infinite;
+	}
+
+	.unit-grid {
+		display: grid;
+		grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+		gap: 1.5rem;
+	}
+
+	.unit-card {
+		background: linear-gradient(135deg, rgba(0, 0, 0, 0.8), rgba(0, 255, 255, 0.05));
+		border: 2px solid #00ffff;
+		border-radius: 12px;
+		padding: 1.5rem;
 		text-align: center;
-		padding: 40px;
-		color: #ffaa00;
+		transition: all 0.3s ease;
+		backdrop-filter: blur(20px);
+		animation: cardSlide 0.6s ease-out;
+		animation-fill-mode: both;
+		opacity: 0;
 	}
-	
-	.bu-list {
-		max-height: 500px;
-		overflow-y: auto;
+
+	.unit-card:hover {
+		transform: translateY(-5px);
+		box-shadow: 0 15px 40px rgba(0, 0, 0, 0.6), 0 0 30px #00ffff;
 	}
-	
-	.bu-row {
+
+	.card-header {
 		display: flex;
 		justify-content: space-between;
-		padding: 12px;
-		margin-bottom: 8px;
-		background: rgba(0, 0, 0, 0.6);
-		border: 1px solid #004400;
+		align-items: center;
+		margin-bottom: 1rem;
+	}
+
+	.unit-icon {
+		font-size: 2rem;
+		filter: hue-rotate(180deg) saturate(2);
+	}
+
+	.unit-rank {
+		font-size: 0.8rem;
+		font-weight: 700;
+		color: #00ffff;
+		padding: 0.3rem 0.6rem;
+		background: rgba(0, 255, 255, 0.1);
+		border: 1px solid #00ffff;
 		border-radius: 4px;
-		transition: all 0.3s ease;
+		text-shadow: 0 0 8px #00ffff;
 	}
-	
-	.bu-row:hover {
-		border-color: #00ff41;
-		background: rgba(0, 255, 65, 0.1);
+
+	.unit-name {
+		font-size: 1rem;
+		font-weight: 700;
+		color: #fff;
+		margin-bottom: 0.5rem;
+		text-shadow: 0 0 10px rgba(255, 255, 255, 0.3);
 	}
-	
-	.bu-name {
-		color: #00ff41;
-		flex: 1;
-		font-weight: bold;
+
+	.unit-count {
+		font-size: 2rem;
+		font-weight: 700;
+		color: #00ffff;
+		margin-bottom: 1rem;
+		text-shadow: 0 0 15px #00ffff;
 	}
-	
-	.bu-count {
-		color: #66ff66;
-		font-weight: bold;
-		font-size: 16px;
+
+	.unit-connections {
+		display: flex;
+		justify-content: center;
+		gap: 0.3rem;
+	}
+
+	.connection-node {
+		width: 4px;
+		height: 15px;
+		background: #00ffff;
+		border-radius: 2px;
+		animation: connectionFlicker 2s ease-in-out infinite;
+		box-shadow: 0 0 6px #00ffff;
+	}
+
+	@keyframes businessPulse {
+		0%, 100% { box-shadow: 0 0 20px rgba(0, 255, 255, 0.3); }
+		50% { box-shadow: 0 0 40px rgba(0, 255, 255, 0.6); }
+	}
+
+	@keyframes orgPulse {
+		0%, 100% { opacity: 0.3; background: #00ffff; }
+		50% { opacity: 1; background: #fff; }
+	}
+
+	@keyframes cardSlide {
+		0% { opacity: 0; transform: translateY(30px); }
+		100% { opacity: 1; transform: translateY(0); }
+	}
+
+	@keyframes connectionFlicker {
+		0%, 100% { opacity: 1; }
+		50% { opacity: 0.3; }
 	}
 </style>
