@@ -261,7 +261,7 @@
 	}
 	
 	$: correlationData = data.correlation_analysis || [];
-	$> trendData = data.trend_analysis || {};
+	$: trendData = data.trend_analysis || {};
 	$: riskCombinations = data.high_risk_combinations || [];
 	$: insights = data.predictive_insights || {};
 </script>
