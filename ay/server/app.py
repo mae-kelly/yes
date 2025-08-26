@@ -36,7 +36,7 @@ def discover_schema_structure():
     """Discover database, catalogs, schemas, and tables"""
     
     # Find database files
-    search_paths = ["*.db", "../*.db", "../../*.db", "server/*.db", "./server/*.db"]
+    search_paths = ["*.db", "*.duckdb", "../*.db", "../*.duckdb", "../../*.db", "../../*.duckdb", "server/*.db", "./server/*.db"]
     db_files = []
     for pattern in search_paths:
         db_files.extend(glob.glob(pattern))
@@ -51,62 +51,23 @@ def discover_schema_structure():
         try:
             conn = duckdb.connect(db_file, read_only=True)
             
-            # Strategy 1: Check catalogs and schemas
+            # First, let's see what databases/catalogs are attached
             try:
-                catalogs = conn.execute("SHOW DATABASES").fetchall()
-                logger.info(f"Available catalogs: {[c[0] for c in catalogs]}")
-                
-                for catalog in catalogs:
-                    catalog_name = catalog[0]
-                    try:
-                        # Switch to catalog
-                        conn.execute(f"USE {catalog_name}")
-                        
-                        # Check schemas
-                        schemas = conn.execute("SHOW SCHEMAS").fetchall()
-                        logger.info(f"Schemas in {catalog_name}: {[s[0] for s in schemas]}")
-                        
-                        for schema in schemas:
-                            schema_name = schema[0]
-                            try:
-                                # Check tables in this schema
-                                conn.execute(f"USE {schema_name}")
-                                tables = conn.execute("SHOW TABLES").fetchall()
-                                table_names = [t[0] for t in tables]
-                                logger.info(f"Tables in {catalog_name}.{schema_name}: {table_names}")
-                                
-                                # Look for our table
-                                if 'universal_cmdb' in table_names:
-                                    full_name = f"{catalog_name}.{schema_name}.universal_cmdb"
-                                    logger.info(f"Found table at: {full_name}")
-                                    
-                                    # Test the table
-                                    if test_table_access(conn, full_name, 'universal_cmdb'):
-                                        DB_CONFIG['db_path'] = db_file
-                                        DB_CONFIG['full_table_name'] = full_name
-                                        DB_CONFIG['simple_table_name'] = 'universal_cmdb'
-                                        analyze_columns(conn, full_name)
-                                        conn.close()
-                                        return True
-                                        
-                            except Exception as e:
-                                logger.debug(f"Error in schema {schema_name}: {str(e)}")
-                                continue
-                                
-                    except Exception as e:
-                        logger.debug(f"Error in catalog {catalog_name}: {str(e)}")
-                        continue
-                        
-            except Exception as e:
-                logger.debug(f"Catalog/schema discovery failed: {str(e)}")
+                # Try PRAGMA database_list to see attached databases
+                db_list = conn.execute("PRAGMA database_list").fetchall()
+                logger.info(f"Attached databases: {db_list}")
+            except:
+                pass
             
-            # Strategy 2: Try default context
+            # Strategy 1: Direct table access in default schema
             try:
+                # First check if table exists directly
                 tables = conn.execute("SHOW TABLES").fetchall()
                 table_names = [t[0] for t in tables]
-                logger.info(f"Tables in default context: {table_names}")
+                logger.info(f"Tables in current context: {table_names}")
                 
                 if 'universal_cmdb' in table_names:
+                    logger.info("Found universal_cmdb in default context")
                     if test_table_access(conn, 'universal_cmdb', 'universal_cmdb'):
                         DB_CONFIG['db_path'] = db_file
                         DB_CONFIG['full_table_name'] = 'universal_cmdb'
@@ -116,50 +77,157 @@ def discover_schema_structure():
                         return True
                         
             except Exception as e:
-                logger.debug(f"Default context failed: {str(e)}")
+                logger.debug(f"Default context check failed: {str(e)}")
             
-            # Strategy 3: Try information schema queries
+            # Strategy 2: Check main schema explicitly
             try:
-                info_tables = conn.execute("""
+                # Try to access as main.universal_cmdb
+                if test_table_access(conn, 'main.universal_cmdb', 'universal_cmdb'):
+                    DB_CONFIG['db_path'] = db_file
+                    DB_CONFIG['full_table_name'] = 'main.universal_cmdb'
+                    DB_CONFIG['simple_table_name'] = 'universal_cmdb'
+                    analyze_columns(conn, 'main.universal_cmdb')
+                    conn.close()
+                    return True
+            except:
+                pass
+            
+            # Strategy 3: Use information_schema to find the table
+            try:
+                # Query information_schema for all tables
+                all_tables = conn.execute("""
                     SELECT table_catalog, table_schema, table_name 
-                    FROM information_schema.tables 
-                    WHERE table_name LIKE '%cmdb%'
+                    FROM information_schema.tables
                 """).fetchall()
                 
-                logger.info(f"Information schema results: {info_tables}")
+                logger.info(f"All tables from information_schema: {all_tables}")
                 
-                for catalog, schema, table in info_tables:
-                    if table.lower() == 'universal_cmdb':
-                        full_name = f"{catalog}.{schema}.{table}"
-                        if test_table_access(conn, full_name, table):
-                            DB_CONFIG['db_path'] = db_file
-                            DB_CONFIG['full_table_name'] = full_name
-                            DB_CONFIG['simple_table_name'] = table
-                            analyze_columns(conn, full_name)
-                            conn.close()
-                            return True
-                            
+                for catalog, schema, table in all_tables:
+                    if 'cmdb' in table.lower():
+                        logger.info(f"Found CMDB-related table: {catalog}.{schema}.{table}")
+                        
+                        # Try different naming combinations
+                        full_names = [
+                            f"{table}",
+                            f"{schema}.{table}",
+                            f"{catalog}.{schema}.{table}",
+                            f'"{table}"',
+                            f'{schema}."{table}"',
+                            f'{catalog}.{schema}."{table}"'
+                        ]
+                        
+                        for full_name in full_names:
+                            if test_table_access(conn, full_name, table):
+                                DB_CONFIG['db_path'] = db_file
+                                DB_CONFIG['full_table_name'] = full_name
+                                DB_CONFIG['simple_table_name'] = table
+                                analyze_columns(conn, full_name)
+                                conn.close()
+                                return True
+                                
             except Exception as e:
                 logger.debug(f"Information schema query failed: {str(e)}")
             
-            # Strategy 4: Brute force with different name variations
-            name_variations = [
-                'universal_cmdb',
-                '"universal_cmdb"',
-                'main.universal_cmdb',
-                'main."universal_cmdb"',
-                'memory.main.universal_cmdb',
-                'temp.main.universal_cmdb'
-            ]
+            # Strategy 4: Check all schemas
+            try:
+                schemas = conn.execute("SELECT DISTINCT schema_name FROM information_schema.schemata").fetchall()
+                logger.info(f"Available schemas: {[s[0] for s in schemas]}")
+                
+                for schema in schemas:
+                    schema_name = schema[0]
+                    try:
+                        # Get tables in this schema
+                        tables_query = f"""
+                            SELECT table_name 
+                            FROM information_schema.tables 
+                            WHERE table_schema = '{schema_name}'
+                        """
+                        tables = conn.execute(tables_query).fetchall()
+                        
+                        for table in tables:
+                            table_name = table[0]
+                            if 'cmdb' in table_name.lower():
+                                full_name = f"{schema_name}.{table_name}"
+                                logger.info(f"Testing table: {full_name}")
+                                
+                                if test_table_access(conn, full_name, table_name):
+                                    DB_CONFIG['db_path'] = db_file
+                                    DB_CONFIG['full_table_name'] = full_name
+                                    DB_CONFIG['simple_table_name'] = table_name
+                                    analyze_columns(conn, full_name)
+                                    conn.close()
+                                    return True
+                                    
+                    except Exception as e:
+                        logger.debug(f"Error checking schema {schema_name}: {str(e)}")
+                        
+            except Exception as e:
+                logger.debug(f"Schema enumeration failed: {str(e)}")
             
-            for name_var in name_variations:
-                if test_table_access(conn, name_var, 'universal_cmdb'):
-                    DB_CONFIG['db_path'] = db_file
-                    DB_CONFIG['full_table_name'] = name_var
-                    DB_CONFIG['simple_table_name'] = 'universal_cmdb'
-                    analyze_columns(conn, name_var)
-                    conn.close()
-                    return True
+            # Strategy 5: Try PRAGMA commands to list tables
+            try:
+                # Use PRAGMA to show all tables
+                pragma_tables = conn.execute("PRAGMA show_tables").fetchall()
+                logger.info(f"PRAGMA show_tables result: {pragma_tables}")
+                
+                for table_info in pragma_tables:
+                    if isinstance(table_info, tuple) and len(table_info) > 0:
+                        table_name = table_info[0]
+                        if 'cmdb' in str(table_name).lower():
+                            if test_table_access(conn, table_name, table_name):
+                                DB_CONFIG['db_path'] = db_file
+                                DB_CONFIG['full_table_name'] = table_name
+                                DB_CONFIG['simple_table_name'] = table_name
+                                analyze_columns(conn, table_name)
+                                conn.close()
+                                return True
+            except Exception as e:
+                logger.debug(f"PRAGMA show_tables failed: {str(e)}")
+            
+            # Strategy 6: Try to create the table from a view or another source
+            try:
+                # Check if there are any views that might contain the data
+                views = conn.execute("SELECT * FROM duckdb_views()").fetchall()
+                logger.info(f"Available views: {views}")
+                
+                for view in views:
+                    if 'cmdb' in str(view).lower():
+                        logger.info(f"Found CMDB-related view: {view}")
+            except:
+                pass
+            
+            # Strategy 7: List all objects using duckdb functions
+            try:
+                # Try duckdb_tables() function
+                duckdb_tables = conn.execute("SELECT * FROM duckdb_tables()").fetchall()
+                logger.info(f"DuckDB tables: {duckdb_tables}")
+                
+                for table_info in duckdb_tables:
+                    # table_info typically contains (database, schema, table_name, ...)
+                    if len(table_info) >= 3:
+                        db_name = table_info[0]
+                        schema_name = table_info[1]
+                        table_name = table_info[2]
+                        
+                        if 'cmdb' in str(table_name).lower():
+                            # Try different combinations
+                            test_names = [
+                                table_name,
+                                f"{schema_name}.{table_name}",
+                                f"{db_name}.{schema_name}.{table_name}"
+                            ]
+                            
+                            for test_name in test_names:
+                                if test_table_access(conn, test_name, table_name):
+                                    DB_CONFIG['db_path'] = db_file
+                                    DB_CONFIG['full_table_name'] = test_name
+                                    DB_CONFIG['simple_table_name'] = table_name
+                                    analyze_columns(conn, test_name)
+                                    conn.close()
+                                    return True
+                                    
+            except Exception as e:
+                logger.debug(f"duckdb_tables() failed: {str(e)}")
             
             conn.close()
             
@@ -172,18 +240,47 @@ def discover_schema_structure():
 def test_table_access(conn, table_name, simple_name):
     """Test if we can access a table"""
     try:
+        # Try a simple count query
         count = conn.execute(f"SELECT COUNT(*) FROM {table_name}").fetchone()[0]
-        logger.info(f"Successfully accessed {table_name} with {count} rows")
+        logger.info(f"✓ Successfully accessed {table_name} with {count} rows")
         return True
     except Exception as e:
-        logger.debug(f"Cannot access {table_name}: {str(e)}")
+        logger.debug(f"✗ Cannot access {table_name}: {str(e)}")
         return False
 
 def analyze_columns(conn, table_name):
     """Analyze table columns and create mapping"""
     try:
-        columns = conn.execute(f'DESCRIBE {table_name}').fetchall()
-        DB_CONFIG['columns'] = {col[0]: col[1] for col in columns}
+        # Try different methods to get column information
+        columns = None
+        
+        # Method 1: DESCRIBE
+        try:
+            columns = conn.execute(f'DESCRIBE {table_name}').fetchall()
+        except:
+            pass
+        
+        # Method 2: PRAGMA table_info
+        if not columns:
+            try:
+                columns = conn.execute(f"PRAGMA table_info('{table_name}')").fetchall()
+            except:
+                pass
+        
+        # Method 3: SELECT * LIMIT 0
+        if not columns:
+            try:
+                result = conn.execute(f'SELECT * FROM {table_name} LIMIT 0')
+                columns = [(desc[0], desc[1]) for desc in result.description]
+            except:
+                pass
+        
+        if columns:
+            DB_CONFIG['columns'] = {col[0]: col[1] for col in columns}
+        else:
+            # Fallback: get columns from a sample query
+            result = conn.execute(f'SELECT * FROM {table_name} LIMIT 1')
+            DB_CONFIG['columns'] = {desc[0]: 'UNKNOWN' for desc in result.description}
         
         logger.info(f"Table {table_name} columns: {list(DB_CONFIG['columns'].keys())}")
         
@@ -220,12 +317,13 @@ def analyze_columns(conn, table_name):
         
     except Exception as e:
         logger.error(f"Error analyzing columns: {str(e)}")
+        logger.error(traceback.format_exc())
 
 def get_connection():
     """Get database connection"""
     if not DB_CONFIG['db_path']:
         if not discover_schema_structure():
-            raise Exception("Cannot establish database connection")
+            raise Exception("Cannot establish database connection - universal_cmdb table not found")
     
     return duckdb.connect(DB_CONFIG['db_path'], read_only=True)
 
@@ -233,6 +331,7 @@ def execute_query(query):
     """Execute query with error handling"""
     conn = get_connection()
     try:
+        logger.debug(f"Executing query: {query}")
         result = conn.execute(query).fetchall()
         return result
     except Exception as e:
@@ -253,8 +352,55 @@ def calculate_coverage_percentage(count, total):
 def debug_schema():
     """Debug endpoint to show schema discovery"""
     try:
+        # Reset config to force re-discovery
+        DB_CONFIG['db_path'] = None
+        
         if not discover_schema_structure():
-            return jsonify({'error': 'Schema discovery failed'})
+            # Try to provide more debugging info
+            conn = None
+            debug_info = {'discovery_successful': False, 'debug': {}}
+            
+            # Find any .db or .duckdb files
+            search_paths = ["*.db", "*.duckdb", "../*.db", "../*.duckdb", "../../*.db", "../../*.duckdb"]
+            db_files = []
+            for pattern in search_paths:
+                db_files.extend(glob.glob(pattern))
+            
+            if db_files:
+                db_file = db_files[0]
+                try:
+                    conn = duckdb.connect(db_file, read_only=True)
+                    
+                    # Get all available information
+                    debug_info['debug']['db_file'] = db_file
+                    
+                    # Get all tables using multiple methods
+                    try:
+                        tables = conn.execute("SHOW TABLES").fetchall()
+                        debug_info['debug']['show_tables'] = [t[0] for t in tables]
+                    except Exception as e:
+                        debug_info['debug']['show_tables_error'] = str(e)
+                    
+                    try:
+                        duckdb_tables = conn.execute("SELECT * FROM duckdb_tables()").fetchall()
+                        debug_info['debug']['duckdb_tables'] = duckdb_tables
+                    except Exception as e:
+                        debug_info['debug']['duckdb_tables_error'] = str(e)
+                    
+                    try:
+                        info_tables = conn.execute("""
+                            SELECT table_catalog, table_schema, table_name 
+                            FROM information_schema.tables
+                        """).fetchall()
+                        debug_info['debug']['information_schema_tables'] = info_tables
+                    except Exception as e:
+                        debug_info['debug']['information_schema_error'] = str(e)
+                    
+                    conn.close()
+                except Exception as e:
+                    debug_info['debug']['connection_error'] = str(e)
+            
+            return jsonify(debug_info)
         
         return jsonify({
             'db_config': DB_CONFIG,
@@ -262,14 +408,14 @@ def debug_schema():
         })
         
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        return jsonify({'error': str(e), 'traceback': traceback.format_exc()}), 500
 
 @app.route('/api/health')
 def health_check():
     try:
         if not DB_CONFIG['db_path']:
             if not discover_schema_structure():
-                raise Exception("Database discovery failed")
+                raise Exception("Database discovery failed - universal_cmdb table not found")
         
         table_name = DB_CONFIG['full_table_name']
         total_hosts = execute_query(f'SELECT COUNT(*) FROM {table_name}')[0][0]
@@ -277,8 +423,9 @@ def health_check():
         return jsonify({
             'status': 'healthy',
             'database': 'connected',
-            'db_config': DB_CONFIG,
+            'table': table_name,
             'total_hosts': total_hosts,
+            'columns': list(DB_CONFIG['columns'].keys()),
             'timestamp': datetime.now().isoformat()
         })
         
@@ -327,17 +474,32 @@ def global_view():
                 except Exception as e:
                     logger.error(f"Error calculating {metric_name}: {str(e)}")
                     coverage[metric_name] = {'count': 0, 'percentage': 0, 'error': str(e)}
+            else:
+                logger.warning(f"Column not found for {metric_name}: {field} -> {col_name}")
+                coverage[metric_name] = {'count': 0, 'percentage': 0, 'error': 'Column not mapped'}
         
         return jsonify({
             'total_hosts': total_hosts,
             'coverage': coverage,
+            'table': table_name,
             'timestamp': datetime.now().isoformat()
         })
         
     except Exception as e:
         logger.error(f"Global view failed: {str(e)}")
+        logger.error(traceback.format_exc())
         return jsonify({'error': str(e)}), 500
 
 if __name__ == '__main__':
     logger.info("Starting schema-aware Flask server")
+    logger.info("Attempting initial database discovery...")
+    
+    # Try discovery on startup
+    if discover_schema_structure():
+        logger.info(f"✓ Successfully connected to database: {DB_CONFIG['db_path']}")
+        logger.info(f"✓ Using table: {DB_CONFIG['full_table_name']}")
+        logger.info(f"✓ Found columns: {list(DB_CONFIG['columns'].keys())}")
+    else:
+        logger.warning("⚠ Initial database discovery failed - will retry on first request")
+    
     app.run(debug=True, host='0.0.0.0', port=5000)
