@@ -97,27 +97,25 @@
 				
 				<div class="source-grid">
 					{#each filteredSources.slice(0, 50) as [source, frequency]}
-						{@const threat = getThreatLevel(frequency)}
-						{@const percentage = ((frequency / data.total_mentions) * 100).toFixed(2)}
 						<div 
 							class="source-crystal"
-							style="--threat-color: {threat.color}; --bar-width: {(frequency / maxFrequency) * 100}%"
+							style="--threat-color: {getThreatLevel(frequency).color}; --bar-width: {(frequency / maxFrequency) * 100}%"
 							on:click={() => selectSource(source, frequency)}
 						>
 							<div class="crystal-header">
-								<div class="threat-indicator" style="background: {threat.color}"></div>
-								<span class="threat-level">{threat.level}</span>
+								<div class="threat-indicator" style="background: {getThreatLevel(frequency).color}"></div>
+								<span class="threat-level">{getThreatLevel(frequency).level}</span>
 							</div>
 							
 							<div class="source-name">{source}</div>
 							
 							<div class="frequency-display">
 								<span class="frequency-count">{frequency.toLocaleString()}</span>
-								<span class="frequency-percent">{percentage}%</span>
+								<span class="frequency-percent">{((frequency / data.total_mentions) * 100).toFixed(2)}%</span>
 							</div>
 							
 							<div class="frequency-bar">
-								<div class="bar-fill" style="background: {threat.color}"></div>
+								<div class="bar-fill" style="background: {getThreatLevel(frequency).color}"></div>
 							</div>
 							
 							<div class="crystal-overlay"></div>
