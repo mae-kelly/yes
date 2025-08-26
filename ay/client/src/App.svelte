@@ -2,7 +2,6 @@
   console.log('🔍 App.svelte: AO1 Cyber Visibility Dashboard starting...');
   
   import { onMount } from 'svelte';
-  import router from 'svelte-spa-router'
   
   // Import all the cybersecurity dashboard components
   import GlobalView from './components/GlobalView.svelte';
@@ -17,20 +16,6 @@
   
   let selectedView = 'global';
   let serverStatus = 'checking';
-  
-  // Route definitions for the cyber visibility dashboard
-  const routes = {
-    '/': GlobalView,
-    '/global': GlobalView,
-    '/infrastructure': InfrastructureType,
-    '/regional': RegionalCountryView,
-    '/business-units': BUandApplicationView,
-    '/systems': SystemClassification,
-    '/security': SecurityControlCoverage,
-    '/domains': DomainVisibility,
-    '/logging': LoggingComplianceInGSOandSplunk,
-    '/priorities': LogTypePriority
-  };
   
   const dashboardViews = [
     { key: 'global', label: 'GLOBAL VIEW', icon: '🌐', component: GlobalView },
@@ -225,30 +210,30 @@
     display: flex;
     align-items: center;
     background: rgba(0, 229, 255, 0.1);
-    border: 2px solid var(--border-cyan);
-    border-radius: var(--radius-md);
-    padding: 8px var(--spacing-md);
+    border: 2px solid rgba(0, 229, 255, 0.25);
+    border-radius: 4px;
+    padding: 8px 16px;
     width: 200px;
   }
 
   .search-input {
     background: transparent;
     border: none;
-    color: var(--text-primary);
+    color: rgba(185, 235, 255, 0.95);
     font-size: 0.9rem;
-    font-family: var(--font-mono);
+    font-family: 'JetBrains Mono', monospace;
     width: 100%;
     outline: none;
     letter-spacing: 1px;
   }
 
   .search-input::placeholder {
-    color: var(--text-muted);
+    color: rgba(90, 160, 220, 0.7);
   }
 
   .nav-tabs {
     display: flex;
-    gap: var(--spacing-sm);
+    gap: 8px;
     margin-bottom: 0;
     flex-wrap: wrap;
     position: relative;
@@ -256,36 +241,36 @@
   }
 
   .nav-tab {
-    padding: var(--spacing-sm) var(--spacing-md);
+    padding: 8px 16px;
     background: rgba(5, 16, 32, 0.6);
-    border: 1px solid var(--border-cyan);
-    border-radius: var(--radius-md);
+    border: 1px solid rgba(0, 229, 255, 0.25);
+    border-radius: 4px;
     font-size: 0.85rem;
-    color: var(--text-secondary);
+    color: rgba(130, 210, 255, 0.85);
     cursor: pointer;
-    transition: var(--transition-normal);
+    transition: all 0.2s ease;
     display: flex;
     align-items: center;
-    font-family: var(--font-mono);
-    font-weight: var(--font-weight-medium);
+    font-family: 'JetBrains Mono', monospace;
+    font-weight: 500;
     letter-spacing: 1px;
   }
 
   .nav-tab:hover {
     background: rgba(0, 229, 255, 0.1);
-    color: var(--text-primary);
-    border-color: var(--accent-cyan);
+    color: rgba(185, 235, 255, 0.95);
+    border-color: rgba(0, 229, 255, 0.9);
   }
 
   .nav-tab.active {
     background: rgba(0, 229, 255, 0.2);
-    color: var(--accent-cyan);
-    border-color: var(--accent-cyan);
-    box-shadow: var(--glow-cyan);
+    color: rgba(0, 229, 255, 0.9);
+    border-color: rgba(0, 229, 255, 0.9);
+    box-shadow: 0 0 15px rgba(0, 229, 255, 0.5);
   }
 
   .nav-tab-icon {
-    margin-right: var(--spacing-xs);
+    margin-right: 4px;
     font-size: 1rem;
   }
 
@@ -297,9 +282,9 @@
 
   .component-container {
     background: rgba(5, 16, 32, 0.4);
-    border-radius: var(--radius-lg);
-    padding: var(--spacing-lg);
-    border: 1px solid var(--border-cyan);
+    border-radius: 8px;
+    padding: 24px;
+    border: 1px solid rgba(0, 229, 255, 0.25);
     box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
   }
 
@@ -312,39 +297,39 @@
 
   .error-container {
     background: rgba(5, 15, 25, 0.8);
-    border: 2px solid var(--status-critical);
+    border: 2px solid #ff2340;
     box-shadow: 0 0 20px rgba(255, 35, 64, 0.3);
-    border-radius: var(--radius-lg);
-    padding: var(--spacing-2xl);
+    border-radius: 12px;
+    padding: 48px;
     max-width: 600px;
     text-align: center;
   }
 
   .error-title {
     font-size: 1.5rem;
-    font-weight: var(--font-weight-bold);
-    margin-bottom: var(--spacing-md);
+    font-weight: bold;
+    margin-bottom: 16px;
   }
 
   .error-message {
-    color: var(--text-secondary);
-    margin-bottom: var(--spacing-lg);
+    color: rgba(130, 210, 255, 0.85);
+    margin-bottom: 24px;
     line-height: 1.6;
   }
 
   .retry-button {
-    background: var(--tertiary-color);
-    border: 2px solid var(--status-good);
-    color: var(--status-good);
-    padding: var(--spacing-md) var(--spacing-xl);
-    font-family: var(--font-mono);
-    font-weight: var(--font-weight-bold);
+    background: #071130;
+    border: 2px solid #00e5ff;
+    color: #00e5ff;
+    padding: 16px 32px;
+    font-family: 'JetBrains Mono', monospace;
+    font-weight: bold;
     font-size: 1rem;
     cursor: pointer;
-    transition: var(--transition-normal);
+    transition: all 0.2s ease;
     letter-spacing: 2px;
-    border-radius: var(--radius-md);
-    box-shadow: var(--glow-cyan);
+    border-radius: 4px;
+    box-shadow: 0 0 15px rgba(0, 229, 255, 0.5);
   }
 
   .retry-button:hover {
@@ -355,13 +340,13 @@
 
   .status-badge {
     font-size: 0.8rem;
-    font-weight: var(--font-weight-bold);
+    font-weight: bold;
     letter-spacing: 1px;
   }
 
   .title-main {
     font-size: 1.8rem;
-    font-weight: var(--font-weight-bold);
+    font-weight: bold;
     letter-spacing: 2px;
     text-shadow: 0 0 10px rgba(0, 229, 255, 0.4);
   }
@@ -369,13 +354,13 @@
   .icon-circle {
     width: 40px;
     height: 40px;
-    border-radius: var(--radius-circle);
+    border-radius: 50%;
     background: transparent;
-    border: 2px solid var(--accent-cyan);
+    border: 2px solid rgba(0, 229, 255, 0.9);
     display: flex;
     align-items: center;
     justify-content: center;
-    box-shadow: var(--glow-cyan);
+    box-shadow: 0 0 15px rgba(0, 229, 255, 0.5);
   }
 
   @keyframes fadeIn {
@@ -392,19 +377,19 @@
   /* Responsive Design */
   @media (max-width: 1200px) {
     .nav-tabs {
-      gap: var(--spacing-xs);
+      gap: 4px;
     }
     
     .nav-tab {
       font-size: 0.75rem;
-      padding: var(--spacing-xs) var(--spacing-sm);
+      padding: 4px 8px;
     }
   }
 
   @media (max-width: 768px) {
     .dashboard-header {
       flex-direction: column;
-      gap: var(--spacing-md);
+      gap: 16px;
     }
     
     .nav-tabs {
