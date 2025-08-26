@@ -70,6 +70,24 @@
 				</div>
 			</div>
 			
+			<nav class="inline-nav">
+				<div class="nav-modules">
+					{#each modules as module}
+						<button 
+							class="nav-tab {currentView === module.id ? 'active' : ''}"
+							style="--module-color: {module.color}"
+							on:click={() => switchView(module.id)}
+						>
+							<span class="tab-icon">{module.icon}</span>
+							<span class="tab-name">{module.name}</span>
+							<div class="tab-glow"></div>
+						</button>
+					{/each}
+				</div>
+			</nav>
+		</div>
+		
+		<div class="header-right">
 			<div class="system-metrics">
 				<div class="metric-pod">
 					<span class="metric-label">STATUS</span>
@@ -84,32 +102,13 @@
 					<span class="metric-value neural-time">{currentTime}</span>
 				</div>
 			</div>
-		</div>
-		
-		<div class="header-right">
+			
 			<div class="classification-banner">
 				<div class="class-indicator"></div>
-				<span class="class-text">CLASSIFIED // TOP SECRET</span>
+				<span class="class-text">CLASSIFIED</span>
 			</div>
 		</div>
 	</header>
-
-	<nav class="cyber-nav">
-		<div class="nav-grid">
-			{#each modules as module}
-				<button 
-					class="nav-module {currentView === module.id ? 'active' : ''}"
-					style="--module-color: {module.color}"
-					on:click={() => switchView(module.id)}
-				>
-					<div class="module-glow"></div>
-					<div class="module-icon">{module.icon}</div>
-					<div class="module-name">{module.name}</div>
-					<div class="module-status-dot"></div>
-				</button>
-			{/each}
-		</div>
-	</nav>
 
 	<section class="cyber-workspace">
 		<div class="workspace-header">
@@ -216,7 +215,7 @@
 	.cyber-header {
 		background: linear-gradient(135deg, rgba(0, 20, 40, 0.95) 0%, rgba(0, 10, 20, 0.95) 100%);
 		border-bottom: 1px solid rgba(0, 212, 255, 0.3);
-		padding: 0.75rem 1.5rem;
+		padding: 0.5rem 1.5rem;
 		display: flex;
 		justify-content: space-between;
 		align-items: center;
@@ -224,24 +223,27 @@
 		position: relative;
 		z-index: 10;
 		box-shadow: 0 4px 32px rgba(0, 212, 255, 0.1);
+		height: 70px;
 	}
 
 	.header-left {
 		display: flex;
 		align-items: center;
 		gap: 2rem;
+		flex: 1;
 	}
 
 	.neural-brand {
 		display: flex;
 		align-items: center;
 		gap: 1rem;
+		flex-shrink: 0;
 	}
 
 	.brand-core {
 		position: relative;
-		width: 50px;
-		height: 50px;
+		width: 40px;
+		height: 40px;
 		display: flex;
 		align-items: center;
 		justify-content: center;
@@ -249,7 +251,7 @@
 
 	.core-icon {
 		color: #00D4FF;
-		font-size: 1.8rem;
+		font-size: 1.5rem;
 		z-index: 3;
 		position: relative;
 		animation: coreRotate 8s linear infinite;
@@ -272,22 +274,22 @@
 	}
 
 	.ring-1 {
-		width: 35px;
-		height: 35px;
+		width: 30px;
+		height: 30px;
 		border-color: rgba(0, 212, 255, 0.4);
 		animation: ringRotate1 6s linear infinite;
 	}
 
 	.ring-2 {
-		width: 45px;
-		height: 45px;
+		width: 38px;
+		height: 38px;
 		border-color: rgba(255, 0, 128, 0.3);
 		animation: ringRotate2 8s linear infinite reverse;
 	}
 
 	.ring-3 {
-		width: 55px;
-		height: 55px;
+		width: 46px;
+		height: 46px;
 		border-color: rgba(139, 92, 246, 0.2);
 		animation: ringRotate3 10s linear infinite;
 	}
@@ -298,7 +300,7 @@
 	}
 
 	.main-title {
-		font-size: 1.3rem;
+		font-size: 1.1rem;
 		font-weight: 700;
 		color: #fff;
 		margin: 0;
@@ -307,34 +309,118 @@
 	}
 
 	.sub-title {
-		font-size: 0.7rem;
+		font-size: 0.6rem;
 		color: rgba(255, 255, 255, 0.6);
 		font-weight: 400;
 		letter-spacing: 0.1em;
 		margin-top: 0.25rem;
 	}
 
+	.inline-nav {
+		flex: 1;
+		margin-left: 2rem;
+	}
+
+	.nav-modules {
+		display: flex;
+		gap: 0.5rem;
+		overflow-x: auto;
+		padding: 0.25rem 0;
+	}
+
+	.nav-tab {
+		background: linear-gradient(135deg, rgba(255, 255, 255, 0.05) 0%, rgba(255, 255, 255, 0.02) 100%);
+		border: 1px solid rgba(255, 255, 255, 0.1);
+		border-radius: 6px;
+		padding: 0.4rem 0.8rem;
+		color: #fff;
+		font-family: inherit;
+		font-size: 0.7rem;
+		font-weight: 500;
+		cursor: pointer;
+		position: relative;
+		display: flex;
+		align-items: center;
+		gap: 0.4rem;
+		transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+		white-space: nowrap;
+		overflow: hidden;
+	}
+
+	.nav-tab:hover {
+		border-color: var(--module-color);
+		background: linear-gradient(135deg, rgba(255, 255, 255, 0.08) 0%, rgba(255, 255, 255, 0.04) 100%);
+		transform: translateY(-1px);
+		box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+	}
+
+	.nav-tab.active {
+		border-color: var(--module-color);
+		background: linear-gradient(135deg, rgba(255, 255, 255, 0.1) 0%, rgba(255, 255, 255, 0.05) 100%);
+		box-shadow: 0 0 20px rgba(0, 212, 255, 0.2);
+	}
+
+	.tab-icon {
+		font-size: 1rem;
+		color: var(--module-color);
+		z-index: 2;
+		position: relative;
+	}
+
+	.tab-name {
+		color: #fff;
+		font-weight: 600;
+		letter-spacing: 0.02em;
+		z-index: 2;
+		position: relative;
+	}
+
+	.tab-glow {
+		position: absolute;
+		top: 50%;
+		left: 50%;
+		transform: translate(-50%, -50%);
+		width: 100%;
+		height: 100%;
+		background: radial-gradient(circle, var(--module-color), transparent);
+		opacity: 0;
+		transition: opacity 0.3s ease;
+		border-radius: 6px;
+	}
+
+	.nav-tab:hover .tab-glow,
+	.nav-tab.active .tab-glow {
+		opacity: 0.08;
+	}
+
+	.header-right {
+		display: flex;
+		align-items: center;
+		gap: 1.5rem;
+		flex-shrink: 0;
+	}
+
 	.system-metrics {
 		display: flex;
-		gap: 1.5rem;
+		gap: 1rem;
 	}
 
 	.metric-pod {
 		display: flex;
 		flex-direction: column;
 		align-items: center;
-		gap: 0.25rem;
+		gap: 0.2rem;
 	}
 
 	.metric-label {
-		font-size: 0.65rem;
+		font-size: 0.55rem;
 		color: rgba(255, 255, 255, 0.5);
 		font-weight: 400;
 		letter-spacing: 0.1em;
 	}
 
 	.metric-value {
-		font-size: 0.8rem;
+		font-size: 0.7rem;
 		font-weight: 600;
 		color: #fff;
 	}
@@ -348,19 +434,14 @@
 	.neural-time {
 		color: #00D4FF;
 		font-family: 'JetBrains Mono', monospace;
-		font-size: 0.7rem;
-	}
-
-	.header-right {
-		display: flex;
-		align-items: center;
+		font-size: 0.6rem;
 	}
 
 	.classification-banner {
 		display: flex;
 		align-items: center;
-		gap: 0.75rem;
-		padding: 0.5rem 1rem;
+		gap: 0.5rem;
+		padding: 0.4rem 0.8rem;
 		background: linear-gradient(45deg, rgba(255, 0, 128, 0.1), rgba(255, 69, 0, 0.1));
 		border: 1px solid rgba(255, 0, 128, 0.3);
 		border-radius: 4px;
@@ -368,125 +449,22 @@
 	}
 
 	.class-indicator {
-		width: 8px;
-		height: 8px;
+		width: 6px;
+		height: 6px;
 		background: #FF0080;
 		border-radius: 50%;
 		animation: classificationPulse 1.5s ease-in-out infinite;
 	}
 
 	.class-text {
-		font-size: 0.7rem;
+		font-size: 0.6rem;
 		color: #FF0080;
 		font-weight: 600;
 		letter-spacing: 0.05em;
 	}
 
 	.cyber-nav {
-		background: linear-gradient(135deg, rgba(0, 15, 30, 0.95) 0%, rgba(0, 8, 15, 0.95) 100%);
-		border-bottom: 1px solid rgba(139, 92, 246, 0.2);
-		padding: 1rem 1.5rem;
-		position: relative;
-		z-index: 9;
-		backdrop-filter: blur(15px);
-	}
-
-	.nav-grid {
-		display: grid;
-		grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
-		gap: 0.75rem;
-	}
-
-	.nav-module {
-		background: linear-gradient(135deg, rgba(255, 255, 255, 0.05) 0%, rgba(255, 255, 255, 0.02) 100%);
-		border: 1px solid rgba(255, 255, 255, 0.1);
-		border-radius: 8px;
-		padding: 0.75rem;
-		color: #fff;
-		font-family: inherit;
-		font-size: 0.7rem;
-		font-weight: 500;
-		cursor: pointer;
-		position: relative;
-		display: flex;
-		flex-direction: column;
-		align-items: center;
-		gap: 0.5rem;
-		transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-		overflow: hidden;
-	}
-
-	.nav-module::before {
-		content: '';
-		position: absolute;
-		top: 0;
-		left: -100%;
-		width: 100%;
-		height: 100%;
-		background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.1), transparent);
-		transition: left 0.6s ease;
-	}
-
-	.nav-module:hover::before {
-		left: 100%;
-	}
-
-	.nav-module:hover {
-		border-color: var(--module-color);
-		background: linear-gradient(135deg, rgba(255, 255, 255, 0.08) 0%, rgba(255, 255, 255, 0.04) 100%);
-		transform: translateY(-2px);
-		box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
-	}
-
-	.nav-module.active {
-		border-color: var(--module-color);
-		background: linear-gradient(135deg, rgba(255, 255, 255, 0.1) 0%, rgba(255, 255, 255, 0.05) 100%);
-		box-shadow: 0 0 30px rgba(0, 212, 255, 0.2);
-	}
-
-	.module-glow {
-		position: absolute;
-		top: 50%;
-		left: 50%;
-		transform: translate(-50%, -50%);
-		width: 60px;
-		height: 60px;
-		background: radial-gradient(circle, var(--module-color), transparent);
-		opacity: 0;
-		transition: opacity 0.3s ease;
-		border-radius: 50%;
-	}
-
-	.nav-module:hover .module-glow,
-	.nav-module.active .module-glow {
-		opacity: 0.1;
-	}
-
-	.module-icon {
-		font-size: 1.5rem;
-		color: var(--module-color);
-		z-index: 2;
-		position: relative;
-		animation: moduleFloat 4s ease-in-out infinite;
-	}
-
-	.module-name {
-		color: #fff;
-		font-weight: 600;
-		text-align: center;
-		letter-spacing: 0.05em;
-		z-index: 2;
-		position: relative;
-	}
-
-	.module-status-dot {
-		width: 6px;
-		height: 6px;
-		background: var(--module-color);
-		border-radius: 50%;
-		animation: statusDotPulse 2s ease-in-out infinite;
-		z-index: 2;
-		position: relative;
+		display: none;
 	}
 
 	.cyber-workspace {
