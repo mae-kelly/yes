@@ -18,28 +18,30 @@
 	let currentView = 'source_tables';
 	let currentTime = '';
 	let modules = [
-		{ id: 'source_tables', name: 'SRC', color: '#00ffff', icon: '◈' },
-		{ id: 'domain_metrics', name: 'DOM', color: '#ff00ff', icon: '◆' },
-		{ id: 'infrastructure_type', name: 'INF', color: '#0096ff', icon: '⬢' },
-		{ id: 'region_metrics', name: 'REG', color: '#00ffff', icon: '◉' },
-		{ id: 'country_metrics', name: 'CTY', color: '#ff00ff', icon: '⬟' },
-		{ id: 'data_center', name: 'DC', color: '#0096ff', icon: '⬡' },
-		{ id: 'cloud_regions', name: 'CLD', color: '#00ffff', icon: '◯' },
-		{ id: 'class_metrics', name: 'CLS', color: '#ff00ff', icon: '◐' },
-		{ id: 'system_classification', name: 'SYS', color: '#0096ff', icon: '◑' },
-		{ id: 'business_unit', name: 'BIZ', color: '#00ffff', icon: '◒' },
+		{ id: 'source_tables', name: 'SOURCE', color: '#00ffff', icon: '◈' },
+		{ id: 'domain_metrics', name: 'DOMAIN', color: '#ff00ff', icon: '◆' },
+		{ id: 'infrastructure_type', name: 'INFRA', color: '#0096ff', icon: '⬢' },
+		{ id: 'region_metrics', name: 'REGION', color: '#00ffff', icon: '◉' },
+		{ id: 'country_metrics', name: 'COUNTRY', color: '#ff00ff', icon: '⬟' },
+		{ id: 'data_center', name: 'DATACENTER', color: '#0096ff', icon: '⬡' },
+		{ id: 'cloud_regions', name: 'CLOUD', color: '#00ffff', icon: '◯' },
+		{ id: 'class_metrics', name: 'CLASS', color: '#ff00ff', icon: '◐' },
+		{ id: 'system_classification', name: 'SYSTEM', color: '#0096ff', icon: '◑' },
+		{ id: 'business_unit', name: 'BUSINESS', color: '#00ffff', icon: '◒' },
 		{ id: 'cio_metrics', name: 'CIO', color: '#ff00ff', icon: '◓' },
-		{ id: 'tanium_coverage', name: 'TAN', color: '#0096ff', icon: '⬠' },
-		{ id: 'cmdb_presence', name: 'CMB', color: '#00ffff', icon: '⬢' },
-		{ id: 'advanced_analytics', name: 'ADV', color: '#ff00ff', icon: '◎' }
+		{ id: 'tanium_coverage', name: 'TANIUM', color: '#0096ff', icon: '⬠' },
+		{ id: 'cmdb_presence', name: 'CMDB', color: '#00ffff', icon: '⬢' },
+		{ id: 'advanced_analytics', name: 'ADVANCED', color: '#ff00ff', icon: '◎' }
 	];
 
 	onMount(() => {
-		let updateTime = () => {
-			currentTime = new Date().toISOString().slice(0, 19).replace('T', ' ') + 'Z';
+		const updateTime = () => {
+			const now = new Date();
+			currentTime = now.toISOString().slice(0, 19).replace('T', ' ') + 'Z';
 		};
 		updateTime();
-		setInterval(updateTime, 1000);
+		const interval = setInterval(updateTime, 1000);
+		return () => clearInterval(interval);
 	});
 
 	function switchView(moduleId) {
@@ -55,11 +57,9 @@
 	</div>
 
 	<div class="neural-grid">
-		{#each Array(25) as _, i}
-			<div class="grid-line horizontal" style="top: {i * 4}%;"></div>
-		{/each}
-		{#each Array(25) as _, i}
-			<div class="grid-line vertical" style="left: {i * 4}%;"></div>
+		{#each Array(20) as _, i}
+			<div class="grid-line horizontal" style="top: {i * 5}%;"></div>
+			<div class="grid-line vertical" style="left: {i * 5}%;"></div>
 		{/each}
 	</div>
 
@@ -72,7 +72,7 @@
 						<div class="ring ring-middle"></div>
 						<div class="ring ring-inner"></div>
 					</div>
-					<div class="logo-center">◆</div>
+					<div class="logo-center">AO1</div>
 				</div>
 				<div class="brand-text">
 					<h1 class="title">AO1 VISIBILITY</h1>
@@ -96,13 +96,13 @@
 			
 			<div class="time-panel">
 				<div class="time-display">
-					<span class="time-label">TIME</span>
+					<span class="time-label">SYSTEM TIME</span>
 					<span class="time-value">{currentTime}</span>
 				</div>
 				<div class="status-indicators">
 					<div class="indicator active"></div>
 					<div class="indicator active"></div>
-					<div class="indicator"></div>
+					<div class="indicator active"></div>
 				</div>
 			</div>
 		</div>
@@ -154,14 +154,14 @@
 
 <style>
 	:global(body) {
-		font-family: 'JetBrains Mono', 'Consolas', 'Monaco', monospace;
+		font-family: 'Orbitron', 'JetBrains Mono', monospace;
 		background: #000;
 		color: #fff;
 		overflow: hidden;
 		margin: 0;
 		padding: 0;
-		font-size: 11px;
-		line-height: 1.3;
+		font-size: 14px;
+		line-height: 1.4;
 	}
 
 	.cyberpunk-interface {
@@ -188,11 +188,11 @@
 
 	.rain-drop {
 		position: absolute;
-		width: 1px;
-		height: 15px;
+		width: 2px;
+		height: 20px;
 		background: linear-gradient(180deg, transparent, #00ffff, transparent);
 		animation: rainfall linear infinite;
-		opacity: 0.12;
+		opacity: 0.15;
 	}
 
 	@keyframes rainfall {
@@ -229,35 +229,34 @@
 
 	.cyber-header {
 		background: linear-gradient(135deg, rgba(0, 0, 0, 0.95), rgba(26, 13, 46, 0.85));
-		border-bottom: 1px solid #00ffff;
+		border-bottom: 2px solid #00ffff;
 		backdrop-filter: blur(25px);
 		z-index: 10;
 		position: relative;
-		box-shadow: 0 2px 20px rgba(0, 255, 255, 0.15);
-		padding: 0.4rem 0;
+		box-shadow: 0 4px 30px rgba(0, 255, 255, 0.2);
+		height: 80px;
 		flex-shrink: 0;
-		height: 60px;
 	}
 
 	.header-content {
 		display: flex;
 		align-items: center;
-		padding: 0.4rem 0.8rem;
-		gap: 0.8rem;
+		padding: 0 1.5rem;
+		gap: 2rem;
 		height: 100%;
 	}
 
 	.brand-section {
 		display: flex;
 		align-items: center;
-		gap: 0.6rem;
+		gap: 1rem;
 		flex-shrink: 0;
 	}
 
 	.neural-logo {
 		position: relative;
-		width: 32px;
-		height: 32px;
+		width: 50px;
+		height: 50px;
 		display: flex;
 		align-items: center;
 		justify-content: center;
@@ -272,7 +271,7 @@
 	.ring {
 		position: absolute;
 		border-radius: 50%;
-		border: 1px solid;
+		border: 2px solid;
 		top: 50%;
 		left: 50%;
 		transform: translate(-50%, -50%);
@@ -280,63 +279,65 @@
 	}
 
 	.ring-outer {
-		width: 32px;
-		height: 32px;
+		width: 50px;
+		height: 50px;
 		border-color: rgba(0, 255, 255, 0.6);
 	}
 
 	.ring-middle {
-		width: 22px;
-		height: 22px;
+		width: 35px;
+		height: 35px;
 		border-color: rgba(255, 0, 255, 0.4);
 		animation-direction: reverse;
 		animation-duration: 6s;
 	}
 
 	.ring-inner {
-		width: 14px;
-		height: 14px;
+		width: 20px;
+		height: 20px;
 		border-color: rgba(0, 150, 255, 0.8);
 		animation-duration: 4s;
 	}
 
 	.logo-center {
-		font-size: 1rem;
+		font-size: 0.9rem;
+		font-weight: 700;
 		color: rgba(0, 255, 255, 0.9);
-		text-shadow: 0 0 12px rgba(0, 255, 255, 0.8);
+		text-shadow: 0 0 15px rgba(0, 255, 255, 0.8);
 		z-index: 3;
 		position: relative;
 		animation: corePulse 3s ease-in-out infinite;
+		letter-spacing: 0.1em;
 	}
 
 	.brand-text {
 		display: flex;
 		flex-direction: column;
-		gap: 0.1rem;
+		gap: 0.2rem;
 	}
 
 	.title {
-		font-size: 0.9rem;
+		font-size: 1.4rem;
 		font-weight: 700;
 		color: #ffffff;
 		margin: 0;
-		text-shadow: 0 0 10px rgba(0, 255, 255, 0.5);
-		letter-spacing: 0.03em;
+		text-shadow: 0 0 15px rgba(0, 255, 255, 0.5);
+		letter-spacing: 0.05em;
 	}
 
 	.subtitle {
-		font-size: 0.4rem;
+		font-size: 0.65rem;
 		color: rgba(255, 255, 255, 0.6);
 		text-transform: uppercase;
-		letter-spacing: 0.05em;
+		letter-spacing: 0.1em;
 	}
 
 	.tab-navigation {
 		display: flex;
 		flex: 1;
-		gap: 0.2rem;
+		gap: 0.5rem;
 		overflow-x: auto;
-		padding: 0.3rem 0;
+		padding: 0.5rem 0;
 		scrollbar-width: none;
 		-ms-overflow-style: none;
 		align-items: center;
@@ -350,11 +351,11 @@
 	.cyber-tab {
 		background: linear-gradient(135deg, rgba(0, 0, 0, 0.7) 0%, rgba(255, 255, 255, 0.02) 100%);
 		border: 1px solid rgba(255, 255, 255, 0.1);
-		border-radius: 4px;
-		padding: 0.3rem 0.5rem;
+		border-radius: 6px;
+		padding: 0.6rem 1rem;
 		color: #ffffff;
 		font-family: inherit;
-		font-size: 0.5rem;
+		font-size: 0.75rem;
 		font-weight: 600;
 		cursor: pointer;
 		position: relative;
@@ -364,11 +365,11 @@
 		overflow: hidden;
 		display: flex;
 		align-items: center;
-		gap: 0.3rem;
+		gap: 0.5rem;
 		text-transform: uppercase;
-		letter-spacing: 0.02em;
+		letter-spacing: 0.05em;
 		min-width: fit-content;
-		height: 32px;
+		height: 45px;
 	}
 
 	.cyber-tab::before {
@@ -389,27 +390,27 @@
 	.cyber-tab:hover {
 		border-color: var(--tab-color);
 		background: linear-gradient(135deg, rgba(0, 0, 0, 0.8) 0%, rgba(255, 255, 255, 0.05) 100%);
-		transform: translateY(-1px);
-		box-shadow: 0 4px 15px rgba(0, 0, 0, 0.4);
+		transform: translateY(-2px);
+		box-shadow: 0 6px 20px rgba(0, 0, 0, 0.4);
 	}
 
 	.cyber-tab.active {
 		border-color: var(--tab-color);
 		background: linear-gradient(135deg, rgba(0, 0, 0, 0.9) 0%, rgba(255, 255, 255, 0.08) 100%);
-		box-shadow: 0 0 20px rgba(0, 255, 255, 0.3);
+		box-shadow: 0 0 25px rgba(0, 255, 255, 0.3);
 	}
 
 	.tab-icon {
-		font-size: 0.7rem;
+		font-size: 1.1rem;
 		color: var(--tab-color);
-		text-shadow: 0 0 8px var(--tab-color);
+		text-shadow: 0 0 10px var(--tab-color);
 	}
 
 	.tab-name {
 		position: relative;
 		z-index: 2;
-		letter-spacing: 0.03em;
-		font-size: 0.5rem;
+		letter-spacing: 0.05em;
+		font-size: 0.75rem;
 	}
 
 	.tab-glow {
@@ -421,56 +422,56 @@
 		background: radial-gradient(circle, var(--tab-color), transparent);
 		opacity: 0;
 		transition: opacity 0.3s ease;
-		border-radius: 4px;
+		border-radius: 6px;
 	}
 
 	.cyber-tab:hover .tab-glow,
 	.cyber-tab.active .tab-glow {
-		opacity: 0.06;
+		opacity: 0.08;
 	}
 
 	.time-panel {
 		display: flex;
 		align-items: center;
-		gap: 0.8rem;
+		gap: 1rem;
 		flex-shrink: 0;
 		background: linear-gradient(135deg, rgba(0, 0, 0, 0.7), rgba(0, 255, 255, 0.03));
 		border: 1px solid rgba(0, 255, 255, 0.3);
-		border-radius: 4px;
-		padding: 0.5rem 0.7rem;
+		border-radius: 6px;
+		padding: 0.7rem 1.2rem;
 		backdrop-filter: blur(10px);
 	}
 
 	.time-display {
 		display: flex;
 		flex-direction: column;
-		gap: 0.1rem;
-		text-align: center;
+		gap: 0.2rem;
 	}
 
 	.time-label {
-		font-size: 0.4rem;
+		font-size: 0.6rem;
 		color: rgba(255, 255, 255, 0.5);
-		font-weight: 400;
+		font-weight: 600;
 		text-transform: uppercase;
 		letter-spacing: 0.1em;
 	}
 
 	.time-value {
-		font-size: 0.5rem;
+		font-size: 0.8rem;
 		font-weight: 600;
-		color: #ffffff;
+		color: #00ffff;
+		text-shadow: 0 0 8px rgba(0, 255, 255, 0.5);
 	}
 
 	.status-indicators {
 		display: flex;
 		flex-direction: column;
-		gap: 0.2rem;
+		gap: 0.3rem;
 	}
 
 	.indicator {
-		width: 4px;
-		height: 4px;
+		width: 6px;
+		height: 6px;
 		background: rgba(255, 255, 255, 0.2);
 		border-radius: 50%;
 		transition: all 0.3s ease;
@@ -478,7 +479,7 @@
 
 	.indicator.active {
 		background: #00ff85;
-		box-shadow: 0 0 6px #00ff85;
+		box-shadow: 0 0 8px #00ff85;
 		animation: indicatorPulse 2s ease-in-out infinite;
 	}
 
@@ -486,10 +487,9 @@
 		flex: 1;
 		position: relative;
 		z-index: 5;
-		padding: 0.5rem;
+		padding: 1rem;
 		overflow: hidden;
 		min-height: 0;
-		height: calc(100vh - 60px);
 	}
 
 	.viewport-frame {
@@ -500,11 +500,11 @@
 			rgba(0, 0, 0, 0.4) 0%, 
 			rgba(0, 255, 255, 0.02) 50%,
 			rgba(255, 0, 255, 0.02) 100%);
-		border: 1px solid rgba(0, 255, 255, 0.2);
-		border-radius: 8px;
+		border: 2px solid rgba(0, 255, 255, 0.2);
+		border-radius: 10px;
 		backdrop-filter: blur(20px);
 		box-shadow: 
-			0 6px 25px rgba(0, 0, 0, 0.3),
+			0 8px 32px rgba(0, 0, 0, 0.3),
 			inset 0 1px 0 rgba(255, 255, 255, 0.1);
 		overflow: hidden;
 	}
@@ -521,41 +521,41 @@
 
 	.corner {
 		position: absolute;
-		width: 12px;
-		height: 12px;
-		border: 1px solid rgba(0, 255, 255, 0.6);
+		width: 20px;
+		height: 20px;
+		border: 2px solid rgba(0, 255, 255, 0.6);
 	}
 
 	.corner.tl {
-		top: 8px;
-		left: 8px;
+		top: 10px;
+		left: 10px;
 		border-right: none;
 		border-bottom: none;
-		border-top-left-radius: 2px;
+		border-top-left-radius: 4px;
 	}
 
 	.corner.tr {
-		top: 8px;
-		right: 8px;
+		top: 10px;
+		right: 10px;
 		border-left: none;
 		border-bottom: none;
-		border-top-right-radius: 2px;
+		border-top-right-radius: 4px;
 	}
 
 	.corner.bl {
-		bottom: 8px;
-		left: 8px;
+		bottom: 10px;
+		left: 10px;
 		border-right: none;
 		border-top: none;
-		border-bottom-left-radius: 2px;
+		border-bottom-left-radius: 4px;
 	}
 
 	.corner.br {
-		bottom: 8px;
-		right: 8px;
+		bottom: 10px;
+		right: 10px;
 		border-left: none;
 		border-top: none;
-		border-bottom-right-radius: 2px;
+		border-bottom-right-radius: 4px;
 	}
 
 	.content-stream {
@@ -563,26 +563,26 @@
 		z-index: 2;
 		width: 100%;
 		height: 100%;
-		padding: 0.8rem;
+		padding: 1.5rem;
 		overflow-y: auto;
 		overflow-x: hidden;
 	}
 
 	:global(::-webkit-scrollbar) {
-		width: 6px;
+		width: 8px;
 	}
 
 	:global(::-webkit-scrollbar-track) {
 		background: rgba(0, 0, 0, 0.2);
-		border-radius: 3px;
+		border-radius: 4px;
 	}
 
 	:global(::-webkit-scrollbar-thumb) {
 		background: linear-gradient(135deg, 
 			rgba(0, 255, 255, 0.6), 
 			rgba(255, 0, 255, 0.4));
-		border-radius: 3px;
-		box-shadow: 0 0 8px rgba(0, 255, 255, 0.3);
+		border-radius: 4px;
+		box-shadow: 0 0 10px rgba(0, 255, 255, 0.3);
 	}
 
 	:global(::-webkit-scrollbar-thumb:hover) {
@@ -600,60 +600,51 @@
 		0%, 100% { 
 			opacity: 0.9; 
 			transform: scale(1);
-			text-shadow: 0 0 12px rgba(0, 255, 255, 0.8);
+			text-shadow: 0 0 15px rgba(0, 255, 255, 0.8);
 		}
 		50% { 
 			opacity: 1; 
 			transform: scale(1.05);
-			text-shadow: 0 0 18px rgba(0, 255, 255, 1);
+			text-shadow: 0 0 25px rgba(0, 255, 255, 1);
 		}
 	}
 
 	@keyframes indicatorPulse {
 		0%, 100% { opacity: 1; transform: scale(1); }
-		50% { opacity: 0.6; transform: scale(1.2); }
+		50% { opacity: 0.6; transform: scale(1.3); }
 	}
 
 	@media (max-width: 1400px) {
+		.tab-navigation {
+			gap: 0.3rem;
+		}
+
+		.cyber-tab {
+			padding: 0.5rem 0.8rem;
+			font-size: 0.7rem;
+		}
+	}
+
+	@media (max-width: 768px) {
+		.cyber-header {
+			height: auto;
+		}
+
 		.header-content {
 			flex-wrap: wrap;
-			padding: 0.6rem;
-			gap: 0.5rem;
+			padding: 1rem;
+			gap: 1rem;
 		}
 
 		.tab-navigation {
 			order: 3;
 			width: 100%;
-			margin-top: 0.4rem;
-		}
-
-		.cyber-header {
-			height: auto;
-		}
-
-		.data-viewport {
-			height: calc(100vh - 85px);
-		}
-	}
-
-	@media (max-width: 768px) {
-		.brand-section {
-			flex-direction: column;
-			text-align: center;
-			gap: 0.3rem;
 		}
 
 		.cyber-tab {
-			padding: 0.4rem 0.5rem;
-			font-size: 0.45rem;
-		}
-
-		.data-viewport {
-			padding: 0.4rem;
-		}
-
-		.content-stream {
-			padding: 0.6rem;
+			padding: 0.5rem 0.7rem;
+			font-size: 0.65rem;
+			height: 40px;
 		}
 	}
 </style>
