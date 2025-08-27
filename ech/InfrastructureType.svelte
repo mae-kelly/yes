@@ -1,503 +1,904 @@
-<!-- InfrastructureType.svelte -->
+<!-- InfrastructureType.svelte - Enhanced with Perfect Screen Fit -->
 <script>
 	import { onMount } from 'svelte';
 	
 	let data = {};
 	let loading = true;
+	let selectedInfra = null;
+	let infraDetails = [];
+	let searchTerm = '';
+	let currentPage = 1;
+	let itemsPerPage = 12;
+	let viewMode = 'table';
 
 	onMount(async () => {
 		try {
-			const response = await fetch('http://localhost:5000/api/infrastructure_type');
-			data = await response.json();
+			let response = await fetch('http://localhost:5000/api/infrastructure_type');
+			let result = await response.json();
+			data = result;
 			loading = false;
 		} catch (err) {
+			console.error('Infrastructure type error:', err);
 			loading = false;
 		}
 	});
 
 	$: sortedInfra = data.infrastructure_matrix ? 
-		Object.entries(data.infrastructure_matrix).sort((a, b) => b[1] - a[1]).slice(0, 16) : [];
+		Object.entries(data.infrastructure_matrix)
+			.filter(([infra]) => infra.toLowerCase().includes(searchTerm.toLowerCase()))
+			.sort((a, b) => b[1] - a[1]) : [];
+	
+	$: paginatedInfra = sortedInfra.slice(
+		(currentPage - 1) * itemsPerPage,
+		currentPage * itemsPerPage
+	);
+	
+	$: totalPages = Math.ceil(sortedInfra.length / itemsPerPage);
+
 	$: maxCount = sortedInfra.length > 0 ? Math.max(...sortedInfra.map(([,count]) => count)) : 1;
 
 	function getThreatLevel(count) {
-		const percentage = (count / maxCount) * 100;
-		if (percentage >= 80) return { level: 'CRITICAL', color: '#ff00ff' };
-		if (percentage >= 60) return { level: 'HIGH', color: '#ff0066' };
-		if (percentage >= 40) return { level: 'MEDIUM', color: '#ffaa00' };
-		return { level: 'LOW', color: '#00ffff' };
+		if (!maxCount) return { level: 'LOW', color: '#00ffff', intensity: 0.3 };
+		let percentage = (count / maxCount) * 100;
+		if (percentage >= 75) return { level: 'CRITICAL', color: '#ff00ff', intensity: 1.0 };
+		if (percentage >= 50) return { level: 'HIGH', color: '#ff0066', intensity: 0.8 };
+		if (percentage >= 25) return { level: 'MEDIUM', color: '#ffaa00', intensity: 0.6 };
+		return { level: 'LOW', color: '#00ffff', intensity: 0.4 };
 	}
+
+	function getPercentage(count) {
+		let total = Object.values(data.infrastructure_matrix || {}).reduce((a, b) => a + b, 0);
+		if (!total) return 0;
+		return ((count / total) * 100).toFixed(2);
+	}
+
+	async function drillDownInfra(infra, count) {
+		selectedInfra = { infra, count };
+		loading = true;
+		
+		try {
+			let response = await fetch(`http://localhost:5000/api/infrastructure_type/breakdown?type=${encodeURIComponent(infra)}`);
+			let result = await response.json();
+			infraDetails = result.details || [];
+			loading = false;
+		} catch (err) {
+			console.error('Infrastructure drill-down error:', err);
+			infraDetails = [];
+			loading = false;
+		}
+	}
+
+	function closeDetails() {
+		selectedInfra = null;
+		infraDetails = [];
+	}
+
+	$: threatDistribution = sortedInfra.reduce((acc, [_, count]) => {
+		let level = getThreatLevel(count).level;
+		acc[level] = (acc[level] || 0) + 1;
+		return acc;
+	}, {});
+
+	$: categoryBreakdown = sortedInfra.reduce((acc, [infra, count]) => {
+		let category = 'Other';
+		let infraLower = infra.toLowerCase();
+		if (infraLower.includes('cloud')) category = 'Cloud';
+		else if (infraLower.includes('on-prem') || infraLower.includes('server')) category = 'On-Premise';
+		else if (infraLower.includes('saas')) category = 'SaaS';
+		else if (infraLower.includes('api')) category = 'API';
+		
+		acc[category] = (acc[category] || 0) + count;
+		return acc;
+	}, {});
 </script>
 
-<div class="infra-command-center">
-	<div class="command-header">
-		<div class="header-core">
-			<div class="core-hexagon">
-				<div class="hex-ring"></div>
-				<div class="hex-center">⬢</div>
+<div class="infra-dashboard">
+	<!-- Header Section -->
+	<div class="header-section">
+		<div class="header-content">
+			<div class="title-block">
+				<h1><span class="icon">⬢</span> INFRASTRUCTURE MATRIX</h1>
+				<p>Pipe-Separated Classification Analysis</p>
 			</div>
-			<div class="command-data">
-				<h2 class="command-title">INFRASTRUCTURE</h2>
-				<p class="command-subtitle">PIPE-SEPARATED CLASSIFICATION MATRIX</p>
-			</div>
-		</div>
-		<div class="status-display">
-			<div class="status-grid">
-				<div class="status-cell">
-					<div class="cell-value">{Object.keys(data.infrastructure_matrix || {}).length}</div>
-					<div class="cell-label">TYPES</div>
+			<div class="metrics-row">
+				<div class="metric-card">
+					<div class="metric-value">{sortedInfra.length}</div>
+					<div class="metric-label">TYPES</div>
 				</div>
-				<div class="status-cell">
-					<div class="cell-value">{Object.values(data.infrastructure_matrix || {}).reduce((a, b) => a + b, 0).toLocaleString()}</div>
-					<div class="cell-label">TOTAL</div>
+				<div class="metric-card">
+					<div class="metric-value">{Object.values(data.infrastructure_matrix || {}).reduce((a, b) => a + b, 0).toLocaleString()}</div>
+					<div class="metric-label">TOTAL ASSETS</div>
+				</div>
+				<div class="metric-card">
+					<div class="metric-value">{Object.keys(categoryBreakdown).length}</div>
+					<div class="metric-label">CATEGORIES</div>
+				</div>
+				<div class="metric-card critical">
+					<div class="metric-value">{threatDistribution['CRITICAL'] || 0}</div>
+					<div class="metric-label">CRITICAL</div>
 				</div>
 			</div>
 		</div>
 	</div>
 
-	{#if loading}
-		<div class="scanning-interface">
-			<div class="scanner-core">
-				<div class="scan-rings">
-					{#each Array(5) as _, i}
-						<div class="scan-ring" style="--delay: {i * 0.2}s; --size: {60 + i * 15}px"></div>
+	<!-- Main Content Area -->
+	<div class="main-content">
+		<!-- Left Panel: Table & Grid Toggle -->
+		<div class="table-panel">
+			<div class="panel-header">
+				<h3>INFRASTRUCTURE ANALYSIS</h3>
+				<div class="controls">
+					<div class="search-bar">
+						<input 
+							type="text" 
+							bind:value={searchTerm}
+							placeholder="Search infrastructure..."
+							class="search-input"
+						/>
+					</div>
+					<div class="view-toggle">
+						<button class="toggle-btn {viewMode === 'table' ? 'active' : ''}" on:click={() => viewMode = 'table'}>
+							TABLE
+						</button>
+						<button class="toggle-btn {viewMode === 'grid' ? 'active' : ''}" on:click={() => viewMode = 'grid'}>
+							GRID
+						</button>
+					</div>
+				</div>
+			</div>
+			
+			{#if loading && !selectedInfra}
+				<div class="loading-state">
+					<div class="spinner"></div>
+					<p>Analyzing infrastructure...</p>
+				</div>
+			{:else if selectedInfra}
+				<!-- Drill-down View -->
+				<div class="drill-view">
+					<div class="drill-header">
+						<h4>{selectedInfra.infra}</h4>
+						<button class="close-btn" on:click={closeDetails}>✕</button>
+					</div>
+					<div class="table-container">
+						<table class="data-table">
+							<thead>
+								<tr>
+									<th>ATTRIBUTE</th>
+									<th>VALUE</th>
+									<th>STATUS</th>
+								</tr>
+							</thead>
+							<tbody>
+								<tr>
+									<td>Total Assets</td>
+									<td class="value-cell">{selectedInfra.count.toLocaleString()}</td>
+									<td><span class="status-badge active">ACTIVE</span></td>
+								</tr>
+								<tr>
+									<td>Coverage</td>
+									<td class="value-cell">{getPercentage(selectedInfra.count)}%</td>
+									<td><span class="status-badge {getThreatLevel(selectedInfra.count).level.toLowerCase()}">{getThreatLevel(selectedInfra.count).level}</span></td>
+								</tr>
+								<tr>
+									<td>Category</td>
+									<td class="value-cell">
+										{selectedInfra.infra.toLowerCase().includes('cloud') ? 'Cloud' :
+										 selectedInfra.infra.toLowerCase().includes('on-prem') ? 'On-Premise' :
+										 selectedInfra.infra.toLowerCase().includes('saas') ? 'SaaS' : 'Other'}
+									</td>
+									<td><span class="status-badge active">CLASSIFIED</span></td>
+								</tr>
+							</tbody>
+						</table>
+					</div>
+				</div>
+			{:else if viewMode === 'table'}
+				<!-- Main Table -->
+				<div class="table-container">
+					<table class="data-table">
+						<thead>
+							<tr>
+								<th>INFRASTRUCTURE</th>
+								<th>COUNT</th>
+								<th>COVERAGE</th>
+								<th>THREAT</th>
+								<th>ACTION</th>
+							</tr>
+						</thead>
+						<tbody>
+							{#each paginatedInfra as [infra, count]}
+								{@const threat = getThreatLevel(count)}
+								<tr>
+									<td class="infra-cell">
+										<div class="cell-content">
+											<span class="indicator" style="background: {threat.color}"></span>
+											<span>{infra}</span>
+										</div>
+									</td>
+									<td class="center">{count.toLocaleString()}</td>
+									<td>
+										<div class="coverage-cell">
+											<div class="coverage-bar">
+												<div class="coverage-fill" style="width: {(count/maxCount)*100}%; background: {threat.color}"></div>
+											</div>
+											<span class="coverage-text">{getPercentage(count)}%</span>
+										</div>
+									</td>
+									<td class="center">
+										<span class="threat-badge {threat.level.toLowerCase()}">{threat.level}</span>
+									</td>
+									<td class="center">
+										<button class="drill-btn" on:click={() => drillDownInfra(infra, count)}>
+											DRILL →
+										</button>
+									</td>
+								</tr>
+							{/each}
+						</tbody>
+					</table>
+				</div>
+			{:else}
+				<!-- Grid View -->
+				<div class="grid-container">
+					{#each paginatedInfra as [infra, count]}
+						{@const threat = getThreatLevel(count)}
+						<div class="grid-card" style="--card-color: {threat.color}" on:click={() => drillDownInfra(infra, count)}>
+							<div class="card-header">
+								<span class="card-icon">⬢</span>
+								<span class="threat-indicator {threat.level.toLowerCase()}">{threat.level}</span>
+							</div>
+							<div class="card-body">
+								<div class="infra-name">{infra}</div>
+								<div class="infra-count">{count.toLocaleString()}</div>
+								<div class="progress-bar">
+									<div class="progress-fill" style="width: {(count/maxCount)*100}%; background: {threat.color}"></div>
+								</div>
+								<div class="card-percentage">{getPercentage(count)}%</div>
+							</div>
+						</div>
 					{/each}
 				</div>
-				<div class="scan-symbol">⬢</div>
-			</div>
-			<div class="scan-text">ANALYZING INFRASTRUCTURE TYPES...</div>
+			{/if}
+			
+			<!-- Pagination -->
+			{#if !selectedInfra}
+				<div class="pagination">
+					<button 
+						on:click={() => currentPage = Math.max(1, currentPage - 1)}
+						disabled={currentPage === 1}
+					>
+						←
+					</button>
+					<span>Page {currentPage} of {totalPages}</span>
+					<button 
+						on:click={() => currentPage = Math.min(totalPages, currentPage + 1)}
+						disabled={currentPage === totalPages}
+					>
+						→
+					</button>
+				</div>
+			{/if}
 		</div>
-	{:else}
-		<div class="infra-matrix">
-			<div class="matrix-grid">
-				{#each sortedInfra as [type, count], i}
-					{@const threat = getThreatLevel(count)}
-					<div class="infra-node" style="--node-color: {threat.color}; animation-delay: {i * 0.1}s">
-						<div class="node-frame">
-							<div class="frame-corners">
-								<div class="corner tl"></div>
-								<div class="corner tr"></div>
-								<div class="corner bl"></div>
-								<div class="corner br"></div>
-							</div>
-							
-							<div class="node-header">
-								<div class="node-icon">◈</div>
-								<div class="threat-indicator {threat.level.toLowerCase()}">{threat.level}</div>
-							</div>
 
-							<div class="node-content">
-								<div class="infra-type">{type.toUpperCase()}</div>
-								<div class="infra-count">{count.toLocaleString()}</div>
-								
-								<div class="metric-bars">
-									<div class="metric-bar">
-										<div class="bar-fill" style="width: {(count / maxCount) * 100}%; background: {threat.color};"></div>
-									</div>
-									<div class="metric-percentage">{((count / maxCount) * 100).toFixed(1)}%</div>
-								</div>
-							</div>
-
-							<div class="node-footer">
-								<div class="connection-ports">
-									{#each Array(6) as _, j}
-										<div class="port" style="animation-delay: {j * 0.2}s"></div>
-									{/each}
-								</div>
-							</div>
-
-							<div class="node-glow"></div>
+		<!-- Right Panel: Visualizations -->
+		<div class="viz-panel">
+			<!-- Category Distribution -->
+			<div class="viz-card">
+				<h4>CATEGORY DISTRIBUTION</h4>
+				<div class="donut-chart">
+					<svg viewBox="0 0 200 200">
+						{#if Object.keys(categoryBreakdown).length > 0}
+							{@const total = Object.values(categoryBreakdown).reduce((a, b) => a + b, 0)}
+							{@const radius = 60}
+							{@const circumference = 2 * Math.PI * radius}
+							{#each Object.entries(categoryBreakdown) as [category, count], i}
+								{@const percentage = (count / total) * 100}
+								{@const strokeDasharray = (percentage / 100) * circumference}
+								{@const rotation = Object.entries(categoryBreakdown)
+									.slice(0, i)
+									.reduce((acc, [_, c]) => acc + (c / total) * 360, -90)}
+								{@const color = category === 'Cloud' ? '#00ffff' : 
+									category === 'On-Premise' ? '#ff00ff' : 
+									category === 'SaaS' ? '#ffaa00' : '#0096ff'}
+								<circle
+									cx="100"
+									cy="100"
+									r={radius}
+									fill="none"
+									stroke={color}
+									stroke-width="30"
+									stroke-dasharray="{strokeDasharray} {circumference}"
+									transform="rotate({rotation} 100 100)"
+									opacity="0.8"
+								/>
+							{/each}
+						{/if}
+						<text x="100" y="100" text-anchor="middle" fill="white" font-size="24" font-weight="bold">
+							{Object.keys(categoryBreakdown).length}
+						</text>
+						<text x="100" y="115" text-anchor="middle" fill="rgba(255,255,255,0.6)" font-size="10">
+							CATEGORIES
+						</text>
+					</svg>
+				</div>
+				<div class="legend">
+					{#each Object.entries(categoryBreakdown) as [category, count]}
+						{@const color = category === 'Cloud' ? '#00ffff' : 
+							category === 'On-Premise' ? '#ff00ff' : 
+							category === 'SaaS' ? '#ffaa00' : '#0096ff'}
+						<div class="legend-item">
+							<span class="legend-color" style="background: {color}"></span>
+							<span>{category}: {count.toLocaleString()}</span>
 						</div>
-					</div>
-				{/each}
+					{/each}
+				</div>
 			</div>
-		</div>
 
-		<div class="analysis-panel">
-			<div class="panel-header">
-				<div class="header-symbol">◎</div>
-				<h3>INFRASTRUCTURE ANALYSIS</h3>
-			</div>
-			<div class="analysis-grid">
-				<div class="analysis-stat">
-					<div class="stat-icon">▣</div>
-					<div class="stat-data">
-						<div class="stat-value">{sortedInfra.length}</div>
-						<div class="stat-label">ACTIVE TYPES</div>
-					</div>
-				</div>
-				<div class="analysis-stat">
-					<div class="stat-icon">◆</div>
-					<div class="stat-data">
-						<div class="stat-value">{sortedInfra.length > 0 ? sortedInfra[0][0].toUpperCase() : 'N/A'}</div>
-						<div class="stat-label">DOMINANT TYPE</div>
-					</div>
-				</div>
-				<div class="analysis-stat">
-					<div class="stat-icon">◈</div>
-					<div class="stat-data">
-						<div class="stat-value">{sortedInfra.length > 0 ? ((sortedInfra[0][1] / Object.values(data.infrastructure_matrix || {}).reduce((a, b) => a + b, 0)) * 100).toFixed(1) : 0}%</div>
-						<div class="stat-label">DOMINANCE</div>
-					</div>
+			<!-- Top Infrastructure -->
+			<div class="viz-card">
+				<h4>TOP 5 INFRASTRUCTURE</h4>
+				<div class="bar-chart">
+					{#each sortedInfra.slice(0, 5) as [infra, count]}
+						{@const maxFreq = sortedInfra[0]?.[1] || 1}
+						{@const threat = getThreatLevel(count)}
+						<div class="bar-item">
+							<div class="bar-label">{infra.substring(0, 20)}{infra.length > 20 ? '...' : ''}</div>
+							<div class="bar-container">
+								<div class="bar-fill" 
+									style="width: {(count/maxFreq)*100}%; background: linear-gradient(90deg, {threat.color}, {threat.color}80)">
+								</div>
+								<span class="bar-value">{count.toLocaleString()}</span>
+							</div>
+						</div>
+					{/each}
 				</div>
 			</div>
-		</div>
-	{/if}
 
-	<div class="interface-footer">
-		<div class="footer-line"></div>
-		<div class="protocol-notice">
-			⬢ INFRASTRUCTURE CLASSIFICATION // ANALYSIS PROTOCOL ACTIVE
+			<!-- Threat Matrix -->
+			<div class="viz-card">
+				<h4>THREAT MATRIX</h4>
+				<div class="threat-grid">
+					{#each Object.entries(threatDistribution) as [level, count]}
+						{@const color = level === 'CRITICAL' ? '#ff00ff' : 
+							level === 'HIGH' ? '#ff0066' : 
+							level === 'MEDIUM' ? '#ffaa00' : '#00ffff'}
+						<div class="threat-cell" style="--threat-color: {color}">
+							<div class="threat-level">{level}</div>
+							<div class="threat-count">{count}</div>
+							<div class="threat-bar">
+								<div class="threat-fill" style="width: {(count/sortedInfra.length)*100}%; background: {color}"></div>
+							</div>
+						</div>
+					{/each}
+				</div>
+			</div>
 		</div>
 	</div>
 </div>
 
 <style>
-	.infra-command-center {
-		width: 100%;
-		height: 100%;
-		font-family: 'Orbitron', 'Exo 2', monospace;
+	.infra-dashboard {
+		height: 100vh;
+		display: flex;
+		flex-direction: column;
+		background: linear-gradient(135deg, #0a0a0a 0%, #1a1a2e 100%);
 		color: #fff;
-		display: flex;
-		flex-direction: column;
-		text-transform: uppercase;
-		letter-spacing: 0.05em;
-	}
-
-	.command-header {
-		background: linear-gradient(135deg, 
-			rgba(0, 0, 0, 0.8) 0%, 
-			rgba(0, 150, 255, 0.05) 50%,
-			rgba(0, 0, 0, 0.8) 100%);
-		border: 2px solid #0096ff;
-		border-radius: 12px;
-		padding: 1.5rem 2rem;
-		margin-bottom: 1.5rem;
-		backdrop-filter: blur(20px);
-		box-shadow: 0 0 40px rgba(0, 150, 255, 0.2);
-		display: flex;
-		justify-content: space-between;
-		align-items: center;
-	}
-
-	.header-core {
-		display: flex;
-		align-items: center;
-		gap: 1.5rem;
-	}
-
-	.core-hexagon {
-		position: relative;
-		width: 80px;
-		height: 80px;
-		display: flex;
-		align-items: center;
-		justify-content: center;
-	}
-
-	.hex-ring {
-		position: absolute;
-		width: 100%;
-		height: 100%;
-		border: 3px solid #0096ff;
-		clip-path: polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%);
-		animation: hexRotate 8s linear infinite;
-		opacity: 0.7;
-	}
-
-	.hex-center {
-		font-size: 2rem;
-		color: #0096ff;
-		text-shadow: 0 0 20px #0096ff;
-		animation: hexPulse 3s ease-in-out infinite;
-		z-index: 2;
-	}
-
-	.command-data {
-		display: flex;
-		flex-direction: column;
-		gap: 0.3rem;
-	}
-
-	.command-title {
-		font-size: 1.5rem;
-		font-weight: 700;
-		color: #fff;
-		margin: 0;
-		text-shadow: 0 0 15px rgba(0, 150, 255, 0.5);
-		letter-spacing: 0.1em;
-	}
-
-	.command-subtitle {
-		font-size: 0.9rem;
-		color: rgba(255, 255, 255, 0.6);
-		margin: 0;
-		font-weight: 300;
-	}
-
-	.status-display {
-		display: flex;
-		align-items: center;
-	}
-
-	.status-grid {
-		display: flex;
-		gap: 2rem;
-	}
-
-	.status-cell {
-		background: linear-gradient(135deg, rgba(0, 0, 0, 0.6), rgba(0, 150, 255, 0.03));
-		border: 2px solid rgba(0, 150, 255, 0.3);
-		border-radius: 8px;
-		padding: 1rem 1.5rem;
-		text-align: center;
-		backdrop-filter: blur(10px);
-	}
-
-	.cell-value {
-		font-size: 1.5rem;
-		font-weight: 700;
-		color: #0096ff;
-		text-shadow: 0 0 10px #0096ff;
-		margin-bottom: 0.3rem;
-	}
-
-	.cell-label {
-		font-size: 0.7rem;
-		color: rgba(255, 255, 255, 0.6);
-		letter-spacing: 0.1em;
-	}
-
-	.scanning-interface {
-		flex: 1;
-		display: flex;
-		flex-direction: column;
-		align-items: center;
-		justify-content: center;
-		gap: 2rem;
-	}
-
-	.scanner-core {
-		position: relative;
-		width: 150px;
-		height: 150px;
-		display: flex;
-		align-items: center;
-		justify-content: center;
-	}
-
-	.scan-rings {
-		position: absolute;
-		width: 100%;
-		height: 100%;
-	}
-
-	.scan-ring {
-		position: absolute;
-		width: var(--size);
-		height: var(--size);
-		border: 2px solid #0096ff;
-		clip-path: polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%);
-		top: 50%;
-		left: 50%;
-		transform: translate(-50%, -50%);
-		animation: scanPulse 2s ease-in-out infinite;
-		animation-delay: var(--delay);
-		opacity: 0.6;
-	}
-
-	.scan-symbol {
-		position: relative;
-		z-index: 3;
-		font-size: 2.5rem;
-		color: #0096ff;
-		text-shadow: 0 0 25px #0096ff;
-		animation: scannerGlow 2s ease-in-out infinite;
-	}
-
-	.scan-text {
-		color: #0096ff;
-		font-size: 1.1rem;
-		font-weight: 600;
-		letter-spacing: 0.1em;
-		text-shadow: 0 0 15px #0096ff;
-	}
-
-	.infra-matrix {
-		flex: 1;
-		margin-bottom: 1.5rem;
-	}
-
-	.matrix-grid {
-		display: grid;
-		grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-		gap: 1.5rem;
-	}
-
-	.infra-node {
-		position: relative;
-		animation: nodeEntrance 0.6s ease-out;
-		animation-fill-mode: both;
-		opacity: 0;
-	}
-
-	.node-frame {
-		position: relative;
-		background: linear-gradient(135deg, 
-			rgba(0, 0, 0, 0.8) 0%, 
-			rgba(255, 255, 255, 0.02) 100%);
-		border: 2px solid var(--node-color);
-		border-radius: 12px;
-		padding: 1.5rem;
-		backdrop-filter: blur(20px);
-		transition: all 0.3s ease;
+		font-family: 'JetBrains Mono', monospace;
 		overflow: hidden;
 	}
 
-	.infra-node:hover .node-frame {
-		transform: translateY(-5px);
-		box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5), 0 0 30px var(--node-color);
+	.header-section {
+		background: rgba(0, 0, 0, 0.6);
+		border-bottom: 1px solid rgba(0, 255, 255, 0.3);
+		padding: 0.8rem 1.2rem;
+		backdrop-filter: blur(10px);
+		flex-shrink: 0;
 	}
 
-	.frame-corners {
-		position: absolute;
-		top: 0;
-		left: 0;
-		width: 100%;
-		height: 100%;
-		pointer-events: none;
+	.header-content {
+		max-width: 100%;
 	}
 
-	.corner {
-		position: absolute;
-		width: 15px;
-		height: 15px;
-		border: 2px solid var(--node-color);
-		opacity: 0.6;
-	}
-
-	.corner.tl {
-		top: 8px;
-		left: 8px;
-		border-right: none;
-		border-bottom: none;
-		border-top-left-radius: 4px;
-	}
-
-	.corner.tr {
-		top: 8px;
-		right: 8px;
-		border-left: none;
-		border-bottom: none;
-		border-top-right-radius: 4px;
-	}
-
-	.corner.bl {
-		bottom: 8px;
-		left: 8px;
-		border-right: none;
-		border-top: none;
-		border-bottom-left-radius: 4px;
-	}
-
-	.corner.br {
-		bottom: 8px;
-		right: 8px;
-		border-left: none;
-		border-top: none;
-		border-bottom-right-radius: 4px;
-	}
-
-	.node-header {
-		display: flex;
-		justify-content: space-between;
-		align-items: center;
-		margin-bottom: 1rem;
-	}
-
-	.node-icon {
-		font-size: 1.5rem;
-		color: var(--node-color);
-		text-shadow: 0 0 10px var(--node-color);
-		animation: iconFloat 3s ease-in-out infinite;
-	}
-
-	.threat-indicator {
-		padding: 0.3rem 0.8rem;
-		border-radius: 4px;
-		font-size: 0.6rem;
-		font-weight: 700;
-		letter-spacing: 0.05em;
-		border: 1px solid;
-		text-shadow: 0 0 8px currentColor;
-	}
-
-	.threat-indicator.critical {
-		background: rgba(255, 0, 255, 0.1);
-		color: #ff00ff;
-		border-color: #ff00ff;
-	}
-
-	.threat-indicator.high {
-		background: rgba(255, 0, 102, 0.1);
-		color: #ff0066;
-		border-color: #ff0066;
-	}
-
-	.threat-indicator.medium {
-		background: rgba(255, 170, 0, 0.1);
-		color: #ffaa00;
-		border-color: #ffaa00;
-	}
-
-	.threat-indicator.low {
-		background: rgba(0, 255, 255, 0.1);
+	.title-block h1 {
+		margin: 0;
+		font-size: 1.3rem;
 		color: #00ffff;
-		border-color: #00ffff;
-	}
-
-	.node-content {
+		text-shadow: 0 0 10px rgba(0, 255, 255, 0.5);
+		letter-spacing: 0.1em;
 		display: flex;
-		flex-direction: column;
-		gap: 1rem;
-		margin-bottom: 1rem;
-	}
-
-	.infra-type {
-		font-size: 1.1rem;
-		font-weight: 700;
-		color: #fff;
-		text-shadow: 0 0 10px rgba(255, 255, 255, 0.3);
-		text-align: center;
-	}
-
-	.infra-count {
-		font-size: 2rem;
-		font-weight: 700;
-		color: var(--node-color);
-		text-shadow: 0 0 15px var(--node-color);
-		text-align: center;
-	}
-
-	.metric-bars {
-		display: flex;
-		flex-direction: column;
+		align-items: center;
 		gap: 0.5rem;
 	}
 
-	.metric-bar {
-		height: 8px;
+	.icon {
+		font-size: 1.5rem;
+		animation: iconRotate 8s linear infinite;
+	}
+
+	@keyframes iconRotate {
+		from { transform: rotate(0deg); }
+		to { transform: rotate(360deg); }
+	}
+
+	.title-block p {
+		margin: 0.2rem 0 0 0;
+		font-size: 0.75rem;
+		color: rgba(255, 255, 255, 0.6);
+	}
+
+	.metrics-row {
+		display: flex;
+		gap: 0.8rem;
+		margin-top: 0.8rem;
+	}
+
+	.metric-card {
+		flex: 1;
+		background: rgba(0, 255, 255, 0.05);
+		border: 1px solid rgba(0, 255, 255, 0.3);
+		border-radius: 6px;
+		padding: 0.6rem;
+		text-align: center;
+		transition: all 0.3s ease;
+	}
+
+	.metric-card:hover {
+		transform: translateY(-2px);
+		box-shadow: 0 4px 12px rgba(0, 255, 255, 0.2);
+	}
+
+	.metric-card.critical {
+		background: rgba(255, 0, 255, 0.05);
+		border-color: rgba(255, 0, 255, 0.3);
+	}
+
+	.metric-value {
+		font-size: 1.3rem;
+		font-weight: 700;
+		color: #00ffff;
+		text-shadow: 0 0 10px currentColor;
+	}
+
+	.metric-label {
+		font-size: 0.65rem;
+		color: rgba(255, 255, 255, 0.6);
+		margin-top: 0.2rem;
+		letter-spacing: 0.05em;
+	}
+
+	.main-content {
+		flex: 1;
+		display: flex;
+		gap: 0.8rem;
+		padding: 0.8rem;
+		overflow: hidden;
+		min-height: 0;
+	}
+
+	.table-panel {
+		flex: 2;
+		background: rgba(0, 0, 0, 0.4);
+		border: 1px solid rgba(0, 255, 255, 0.2);
+		border-radius: 8px;
+		display: flex;
+		flex-direction: column;
+		overflow: hidden;
+	}
+
+	.viz-panel {
+		flex: 1;
+		display: flex;
+		flex-direction: column;
+		gap: 0.8rem;
+		overflow-y: auto;
+		min-width: 320px;
+	}
+
+	.panel-header {
+		padding: 0.8rem;
+		border-bottom: 1px solid rgba(0, 255, 255, 0.2);
+		background: rgba(0, 0, 0, 0.3);
+	}
+
+	.panel-header h3 {
+		margin: 0 0 0.5rem 0;
+		font-size: 0.85rem;
+		color: #00ffff;
+		letter-spacing: 0.05em;
+	}
+
+	.controls {
+		display: flex;
+		gap: 0.8rem;
+		align-items: center;
+	}
+
+	.search-bar {
+		flex: 1;
+	}
+
+	.search-input {
+		width: 100%;
 		background: rgba(0, 0, 0, 0.6);
+		border: 1px solid rgba(0, 255, 255, 0.3);
+		border-radius: 4px;
+		padding: 0.4rem 0.8rem;
+		color: #fff;
+		font-size: 0.75rem;
+	}
+
+	.search-input:focus {
+		outline: none;
+		border-color: #00ffff;
+		box-shadow: 0 0 10px rgba(0, 255, 255, 0.3);
+	}
+
+	.view-toggle {
+		display: flex;
+		gap: 0.2rem;
+	}
+
+	.toggle-btn {
+		background: rgba(0, 0, 0, 0.6);
+		border: 1px solid rgba(0, 255, 255, 0.3);
+		color: rgba(255, 255, 255, 0.7);
+		padding: 0.3rem 0.8rem;
+		border-radius: 4px;
+		cursor: pointer;
+		font-size: 0.7rem;
+		transition: all 0.3s ease;
+	}
+
+	.toggle-btn.active {
+		background: rgba(0, 255, 255, 0.1);
+		border-color: #00ffff;
+		color: #00ffff;
+	}
+
+	.table-container {
+		flex: 1;
+		overflow: auto;
+		padding: 0.5rem;
+	}
+
+	.data-table {
+		width: 100%;
+		border-collapse: collapse;
+		font-size: 0.75rem;
+	}
+
+	.data-table th {
+		background: rgba(0, 255, 255, 0.1);
+		color: #00ffff;
+		padding: 0.6rem;
+		text-align: left;
+		font-weight: 600;
+		letter-spacing: 0.05em;
+		position: sticky;
+		top: 0;
+		z-index: 10;
+	}
+
+	.data-table td {
+		padding: 0.5rem 0.6rem;
+		border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+		color: rgba(255, 255, 255, 0.8);
+	}
+
+	.data-table tr:hover {
+		background: rgba(0, 255, 255, 0.05);
+	}
+
+	.infra-cell .cell-content {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+	}
+
+	.indicator {
+		width: 6px;
+		height: 6px;
+		border-radius: 50%;
+		flex-shrink: 0;
+	}
+
+	.center {
+		text-align: center;
+	}
+
+	.coverage-cell {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+	}
+
+	.coverage-bar {
+		flex: 1;
+		height: 6px;
+		background: rgba(0, 0, 0, 0.5);
+		border-radius: 3px;
+		overflow: hidden;
+		min-width: 60px;
+	}
+
+	.coverage-fill {
+		height: 100%;
+		transition: width 0.3s ease;
+	}
+
+	.coverage-text {
+		font-size: 0.7rem;
+		min-width: 45px;
+		text-align: right;
+	}
+
+	.threat-badge {
+		padding: 0.2rem 0.5rem;
+		border-radius: 4px;
+		font-size: 0.65rem;
+		font-weight: 600;
+		text-transform: uppercase;
+	}
+
+	.threat-badge.critical {
+		background: rgba(255, 0, 255, 0.2);
+		color: #ff00ff;
+		border: 1px solid #ff00ff;
+	}
+
+	.threat-badge.high {
+		background: rgba(255, 0, 102, 0.2);
+		color: #ff0066;
+		border: 1px solid #ff0066;
+	}
+
+	.threat-badge.medium {
+		background: rgba(255, 170, 0, 0.2);
+		color: #ffaa00;
+		border: 1px solid #ffaa00;
+	}
+
+	.threat-badge.low {
+		background: rgba(0, 255, 255, 0.2);
+		color: #00ffff;
+		border: 1px solid #00ffff;
+	}
+
+	.drill-btn {
+		background: rgba(0, 255, 255, 0.1);
+		border: 1px solid #00ffff;
+		color: #00ffff;
+		padding: 0.25rem 0.6rem;
+		border-radius: 4px;
+		cursor: pointer;
+		font-size: 0.65rem;
+		transition: all 0.3s ease;
+	}
+
+	.drill-btn:hover {
+		background: rgba(0, 255, 255, 0.2);
+		transform: translateX(2px);
+		box-shadow: 0 0 10px rgba(0, 255, 255, 0.3);
+	}
+
+	.grid-container {
+		display: grid;
+		grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+		gap: 0.8rem;
+		padding: 0.8rem;
+		overflow-y: auto;
+		flex: 1;
+	}
+
+	.grid-card {
+		background: rgba(0, 0, 0, 0.6);
+		border: 1px solid var(--card-color);
+		border-radius: 8px;
+		padding: 1rem;
+		cursor: pointer;
+		transition: all 0.3s ease;
+		animation: cardEntrance 0.4s ease-out;
+	}
+
+	.grid-card:hover {
+		transform: translateY(-3px);
+		box-shadow: 0 8px 20px rgba(0, 0, 0, 0.5), 0 0 20px var(--card-color);
+	}
+
+	.card-header {
+		display: flex;
+		justify-content: space-between;
+		align-items: center;
+		margin-bottom: 0.8rem;
+	}
+
+	.card-icon {
+		font-size: 1.2rem;
+		color: var(--card-color);
+		animation: iconSpin 4s linear infinite;
+	}
+
+	.threat-indicator {
+		font-size: 0.6rem;
+		padding: 0.15rem 0.4rem;
+		border-radius: 3px;
+		font-weight: 600;
+	}
+
+	.threat-indicator.critical {
+		background: rgba(255, 0, 255, 0.2);
+		color: #ff00ff;
+		border: 1px solid #ff00ff;
+	}
+
+	.threat-indicator.high {
+		background: rgba(255, 0, 102, 0.2);
+		color: #ff0066;
+		border: 1px solid #ff0066;
+	}
+
+	.threat-indicator.medium {
+		background: rgba(255, 170, 0, 0.2);
+		color: #ffaa00;
+		border: 1px solid #ffaa00;
+	}
+
+	.threat-indicator.low {
+		background: rgba(0, 255, 255, 0.2);
+		color: #00ffff;
+		border: 1px solid #00ffff;
+	}
+
+	.card-body {
+		text-align: center;
+	}
+
+	.infra-name {
+		font-size: 0.8rem;
+		color: rgba(255, 255, 255, 0.9);
+		margin-bottom: 0.5rem;
+		font-weight: 600;
+	}
+
+	.infra-count {
+		font-size: 1.5rem;
+		font-weight: 700;
+		color: var(--card-color);
+		text-shadow: 0 0 10px var(--card-color);
+		margin-bottom: 0.5rem;
+	}
+
+	.progress-bar {
+		width: 100%;
+		height: 4px;
+		background: rgba(0, 0, 0, 0.5);
+		border-radius: 2px;
+		overflow: hidden;
+		margin-bottom: 0.3rem;
+	}
+
+	.progress-fill {
+		height: 100%;
+		transition: width 0.5s ease;
+	}
+
+	.card-percentage {
+		font-size: 0.7rem;
+		color: rgba(255, 255, 255, 0.6);
+	}
+
+	.pagination {
+		display: flex;
+		justify-content: center;
+		align-items: center;
+		gap: 1rem;
+		padding: 0.8rem;
+		border-top: 1px solid rgba(0, 255, 255, 0.2);
+		background: rgba(0, 0, 0, 0.3);
+	}
+
+	.pagination button {
+		background: rgba(0, 255, 255, 0.1);
+		border: 1px solid #00ffff;
+		color: #00ffff;
+		padding: 0.4rem 0.8rem;
+		border-radius: 4px;
+		cursor: pointer;
+		transition: all 0.3s ease;
+		font-size: 0.7rem;
+	}
+
+	.pagination button:hover:not(:disabled) {
+		background: rgba(0, 255, 255, 0.2);
+		transform: scale(1.05);
+	}
+
+	.pagination button:disabled {
+		opacity: 0.5;
+		cursor: not-allowed;
+	}
+
+	.pagination span {
+		font-size: 0.75rem;
+		color: rgba(255, 255, 255, 0.8);
+	}
+
+	.viz-card {
+		background: rgba(0, 0, 0, 0.4);
+		border: 1px solid rgba(0, 255, 255, 0.2);
+		border-radius: 8px;
+		padding: 0.8rem;
+		animation: vizEntrance 0.6s ease-out;
+	}
+
+	.viz-card h4 {
+		margin: 0 0 0.8rem 0;
+		font-size: 0.75rem;
+		color: #00ffff;
+		letter-spacing: 0.05em;
+		text-align: center;
+	}
+
+	.donut-chart {
+		width: 100%;
+		max-width: 180px;
+		margin: 0 auto;
+	}
+
+	.legend {
+		display: flex;
+		flex-direction: column;
+		gap: 0.4rem;
+		margin-top: 0.8rem;
+	}
+
+	.legend-item {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+		font-size: 0.65rem;
+		color: rgba(255, 255, 255, 0.8);
+	}
+
+	.legend-color {
+		width: 10px;
+		height: 10px;
+		border-radius: 2px;
+		flex-shrink: 0;
+	}
+
+	.bar-chart {
+		display: flex;
+		flex-direction: column;
+		gap: 0.6rem;
+	}
+
+	.bar-item {
+		display: flex;
+		flex-direction: column;
+		gap: 0.2rem;
+	}
+
+	.bar-label {
+		font-size: 0.65rem;
+		color: rgba(255, 255, 255, 0.8);
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
+	}
+
+	.bar-container {
+		position: relative;
+		height: 18px;
+		background: rgba(0, 0, 0, 0.5);
 		border-radius: 4px;
 		overflow: hidden;
 		border: 1px solid rgba(255, 255, 255, 0.1);
-		position: relative;
 	}
 
 	.bar-fill {
 		height: 100%;
-		border-radius: 4px;
-		transition: width 2s cubic-bezier(0.4, 0, 0.2, 1);
-		box-shadow: 0 0 15px currentColor;
+		transition: width 0.5s ease;
 		position: relative;
 		overflow: hidden;
 	}
@@ -509,247 +910,252 @@
 		left: -100%;
 		width: 100%;
 		height: 100%;
-		background: linear-gradient(90deg, 
-			transparent, 
-			rgba(255, 255, 255, 0.4), 
-			transparent);
-		animation: barSweep 3s linear infinite;
+		background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.3), transparent);
+		animation: shimmer 2s infinite;
 	}
 
-	.metric-percentage {
-		font-size: 0.8rem;
-		color: var(--node-color);
-		text-align: right;
-		font-weight: 600;
+	@keyframes shimmer {
+		to { left: 100%; }
 	}
 
-	.node-footer {
-		position: relative;
-	}
-
-	.connection-ports {
-		display: flex;
-		justify-content: space-between;
-		align-items: center;
-	}
-
-	.port {
-		width: 8px;
-		height: 8px;
-		background: var(--node-color);
-		border-radius: 50%;
-		animation: portPulse 2s ease-in-out infinite;
-		box-shadow: 0 0 8px var(--node-color);
-		opacity: 0.6;
-	}
-
-	.node-glow {
+	.bar-value {
 		position: absolute;
-		top: -2px;
-		left: -2px;
-		right: -2px;
-		bottom: -2px;
-		background: radial-gradient(circle, var(--node-color), transparent);
-		opacity: 0;
-		transition: opacity 0.3s ease;
-		border-radius: 12px;
-		z-index: -1;
+		right: 0.3rem;
+		top: 50%;
+		transform: translateY(-50%);
+		font-size: 0.6rem;
+		font-weight: 600;
+		color: #fff;
+		text-shadow: 0 0 4px rgba(0, 0, 0, 0.8);
 	}
 
-	.infra-node:hover .node-glow {
-		opacity: 0.1;
-	}
-
-	.analysis-panel {
-		background: linear-gradient(135deg, rgba(0, 0, 0, 0.6), rgba(0, 150, 255, 0.02));
-		border: 2px solid rgba(0, 150, 255, 0.3);
-		border-radius: 12px;
-		padding: 1.5rem;
-		backdrop-filter: blur(20px);
-		margin-bottom: 1.5rem;
-	}
-
-	.panel-header {
-		display: flex;
-		align-items: center;
-		gap: 1rem;
-		margin-bottom: 1.5rem;
-	}
-
-	.header-symbol {
-		font-size: 1.5rem;
-		color: #0096ff;
-		text-shadow: 0 0 15px #0096ff;
-		animation: symbolFloat 3s ease-in-out infinite;
-	}
-
-	.panel-header h3 {
-		font-size: 1.1rem;
-		font-weight: 700;
-		color: #0096ff;
-		margin: 0;
-		letter-spacing: 0.05em;
-	}
-
-	.analysis-grid {
-		display: grid;
-		grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-		gap: 1.5rem;
-	}
-
-	.analysis-stat {
-		display: flex;
-		align-items: center;
-		gap: 1rem;
-		padding: 1rem;
-		background: linear-gradient(135deg, rgba(0, 0, 0, 0.4), rgba(255, 255, 255, 0.02));
-		border: 1px solid rgba(255, 255, 255, 0.1);
-		border-radius: 8px;
-		backdrop-filter: blur(10px);
-	}
-
-	.stat-icon {
-		font-size: 1.5rem;
-		color: #0096ff;
-		text-shadow: 0 0 10px #0096ff;
-	}
-
-	.stat-data {
+	.threat-grid {
 		display: flex;
 		flex-direction: column;
-		gap: 0.2rem;
+		gap: 0.6rem;
 	}
 
-	.stat-value {
-		font-size: 1.3rem;
+	.threat-cell {
+		display: flex;
+		align-items: center;
+		gap: 0.8rem;
+		padding: 0.5rem;
+		background: rgba(0, 0, 0, 0.3);
+		border: 1px solid rgba(255, 255, 255, 0.1);
+		border-radius: 4px;
+		position: relative;
+		overflow: hidden;
+	}
+
+	.threat-cell::before {
+		content: '';
+		position: absolute;
+		top: 0;
+		left: 0;
+		width: 3px;
+		height: 100%;
+		background: var(--threat-color);
+	}
+
+	.threat-level {
+		font-size: 0.65rem;
+		font-weight: 600;
+		color: var(--threat-color);
+		min-width: 60px;
+	}
+
+	.threat-count {
+		font-size: 0.9rem;
 		font-weight: 700;
 		color: #fff;
-		text-shadow: 0 0 10px rgba(255, 255, 255, 0.3);
-	}
-
-	.stat-label {
-		font-size: 0.7rem;
-		color: rgba(255, 255, 255, 0.6);
-		letter-spacing: 0.05em;
-	}
-
-	.interface-footer {
-		padding-top: 1rem;
-		border-top: 1px solid rgba(255, 255, 255, 0.1);
+		min-width: 30px;
 		text-align: center;
 	}
 
-	.footer-line {
-		width: 100%;
-		height: 2px;
-		background: linear-gradient(90deg, 
-			transparent, 
-			rgba(0, 150, 255, 0.6), 
-			transparent);
-		margin-bottom: 1rem;
+	.threat-bar {
+		flex: 1;
+		height: 4px;
+		background: rgba(0, 0, 0, 0.5);
+		border-radius: 2px;
+		overflow: hidden;
 	}
 
-	.protocol-notice {
-		font-size: 0.7rem;
-		color: #0096ff;
+	.threat-fill {
+		height: 100%;
+		transition: width 0.5s ease;
+		box-shadow: 0 0 8px currentColor;
+	}
+
+	.loading-state {
+		flex: 1;
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		justify-content: center;
+		gap: 1rem;
+	}
+
+	.spinner {
+		width: 40px;
+		height: 40px;
+		border: 3px solid rgba(0, 255, 255, 0.2);
+		border-top-color: #00ffff;
+		border-radius: 50%;
+		animation: spin 1s linear infinite;
+	}
+
+	@keyframes spin {
+		to { transform: rotate(360deg); }
+	}
+
+	@keyframes cardEntrance {
+		from {
+			opacity: 0;
+			transform: translateY(20px);
+		}
+		to {
+			opacity: 1;
+			transform: translateY(0);
+		}
+	}
+
+	@keyframes vizEntrance {
+		from {
+			opacity: 0;
+			transform: translateX(20px);
+		}
+		to {
+			opacity: 1;
+			transform: translateX(0);
+		}
+	}
+
+	@keyframes iconSpin {
+		from { transform: rotate(0deg); }
+		to { transform: rotate(360deg); }
+	}
+
+	.drill-view {
+		display: flex;
+		flex-direction: column;
+		height: 100%;
+	}
+
+	.drill-header {
+		display: flex;
+		justify-content: space-between;
+		align-items: center;
+		padding: 0.8rem;
+		border-bottom: 1px solid rgba(255, 0, 255, 0.3);
+		background: rgba(255, 0, 255, 0.05);
+	}
+
+	.drill-header h4 {
+		margin: 0;
+		color: #ff00ff;
+		font-size: 0.9rem;
+		text-transform: uppercase;
+	}
+
+	.close-btn {
+		background: transparent;
+		border: 1px solid #ff0066;
+		color: #ff0066;
+		width: 28px;
+		height: 28px;
+		border-radius: 50%;
+		cursor: pointer;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		transition: all 0.3s ease;
+		font-size: 0.8rem;
+	}
+
+	.close-btn:hover {
+		background: rgba(255, 0, 102, 0.2);
+		transform: rotate(90deg);
+	}
+
+	.value-cell {
+		font-family: monospace;
+		color: #00ffff;
 		font-weight: 600;
-		letter-spacing: 0.05em;
-		text-shadow: 0 0 8px #0096ff;
 	}
 
-	@keyframes hexRotate {
-		0% { transform: rotate(0deg); }
-		100% { transform: rotate(360deg); }
+	.status-badge {
+		padding: 0.15rem 0.4rem;
+		border-radius: 3px;
+		font-size: 0.65rem;
+		font-weight: 600;
+		text-transform: uppercase;
 	}
 
-	@keyframes hexPulse {
-		0%, 100% { 
-			text-shadow: 0 0 20px #0096ff; 
-			transform: scale(1);
-		}
-		50% { 
-			text-shadow: 0 0 30px #0096ff; 
-			transform: scale(1.05);
-		}
+	.status-badge.active {
+		background: rgba(0, 255, 133, 0.2);
+		color: #00ff85;
+		border: 1px solid #00ff85;
 	}
 
-	@keyframes scanPulse {
-		0%, 100% { 
-			opacity: 0.3; 
-			transform: translate(-50%, -50%) scale(1);
-		}
-		50% { 
-			opacity: 0.8; 
-			transform: translate(-50%, -50%) scale(1.05);
-		}
+	.status-badge.critical {
+		background: rgba(255, 0, 255, 0.2);
+		color: #ff00ff;
+		border: 1px solid #ff00ff;
 	}
 
-	@keyframes scannerGlow {
-		0%, 100% { 
-			text-shadow: 0 0 25px #0096ff; 
-			transform: scale(1);
-		}
-		50% { 
-			text-shadow: 0 0 35px #0096ff; 
-			transform: scale(1.1);
-		}
+	.status-badge.high {
+		background: rgba(255, 0, 102, 0.2);
+		color: #ff0066;
+		border: 1px solid #ff0066;
 	}
 
-	@keyframes nodeEntrance {
-		0% { 
-			opacity: 0; 
-			transform: translateY(30px) scale(0.9);
-		}
-		100% { 
-			opacity: 1; 
-			transform: translateY(0) scale(1);
-		}
+	.status-badge.medium {
+		background: rgba(255, 170, 0, 0.2);
+		color: #ffaa00;
+		border: 1px solid #ffaa00;
 	}
 
-	@keyframes iconFloat {
-		0%, 100% { transform: translateY(0px); }
-		50% { transform: translateY(-3px); }
+	.status-badge.low {
+		background: rgba(0, 255, 255, 0.2);
+		color: #00ffff;
+		border: 1px solid #00ffff;
 	}
 
-	@keyframes barSweep {
-		0% { left: -100%; }
-		100% { left: 100%; }
-	}
-
-	@keyframes portPulse {
-		0%, 100% { opacity: 0.6; transform: scale(1); }
-		50% { opacity: 1; transform: scale(1.2); }
-	}
-
-	@keyframes symbolFloat {
-		0%, 100% { transform: translateY(0px); }
-		50% { transform: translateY(-3px); }
-	}
-
+	/* Responsive adjustments */
 	@media (max-width: 1200px) {
-		.command-header {
+		.main-content {
 			flex-direction: column;
-			gap: 1.5rem;
-			text-align: center;
 		}
-
-		.matrix-grid {
-			grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+		
+		.viz-panel {
+			flex-direction: row;
+			overflow-x: auto;
+			min-width: auto;
+		}
+		
+		.viz-card {
+			min-width: 280px;
 		}
 	}
 
 	@media (max-width: 768px) {
-		.header-core {
-			flex-direction: column;
-			gap: 1rem;
+		.metrics-row {
+			flex-wrap: wrap;
 		}
-
-		.status-grid {
-			flex-direction: column;
-			gap: 1rem;
+		
+		.metric-card {
+			min-width: calc(50% - 0.4rem);
 		}
-
-		.analysis-grid {
+		
+		.controls {
+			flex-direction: column;
+		}
+		
+		.search-bar {
+			width: 100%;
+		}
+		
+		.grid-container {
 			grid-template-columns: 1fr;
 		}
 	}
