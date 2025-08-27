@@ -1,1302 +1,857 @@
-<!-- DomainMetrics.svelte - Optimized for Maximum Data Density -->
+<!-- DomainMetrics.svelte - Enhanced Dashboard -->
 <script>
 	import { onMount } from 'svelte';
-
+	
 	let data = {};
 	let loading = true;
-	let error = null;
+	let selectedDomain = null;
+	let domainDetails = [];
+	let searchTerm = '';
+	let currentPage = 1;
+	let itemsPerPage = 10;
 
 	onMount(async () => {
 		try {
 			const response = await fetch('http://localhost:5000/api/domain_metrics');
-			const result = await response.json();
-			data = result;
+			data = await response.json();
 			loading = false;
 		} catch (err) {
-			error = 'DOMAIN MATRIX COMPROMISED';
+			console.error('Domain metrics error:', err);
 			loading = false;
 		}
 	});
 
-	$: totalDomains = data.domain_analysis ? 
-		Object.values(data.domain_analysis).reduce((a, b) => a + b, 0) : 0;
-	$: dominantDomain = data.domain_analysis ? 
-		Object.entries(data.domain_analysis).sort((a, b) => b[1] - a[1])[0] : null;
-	$: oneDcPercentage = data.domain_analysis ? 
-		Math.round((data.domain_analysis['1dc'] || 0) / totalDomains * 100) : 0;
-	$: feadPercentage = data.domain_analysis ? 
-		Math.round((data.domain_analysis['fead'] || 0) / totalDomains * 100) : 0;
-	$: otherPercentage = data.domain_analysis ? 
-		Math.round((data.domain_analysis['other'] || 0) / totalDomains * 100) : 0;
+	$: domainData = data.domain_analysis ? 
+		Object.entries(data.domain_analysis).map(([domain, count]) => ({
+			domain,
+			count,
+			percentage: getPercentage(count)
+		})).sort((a, b) => b.count - a.count) : [];
+	
+	$: filteredDomains = domainData.filter(d => 
+		d.domain.toLowerCase().includes(searchTerm.toLowerCase())
+	);
+	
+	$: paginatedDomains = filteredDomains.slice(
+		(currentPage - 1) * itemsPerPage,
+		currentPage * itemsPerPage
+	);
+	
+	$: totalPages = Math.ceil(filteredDomains.length / itemsPerPage);
+	$: totalAssets = Object.values(data.domain_analysis || {}).reduce((a, b) => a + b, 0);
 
-	function getCircularProgress(percentage) {
-		const radius = 45;
-		const circumference = 2 * Math.PI * radius;
-		const strokeDashoffset = circumference - (percentage / 100) * circumference;
-		return { strokeDashoffset };
+	function getPercentage(count) {
+		if (!totalAssets) return 0;
+		return ((count / totalAssets) * 100).toFixed(2);
 	}
+
+	function getThreatLevel(domain) {
+		const percentage = getPercentage(data.domain_analysis?.[domain] || 0);
+		if (domain === '1dc') return { level: 'PRIMARY', color: '#ff00ff' };
+		if (domain === 'fead') return { level: 'SECONDARY', color: '#00ffff' };
+		return { level: 'OTHER', color: '#0096ff' };
+	}
+
+	async function drillDownDomain(domain, count) {
+		selectedDomain = { domain, count };
+		loading = true;
+		
+		// Simulate fetching domain-specific data
+		setTimeout(() => {
+			domainDetails = [
+				{ host: `${domain}-server-01.internal`, region: 'North America', status: 'Active', coverage: 95 },
+				{ host: `${domain}-server-02.internal`, region: 'EMEA', status: 'Active', coverage: 87 },
+				{ host: `${domain}-server-03.internal`, region: 'APAC', status: 'Partial', coverage: 72 },
+				{ host: `${domain}-server-04.internal`, region: 'LATAM', status: 'Active', coverage: 91 },
+				{ host: `${domain}-server-05.internal`, region: 'North America', status: 'Critical', coverage: 45 },
+			];
+			loading = false;
+		}, 500);
+	}
+
+	function closeDetails() {
+		selectedDomain = null;
+		domainDetails = [];
+	}
+
+	$: domainDistribution = domainData.reduce((acc, d) => {
+		const level = getThreatLevel(d.domain).level;
+		acc[level] = (acc[level] || 0) + 1;
+		return acc;
+	}, {});
 </script>
 
-<div class="domain-warfare-matrix">
-	<div class="matrix-header">
-		<div class="command-center">
-			<div class="hologram-core">
-				<div class="holo-rings">
-					<div class="holo-ring ring-1"></div>
-					<div class="holo-ring ring-2"></div>
-					<div class="holo-ring ring-3"></div>
+<div class="dashboard-container">
+	<!-- Header Section -->
+	<div class="header-section">
+		<div class="header-content">
+			<div class="title-block">
+				<h1>DOMAIN WARFARE MATRIX</h1>
+				<p>1DC vs FEAD Classification Analysis</p>
+			</div>
+			<div class="metrics-row">
+				<div class="metric-card">
+					<div class="metric-value">{(data.domain_analysis?.['1dc'] || 0).toLocaleString()}</div>
+					<div class="metric-label">1DC ASSETS</div>
 				</div>
-				<div class="core-symbol">◆</div>
-			</div>
-			<div class="command-info">
-				<h2 class="matrix-title">1DC vs FEAD</h2>
-				<p class="matrix-subtitle">DOMAIN CLASSIFICATION WARFARE</p>
-			</div>
-			<div class="threat-assessment">
-				<div class="assessment-ring"></div>
-				<span class="assessment-text">CLASSIFIED</span>
+				<div class="metric-card">
+					<div class="metric-value">{(data.domain_analysis?.['fead'] || 0).toLocaleString()}</div>
+					<div class="metric-label">FEAD ASSETS</div>
+				</div>
+				<div class="metric-card">
+					<div class="metric-value">{(data.domain_analysis?.['other'] || 0).toLocaleString()}</div>
+					<div class="metric-label">OTHER</div>
+				</div>
+				<div class="metric-card critical">
+					<div class="metric-value">{totalAssets.toLocaleString()}</div>
+					<div class="metric-label">TOTAL</div>
+				</div>
 			</div>
 		</div>
 	</div>
 
-	{#if loading}
-		<div class="neural-loading">
-			<div class="loading-core">
-				<div class="core-rings">
-					{#each Array(4) as _, i}
-						<div class="loading-ring" style="--delay: {i * 0.3}s; --size: {45 + i * 15}px"></div>
+	<!-- Main Content Area -->
+	<div class="main-content">
+		<!-- Left Panel: Table -->
+		<div class="table-panel">
+			<div class="panel-header">
+				<h3>DOMAIN CLASSIFICATION</h3>
+				<div class="search-bar">
+					<input 
+						type="text" 
+						bind:value={searchTerm}
+						placeholder="Search domains..."
+						class="search-input"
+					/>
+				</div>
+			</div>
+			
+			{#if loading && !selectedDomain}
+				<div class="loading-state">
+					<div class="spinner"></div>
+					<p>Analyzing domains...</p>
+				</div>
+			{:else if selectedDomain}
+				<!-- Drill-down View -->
+				<div class="drill-view">
+					<div class="drill-header">
+						<h4>{selectedDomain.domain.toUpperCase()} DOMAIN ASSETS</h4>
+						<button class="close-btn" on:click={closeDetails}>✕</button>
+					</div>
+					<div class="table-container">
+						<table class="data-table">
+							<thead>
+								<tr>
+									<th>HOST</th>
+									<th>REGION</th>
+									<th>STATUS</th>
+									<th>COVERAGE</th>
+								</tr>
+							</thead>
+							<tbody>
+								{#each domainDetails as detail}
+									<tr>
+										<td class="host-cell">{detail.host}</td>
+										<td>{detail.region}</td>
+										<td>
+											<span class="status-badge {detail.status.toLowerCase()}">{detail.status}</span>
+										</td>
+										<td>
+											<div class="coverage-cell">
+												<div class="coverage-bar">
+													<div class="coverage-fill" style="width: {detail.coverage}%; background: {detail.coverage >= 80 ? '#00ff85' : detail.coverage >= 60 ? '#ffaa00' : '#ff0066'}"></div>
+												</div>
+												<span class="coverage-text">{detail.coverage}%</span>
+											</div>
+										</td>
+									</tr>
+								{/each}
+							</tbody>
+						</table>
+					</div>
+				</div>
+			{:else}
+				<!-- Main Table -->
+				<div class="table-container">
+					<table class="data-table">
+						<thead>
+							<tr>
+								<th>DOMAIN</th>
+								<th>ASSETS</th>
+								<th>COVERAGE</th>
+								<th>CLASS</th>
+								<th>ACTION</th>
+							</tr>
+						</thead>
+						<tbody>
+							{#each paginatedDomains as domain}
+								{@const threat = getThreatLevel(domain.domain)}
+								<tr>
+									<td class="source-cell">
+										<div class="cell-content">
+											<span class="indicator" style="background: {threat.color}"></span>
+											<span>{domain.domain.toUpperCase()}</span>
+										</div>
+									</td>
+									<td class="center">{domain.count.toLocaleString()}</td>
+									<td>
+										<div class="coverage-cell">
+											<div class="coverage-bar">
+												<div class="coverage-fill" style="width: {domain.percentage}%; background: {threat.color}"></div>
+											</div>
+											<span class="coverage-text">{domain.percentage}%</span>
+										</div>
+									</td>
+									<td class="center">
+										<span class="threat-badge {threat.level.toLowerCase()}">{threat.level}</span>
+									</td>
+									<td class="center">
+										<button class="drill-btn" on:click={() => drillDownDomain(domain.domain, domain.count)}>
+											DRILL →
+										</button>
+									</td>
+								</tr>
+							{/each}
+						</tbody>
+					</table>
+				</div>
+				
+				<!-- Pagination -->
+				<div class="pagination">
+					<button 
+						on:click={() => currentPage = Math.max(1, currentPage - 1)}
+						disabled={currentPage === 1}
+					>
+						←
+					</button>
+					<span>Page {currentPage} of {totalPages}</span>
+					<button 
+						on:click={() => currentPage = Math.min(totalPages, currentPage + 1)}
+						disabled={currentPage === totalPages}
+					>
+						→
+					</button>
+				</div>
+			{/if}
+		</div>
+
+		<!-- Right Panel: Visualizations -->
+		<div class="viz-panel">
+			<!-- Domain Distribution Chart -->
+			<div class="viz-card">
+				<h4>DOMAIN DISTRIBUTION</h4>
+				<div class="donut-chart">
+					<svg viewBox="0 0 200 200">
+						{#if domainData.length > 0}
+							{@const radius = 60}
+							{@const circumference = 2 * Math.PI * radius}
+							{#each domainData as domain, i}
+								{@const percentage = (domain.count / totalAssets) * 100}
+								{@const strokeDasharray = (percentage / 100) * circumference}
+								{@const rotation = domainData
+									.slice(0, i)
+									.reduce((acc, d) => acc + (d.count / totalAssets) * 360, -90)}
+								{@const color = getThreatLevel(domain.domain).color}
+								<circle
+									cx="100"
+									cy="100"
+									r={radius}
+									fill="none"
+									stroke={color}
+									stroke-width="30"
+									stroke-dasharray="{strokeDasharray} {circumference}"
+									transform="rotate({rotation} 100 100)"
+									opacity="0.8"
+								/>
+							{/each}
+						{/if}
+						<text x="100" y="100" text-anchor="middle" fill="white" font-size="24" font-weight="bold">
+							{totalAssets.toLocaleString()}
+						</text>
+						<text x="100" y="115" text-anchor="middle" fill="rgba(255,255,255,0.6)" font-size="10">
+							TOTAL
+						</text>
+					</svg>
+				</div>
+				<div class="legend">
+					{#each domainData as domain}
+						{@const color = getThreatLevel(domain.domain).color}
+						<div class="legend-item">
+							<span class="legend-color" style="background: {color}"></span>
+							<span>{domain.domain.toUpperCase()}: {domain.count.toLocaleString()}</span>
+						</div>
 					{/each}
 				</div>
-				<div class="core-nexus">◆</div>
 			</div>
-			<div class="loading-sequence">ANALYZING DOMAIN STRUCTURES...</div>
-		</div>
-	{:else if error}
-		<div class="error-state">
-			<div class="error-core">
-				<div class="error-ring"></div>
-				<div class="error-symbol">⚠</div>
-			</div>
-			<div class="error-message">CRITICAL ERROR: {error}</div>
-		</div>
-	{:else}
-		<div class="warfare-interface">
-			<div class="battlefield-overview">
-				<div class="tactical-display">
-					<div class="radar-scope">
-						<svg width="200" height="200" viewBox="0 0 200 200" class="domain-radar">
-							<defs>
-								<radialGradient id="radarGradient">
-									<stop offset="0%" style="stop-color:rgba(255,0,255,0.3);stop-opacity:1" />
-									<stop offset="100%" style="stop-color:rgba(0,255,255,0.1);stop-opacity:0" />
-								</radialGradient>
-								<filter id="radarGlow">
-									<feGaussianBlur stdDeviation="3" result="coloredBlur"/>
-									<feMerge>
-										<feMergeNode in="coloredBlur"/>
-										<feMergeNode in="SourceGraphic"/>
-									</feMerge>
-								</filter>
-							</defs>
-							
-							<!-- Radar background -->
-							<circle cx="100" cy="100" r="95" fill="url(#radarGradient)" opacity="0.3"/>
-							
-							<!-- Radar grid -->
-							<g stroke="rgba(0, 255, 255, 0.2)" stroke-width="1" fill="none">
-								<circle cx="100" cy="100" r="35"/>
-								<circle cx="100" cy="100" r="65"/>
-								<circle cx="100" cy="100" r="95"/>
-								<line x1="5" y1="100" x2="195" y2="100"/>
-								<line x1="100" y1="5" x2="100" y2="195"/>
-							</g>
 
-							{#if data.domain_analysis && totalDomains > 0}
-								<!-- 1DC Arc -->
-								<circle 
-									cx="100" cy="100" r="80" 
-									fill="none" 
-									stroke="#ff00ff" 
-									stroke-width="6"
-									stroke-dasharray="502"
-									stroke-dashoffset={502 - (oneDcPercentage / 100) * 502}
-									transform="rotate(-90 100 100)"
-									filter="url(#radarGlow)"
-									class="domain-arc onedc-arc"
-								/>
-								
-								<!-- FEAD Arc -->
-								<circle 
-									cx="100" cy="100" r="65" 
-									fill="none" 
-									stroke="#00ffff" 
-									stroke-width="6"
-									stroke-dasharray="408"
-									stroke-dashoffset={408 - (feadPercentage / 100) * 408}
-									transform="rotate(-90 100 100)"
-									filter="url(#radarGlow)"
-									class="domain-arc fead-arc"
-								/>
-								
-								<!-- Other Arc -->
-								<circle 
-									cx="100" cy="100" r="50" 
-									fill="none" 
-									stroke="#0096ff" 
-									stroke-width="6"
-									stroke-dasharray="314"
-									stroke-dashoffset={314 - (otherPercentage / 100) * 314}
-									transform="rotate(-90 100 100)"
-									filter="url(#radarGlow)"
-									class="domain-arc other-arc"
-								/>
-							{/if}
-							
-							<!-- Central hub -->
-							<circle cx="100" cy="100" r="20" fill="rgba(0, 0, 0, 0.8)" stroke="#ff00ff" stroke-width="1"/>
-							<text x="100" y="105" text-anchor="middle" fill="#ff00ff" font-size="10" font-family="Orbitron" font-weight="700">
-								DOM
-							</text>
-						</svg>
-						
-						<!-- Radar sweep -->
-						<div class="radar-sweep"></div>
-					</div>
-
-					<div class="tactical-readouts">
-						<div class="readout-cluster">
-							<div class="readout-node onedc-node">
-								<div class="node-frame">
-									<div class="node-indicator"></div>
-								</div>
-								<div class="node-data">
-									<div class="node-label">1DC</div>
-									<div class="node-value">{oneDcPercentage}%</div>
-									<div class="node-count">{data.domain_analysis ? data.domain_analysis['1dc'] || 0 : 0}</div>
-								</div>
+			<!-- Dominance Indicator -->
+			<div class="viz-card">
+				<h4>WARFARE STATUS</h4>
+				<div class="dominance-meter">
+					{@const oneDcPct = getPercentage(data.domain_analysis?.['1dc'] || 0)}
+					{@const feadPct = getPercentage(data.domain_analysis?.['fead'] || 0)}
+					<div class="dominance-bars">
+						<div class="dominance-item">
+							<div class="dominance-label">1DC</div>
+							<div class="dominance-bar">
+								<div class="bar-fill" style="width: {oneDcPct}%; background: #ff00ff"></div>
 							</div>
-							
-							<div class="readout-node fead-node">
-								<div class="node-frame">
-									<div class="node-indicator"></div>
-								</div>
-								<div class="node-data">
-									<div class="node-label">FEAD</div>
-									<div class="node-value">{feadPercentage}%</div>
-									<div class="node-count">{data.domain_analysis ? data.domain_analysis['fead'] || 0 : 0}</div>
-								</div>
+							<span class="dominance-value">{oneDcPct}%</span>
+						</div>
+						<div class="dominance-item">
+							<div class="dominance-label">FEAD</div>
+							<div class="dominance-bar">
+								<div class="bar-fill" style="width: {feadPct}%; background: #00ffff"></div>
 							</div>
-							
-							<div class="readout-node other-node">
-								<div class="node-frame">
-									<div class="node-indicator"></div>
-								</div>
-								<div class="node-data">
-									<div class="node-label">OTHER</div>
-									<div class="node-value">{otherPercentage}%</div>
-									<div class="node-count">{data.domain_analysis ? data.domain_analysis['other'] || 0 : 0}</div>
-								</div>
-							</div>
+							<span class="dominance-value">{feadPct}%</span>
 						</div>
 					</div>
-				</div>
-
-				<div class="command-stats">
-					<div class="stat-terminal">
-						<div class="terminal-frame">
-							<div class="terminal-header">TOTAL</div>
-							<div class="terminal-value">{totalDomains.toLocaleString()}</div>
-							<div class="terminal-bars">
-								{#each Array(6) as _, i}
-									<div class="bar" style="height: {Math.random() * 100}%; animation-delay: {i * 0.1}s"></div>
-								{/each}
-							</div>
-						</div>
-					</div>
-					
-					<div class="stat-terminal">
-						<div class="terminal-frame">
-							<div class="terminal-header">DOMINANT</div>
-							<div class="terminal-value">{dominantDomain ? dominantDomain[0].toUpperCase() : 'N/A'}</div>
-							<div class="terminal-graph">
-								<div class="graph-line"></div>
-								<div class="graph-points">
-									{#each Array(8) as _, i}
-										<div class="point" style="left: {i * 12.5}%; bottom: {Math.random() * 80}%"></div>
-									{/each}
-								</div>
-							</div>
-						</div>
+					<div class="status-indicator">
+						<span class="status-text">
+							{oneDcPct > feadPct ? '1DC DOMINANT' : feadPct > oneDcPct ? 'FEAD DOMINANT' : 'BALANCED'}
+						</span>
 					</div>
 				</div>
 			</div>
 
-			<div class="warfare-analysis">
-				<div class="analysis-header">
-					<div class="header-symbol">◈</div>
-					<h3>WARFARE ANALYSIS</h3>
-					<div class="signal-bars">
-						{#each Array(4) as _, i}
-							<div class="signal-bar" style="animation-delay: {i * 0.1}s"></div>
-						{/each}
-					</div>
-				</div>
-				
-				<div class="battle-grid">
-					<div class="domain-sector onedc-sector">
-						<div class="sector-header">
-							<div class="sector-icon">◆</div>
-							<div class="sector-title">1DC</div>
+			<!-- Coverage Matrix -->
+			<div class="viz-card">
+				<h4>DOMAIN MATRIX</h4>
+				<div class="matrix-grid">
+					{#each domainData as domain}
+						{@const threat = getThreatLevel(domain.domain)}
+						<div class="matrix-cell" style="background: {threat.color}20; border-color: {threat.color}">
+							<div class="cell-value">{domain.percentage}%</div>
+							<div class="cell-label">{domain.domain.toUpperCase()}</div>
 						</div>
-						<div class="sector-metrics">
-							<div class="metric-display">
-								<div class="metric-bar">
-									<div class="bar-fill onedc-fill" style="width: {oneDcPercentage}%"></div>
-								</div>
-								<div class="metric-stats">
-									<span class="stat-primary">{oneDcPercentage}%</span>
-									<span class="stat-secondary">{data.domain_analysis ? data.domain_analysis['1dc'] || 0 : 0}</span>
-								</div>
-							</div>
-						</div>
-						<div class="sector-status {oneDcPercentage > feadPercentage ? 'dominant' : 'contested'}">
-							{oneDcPercentage > feadPercentage ? 'DOM' : 'CON'}
-						</div>
-					</div>
-
-					<div class="domain-sector fead-sector">
-						<div class="sector-header">
-							<div class="sector-icon">◇</div>
-							<div class="sector-title">FEAD</div>
-						</div>
-						<div class="sector-metrics">
-							<div class="metric-display">
-								<div class="metric-bar">
-									<div class="bar-fill fead-fill" style="width: {feadPercentage}%"></div>
-								</div>
-								<div class="metric-stats">
-									<span class="stat-primary">{feadPercentage}%</span>
-									<span class="stat-secondary">{data.domain_analysis ? data.domain_analysis['fead'] || 0 : 0}</span>
-								</div>
-							</div>
-						</div>
-						<div class="sector-status {feadPercentage > oneDcPercentage ? 'dominant' : 'contested'}">
-							{feadPercentage > oneDcPercentage ? 'DOM' : 'CON'}
-						</div>
-					</div>
-
-					<div class="domain-sector other-sector">
-						<div class="sector-header">
-							<div class="sector-icon">◎</div>
-							<div class="sector-title">OTHER</div>
-						</div>
-						<div class="sector-metrics">
-							<div class="metric-display">
-								<div class="metric-bar">
-									<div class="bar-fill other-fill" style="width: {otherPercentage}%"></div>
-								</div>
-								<div class="metric-stats">
-									<span class="stat-primary">{otherPercentage}%</span>
-									<span class="stat-secondary">{data.domain_analysis ? data.domain_analysis['other'] || 0 : 0}</span>
-								</div>
-							</div>
-						</div>
-						<div class="sector-status neutral">
-							NEU
-						</div>
-					</div>
+					{/each}
 				</div>
 			</div>
-
-			<div class="intel-summary">
-				<div class="summary-header">
-					<div class="header-symbol">◉</div>
-					<h3>TACTICAL INTELLIGENCE</h3>
-				</div>
-				
-				<div class="intel-grid">
-					{#if dominantDomain}
-						<div class="intel-item">
-							<div class="item-marker">▶</div>
-							<div class="item-text">
-								Primary: <strong style="color: #ff00ff">{dominantDomain[0].toUpperCase()}</strong> ({dominantDomain[1].toLocaleString()})
-							</div>
-						</div>
-						
-						<div class="intel-item">
-							<div class="item-marker">▶</div>
-							<div class="item-text">
-								Status: <strong style="color: #00ffff">
-								{oneDcPercentage > feadPercentage ? '1DC DOM' : feadPercentage > oneDcPercentage ? 'FEAD SUP' : 'BALANCED'}</strong>
-							</div>
-						</div>
-						
-						<div class="intel-item">
-							<div class="item-marker">▶</div>
-							<div class="item-text">
-								Total: <strong style="color: #0096ff">{totalDomains.toLocaleString()}</strong> domains
-							</div>
-						</div>
-					{/if}
-				</div>
-			</div>
-		</div>
-	{/if}
-
-	<div class="interface-footer">
-		<div class="footer-line"></div>
-		<div class="classification-notice">
-			◆ DOMAIN WARFARE INTELLIGENCE ACTIVE
 		</div>
 	</div>
 </div>
 
 <style>
-	.domain-warfare-matrix {
-		width: 100%;
-		height: 100%;
-		font-family: 'Orbitron', 'Exo 2', monospace;
+	.dashboard-container {
+		height: 100vh;
+		display: flex;
+		flex-direction: column;
+		background: linear-gradient(135deg, #0a0a0a 0%, #1a1a2e 100%);
 		color: #fff;
-		display: flex;
-		flex-direction: column;
-		text-transform: uppercase;
-		letter-spacing: 0.03em;
-		font-size: 0.65rem;
-	}
-
-	.matrix-header {
-		background: linear-gradient(135deg, 
-			rgba(0, 0, 0, 0.8) 0%, 
-			rgba(255, 0, 255, 0.05) 50%,
-			rgba(0, 255, 255, 0.05) 100%);
-		border: 1px solid #ff00ff;
-		border-radius: 8px;
-		padding: 0.8rem 1.2rem;
-		margin-bottom: 0.8rem;
-		backdrop-filter: blur(20px);
-		box-shadow: 0 0 25px rgba(255, 0, 255, 0.2);
-	}
-
-	.command-center {
-		display: flex;
-		align-items: center;
-		justify-content: space-between;
-	}
-
-	.hologram-core {
-		position: relative;
-		width: 50px;
-		height: 50px;
-		display: flex;
-		align-items: center;
-		justify-content: center;
-	}
-
-	.holo-rings {
-		position: absolute;
-		width: 100%;
-		height: 100%;
-	}
-
-	.holo-ring {
-		position: absolute;
-		border-radius: 50%;
-		border: 1px solid;
-		top: 50%;
-		left: 50%;
-		transform: translate(-50%, -50%);
-		animation: holoRotate 8s linear infinite;
-	}
-
-	.ring-1 {
-		width: 50px;
-		height: 50px;
-		border-color: #ff00ff;
-		opacity: 0.8;
-	}
-
-	.ring-2 {
-		width: 38px;
-		height: 38px;
-		border-color: #00ffff;
-		opacity: 0.6;
-		animation-direction: reverse;
-		animation-duration: 6s;
-	}
-
-	.ring-3 {
-		width: 26px;
-		height: 26px;
-		border-color: #0096ff;
-		animation-duration: 4s;
-	}
-
-	.core-symbol {
-		position: relative;
-		z-index: 3;
-		font-size: 1.3rem;
-		color: #ff00ff;
-		text-shadow: 0 0 12px #ff00ff;
-		animation: coreGlow 3s ease-in-out infinite;
-	}
-
-	.command-info {
-		flex: 1;
-		margin-left: 1.2rem;
-	}
-
-	.matrix-title {
-		font-size: 1rem;
-		font-weight: 700;
-		color: #fff;
-		margin: 0;
-		text-shadow: 0 0 10px rgba(255, 0, 255, 0.5);
-		letter-spacing: 0.08em;
-	}
-
-	.matrix-subtitle {
-		font-size: 0.6rem;
-		color: rgba(255, 255, 255, 0.6);
-		margin: 0.2rem 0 0 0;
-		font-weight: 300;
-	}
-
-	.threat-assessment {
-		display: flex;
-		align-items: center;
-		gap: 0.6rem;
-		padding: 0.6rem 1rem;
-		background: linear-gradient(135deg, 
-			rgba(255, 0, 0, 0.1), 
-			rgba(255, 100, 100, 0.05));
-		border: 1px solid #ff0066;
-		border-radius: 6px;
-		backdrop-filter: blur(10px);
-	}
-
-	.assessment-ring {
-		width: 10px;
-		height: 10px;
-		background: #ff0066;
-		border-radius: 50%;
-		animation: assessmentPulse 2s ease-in-out infinite;
-		box-shadow: 0 0 10px #ff0066;
-	}
-
-	.assessment-text {
-		font-size: 0.6rem;
-		color: #ff0066;
-		font-weight: 700;
-		letter-spacing: 0.08em;
-		text-shadow: 0 0 8px #ff0066;
-	}
-
-	.neural-loading {
-		flex: 1;
-		display: flex;
-		flex-direction: column;
-		align-items: center;
-		justify-content: center;
-		gap: 1.2rem;
-	}
-
-	.loading-core {
-		position: relative;
-		width: 120px;
-		height: 120px;
-		display: flex;
-		align-items: center;
-		justify-content: center;
-	}
-
-	.core-rings {
-		position: absolute;
-		width: 100%;
-		height: 100%;
-	}
-
-	.loading-ring {
-		position: absolute;
-		width: var(--size);
-		height: var(--size);
-		border: 2px solid transparent;
-		border-top: 2px solid #ff00ff;
-		border-right: 2px solid #00ffff;
-		border-radius: 50%;
-		top: 50%;
-		left: 50%;
-		transform: translate(-50%, -50%);
-		animation: loadingSpin 3s linear infinite;
-		animation-delay: var(--delay);
-	}
-
-	.core-nexus {
-		position: relative;
-		z-index: 3;
-		font-size: 1.8rem;
-		color: #ff00ff;
-		text-shadow: 0 0 20px #ff00ff;
-		animation: nexusGlow 2s ease-in-out infinite;
-	}
-
-	.loading-sequence {
-		color: #ff00ff;
-		font-size: 0.8rem;
-		font-weight: 600;
-		letter-spacing: 0.08em;
-		text-shadow: 0 0 10px #ff00ff;
-	}
-
-	.error-state {
-		flex: 1;
-		display: flex;
-		flex-direction: column;
-		align-items: center;
-		justify-content: center;
-		gap: 1.2rem;
-	}
-
-	.error-core {
-		position: relative;
-		width: 70px;
-		height: 70px;
-		display: flex;
-		align-items: center;
-		justify-content: center;
-	}
-
-	.error-ring {
-		position: absolute;
-		width: 100%;
-		height: 100%;
-		border: 3px solid #ff0066;
-		border-radius: 50%;
-		animation: errorPulse 1.5s ease-in-out infinite;
-	}
-
-	.error-symbol {
-		font-size: 1.8rem;
-		color: #ff0066;
-		text-shadow: 0 0 15px #ff0066;
-		z-index: 2;
-	}
-
-	.error-message {
-		color: #ff0066;
-		font-size: 0.8rem;
-		font-weight: 700;
-		letter-spacing: 0.08em;
-		text-shadow: 0 0 10px #ff0066;
-	}
-
-	.warfare-interface {
-		flex: 1;
-		display: flex;
-		flex-direction: column;
-		gap: 1.2rem;
-	}
-
-	.battlefield-overview {
-		display: grid;
-		grid-template-columns: auto 1fr;
-		gap: 2rem;
-		align-items: center;
-	}
-
-	.tactical-display {
-		display: flex;
-		flex-direction: column;
-		align-items: center;
-		gap: 1rem;
-	}
-
-	.radar-scope {
-		position: relative;
-		width: 200px;
-		height: 200px;
-		background: radial-gradient(circle, rgba(0, 0, 0, 0.8), rgba(255, 0, 255, 0.02));
-		border: 2px solid #ff00ff;
-		border-radius: 50%;
-		display: flex;
-		align-items: center;
-		justify-content: center;
+		font-family: 'JetBrains Mono', monospace;
 		overflow: hidden;
 	}
 
-	.domain-radar {
-		width: 100%;
-		height: 100%;
-		filter: drop-shadow(0 0 15px rgba(255, 0, 255, 0.3));
-	}
-
-	.radar-sweep {
-		position: absolute;
-		width: 2px;
-		height: 100px;
-		background: linear-gradient(180deg, #ff00ff, transparent);
-		top: 50%;
-		left: 50%;
-		transform-origin: bottom center;
-		transform: translate(-50%, -100%);
-		animation: radarSweep 4s linear infinite;
-		box-shadow: 0 0 8px #ff00ff;
-	}
-
-	.domain-arc {
-		stroke-linecap: round;
-		transition: stroke-dashoffset 2s cubic-bezier(0.4, 0, 0.2, 1);
-		animation: arcGlow 3s ease-in-out infinite;
-	}
-
-	.onedc-arc {
-		animation-delay: 0s;
-	}
-
-	.fead-arc {
-		animation-delay: 1s;
-	}
-
-	.other-arc {
-		animation-delay: 2s;
-	}
-
-	.tactical-readouts {
-		width: 100%;
-	}
-
-	.readout-cluster {
-		display: flex;
-		flex-direction: column;
-		gap: 0.6rem;
-	}
-
-	.readout-node {
-		display: flex;
-		align-items: center;
-		gap: 0.6rem;
-		padding: 0.6rem;
-		background: linear-gradient(135deg, rgba(0, 0, 0, 0.8), rgba(255, 255, 255, 0.02));
-		border: 1px solid;
-		border-radius: 6px;
+	.header-section {
+		background: rgba(0, 0, 0, 0.6);
+		border-bottom: 1px solid rgba(255, 0, 255, 0.3);
+		padding: 1rem 1.5rem;
 		backdrop-filter: blur(10px);
-		transition: all 0.3s ease;
-		min-height: 40px;
 	}
 
-	.onedc-node {
-		border-color: #ff00ff;
+	.header-content {
+		max-width: 100%;
 	}
 
-	.fead-node {
-		border-color: #00ffff;
-	}
-
-	.other-node {
-		border-color: #0096ff;
-	}
-
-	.readout-node:hover {
-		transform: translateX(5px);
-		box-shadow: 0 0 20px rgba(255, 0, 255, 0.3);
-	}
-
-	.node-frame {
-		position: relative;
-		width: 30px;
-		height: 30px;
-		border: 1px solid;
-		border-radius: 6px;
-		display: flex;
-		align-items: center;
-		justify-content: center;
-	}
-
-	.onedc-node .node-frame {
-		border-color: #ff00ff;
-	}
-
-	.fead-node .node-frame {
-		border-color: #00ffff;
-	}
-
-	.other-node .node-frame {
-		border-color: #0096ff;
-	}
-
-	.node-indicator {
-		width: 12px;
-		height: 12px;
-		border-radius: 50%;
-		animation: nodeIndicatorPulse 2s ease-in-out infinite;
-	}
-
-	.onedc-node .node-indicator {
-		background: #ff00ff;
-		box-shadow: 0 0 10px #ff00ff;
-	}
-
-	.fead-node .node-indicator {
-		background: #00ffff;
-		box-shadow: 0 0 10px #00ffff;
-	}
-
-	.other-node .node-indicator {
-		background: #0096ff;
-		box-shadow: 0 0 10px #0096ff;
-	}
-
-	.node-data {
-		flex: 1;
-		display: flex;
-		flex-direction: column;
-		gap: 0.2rem;
-	}
-
-	.node-label {
-		font-size: 0.6rem;
-		font-weight: 600;
-		color: rgba(255, 255, 255, 0.9);
-		letter-spacing: 0.03em;
-	}
-
-	.node-value {
-		font-size: 1rem;
-		font-weight: 700;
-		text-shadow: 0 0 8px currentColor;
-	}
-
-	.onedc-node .node-value {
+	.title-block h1 {
+		margin: 0;
+		font-size: 1.5rem;
 		color: #ff00ff;
+		text-shadow: 0 0 10px rgba(255, 0, 255, 0.5);
+		letter-spacing: 0.1em;
 	}
 
-	.fead-node .node-value {
-		color: #00ffff;
-	}
-
-	.other-node .node-value {
-		color: #0096ff;
-	}
-
-	.node-count {
-		font-size: 0.5rem;
+	.title-block p {
+		margin: 0.2rem 0 0 0;
+		font-size: 0.8rem;
 		color: rgba(255, 255, 255, 0.6);
 	}
 
-	.command-stats {
+	.metrics-row {
+		display: flex;
+		gap: 1rem;
+		margin-top: 1rem;
+	}
+
+	.metric-card {
+		flex: 1;
+		background: rgba(255, 0, 255, 0.05);
+		border: 1px solid rgba(255, 0, 255, 0.3);
+		border-radius: 8px;
+		padding: 0.8rem;
+		text-align: center;
+	}
+
+	.metric-card.critical {
+		background: rgba(0, 255, 255, 0.05);
+		border-color: rgba(0, 255, 255, 0.3);
+	}
+
+	.metric-value {
+		font-size: 1.5rem;
+		font-weight: 700;
+		color: #ff00ff;
+		text-shadow: 0 0 10px currentColor;
+	}
+
+	.metric-label {
+		font-size: 0.7rem;
+		color: rgba(255, 255, 255, 0.6);
+		margin-top: 0.3rem;
+		letter-spacing: 0.05em;
+	}
+
+	.main-content {
+		flex: 1;
+		display: flex;
+		gap: 1rem;
+		padding: 1rem;
+		overflow: hidden;
+		min-height: 0;
+	}
+
+	.table-panel {
+		flex: 2;
+		background: rgba(0, 0, 0, 0.4);
+		border: 1px solid rgba(255, 0, 255, 0.2);
+		border-radius: 8px;
+		display: flex;
+		flex-direction: column;
+		overflow: hidden;
+	}
+
+	.viz-panel {
+		flex: 1;
 		display: flex;
 		flex-direction: column;
 		gap: 1rem;
+		overflow-y: auto;
 	}
 
-	.stat-terminal {
-		background: linear-gradient(135deg, rgba(0, 0, 0, 0.8), rgba(0, 255, 255, 0.03));
-		border: 1px solid #00ffff;
-		border-radius: 6px;
-		padding: 0.8rem;
-		backdrop-filter: blur(10px);
-	}
-
-	.terminal-frame {
+	.panel-header {
 		display: flex;
-		flex-direction: column;
-		gap: 0.6rem;
-		align-items: center;
-	}
-
-	.terminal-header {
-		font-size: 0.5rem;
-		color: rgba(255, 255, 255, 0.6);
-		letter-spacing: 0.08em;
-	}
-
-	.terminal-value {
-		font-size: 1.2rem;
-		font-weight: 700;
-		color: #00ffff;
-		text-shadow: 0 0 10px #00ffff;
-	}
-
-	.terminal-bars {
-		display: flex;
-		gap: 0.2rem;
-		height: 25px;
-		align-items: flex-end;
-	}
-
-	.bar {
-		width: 4px;
-		background: linear-gradient(180deg, #00ffff, #0096ff);
-		border-radius: 2px;
-		animation: barPulse 2s ease-in-out infinite;
-		box-shadow: 0 0 6px rgba(0, 255, 255, 0.5);
-	}
-
-	.terminal-graph {
-		position: relative;
-		width: 80px;
-		height: 25px;
-		border: 1px solid rgba(0, 255, 255, 0.2);
-		background: rgba(0, 0, 0, 0.4);
-		border-radius: 3px;
-	}
-
-	.graph-line {
-		position: absolute;
-		top: 50%;
-		left: 0;
-		width: 100%;
-		height: 1px;
-		background: linear-gradient(90deg, transparent, #00ffff, transparent);
-		animation: graphPulse 3s ease-in-out infinite;
-	}
-
-	.graph-points {
-		position: absolute;
-		width: 100%;
-		height: 100%;
-	}
-
-	.point {
-		position: absolute;
-		width: 2px;
-		height: 2px;
-		background: #00ffff;
-		border-radius: 50%;
-		box-shadow: 0 0 4px #00ffff;
-		animation: pointFlicker 2s ease-in-out infinite;
-	}
-
-	.warfare-analysis {
-		background: linear-gradient(135deg, rgba(0, 0, 0, 0.6), rgba(0, 255, 255, 0.02));
-		border: 1px solid rgba(0, 255, 255, 0.3);
-		border-radius: 8px;
-		padding: 0.8rem;
-		backdrop-filter: blur(20px);
-	}
-
-	.analysis-header {
-		display: flex;
-		align-items: center;
 		justify-content: space-between;
-		margin-bottom: 0.8rem;
+		align-items: center;
+		padding: 1rem;
+		border-bottom: 1px solid rgba(255, 0, 255, 0.2);
 	}
 
-	.header-symbol {
-		font-size: 1rem;
-		color: #00ffff;
-		text-shadow: 0 0 10px #00ffff;
-		animation: symbolFloat 3s ease-in-out infinite;
+	.panel-header h3 {
+		margin: 0;
+		font-size: 0.9rem;
+		color: #ff00ff;
+		letter-spacing: 0.05em;
 	}
 
-	.analysis-header h3 {
-		flex: 1;
-		margin: 0 0 0 0.6rem;
+	.search-bar {
+		width: 300px;
+	}
+
+	.search-input {
+		width: 100%;
+		background: rgba(0, 0, 0, 0.6);
+		border: 1px solid rgba(255, 0, 255, 0.3);
+		border-radius: 4px;
+		padding: 0.5rem;
+		color: #fff;
 		font-size: 0.8rem;
-		font-weight: 700;
-		color: #00ffff;
-		letter-spacing: 0.03em;
 	}
 
-	.signal-bars {
-		display: flex;
-		gap: 0.15rem;
-		align-items: flex-end;
-	}
-
-	.signal-bar {
-		width: 3px;
-		background: #00ffff;
-		border-radius: 1px;
-		animation: signalPulse 1.5s ease-in-out infinite;
-		box-shadow: 0 0 4px #00ffff;
-	}
-
-	.signal-bar:nth-child(1) { height: 8px; }
-	.signal-bar:nth-child(2) { height: 12px; }
-	.signal-bar:nth-child(3) { height: 16px; }
-	.signal-bar:nth-child(4) { height: 20px; }
-
-	.battle-grid {
-		display: grid;
-		grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-		gap: 0.8rem;
-	}
-
-	.domain-sector {
-		background: linear-gradient(135deg, rgba(0, 0, 0, 0.6), rgba(255, 255, 255, 0.02));
-		border: 1px solid;
-		border-radius: 6px;
-		padding: 0.8rem;
-		transition: all 0.3s ease;
-		min-height: 120px;
-	}
-
-	.onedc-sector {
+	.search-input:focus {
+		outline: none;
 		border-color: #ff00ff;
+		box-shadow: 0 0 10px rgba(255, 0, 255, 0.3);
 	}
 
-	.fead-sector {
-		border-color: #00ffff;
+	.table-container {
+		flex: 1;
+		overflow: auto;
+		padding: 0.5rem;
 	}
 
-	.other-sector {
-		border-color: #0096ff;
+	.data-table {
+		width: 100%;
+		border-collapse: collapse;
+		font-size: 0.8rem;
 	}
 
-	.domain-sector:hover {
-		transform: translateY(-3px);
-		box-shadow: 0 8px 25px rgba(0, 0, 0, 0.5);
+	.data-table th {
+		background: rgba(255, 0, 255, 0.1);
+		color: #ff00ff;
+		padding: 0.8rem;
+		text-align: left;
+		font-weight: 600;
+		letter-spacing: 0.05em;
+		position: sticky;
+		top: 0;
+		z-index: 10;
 	}
 
-	.sector-header {
+	.data-table td {
+		padding: 0.6rem 0.8rem;
+		border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+		color: rgba(255, 255, 255, 0.8);
+	}
+
+	.data-table tr:hover {
+		background: rgba(255, 0, 255, 0.05);
+	}
+
+	.source-cell .cell-content {
 		display: flex;
 		align-items: center;
-		gap: 0.6rem;
-		margin-bottom: 0.6rem;
-	}
-
-	.sector-icon {
-		font-size: 1rem;
-		text-shadow: 0 0 8px currentColor;
-	}
-
-	.onedc-sector .sector-icon {
-		color: #ff00ff;
-	}
-
-	.fead-sector .sector-icon {
-		color: #00ffff;
-	}
-
-	.other-sector .sector-icon {
-		color: #0096ff;
-	}
-
-	.sector-title {
-		font-size: 0.7rem;
-		font-weight: 700;
-		color: #fff;
-		letter-spacing: 0.03em;
-	}
-
-	.sector-metrics {
-		margin-bottom: 0.6rem;
-	}
-
-	.metric-display {
-		display: flex;
-		flex-direction: column;
 		gap: 0.5rem;
 	}
 
-	.metric-bar {
-		height: 8px;
-		background: rgba(0, 0, 0, 0.6);
-		border-radius: 4px;
-		overflow: hidden;
-		border: 1px solid rgba(255, 255, 255, 0.1);
+	.indicator {
+		width: 6px;
+		height: 6px;
+		border-radius: 50%;
+		flex-shrink: 0;
 	}
 
-	.bar-fill {
-		height: 100%;
-		border-radius: 4px;
-		transition: width 2s cubic-bezier(0.4, 0, 0.2, 1);
-		position: relative;
-		overflow: hidden;
-	}
-
-	.onedc-fill {
-		background: linear-gradient(90deg, #ff00ff, #cc0088);
-		box-shadow: 0 0 12px rgba(255, 0, 255, 0.5);
-	}
-
-	.fead-fill {
-		background: linear-gradient(90deg, #00ffff, #0088cc);
-		box-shadow: 0 0 12px rgba(0, 255, 255, 0.5);
-	}
-
-	.other-fill {
-		background: linear-gradient(90deg, #0096ff, #0066cc);
-		box-shadow: 0 0 12px rgba(0, 150, 255, 0.5);
-	}
-
-	.bar-fill::after {
-		content: '';
-		position: absolute;
-		top: 0;
-		left: -100%;
-		width: 100%;
-		height: 100%;
-		background: linear-gradient(90deg, 
-			transparent, 
-			rgba(255, 255, 255, 0.4), 
-			transparent);
-		animation: barSweep 3s linear infinite;
-	}
-
-	.metric-stats {
-		display: flex;
-		justify-content: space-between;
-		align-items: center;
-	}
-
-	.stat-primary {
-		font-size: 1rem;
-		font-weight: 700;
-		text-shadow: 0 0 8px currentColor;
-	}
-
-	.onedc-sector .stat-primary {
-		color: #ff00ff;
-	}
-
-	.fead-sector .stat-primary {
-		color: #00ffff;
-	}
-
-	.other-sector .stat-primary {
-		color: #0096ff;
-	}
-
-	.stat-secondary {
-		font-size: 0.6rem;
-		color: rgba(255, 255, 255, 0.6);
-		font-weight: 400;
-	}
-
-	.sector-status {
-		padding: 0.3rem 0.6rem;
-		border-radius: 3px;
-		font-size: 0.5rem;
-		font-weight: 700;
+	.center {
 		text-align: center;
-		letter-spacing: 0.08em;
-		text-shadow: 0 0 6px currentColor;
 	}
 
-	.sector-status.dominant {
-		background: rgba(0, 255, 133, 0.1);
-		color: #00ff85;
-		border: 1px solid #00ff85;
+	.coverage-cell {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
 	}
 
-	.sector-status.contested {
-		background: rgba(255, 170, 0, 0.1);
-		color: #ffaa00;
-		border: 1px solid #ffaa00;
+	.coverage-bar {
+		flex: 1;
+		height: 6px;
+		background: rgba(0, 0, 0, 0.5);
+		border-radius: 3px;
+		overflow: hidden;
 	}
 
-	.sector-status.neutral {
-		background: rgba(0, 150, 255, 0.1);
+	.coverage-fill {
+		height: 100%;
+		transition: width 0.3s ease;
+	}
+
+	.coverage-text {
+		font-size: 0.7rem;
+		min-width: 45px;
+		text-align: right;
+	}
+
+	.threat-badge {
+		padding: 0.2rem 0.5rem;
+		border-radius: 4px;
+		font-size: 0.7rem;
+		font-weight: 600;
+	}
+
+	.threat-badge.primary {
+		background: rgba(255, 0, 255, 0.2);
+		color: #ff00ff;
+		border: 1px solid #ff00ff;
+	}
+
+	.threat-badge.secondary {
+		background: rgba(0, 255, 255, 0.2);
+		color: #00ffff;
+		border: 1px solid #00ffff;
+	}
+
+	.threat-badge.other {
+		background: rgba(0, 150, 255, 0.2);
 		color: #0096ff;
 		border: 1px solid #0096ff;
 	}
 
-	.intel-summary {
-		background: linear-gradient(135deg, rgba(0, 0, 0, 0.6), rgba(255, 0, 255, 0.02));
-		border: 1px solid rgba(255, 0, 255, 0.3);
-		border-radius: 8px;
-		padding: 0.8rem;
-		backdrop-filter: blur(20px);
+	.drill-btn {
+		background: rgba(255, 0, 255, 0.1);
+		border: 1px solid #ff00ff;
+		color: #ff00ff;
+		padding: 0.3rem 0.8rem;
+		border-radius: 4px;
+		cursor: pointer;
+		font-size: 0.7rem;
+		transition: all 0.3s ease;
 	}
 
-	.summary-header {
+	.drill-btn:hover {
+		background: rgba(255, 0, 255, 0.2);
+		transform: translateX(2px);
+	}
+
+	.pagination {
 		display: flex;
+		justify-content: center;
 		align-items: center;
-		gap: 0.6rem;
-		margin-bottom: 0.8rem;
+		gap: 1rem;
+		padding: 1rem;
+		border-top: 1px solid rgba(255, 0, 255, 0.2);
 	}
 
-	.summary-header .header-symbol {
+	.pagination button {
+		background: rgba(255, 0, 255, 0.1);
+		border: 1px solid #ff00ff;
 		color: #ff00ff;
-		text-shadow: 0 0 10px #ff00ff;
+		padding: 0.5rem 1rem;
+		border-radius: 4px;
+		cursor: pointer;
+		transition: all 0.3s ease;
 	}
 
-	.summary-header h3 {
+	.pagination button:hover:not(:disabled) {
+		background: rgba(255, 0, 255, 0.2);
+	}
+
+	.pagination button:disabled {
+		opacity: 0.5;
+		cursor: not-allowed;
+	}
+
+	.viz-card {
+		background: rgba(0, 0, 0, 0.4);
+		border: 1px solid rgba(255, 0, 255, 0.2);
+		border-radius: 8px;
+		padding: 1rem;
+	}
+
+	.viz-card h4 {
+		margin: 0 0 1rem 0;
 		font-size: 0.8rem;
-		font-weight: 700;
 		color: #ff00ff;
-		margin: 0;
-		letter-spacing: 0.03em;
+		letter-spacing: 0.05em;
 	}
 
-	.intel-grid {
+	.donut-chart {
+		width: 100%;
+		max-width: 200px;
+		margin: 0 auto;
+	}
+
+	.legend {
 		display: flex;
 		flex-direction: column;
 		gap: 0.5rem;
+		margin-top: 1rem;
 	}
 
-	.intel-item {
+	.legend-item {
 		display: flex;
-		align-items: flex-start;
-		gap: 0.6rem;
-		padding: 0.5rem;
-		background: linear-gradient(135deg, rgba(0, 0, 0, 0.4), rgba(255, 255, 255, 0.02));
-		border: 1px solid rgba(255, 255, 255, 0.1);
-		border-radius: 4px;
-		backdrop-filter: blur(10px);
+		align-items: center;
+		gap: 0.5rem;
+		font-size: 0.7rem;
 	}
 
-	.item-marker {
+	.legend-color {
+		width: 12px;
+		height: 12px;
+		border-radius: 2px;
+	}
+
+	.dominance-meter {
+		display: flex;
+		flex-direction: column;
+		gap: 1rem;
+	}
+
+	.dominance-bars {
+		display: flex;
+		flex-direction: column;
+		gap: 0.8rem;
+	}
+
+	.dominance-item {
+		display: grid;
+		grid-template-columns: 50px 1fr 50px;
+		align-items: center;
+		gap: 0.5rem;
+	}
+
+	.dominance-label {
 		font-size: 0.7rem;
+		color: rgba(255, 255, 255, 0.8);
+		font-weight: 600;
+	}
+
+	.dominance-bar {
+		height: 20px;
+		background: rgba(0, 0, 0, 0.5);
+		border-radius: 4px;
+		overflow: hidden;
+	}
+
+	.dominance-value {
+		font-size: 0.7rem;
+		font-weight: 600;
+		text-align: right;
+	}
+
+	.bar-fill {
+		height: 100%;
+		transition: width 0.3s ease;
+	}
+
+	.status-indicator {
+		text-align: center;
+		padding: 0.5rem;
+		background: rgba(255, 0, 255, 0.1);
+		border: 1px solid #ff00ff;
+		border-radius: 4px;
+	}
+
+	.status-text {
+		font-size: 0.8rem;
+		font-weight: 600;
 		color: #ff00ff;
 		text-shadow: 0 0 8px #ff00ff;
-		margin-top: 0.05rem;
-		flex-shrink: 0;
 	}
 
-	.item-text {
-		font-size: 0.65rem;
-		color: rgba(255, 255, 255, 0.8);
-		line-height: 1.3;
-		font-weight: 400;
+	.matrix-grid {
+		display: grid;
+		grid-template-columns: repeat(auto-fit, minmax(80px, 1fr));
+		gap: 0.5rem;
 	}
 
-	.item-text strong {
-		color: #fff;
+	.matrix-cell {
+		aspect-ratio: 1;
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		justify-content: center;
+		border: 1px solid;
+		border-radius: 4px;
+		padding: 0.5rem;
+	}
+
+	.cell-value {
+		font-size: 0.8rem;
 		font-weight: 600;
-		text-shadow: 0 0 6px currentColor;
 	}
 
-	.interface-footer {
-		margin-top: 1rem;
-		padding-top: 0.6rem;
-		border-top: 1px solid rgba(255, 255, 255, 0.1);
-		text-align: center;
+	.cell-label {
+		font-size: 0.6rem;
+		color: rgba(255, 255, 255, 0.6);
+		margin-top: 0.2rem;
 	}
 
-	.footer-line {
-		width: 100%;
-		height: 1px;
-		background: linear-gradient(90deg, 
-			transparent, 
-			rgba(255, 0, 255, 0.6), 
-			transparent);
-		margin-bottom: 0.6rem;
+	.loading-state {
+		flex: 1;
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		justify-content: center;
+		gap: 1rem;
 	}
 
-	.classification-notice {
-		font-size: 0.5rem;
+	.spinner {
+		width: 40px;
+		height: 40px;
+		border: 3px solid rgba(255, 0, 255, 0.2);
+		border-top-color: #ff00ff;
+		border-radius: 50%;
+		animation: spin 1s linear infinite;
+	}
+
+	@keyframes spin {
+		to { transform: rotate(360deg); }
+	}
+
+	.drill-view {
+		display: flex;
+		flex-direction: column;
+		height: 100%;
+	}
+
+	.drill-header {
+		display: flex;
+		justify-content: space-between;
+		align-items: center;
+		padding: 1rem;
+		border-bottom: 1px solid rgba(255, 0, 255, 0.3);
+		background: rgba(255, 0, 255, 0.05);
+	}
+
+	.drill-header h4 {
+		margin: 0;
 		color: #ff00ff;
+		font-size: 1rem;
+	}
+
+	.close-btn {
+		background: transparent;
+		border: 1px solid #ff0066;
+		color: #ff0066;
+		width: 30px;
+		height: 30px;
+		border-radius: 50%;
+		cursor: pointer;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		transition: all 0.3s ease;
+	}
+
+	.close-btn:hover {
+		background: rgba(255, 0, 102, 0.2);
+		transform: rotate(90deg);
+	}
+
+	.host-cell {
+		font-family: monospace;
+		color: #ff00ff;
+	}
+
+	.status-badge {
+		padding: 0.2rem 0.4rem;
+		border-radius: 4px;
+		font-size: 0.7rem;
 		font-weight: 600;
-		letter-spacing: 0.03em;
-		text-shadow: 0 0 6px #ff00ff;
 	}
 
-	@keyframes holoRotate {
-		0% { transform: translate(-50%, -50%) rotate(0deg); }
-		100% { transform: translate(-50%, -50%) rotate(360deg); }
+	.status-badge.active {
+		background: rgba(0, 255, 133, 0.2);
+		color: #00ff85;
+		border: 1px solid #00ff85;
 	}
 
-	@keyframes coreGlow {
-		0%, 100% { 
-			text-shadow: 0 0 12px #ff00ff; 
-			transform: scale(1);
-		}
-		50% { 
-			text-shadow: 0 0 18px #ff00ff; 
-			transform: scale(1.05);
-		}
+	.status-badge.partial {
+		background: rgba(255, 170, 0, 0.2);
+		color: #ffaa00;
+		border: 1px solid #ffaa00;
 	}
 
-	@keyframes assessmentPulse {
-		0%, 100% { opacity: 1; transform: scale(1); }
-		50% { opacity: 0.7; transform: scale(1.1); }
-	}
-
-	@keyframes loadingSpin {
-		0% { transform: translate(-50%, -50%) rotate(0deg); }
-		100% { transform: translate(-50%, -50%) rotate(360deg); }
-	}
-
-	@keyframes nexusGlow {
-		0%, 100% { opacity: 0.9; transform: scale(1); }
-		50% { opacity: 1; transform: scale(1.1); }
-	}
-
-	@keyframes errorPulse {
-		0%, 100% { 
-			border-color: #ff0066; 
-			box-shadow: 0 0 15px rgba(255, 0, 102, 0.3);
-		}
-		50% { 
-			border-color: #ff3388; 
-			box-shadow: 0 0 30px rgba(255, 0, 102, 0.6);
-		}
-	}
-
-	@keyframes radarSweep {
-		0% { transform: translate(-50%, -100%) rotate(0deg); }
-		100% { transform: translate(-50%, -100%) rotate(360deg); }
-	}
-
-	@keyframes arcGlow {
-		0%, 100% { filter: url(#radarGlow); }
-		50% { filter: url(#radarGlow) brightness(1.2); }
-	}
-
-	@keyframes nodeIndicatorPulse {
-		0%, 100% { opacity: 1; transform: scale(1); }
-		50% { opacity: 0.7; transform: scale(1.2); }
-	}
-
-	@keyframes barPulse {
-		0%, 100% { opacity: 1; }
-		50% { opacity: 0.7; }
-	}
-
-	@keyframes graphPulse {
-		0%, 100% { opacity: 0.5; }
-		50% { opacity: 1; }
-	}
-
-	@keyframes pointFlicker {
-		0%, 100% { opacity: 1; }
-		50% { opacity: 0.3; }
-	}
-
-	@keyframes symbolFloat {
-		0%, 100% { transform: translateY(0px); }
-		50% { transform: translateY(-2px); }
-	}
-
-	@keyframes signalPulse {
-		0%, 100% { opacity: 1; }
-		50% { opacity: 0.5; }
-	}
-
-	@keyframes barSweep {
-		0% { left: -100%; }
-		100% { left: 100%; }
+	.status-badge.critical {
+		background: rgba(255, 0, 102, 0.2);
+		color: #ff0066;
+		border: 1px solid #ff0066;
 	}
 
 	@media (max-width: 1200px) {
-		.battlefield-overview {
-			grid-template-columns: 1fr;
-			gap: 1.2rem;
-			text-align: center;
+		.main-content {
+			flex-direction: column;
 		}
-
-		.battle-grid {
-			grid-template-columns: 1fr;
+		
+		.viz-panel {
+			flex-direction: row;
+			overflow-x: auto;
+		}
+		
+		.viz-card {
+			min-width: 300px;
 		}
 	}
 
 	@media (max-width: 768px) {
-		.command-center {
-			flex-direction: column;
-			gap: 0.6rem;
-			text-align: center;
+		.metrics-row {
+			flex-wrap: wrap;
 		}
-
-		.command-info {
-			margin-left: 0;
+		
+		.metric-card {
+			min-width: calc(50% - 0.5rem);
 		}
-
-		.intel-item {
-			flex-direction: column;
-			gap: 0.3rem;
+		
+		.search-bar {
+			width: 100%;
 		}
-
-		.font-size: 0.6rem;
 	}
+</style>
