@@ -6,17 +6,43 @@
 	let activeView = 'correlation';
 	let selectedMetric = null;
 	let aiValidationResults = {};
+	let error = null;
 	
 	onMount(async () => {
+		await loadAdvancedAnalytics();
+	});
+
+	async function loadAdvancedAnalytics() {
 		try {
+			loading = true;
+			error = null;
 			const response = await fetch('http://localhost:5000/api/advanced_analytics');
-			data = await response.json();
+			
+			if (!response.ok) {
+				throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+			}
+			
+			const result = await response.json();
+			data = result;
 			loading = false;
 			runAiValidation();
 		} catch (err) {
+			console.error('Advanced analytics error:', err);
+			error = err.message;
 			loading = false;
+			// Set fallback data structure
+			data = {
+				correlation_analysis: [],
+				trend_analysis: {},
+				high_risk_combinations: [],
+				predictive_insights: {
+					security_trends: { improving_regions: [], declining_regions: [], stable_regions: [] },
+					risk_predictions: { high_priority_remediation: 0, assets_at_risk: 0, projected_incidents: 0 }
+				}
+			};
+			runAiValidation();
 		}
-	});
+	}
 	
 	function runAiValidation() {
 		const anomalies = detectAnomalies();
@@ -35,7 +61,7 @@
 	function detectAnomalies() {
 		const anomalies = [];
 		
-		if (data.correlation_analysis) {
+		if (data.correlation_analysis && Array.isArray(data.correlation_analysis)) {
 			data.correlation_analysis.forEach(item => {
 				if (item.security_score < 30 && item.asset_count > 100) {
 					anomalies.push({
@@ -81,7 +107,7 @@
 			business: {}
 		};
 		
-		if (data.correlation_analysis) {
+		if (data.correlation_analysis && Array.isArray(data.correlation_analysis)) {
 			const regionalGroups = {};
 			const infraGroups = {};
 			
@@ -98,8 +124,8 @@
 			});
 			
 			for (const [region, items] of Object.entries(regionalGroups)) {
-				const avgSecurity = items.reduce((sum, i) => sum + i.security_score, 0) / items.length;
-				const totalAssets = items.reduce((sum, i) => sum + i.asset_count, 0);
+				const avgSecurity = items.reduce((sum, i) => sum + (i.security_score || 0), 0) / items.length;
+				const totalAssets = items.reduce((sum, i) => sum + (i.asset_count || 0), 0);
 				
 				patterns.regional[region] = {
 					avg_security_score: avgSecurity.toFixed(2),
@@ -110,8 +136,8 @@
 			}
 			
 			for (const [infra, items] of Object.entries(infraGroups)) {
-				const avgSecurity = items.reduce((sum, i) => sum + i.security_score, 0) / items.length;
-				const avgBuDiversity = items.reduce((sum, i) => sum + i.business_unit_diversity, 0) / items.length;
+				const avgSecurity = items.reduce((sum, i) => sum + (i.security_score || 0), 0) / items.length;
+				const avgBuDiversity = items.reduce((sum, i) => sum + (i.business_unit_diversity || 0), 0) / items.length;
 				
 				patterns.infrastructure[infra] = {
 					avg_security_score: avgSecurity.toFixed(2),
@@ -123,9 +149,10 @@
 			
 			const securityBands = { critical: 0, high: 0, medium: 0, low: 0 };
 			data.correlation_analysis.forEach(item => {
-				if (item.security_score < 30) securityBands.critical++;
-				else if (item.security_score < 50) securityBands.high++;
-				else if (item.security_score < 80) securityBands.medium++;
+				const score = item.security_score || 0;
+				if (score < 30) securityBands.critical++;
+				else if (score < 50) securityBands.high++;
+				else if (score < 80) securityBands.medium++;
 				else securityBands.low++;
 			});
 			patterns.security = securityBands;
@@ -144,7 +171,7 @@
 		
 		if (data.trend_analysis) {
 			for (const [region, metrics] of Object.entries(data.trend_analysis)) {
-				const riskScore = 100 - metrics.avg_security_score;
+				const riskScore = 100 - (metrics.avg_security_score || 50);
 				const incidentProbability = Math.min(95, riskScore * 1.2);
 				
 				predictions.incident_probability[region] = {
@@ -153,36 +180,36 @@
 					timeframe: '30_days'
 				};
 				
-				if (metrics.high_risk_segments > 2) {
+				if ((metrics.high_risk_segments || 0) > 2) {
 					predictions.risk_trajectory.push({
 						region,
 						trend: 'ESCALATING',
-						segments_at_risk: metrics.high_risk_segments,
-						projected_incidents: Math.ceil(metrics.total_assets * 0.001 * riskScore),
+						segments_at_risk: metrics.high_risk_segments || 0,
+						projected_incidents: Math.ceil((metrics.total_assets || 0) * 0.001 * riskScore),
 						mitigation_priority: 'URGENT'
 					});
 				}
 				
-				const resourceNeed = Math.ceil(metrics.total_assets * (100 - metrics.avg_security_score) / 1000);
+				const resourceNeed = Math.ceil((metrics.total_assets || 0) * (100 - (metrics.avg_security_score || 50)) / 1000);
 				predictions.resource_requirements[region] = {
 					security_agents: resourceNeed,
 					cmdb_registrations: Math.ceil(resourceNeed * 0.7),
 					estimated_hours: resourceNeed * 4,
-					priority_level: metrics.avg_security_score < 50 ? 'CRITICAL' : 'STANDARD'
+					priority_level: (metrics.avg_security_score || 50) < 50 ? 'CRITICAL' : 'STANDARD'
 				};
 			}
 		}
 		
-		if (data.high_risk_combinations) {
+		if (data.high_risk_combinations && Array.isArray(data.high_risk_combinations)) {
 			data.high_risk_combinations.forEach(combo => {
 				predictions.improvement_areas.push({
 					region: combo.region,
 					infrastructure: combo.infrastructure_type,
-					current_security: combo.security_score,
+					current_security: combo.security_score || 0,
 					target_security: 80,
-					gap_to_close: 80 - combo.security_score,
-					estimated_timeline: Math.ceil((80 - combo.security_score) / 10) + ' weeks',
-					assets_to_secure: combo.asset_count
+					gap_to_close: 80 - (combo.security_score || 0),
+					estimated_timeline: Math.ceil((80 - (combo.security_score || 0)) / 10) + ' weeks',
+					assets_to_secure: combo.asset_count || 0
 				});
 			});
 		}
@@ -191,7 +218,7 @@
 	}
 	
 	function calculateConfidenceScore(anomalies, patterns) {
-		const dataCompleteness = data.correlation_analysis ? data.correlation_analysis.length : 0;
+		const dataCompleteness = (data.correlation_analysis && Array.isArray(data.correlation_analysis)) ? data.correlation_analysis.length : 0;
 		const anomalyFactor = Math.max(0, 100 - (anomalies.length * 5));
 		const patternConsistency = Object.keys(patterns.regional || {}).length > 0 ? 80 : 40;
 		
@@ -259,6 +286,10 @@
 	function selectMetric(metric) {
 		selectedMetric = selectedMetric === metric ? null : metric;
 	}
+
+	function refreshData() {
+		loadAdvancedAnalytics();
+	}
 </script>
 
 <div class="advanced-analytics-matrix">
@@ -291,6 +322,10 @@
 				<span class="btn-icon">◉</span>
 				AI VALIDATION
 			</button>
+			<button class="refresh-btn" on:click={refreshData} title="Refresh Data">
+				<span class="btn-icon">⟲</span>
+				REFRESH
+			</button>
 		</div>
 	</div>
 
@@ -306,31 +341,48 @@
 			</div>
 			<p>PROCESSING QUANTUM ALGORITHMS...</p>
 		</div>
+	{:else if error}
+		<div class="error-interface">
+			<div class="error-core">
+				<div class="error-symbol">⚠</div>
+			</div>
+			<div class="error-content">
+				<h3>SYSTEM ERROR</h3>
+				<p>Advanced analytics module offline: {error}</p>
+				<button class="retry-btn" on:click={refreshData}>
+					<span class="btn-icon">⟲</span>
+					RETRY CONNECTION
+				</button>
+			</div>
+		</div>
 	{:else}
 		{#if activeView === 'correlation'}
 			<div class="correlation-matrix">
 				<div class="matrix-grid">
 					{#each (data.correlation_analysis || []).slice(0, 20) as item, i}
-						<div class="correlation-node {item.risk_category === 'HIGH' ? 'high-risk' : ''}"
+						<div class="correlation-node {(item.risk_category || 'low').toLowerCase() === 'high' ? 'high-risk' : ''}"
 							 style="animation-delay: {i * 0.05}s"
-							 on:click={() => selectMetric(item)}>
+							 on:click={() => selectMetric(item)}
+							 on:keydown={(e) => e.key === 'Enter' && selectMetric(item)}
+							 tabindex="0"
+							 role="button">
 							<div class="node-header">
-								<div class="region-badge">{item.region.toUpperCase()}</div>
-								<div class="risk-indicator {item.risk_category.toLowerCase()}">{item.risk_category}</div>
+								<div class="region-badge">{(item.region || 'unknown').toUpperCase()}</div>
+								<div class="risk-indicator {(item.risk_category || 'low').toLowerCase()}">{item.risk_category || 'LOW'}</div>
 							</div>
 							
 							<div class="node-metrics">
 								<div class="metric-row">
 									<span class="metric-label">Infrastructure:</span>
-									<span class="metric-value">{item.infrastructure_type}</span>
+									<span class="metric-value">{item.infrastructure_type || 'unknown'}</span>
 								</div>
 								<div class="metric-row">
 									<span class="metric-label">Assets:</span>
-									<span class="metric-value">{item.asset_count.toLocaleString()}</span>
+									<span class="metric-value">{(item.asset_count || 0).toLocaleString()}</span>
 								</div>
 								<div class="metric-row">
 									<span class="metric-label">Security:</span>
-									<span class="metric-value security-score">{item.security_score}%</span>
+									<span class="metric-value security-score">{item.security_score || 0}%</span>
 								</div>
 							</div>
 							
@@ -338,26 +390,26 @@
 								<div class="coverage-bar">
 									<div class="bar-label">CMDB</div>
 									<div class="bar-track">
-										<div class="bar-fill cmdb" style="width: {item.cmdb_coverage}%"></div>
+										<div class="bar-fill cmdb" style="width: {item.cmdb_coverage || 0}%"></div>
 									</div>
-									<div class="bar-value">{item.cmdb_coverage}%</div>
+									<div class="bar-value">{item.cmdb_coverage || 0}%</div>
 								</div>
 								<div class="coverage-bar">
 									<div class="bar-label">TANIUM</div>
 									<div class="bar-track">
-										<div class="bar-fill tanium" style="width: {item.tanium_coverage}%"></div>
+										<div class="bar-fill tanium" style="width: {item.tanium_coverage || 0}%"></div>
 									</div>
-									<div class="bar-value">{item.tanium_coverage}%</div>
+									<div class="bar-value">{item.tanium_coverage || 0}%</div>
 								</div>
 							</div>
 							
 							<div class="diversity-metrics">
 								<div class="diversity-item">
-									<span class="diversity-value">{item.business_unit_diversity}</span>
+									<span class="diversity-value">{item.business_unit_diversity || 0}</span>
 									<span class="diversity-label">BUs</span>
 								</div>
 								<div class="diversity-item">
-									<span class="diversity-value">{item.datacenter_diversity}</span>
+									<span class="diversity-value">{item.datacenter_diversity || 0}</span>
 									<span class="diversity-label">DCs</span>
 								</div>
 							</div>
@@ -373,29 +425,29 @@
 						</div>
 						<div class="detail-content">
 							<div class="detail-section">
-								<h4>{selectedMetric.region.toUpperCase()} - {selectedMetric.infrastructure_type}</h4>
+								<h4>{(selectedMetric.region || 'unknown').toUpperCase()} - {selectedMetric.infrastructure_type || 'unknown'}</h4>
 								<div class="security-assessment">
-									<div class="assessment-score" style="color: {selectedMetric.security_score < 50 ? '#ff0066' : selectedMetric.security_score < 80 ? '#ffaa00' : '#00ff85'}">
-										{selectedMetric.security_score}%
+									<div class="assessment-score" style="color: {(selectedMetric.security_score || 0) < 50 ? '#ff0066' : (selectedMetric.security_score || 0) < 80 ? '#ffaa00' : '#00ff85'}">
+										{selectedMetric.security_score || 0}%
 									</div>
-									<div class="assessment-status">{selectedMetric.risk_category} RISK</div>
+									<div class="assessment-status">{selectedMetric.risk_category || 'LOW'} RISK</div>
 								</div>
 							</div>
 							<div class="detail-metrics">
 								<div class="metric-card">
-									<div class="card-value">{selectedMetric.asset_count.toLocaleString()}</div>
+									<div class="card-value">{(selectedMetric.asset_count || 0).toLocaleString()}</div>
 									<div class="card-label">Total Assets</div>
 								</div>
 								<div class="metric-card">
-									<div class="card-value">{selectedMetric.cmdb_coverage}%</div>
+									<div class="card-value">{selectedMetric.cmdb_coverage || 0}%</div>
 									<div class="card-label">CMDB Coverage</div>
 								</div>
 								<div class="metric-card">
-									<div class="card-value">{selectedMetric.tanium_coverage}%</div>
+									<div class="card-value">{selectedMetric.tanium_coverage || 0}%</div>
 									<div class="card-label">Tanium Coverage</div>
 								</div>
 								<div class="metric-card">
-									<div class="card-value">{selectedMetric.business_unit_diversity}</div>
+									<div class="card-value">{selectedMetric.business_unit_diversity || 0}</div>
 									<div class="card-label">Business Units</div>
 								</div>
 							</div>
@@ -454,7 +506,7 @@
 												stroke={data.severity === 'CRITICAL' ? '#ff0066' : data.severity === 'HIGH' ? '#ffaa00' : '#0096ff'}
 												stroke-width="3"
 												stroke-dasharray="220"
-												stroke-dashoffset={220 - (data.probability / 100 * 220)}
+												stroke-dashoffset={220 - (parseFloat(data.probability) / 100 * 220)}
 												transform="rotate(-90 40 40)"
 											/>
 										</svg>
@@ -477,15 +529,15 @@
 									<div class="item-region">{region.toUpperCase()}</div>
 									<div class="resource-metrics">
 										<div class="resource-stat">
-											<span class="stat-value">{req.security_agents}</span>
+											<span class="stat-value">{req.security_agents || 0}</span>
 											<span class="stat-label">Agents</span>
 										</div>
 										<div class="resource-stat">
-											<span class="stat-value">{req.cmdb_registrations}</span>
+											<span class="stat-value">{req.cmdb_registrations || 0}</span>
 											<span class="stat-label">CMDB</span>
 										</div>
 										<div class="resource-stat">
-											<span class="stat-value">{req.estimated_hours}</span>
+											<span class="stat-value">{req.estimated_hours || 0}</span>
 											<span class="stat-label">Hours</span>
 										</div>
 									</div>
@@ -560,6 +612,12 @@
 									</div>
 								</div>
 							{/each}
+							{#if (!aiValidationResults.anomalies || aiValidationResults.anomalies.length === 0)}
+								<div class="no-data-message">
+									<div class="no-data-icon">✓</div>
+									<div class="no-data-text">No critical anomalies detected</div>
+								</div>
+							{/if}
 						</div>
 					</div>
 					
@@ -578,6 +636,9 @@
 										</div>
 									</div>
 								{/each}
+								{#if Object.keys(aiValidationResults.patterns?.regional || {}).length === 0}
+									<div class="no-data-message small">No regional patterns available</div>
+								{/if}
 							</div>
 							
 							<div class="pattern-category">
@@ -587,11 +648,14 @@
 										<div class="band-item">
 											<div class="band-name">{band.toUpperCase()}</div>
 											<div class="band-bar">
-												<div class="bar-fill" style="width: {(count / (data.correlation_analysis?.length || 1) * 100)}%"></div>
+												<div class="bar-fill" style="width: {(count / ((data.correlation_analysis?.length || 1) * 1)) * 100}%"></div>
 											</div>
 											<div class="band-count">{count}</div>
 										</div>
 									{/each}
+									{#if Object.keys(aiValidationResults.patterns?.security || {}).length === 0}
+										<div class="no-data-message small">No security distribution data</div>
+									{/if}
 								</div>
 							</div>
 						</div>
@@ -609,11 +673,15 @@
 									<div class="rec-content">
 										<div class="targets">
 											<strong>Targets:</strong>
-											{#each rec.targets.slice(0, 3) as target}
-												<span class="target-chip">{target}</span>
-											{/each}
-											{#if rec.targets.length > 3}
-												<span class="more-chip">+{rec.targets.length - 3} more</span>
+											{#if Array.isArray(rec.targets)}
+												{#each rec.targets.slice(0, 3) as target}
+													<span class="target-chip">{target}</span>
+												{/each}
+												{#if rec.targets.length > 3}
+													<span class="more-chip">+{rec.targets.length - 3} more</span>
+												{/if}
+											{:else}
+												<span class="target-chip">{rec.targets}</span>
 											{/if}
 										</div>
 										<div class="impact">
@@ -625,6 +693,12 @@
 									</div>
 								</div>
 							{/each}
+							{#if (!aiValidationResults.recommendations || aiValidationResults.recommendations.length === 0)}
+								<div class="no-data-message">
+									<div class="no-data-icon">ℹ</div>
+									<div class="no-data-text">No immediate recommendations at this time</div>
+								</div>
+							{/if}
 						</div>
 					</div>
 				</div>
@@ -749,9 +823,10 @@
 	.view-selector {
 		display: flex;
 		gap: 1rem;
+		align-items: center;
 	}
 
-	.view-btn {
+	.view-btn, .refresh-btn {
 		background: linear-gradient(135deg, rgba(0, 0, 0, 0.6), rgba(255, 0, 255, 0.02));
 		border: 2px solid rgba(255, 0, 255, 0.3);
 		border-radius: 8px;
@@ -770,11 +845,13 @@
 	}
 
 	.view-btn:hover,
-	.view-btn.active {
+	.view-btn.active,
+	.refresh-btn:hover {
 		border-color: #ff00ff;
 		color: #ff00ff;
 		box-shadow: 0 0 20px rgba(255, 0, 255, 0.3);
 		text-shadow: 0 0 8px #ff00ff;
+		transform: translateY(-2px);
 	}
 
 	.btn-icon {
@@ -824,6 +901,76 @@
 		opacity: 0;
 	}
 
+	.error-interface {
+		flex: 1;
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		justify-content: center;
+		gap: 2rem;
+		padding: 3rem;
+	}
+
+	.error-core {
+		width: 100px;
+		height: 100px;
+		background: radial-gradient(circle, rgba(255, 0, 102, 0.3), transparent);
+		border: 3px solid #ff0066;
+		border-radius: 50%;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		animation: errorPulse 2s ease-in-out infinite;
+	}
+
+	.error-symbol {
+		font-size: 2.5rem;
+		color: #ff0066;
+		text-shadow: 0 0 20px #ff0066;
+	}
+
+	.error-content {
+		text-align: center;
+		max-width: 500px;
+	}
+
+	.error-content h3 {
+		color: #ff0066;
+		font-size: 1.5rem;
+		margin-bottom: 1rem;
+		text-shadow: 0 0 10px #ff0066;
+	}
+
+	.error-content p {
+		color: rgba(255, 255, 255, 0.8);
+		margin-bottom: 2rem;
+		line-height: 1.5;
+	}
+
+	.retry-btn {
+		background: linear-gradient(135deg, rgba(255, 0, 102, 0.2), rgba(255, 0, 102, 0.1));
+		border: 2px solid #ff0066;
+		border-radius: 8px;
+		padding: 1rem 2rem;
+		color: #ff0066;
+		font-family: inherit;
+		font-size: 0.9rem;
+		font-weight: 600;
+		cursor: pointer;
+		transition: all 0.3s ease;
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+		text-transform: uppercase;
+		letter-spacing: 0.05em;
+	}
+
+	.retry-btn:hover {
+		background: linear-gradient(135deg, rgba(255, 0, 102, 0.3), rgba(255, 0, 102, 0.2));
+		box-shadow: 0 0 20px rgba(255, 0, 102, 0.4);
+		transform: translateY(-2px);
+	}
+
 	.correlation-matrix {
 		flex: 1;
 		overflow-y: auto;
@@ -848,9 +995,11 @@
 		opacity: 0;
 	}
 
-	.correlation-node:hover {
+	.correlation-node:hover,
+	.correlation-node:focus {
 		transform: translateY(-5px);
 		box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5), 0 0 30px rgba(255, 0, 255, 0.3);
+		outline: none;
 	}
 
 	.correlation-node.high-risk {
@@ -883,26 +1032,27 @@
 		font-weight: 700;
 		text-transform: uppercase;
 		letter-spacing: 0.05em;
+		border: 1px solid;
 	}
 
 	.risk-indicator.high {
 		background: rgba(255, 0, 102, 0.2);
 		color: #ff0066;
-		border: 1px solid #ff0066;
+		border-color: #ff0066;
 		text-shadow: 0 0 8px #ff0066;
 	}
 
 	.risk-indicator.medium {
 		background: rgba(255, 170, 0, 0.2);
 		color: #ffaa00;
-		border: 1px solid #ffaa00;
+		border-color: #ffaa00;
 		text-shadow: 0 0 8px #ffaa00;
 	}
 
 	.risk-indicator.low {
 		background: rgba(0, 255, 133, 0.2);
 		color: #00ff85;
-		border: 1px solid #00ff85;
+		border-color: #00ff85;
 		text-shadow: 0 0 8px #00ff85;
 	}
 
@@ -1133,6 +1283,27 @@
 		backdrop-filter: blur(20px);
 	}
 
+	.panel-header {
+		display: flex;
+		align-items: center;
+		gap: 1rem;
+		margin-bottom: 1.5rem;
+	}
+
+	.header-icon {
+		font-size: 1.5rem;
+		color: #ff00ff;
+		text-shadow: 0 0 10px #ff00ff;
+	}
+
+	.panel-header h3 {
+		font-size: 1.1rem;
+		font-weight: 700;
+		color: #ff00ff;
+		margin: 0;
+		letter-spacing: 0.05em;
+	}
+
 	.trajectory-item,
 	.resource-item,
 	.anomaly-item,
@@ -1143,6 +1314,15 @@
 		border-radius: 8px;
 		padding: 1rem;
 		margin-bottom: 1rem;
+		transition: all 0.3s ease;
+	}
+
+	.trajectory-item:hover,
+	.resource-item:hover,
+	.anomaly-item:hover,
+	.recommendation-card:hover {
+		border-color: rgba(255, 0, 255, 0.5);
+		box-shadow: 0 0 15px rgba(255, 0, 255, 0.2);
 	}
 
 	.probability-grid {
@@ -1232,6 +1412,276 @@
 		text-transform: uppercase;
 	}
 
+	.validation-content {
+		display: flex;
+		flex-direction: column;
+		gap: 2rem;
+	}
+
+	.anomaly-list {
+		display: flex;
+		flex-direction: column;
+		gap: 1rem;
+	}
+
+	.anomaly-header {
+		display: flex;
+		justify-content: space-between;
+		align-items: center;
+		margin-bottom: 0.5rem;
+	}
+
+	.severity-badge {
+		padding: 0.2rem 0.6rem;
+		border-radius: 4px;
+		font-size: 0.6rem;
+		font-weight: 700;
+		text-transform: uppercase;
+		letter-spacing: 0.05em;
+	}
+
+	.anomaly-item.critical .severity-badge {
+		background: rgba(255, 0, 102, 0.2);
+		color: #ff0066;
+		border: 1px solid #ff0066;
+		text-shadow: 0 0 8px #ff0066;
+	}
+
+	.anomaly-item.high .severity-badge {
+		background: rgba(255, 170, 0, 0.2);
+		color: #ffaa00;
+		border: 1px solid #ffaa00;
+		text-shadow: 0 0 8px #ffaa00;
+	}
+
+	.anomaly-item.medium .severity-badge {
+		background: rgba(0, 150, 255, 0.2);
+		color: #0096ff;
+		border: 1px solid #0096ff;
+		text-shadow: 0 0 8px #0096ff;
+	}
+
+	.anomaly-type {
+		font-size: 0.8rem;
+		font-weight: 600;
+		color: rgba(255, 255, 255, 0.9);
+	}
+
+	.anomaly-details {
+		display: flex;
+		flex-direction: column;
+		gap: 0.5rem;
+	}
+
+	.detail-text {
+		font-size: 0.9rem;
+		color: rgba(255, 255, 255, 0.8);
+		line-height: 1.4;
+	}
+
+	.affected-info {
+		display: flex;
+		gap: 1rem;
+		flex-wrap: wrap;
+	}
+
+	.region, .infrastructure, .assets {
+		padding: 0.2rem 0.5rem;
+		background: rgba(255, 255, 255, 0.05);
+		border-radius: 3px;
+		font-size: 0.7rem;
+		color: rgba(255, 255, 255, 0.7);
+	}
+
+	.pattern-grid {
+		display: grid;
+		grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+		gap: 1.5rem;
+	}
+
+	.pattern-category h4 {
+		font-size: 0.9rem;
+		color: #ff00ff;
+		margin-bottom: 1rem;
+		text-shadow: 0 0 8px #ff00ff;
+	}
+
+	.pattern-name {
+		font-size: 0.8rem;
+		font-weight: 600;
+		color: #fff;
+		margin-bottom: 0.3rem;
+	}
+
+	.pattern-data {
+		display: flex;
+		flex-direction: column;
+		gap: 0.2rem;
+	}
+
+	.data-point {
+		font-size: 0.7rem;
+		color: rgba(255, 255, 255, 0.7);
+	}
+
+	.security-bands {
+		display: flex;
+		flex-direction: column;
+		gap: 0.5rem;
+	}
+
+	.band-item {
+		display: grid;
+		grid-template-columns: auto 1fr auto;
+		gap: 0.8rem;
+		align-items: center;
+	}
+
+	.band-name {
+		font-size: 0.7rem;
+		font-weight: 600;
+		color: rgba(255, 255, 255, 0.8);
+		min-width: 60px;
+	}
+
+	.band-bar {
+		height: 6px;
+		background: rgba(0, 0, 0, 0.4);
+		border-radius: 3px;
+		overflow: hidden;
+		position: relative;
+	}
+
+	.bar-fill {
+		height: 100%;
+		background: linear-gradient(90deg, #ff00ff, #cc00cc);
+		border-radius: 3px;
+		transition: width 1s ease-out;
+	}
+
+	.band-count {
+		font-size: 0.7rem;
+		font-weight: 600;
+		color: #ff00ff;
+		min-width: 30px;
+		text-align: right;
+	}
+
+	.recommendation-list {
+		display: flex;
+		flex-direction: column;
+		gap: 1rem;
+	}
+
+	.rec-header {
+		display: flex;
+		justify-content: space-between;
+		align-items: center;
+		margin-bottom: 1rem;
+	}
+
+	.priority-badge {
+		padding: 0.3rem 0.8rem;
+		border-radius: 4px;
+		font-size: 0.6rem;
+		font-weight: 700;
+		text-transform: uppercase;
+		letter-spacing: 0.05em;
+	}
+
+	.priority-badge.immediate {
+		background: rgba(255, 0, 102, 0.2);
+		color: #ff0066;
+		border: 1px solid #ff0066;
+		text-shadow: 0 0 8px #ff0066;
+	}
+
+	.priority-badge.high {
+		background: rgba(255, 170, 0, 0.2);
+		color: #ffaa00;
+		border: 1px solid #ffaa00;
+		text-shadow: 0 0 8px #ffaa00;
+	}
+
+	.priority-badge.medium {
+		background: rgba(0, 150, 255, 0.2);
+		color: #0096ff;
+		border: 1px solid #0096ff;
+		text-shadow: 0 0 8px #0096ff;
+	}
+
+	.action-type {
+		font-size: 0.8rem;
+		font-weight: 600;
+		color: rgba(255, 255, 255, 0.9);
+	}
+
+	.rec-content {
+		display: flex;
+		flex-direction: column;
+		gap: 0.8rem;
+	}
+
+	.targets {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 0.5rem;
+		align-items: center;
+	}
+
+	.target-chip {
+		padding: 0.2rem 0.5rem;
+		background: rgba(255, 0, 255, 0.1);
+		border: 1px solid rgba(255, 0, 255, 0.3);
+		border-radius: 3px;
+		font-size: 0.7rem;
+		color: #ff00ff;
+	}
+
+	.more-chip {
+		padding: 0.2rem 0.5rem;
+		background: rgba(255, 255, 255, 0.05);
+		border: 1px solid rgba(255, 255, 255, 0.2);
+		border-radius: 3px;
+		font-size: 0.7rem;
+		color: rgba(255, 255, 255, 0.6);
+	}
+
+	.impact, .timeline {
+		font-size: 0.8rem;
+		color: rgba(255, 255, 255, 0.8);
+	}
+
+	.impact strong, .timeline strong {
+		color: #ff00ff;
+		font-weight: 600;
+	}
+
+	.no-data-message {
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		gap: 1rem;
+		padding: 2rem;
+		text-align: center;
+		color: rgba(255, 255, 255, 0.6);
+	}
+
+	.no-data-message.small {
+		padding: 1rem;
+		gap: 0.5rem;
+	}
+
+	.no-data-icon {
+		font-size: 2rem;
+		color: rgba(255, 255, 255, 0.4);
+	}
+
+	.no-data-text {
+		font-size: 0.9rem;
+		color: rgba(255, 255, 255, 0.6);
+	}
+
 	.interface-footer {
 		padding-top: 1rem;
 		border-top: 1px solid rgba(255, 255, 255, 0.1);
@@ -1290,5 +1740,111 @@
 	@keyframes panelSlide {
 		0% { opacity: 0; transform: translateX(50px) translateY(-50%); }
 		100% { opacity: 1; transform: translateX(0) translateY(-50%); }
+	}
+
+	@keyframes errorPulse {
+		0%, 100% { 
+			box-shadow: 0 0 20px rgba(255, 0, 102, 0.3);
+			transform: scale(1);
+		}
+		50% { 
+			box-shadow: 0 0 40px rgba(255, 0, 102, 0.6);
+			transform: scale(1.05);
+		}
+	}
+
+	/* Responsive Design */
+	@media (max-width: 1400px) {
+		.matrix-header {
+			flex-direction: column;
+			gap: 1.5rem;
+			text-align: center;
+		}
+
+		.view-selector {
+			flex-wrap: wrap;
+			justify-content: center;
+		}
+
+		.metric-detail-panel {
+			position: relative;
+			right: auto;
+			top: auto;
+			transform: none;
+			width: 100%;
+			margin-top: 2rem;
+		}
+	}
+
+	@media (max-width: 1200px) {
+		.matrix-grid {
+			grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+		}
+
+		.validation-header {
+			flex-direction: column;
+			gap: 1.5rem;
+			text-align: center;
+		}
+
+		.validation-stats {
+			justify-content: center;
+		}
+	}
+
+	@media (max-width: 768px) {
+		.neural-interface {
+			flex-direction: column;
+			gap: 1rem;
+		}
+
+		.view-selector {
+			gap: 0.5rem;
+		}
+
+		.view-btn, .refresh-btn {
+			padding: 0.6rem 1rem;
+			font-size: 0.7rem;
+		}
+
+		.matrix-grid {
+			grid-template-columns: 1fr;
+		}
+
+		.prediction-grid {
+			gap: 1rem;
+		}
+
+		.pattern-grid {
+			grid-template-columns: 1fr;
+		}
+
+		.validation-stats {
+			flex-direction: column;
+			gap: 1rem;
+		}
+
+		.probability-grid {
+			grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+		}
+	}
+
+	@media (max-width: 480px) {
+		.matrix-header {
+			padding: 1rem;
+		}
+
+		.correlation-node {
+			padding: 1rem;
+		}
+
+		.detail-metrics {
+			grid-template-columns: 1fr;
+		}
+
+		.targets {
+			flex-direction: column;
+			align-items: flex-start;
+		}
 	}
 </style>
