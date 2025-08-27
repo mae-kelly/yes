@@ -7,7 +7,6 @@
 	import RegionMetrics from './RegionMetrics.svelte';
 	import CountryMetrics from './CountryMetrics.svelte';
 	import DataCenter from './DataCenter.svelte';
-	import CloudRegionMetrics from './CloudRegionMetrics.svelte';
 	import ClassMetrics from './ClassMetrics.svelte';
 	import BusinessUnitMetrics from './BusinessUnitMetrics.svelte';
 	import CIOMetrics from './CIOMetrics.svelte';
@@ -23,7 +22,6 @@
 		{ id: 'region_metrics', name: 'REGIONS', color: '#00ff85', icon: '◉' },
 		{ id: 'country_metrics', name: 'COUNTRIES', color: '#ffaa00', icon: '⬟' },
 		{ id: 'data_center', name: 'CENTERS', color: '#ff0066', icon: '⬡' },
-		{ id: 'cloud_regions', name: 'CLOUD', color: '#00ffff', icon: '◯' },
 		{ id: 'class_metrics', name: 'CLASSES', color: '#ff00ff', icon: '◐' },
 		{ id: 'business_units', name: 'BUSINESS', color: '#00ff85', icon: '◒' },
 		{ id: 'cio_metrics', name: 'CIO', color: '#ffaa00', icon: '◓' },
@@ -127,8 +125,6 @@
 					<CountryMetrics />
 				{:else if currentView === 'data_center'}
 					<DataCenter />
-				{:else if currentView === 'cloud_regions'}
-					<CloudRegionMetrics />
 				{:else if currentView === 'class_metrics'}
 					<ClassMetrics />
 				{:else if currentView === 'business_units'}
