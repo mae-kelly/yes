@@ -1,9 +1,10 @@
-from flask import Flask, jsonify
+from flask import Flask, jsonify, request
 from flask_cors import CORS
 import logging
-from database_utils import get_db_connection, verify_table_structure
-from metrics_core import *
-from metrics_advanced import *
+import duckdb
+from collections import Counter, defaultdict
+from datetime import datetime
+import os
 
 app = Flask(__name__)
 CORS(app)
@@ -11,149 +12,743 @@ CORS(app)
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+def get_db_connection():
+    db_paths = [
+        'universal_cmdb.db',
+        './universal_cmdb.db',
+        '../universal_cmdb.db',
+        os.path.join(os.getcwd(), 'universal_cmdb.db')
+    ]
+    
+    for db_path in db_paths:
+        try:
+            if os.path.exists(db_path):
+                conn = duckdb.connect(db_path, read_only=True)
+                tables = conn.execute("SHOW TABLES").fetchall()
+                if any('universal_cmdb' in str(table).lower() for table in tables):
+                    return conn
+                conn.close()
+        except Exception as e:
+            continue
+    
+    raise Exception("Database file 'universal_cmdb.db' not found")
+
+def normalize_region(region):
+    if not region:
+        return 'Unknown'
+    region_lower = region.lower().strip()
+    if any(x in region_lower for x in ['us', 'usa', 'united states', 'canada', 'north america', 'mexico']):
+        return 'North America'
+    elif any(x in region_lower for x in ['europe', 'emea', 'uk', 'germany', 'france', 'spain', 'italy']):
+        return 'EMEA'
+    elif any(x in region_lower for x in ['asia', 'apac', 'pacific', 'japan', 'china', 'india', 'australia']):
+        return 'APAC'
+    elif any(x in region_lower for x in ['latin', 'latam', 'south america', 'brazil', 'argentina']):
+        return 'LATAM'
+    return region
+
+def parse_pipe_separated(value):
+    if not value or str(value).lower() in ['null', 'none', 'unknown', '']:
+        return []
+    return [v.strip() for v in str(value).split('|') if v.strip()]
+
+def parse_comma_separated(value):
+    if not value or str(value).lower() in ['null', 'none', 'unknown', '']:
+        return []
+    return [v.strip() for v in str(value).split(',') if v.strip()]
+
 @app.route('/api/database_status')
 def database_status():
     try:
         conn = get_db_connection()
-        columns, row_count = verify_table_structure(conn)
+        result = conn.execute("SELECT COUNT(*) FROM universal_cmdb").fetchone()
         conn.close()
         return jsonify({
             'status': 'connected',
-            'table': 'universal_cmdb',
-            'columns': columns,
-            'row_count': row_count,
-            'database_type': 'duckdb'
+            'total_records': result[0] if result else 0
         })
     except Exception as e:
         return jsonify({'status': 'error', 'error': str(e)}), 500
 
-@app.route('/api/source_tables')
-def source_tables_metrics():
-    return get_source_tables_metrics()
+@app.route('/api/global_view/summary')
+def global_view_summary():
+    try:
+        conn = get_db_connection()
+        
+        total_assets = conn.execute("SELECT COUNT(DISTINCT host) FROM universal_cmdb").fetchone()[0]
+        
+        cmdb_covered = conn.execute("""
+            SELECT COUNT(DISTINCT host) FROM universal_cmdb 
+            WHERE LOWER(present_in_cmdb) LIKE '%yes%'
+        """).fetchone()[0]
+        
+        url_fqdn_covered = conn.execute("""
+            SELECT COUNT(DISTINCT host) FROM universal_cmdb 
+            WHERE (host LIKE '%.%' OR host LIKE 'http%')
+        """).fetchone()[0]
+        
+        regional_data = conn.execute("""
+            SELECT 
+                COALESCE(region, 'Unknown') as region,
+                COUNT(DISTINCT host) as asset_count,
+                SUM(CASE WHEN LOWER(present_in_cmdb) LIKE '%yes%' THEN 1 ELSE 0 END) as cmdb_count,
+                SUM(CASE WHEN LOWER(tanium_coverage) LIKE '%tanium%' THEN 1 ELSE 0 END) as tanium_count,
+                SUM(CASE WHEN LOWER(logging_in_splunk) LIKE '%yes%' OR LOWER(logging_in_splunk) LIKE '%splunk%' THEN 1 ELSE 0 END) as splunk_count,
+                SUM(CASE WHEN LOWER(logging_in_gso) LIKE '%yes%' OR LOWER(logging_in_gso) LIKE '%gso%' THEN 1 ELSE 0 END) as gso_count
+            FROM universal_cmdb
+            GROUP BY region
+            ORDER BY asset_count DESC
+        """).fetchall()
+        
+        country_data = conn.execute("""
+            SELECT 
+                COALESCE(country, 'Unknown') as country,
+                COUNT(DISTINCT host) as asset_count,
+                SUM(CASE WHEN LOWER(present_in_cmdb) LIKE '%yes%' THEN 1 ELSE 0 END) as cmdb_count
+            FROM universal_cmdb
+            GROUP BY country
+            ORDER BY asset_count DESC
+            LIMIT 15
+        """).fetchall()
+        
+        datacenter_data = conn.execute("""
+            SELECT 
+                CASE 
+                    WHEN data_center IS NULL OR data_center = '' THEN 'Unknown'
+                    ELSE SUBSTRING(data_center, 1, POSITION(' ' IN data_center || ' ') - 1)
+                END as data_center,
+                COUNT(DISTINCT host) as asset_count
+            FROM universal_cmdb
+            GROUP BY data_center
+            ORDER BY asset_count DESC
+            LIMIT 10
+        """).fetchall()
+        
+        cloud_data = conn.execute("""
+            SELECT 
+                COALESCE(cloud_region, 'Unknown') as cloud_region,
+                COUNT(DISTINCT host) as asset_count
+            FROM universal_cmdb
+            WHERE cloud_region IS NOT NULL AND cloud_region != ''
+            GROUP BY cloud_region
+            ORDER BY asset_count DESC
+        """).fetchall()
+        
+        conn.close()
+        
+        cmdb_coverage_pct = (cmdb_covered / total_assets * 100) if total_assets > 0 else 0
+        url_fqdn_coverage_pct = (url_fqdn_covered / total_assets * 100) if total_assets > 0 else 0
+        
+        regions = []
+        region_aggregates = defaultdict(lambda: {'assets': 0, 'cmdb': 0, 'tanium': 0, 'splunk': 0, 'gso': 0})
+        
+        for region, assets, cmdb, tanium, splunk, gso in regional_data:
+            normalized_region = normalize_region(region)
+            region_aggregates[normalized_region]['assets'] += assets
+            region_aggregates[normalized_region]['cmdb'] += cmdb
+            region_aggregates[normalized_region]['tanium'] += tanium
+            region_aggregates[normalized_region]['splunk'] += splunk
+            region_aggregates[normalized_region]['gso'] += gso
+        
+        for region, data in region_aggregates.items():
+            assets = data['assets']
+            regions.append({
+                'region': region,
+                'assets': assets,
+                'cmdb_coverage': round((data['cmdb'] / assets * 100) if assets > 0 else 0, 2),
+                'tanium_coverage': round((data['tanium'] / assets * 100) if assets > 0 else 0, 2),
+                'splunk_coverage': round((data['splunk'] / assets * 100) if assets > 0 else 0, 2),
+                'gso_coverage': round((data['gso'] / assets * 100) if assets > 0 else 0, 2),
+                'overall_visibility': round(((data['cmdb'] + data['tanium'] + data['splunk']) / (assets * 3) * 100) if assets > 0 else 0, 2)
+            })
+        
+        regions.sort(key=lambda x: x['assets'], reverse=True)
+        
+        countries = []
+        for country, assets, cmdb in country_data:
+            countries.append({
+                'country': country,
+                'assets': assets,
+                'cmdb_coverage': round((cmdb / assets * 100) if assets > 0 else 0, 2),
+                'percentage_of_total': round((assets / total_assets * 100) if total_assets > 0 else 0, 2)
+            })
+        
+        datacenters = [{'datacenter': d, 'assets': a, 
+                       'percentage': round((a / total_assets * 100) if total_assets > 0 else 0, 2)} 
+                      for d, a in datacenter_data]
+        
+        cloud_regions = []
+        for region_str, assets in cloud_data:
+            regions_list = parse_pipe_separated(region_str)
+            for r in regions_list[:5]:
+                cloud_regions.append({
+                    'region': r,
+                    'assets': assets,
+                    'percentage': round((assets / total_assets * 100) if total_assets > 0 else 0, 2)
+                })
+        
+        return jsonify({
+            'global_metrics': {
+                'total_assets': total_assets,
+                'cmdb_coverage': round(cmdb_coverage_pct, 2),
+                'url_fqdn_coverage': round(url_fqdn_coverage_pct, 2),
+                'regions_covered': len(regions),
+                'countries_covered': len(countries),
+                'datacenters': len(datacenters),
+                'cloud_regions': len(cloud_regions)
+            },
+            'regional_breakdown': regions,
+            'country_breakdown': countries,
+            'datacenter_breakdown': datacenters,
+            'cloud_breakdown': cloud_regions[:10]
+        })
+        
+    except Exception as e:
+        logger.error(f"Global view summary error: {e}")
+        return jsonify({'error': str(e)}), 500
 
-@app.route('/api/domain_metrics')
-def domain_metrics():
-    return get_domain_metrics()
+@app.route('/api/infrastructure_type/breakdown')
+def infrastructure_breakdown():
+    try:
+        conn = get_db_connection()
+        
+        result = conn.execute("""
+            SELECT 
+                COALESCE(infrastructure_type, 'Unknown') as infra_type,
+                COUNT(DISTINCT host) as total_assets,
+                SUM(CASE WHEN LOWER(present_in_cmdb) LIKE '%yes%' THEN 1 ELSE 0 END) as cmdb_registered,
+                SUM(CASE WHEN LOWER(tanium_coverage) LIKE '%tanium%' THEN 1 ELSE 0 END) as tanium_deployed,
+                SUM(CASE WHEN LOWER(logging_in_splunk) LIKE '%yes%' OR LOWER(logging_in_splunk) LIKE '%splunk%' THEN 1 ELSE 0 END) as splunk_logging,
+                SUM(CASE WHEN LOWER(presence_in_crowdstrike) LIKE '%yes%' OR LOWER(presence_in_crowdstrike) LIKE '%crowdstrike%' THEN 1 ELSE 0 END) as crowdstrike_edr
+            FROM universal_cmdb
+            GROUP BY infrastructure_type
+            ORDER BY total_assets DESC
+        """).fetchall()
+        
+        infrastructure_data = []
+        type_aggregates = defaultdict(lambda: {'total': 0, 'cmdb': 0, 'tanium': 0, 'splunk': 0, 'crowdstrike': 0})
+        
+        for row in result:
+            infra_type_str, total, cmdb, tanium, splunk, crowdstrike = row
+            infra_types = parse_pipe_separated(infra_type_str)
+            
+            for infra_type in infra_types:
+                type_aggregates[infra_type]['total'] += total
+                type_aggregates[infra_type]['cmdb'] += cmdb
+                type_aggregates[infra_type]['tanium'] += tanium
+                type_aggregates[infra_type]['splunk'] += splunk
+                type_aggregates[infra_type]['crowdstrike'] += crowdstrike
+        
+        category_totals = defaultdict(lambda: {'total': 0, 'cmdb': 0, 'tanium': 0, 'splunk': 0, 'crowdstrike': 0})
+        
+        for infra_type, data in type_aggregates.items():
+            total = data['total']
+            
+            category = 'Other'
+            infra_lower = infra_type.lower()
+            if any(x in infra_lower for x in ['on-prem', 'onprem', 'on_prem', 'datacenter', 'physical', 'server']):
+                category = 'On-Premise'
+            elif 'cloud' in infra_lower or any(x in infra_lower for x in ['aws', 'azure', 'gcp']):
+                category = 'Cloud'
+            elif 'saas' in infra_lower or 'application' in infra_lower:
+                category = 'SaaS'
+            elif 'api' in infra_lower:
+                category = 'API'
+            
+            visibility_score = ((data['cmdb'] + data['tanium'] + data['splunk'] + data['crowdstrike']) / (total * 4) * 100) if total > 0 else 0
+            
+            infrastructure_data.append({
+                'type': infra_type,
+                'category': category,
+                'total_assets': total,
+                'visibility_metrics': {
+                    'cmdb': round((data['cmdb'] / total * 100) if total > 0 else 0, 2),
+                    'tanium': round((data['tanium'] / total * 100) if total > 0 else 0, 2),
+                    'splunk': round((data['splunk'] / total * 100) if total > 0 else 0, 2),
+                    'crowdstrike': round((data['crowdstrike'] / total * 100) if total > 0 else 0, 2)
+                },
+                'overall_visibility': round(visibility_score, 2),
+                'risk_level': 'CRITICAL' if visibility_score < 30 else 'HIGH' if visibility_score < 60 else 'MEDIUM' if visibility_score < 80 else 'LOW'
+            })
+            
+            category_totals[category]['total'] += total
+            category_totals[category]['cmdb'] += data['cmdb']
+            category_totals[category]['tanium'] += data['tanium']
+            category_totals[category]['splunk'] += data['splunk']
+            category_totals[category]['crowdstrike'] += data['crowdstrike']
+        
+        infrastructure_data.sort(key=lambda x: x['total_assets'], reverse=True)
+        
+        category_summary = []
+        for cat, totals in category_totals.items():
+            if totals['total'] > 0:
+                category_summary.append({
+                    'category': cat,
+                    'total_assets': totals['total'],
+                    'cmdb_coverage': round((totals['cmdb'] / totals['total'] * 100), 2),
+                    'tanium_coverage': round((totals['tanium'] / totals['total'] * 100), 2),
+                    'splunk_coverage': round((totals['splunk'] / totals['total'] * 100), 2),
+                    'crowdstrike_coverage': round((totals['crowdstrike'] / totals['total'] * 100), 2),
+                    'overall_visibility': round((totals['cmdb'] + totals['tanium'] + totals['splunk'] + totals['crowdstrike']) / (totals['total'] * 4) * 100, 2)
+                })
+        
+        conn.close()
+        
+        return jsonify({
+            'infrastructure_breakdown': infrastructure_data[:20],
+            'category_summary': category_summary,
+            'total_types': len(infrastructure_data)
+        })
+        
+    except Exception as e:
+        logger.error(f"Infrastructure breakdown error: {e}")
+        return jsonify({'error': str(e)}), 500
 
-@app.route('/api/infrastructure_type')
-def infrastructure_type_metrics():
-    return get_infrastructure_type_metrics()
+@app.route('/api/bu_application/breakdown')
+def bu_application_breakdown():
+    try:
+        conn = get_db_connection()
+        
+        bu_result = conn.execute("""
+            SELECT 
+                COALESCE(business_unit, 'Unknown') as bu,
+                COALESCE(cio, 'Unknown') as cio,
+                COALESCE(class, 'Unknown') as app_class,
+                COUNT(DISTINCT host) as total_assets,
+                SUM(CASE WHEN LOWER(present_in_cmdb) LIKE '%yes%' THEN 1 ELSE 0 END) as cmdb_registered,
+                SUM(CASE WHEN LOWER(tanium_coverage) LIKE '%tanium%' THEN 1 ELSE 0 END) as tanium_deployed,
+                SUM(CASE WHEN LOWER(logging_in_splunk) LIKE '%yes%' OR LOWER(logging_in_splunk) LIKE '%splunk%' THEN 1 ELSE 0 END) as splunk_logging
+            FROM universal_cmdb
+            GROUP BY business_unit, cio, class
+            ORDER BY total_assets DESC
+        """).fetchall()
+        
+        bu_aggregates = defaultdict(lambda: {
+            'total_assets': 0,
+            'cio_owners': set(),
+            'app_classes': set(),
+            'cmdb_registered': 0,
+            'tanium_deployed': 0,
+            'splunk_logging': 0
+        })
+        
+        app_class_totals = defaultdict(int)
+        cio_totals = defaultdict(int)
+        
+        for row in bu_result:
+            bu_str, cio_str, app_class_str, total, cmdb, tanium, splunk = row
+            
+            bus = parse_comma_separated(bu_str)
+            if not bus:
+                bus = parse_pipe_separated(bu_str)
+            if not bus:
+                bus = [bu_str]
+            
+            for bu in bus:
+                bu_aggregates[bu]['total_assets'] += total
+                bu_aggregates[bu]['cmdb_registered'] += cmdb
+                bu_aggregates[bu]['tanium_deployed'] += tanium
+                bu_aggregates[bu]['splunk_logging'] += splunk
+                
+                if cio_str and cio_str != 'Unknown':
+                    cio_values = parse_pipe_separated(cio_str)
+                    for cio in cio_values:
+                        if cio and not cio.isdigit():
+                            bu_aggregates[bu]['cio_owners'].add(cio)
+                            cio_totals[cio] += total
+                
+                if app_class_str and app_class_str != 'Unknown':
+                    import re
+                    class_matches = re.findall(r'class\s*(\d+)', app_class_str.lower())
+                    for match in class_matches:
+                        class_name = f"Class {match}"
+                        bu_aggregates[bu]['app_classes'].add(class_name)
+                        app_class_totals[class_name] += total
+        
+        business_units = []
+        for bu, data in bu_aggregates.items():
+            if data['total_assets'] > 0:
+                visibility_score = ((data['cmdb_registered'] + data['tanium_deployed'] + data['splunk_logging']) / 
+                                  (data['total_assets'] * 3) * 100)
+                
+                business_units.append({
+                    'business_unit': bu,
+                    'total_assets': data['total_assets'],
+                    'cio_count': len(data['cio_owners']),
+                    'app_class_count': len(data['app_classes']),
+                    'visibility_metrics': {
+                        'cmdb': round((data['cmdb_registered'] / data['total_assets'] * 100), 2),
+                        'tanium': round((data['tanium_deployed'] / data['total_assets'] * 100), 2),
+                        'splunk': round((data['splunk_logging'] / data['total_assets'] * 100), 2)
+                    },
+                    'overall_visibility': round(visibility_score, 2),
+                    'risk_level': 'CRITICAL' if visibility_score < 30 else 'HIGH' if visibility_score < 60 else 'MEDIUM' if visibility_score < 80 else 'LOW'
+                })
+        
+        business_units.sort(key=lambda x: x['total_assets'], reverse=True)
+        
+        app_classes = [{'class': cls, 'total_assets': total} for cls, total in app_class_totals.items()]
+        app_classes.sort(key=lambda x: x['total_assets'], reverse=True)
+        
+        cio_list = [{'cio': cio, 'total_assets': total} for cio, total in cio_totals.items()]
+        cio_list.sort(key=lambda x: x['total_assets'], reverse=True)
+        
+        conn.close()
+        
+        return jsonify({
+            'business_units': business_units[:20],
+            'application_classes': app_classes[:15],
+            'cio_ownership': cio_list[:10],
+            'total_business_units': len(business_units),
+            'total_app_classes': len(app_classes),
+            'total_cios': len(cio_list)
+        })
+        
+    except Exception as e:
+        logger.error(f"BU Application breakdown error: {e}")
+        return jsonify({'error': str(e)}), 500
 
-@app.route('/api/region_metrics')
-def region_metrics():
-    return get_region_metrics()
+@app.route('/api/system_classification/breakdown')
+def system_classification_breakdown():
+    try:
+        conn = get_db_connection()
+        
+        result = conn.execute("""
+            SELECT 
+                COALESCE(system_classification, 'Unknown') as system_class,
+                COUNT(DISTINCT host) as total_assets,
+                SUM(CASE WHEN LOWER(present_in_cmdb) LIKE '%yes%' THEN 1 ELSE 0 END) as cmdb_registered,
+                SUM(CASE WHEN LOWER(tanium_coverage) LIKE '%tanium%' THEN 1 ELSE 0 END) as tanium_deployed
+            FROM universal_cmdb
+            GROUP BY system_classification
+            ORDER BY total_assets DESC
+        """).fetchall()
+        
+        system_aggregates = defaultdict(lambda: {'total': 0, 'cmdb': 0, 'tanium': 0})
+        system_categories = defaultdict(lambda: {'total': 0, 'cmdb': 0, 'tanium': 0})
+        
+        for row in result:
+            system_str, total, cmdb, tanium = row
+            systems = parse_pipe_separated(system_str)
+            
+            for system in systems:
+                system_aggregates[system]['total'] += total
+                system_aggregates[system]['cmdb'] += cmdb
+                system_aggregates[system]['tanium'] += tanium
+                
+                category = 'Other'
+                system_lower = system.lower()
+                if 'windows' in system_lower:
+                    category = 'Windows Server'
+                elif 'linux' in system_lower:
+                    category = 'Linux Server'
+                elif any(x in system_lower for x in ['aix', 'solaris', 'unix']):
+                    category = '*Nix'
+                elif 'mainframe' in system_lower:
+                    category = 'Mainframe'
+                elif 'database' in system_lower:
+                    category = 'Database'
+                elif any(x in system_lower for x in ['fw', 'ndr', 'switch', 'router']):
+                    category = 'Network Appliance'
+                
+                system_categories[category]['total'] += total
+                system_categories[category]['cmdb'] += cmdb
+                system_categories[category]['tanium'] += tanium
+        
+        system_data = []
+        for system, data in system_aggregates.items():
+            if data['total'] > 0:
+                visibility_score = ((data['cmdb'] + data['tanium']) / (data['total'] * 2) * 100)
+                
+                system_data.append({
+                    'system': system,
+                    'total_assets': data['total'],
+                    'cmdb_coverage': round((data['cmdb'] / data['total'] * 100), 2),
+                    'tanium_coverage': round((data['tanium'] / data['total'] * 100), 2),
+                    'overall_visibility': round(visibility_score, 2)
+                })
+        
+        system_data.sort(key=lambda x: x['total_assets'], reverse=True)
+        
+        category_summary = []
+        for cat, data in system_categories.items():
+            if data['total'] > 0:
+                category_summary.append({
+                    'category': cat,
+                    'total_assets': data['total'],
+                    'cmdb_coverage': round((data['cmdb'] / data['total'] * 100), 2),
+                    'tanium_coverage': round((data['tanium'] / data['total'] * 100), 2)
+                })
+        
+        category_summary.sort(key=lambda x: x['total_assets'], reverse=True)
+        
+        conn.close()
+        
+        return jsonify({
+            'system_breakdown': system_data[:20],
+            'category_summary': category_summary,
+            'total_systems': len(system_data)
+        })
+        
+    except Exception as e:
+        logger.error(f"System classification breakdown error: {e}")
+        return jsonify({'error': str(e)}), 500
 
-@app.route('/api/country_metrics')
-def country_metrics():
-    return get_country_metrics()
+@app.route('/api/security_control/coverage')
+def security_control_coverage():
+    try:
+        conn = get_db_connection()
+        
+        result = conn.execute("""
+            SELECT 
+                COUNT(DISTINCT host) as total_assets,
+                SUM(CASE WHEN LOWER(tanium_coverage) LIKE '%tanium%' THEN 1 ELSE 0 END) as tanium,
+                SUM(CASE WHEN LOWER(dlp_agent_coverage) LIKE '%dlp%' OR LOWER(dlp_agent_coverage) LIKE '%agent%' THEN 1 ELSE 0 END) as dlp,
+                SUM(CASE WHEN LOWER(presence_in_crowdstrike) LIKE '%yes%' OR LOWER(presence_in_crowdstrike) LIKE '%crowdstrike%' THEN 1 ELSE 0 END) as crowdstrike,
+                SUM(CASE WHEN LOWER(ssc_coverage) IS NOT NULL AND LOWER(ssc_coverage) != '' THEN 1 ELSE 0 END) as ssc
+            FROM universal_cmdb
+        """).fetchone()
+        
+        total, tanium, dlp, crowdstrike, ssc = result
+        
+        regional_coverage = conn.execute("""
+            SELECT 
+                COALESCE(region, 'Unknown') as region,
+                COUNT(DISTINCT host) as total,
+                SUM(CASE WHEN LOWER(tanium_coverage) LIKE '%tanium%' THEN 1 ELSE 0 END) as tanium,
+                SUM(CASE WHEN LOWER(dlp_agent_coverage) LIKE '%dlp%' OR LOWER(dlp_agent_coverage) LIKE '%agent%' THEN 1 ELSE 0 END) as dlp,
+                SUM(CASE WHEN LOWER(presence_in_crowdstrike) LIKE '%yes%' OR LOWER(presence_in_crowdstrike) LIKE '%crowdstrike%' THEN 1 ELSE 0 END) as crowdstrike
+            FROM universal_cmdb
+            GROUP BY region
+            ORDER BY total DESC
+        """).fetchall()
+        
+        regional_aggregates = defaultdict(lambda: {'total': 0, 'tanium': 0, 'dlp': 0, 'crowdstrike': 0})
+        
+        for region, reg_total, reg_tanium, reg_dlp, reg_crowdstrike in regional_coverage:
+            normalized = normalize_region(region)
+            regional_aggregates[normalized]['total'] += reg_total
+            regional_aggregates[normalized]['tanium'] += reg_tanium
+            regional_aggregates[normalized]['dlp'] += reg_dlp
+            regional_aggregates[normalized]['crowdstrike'] += reg_crowdstrike
+        
+        regional_data = []
+        for region, data in regional_aggregates.items():
+            if data['total'] > 0:
+                regional_data.append({
+                    'region': region,
+                    'total_assets': data['total'],
+                    'tanium_coverage': round((data['tanium'] / data['total'] * 100), 2),
+                    'dlp_coverage': round((data['dlp'] / data['total'] * 100), 2),
+                    'crowdstrike_coverage': round((data['crowdstrike'] / data['total'] * 100), 2)
+                })
+        
+        regional_data.sort(key=lambda x: x['total_assets'], reverse=True)
+        
+        conn.close()
+        
+        overall_coverage = {
+            'tanium': {'deployed': tanium, 'coverage': round((tanium / total * 100) if total > 0 else 0, 2)},
+            'dlp': {'deployed': dlp, 'coverage': round((dlp / total * 100) if total > 0 else 0, 2)},
+            'crowdstrike': {'deployed': crowdstrike, 'coverage': round((crowdstrike / total * 100) if total > 0 else 0, 2)},
+            'ssc': {'deployed': ssc, 'coverage': round((ssc / total * 100) if total > 0 else 0, 2)}
+        }
+        
+        return jsonify({
+            'total_assets': total,
+            'overall_coverage': overall_coverage,
+            'regional_coverage': regional_data,
+            'security_maturity': 'ADVANCED' if min(c['coverage'] for c in overall_coverage.values()) >= 80 else 
+                               'INTERMEDIATE' if min(c['coverage'] for c in overall_coverage.values()) >= 60 else 'BASIC'
+        })
+        
+    except Exception as e:
+        logger.error(f"Security control coverage error: {e}")
+        return jsonify({'error': str(e)}), 500
 
-@app.route('/api/data_center_metrics')
-def data_center_metrics():
-    return get_data_center_metrics()
+@app.route('/api/logging_compliance/breakdown')
+def logging_compliance_breakdown():
+    try:
+        conn = get_db_connection()
+        
+        result = conn.execute("""
+            SELECT 
+                COUNT(DISTINCT host) as total_assets,
+                SUM(CASE WHEN LOWER(logging_in_splunk) LIKE '%yes%' OR LOWER(logging_in_splunk) LIKE '%splunk%' THEN 1 ELSE 0 END) as splunk_yes,
+                SUM(CASE WHEN LOWER(logging_in_gso) LIKE '%yes%' OR LOWER(logging_in_gso) LIKE '%gso%' THEN 1 ELSE 0 END) as gso_yes,
+                SUM(CASE WHEN (LOWER(logging_in_splunk) LIKE '%yes%' OR LOWER(logging_in_splunk) LIKE '%splunk%') 
+                         AND (LOWER(logging_in_gso) LIKE '%yes%' OR LOWER(logging_in_gso) LIKE '%gso%') THEN 1 ELSE 0 END) as both_yes,
+                SUM(CASE WHEN (LOWER(logging_in_splunk) NOT LIKE '%yes%' AND LOWER(logging_in_splunk) NOT LIKE '%splunk%')
+                         AND (LOWER(logging_in_gso) NOT LIKE '%yes%' AND LOWER(logging_in_gso) NOT LIKE '%gso%') THEN 1 ELSE 0 END) as neither
+            FROM universal_cmdb
+        """).fetchone()
+        
+        total, splunk_yes, gso_yes, both_yes, neither = result
+        
+        platform_breakdown = {
+            'splunk_only': splunk_yes - both_yes,
+            'gso_only': gso_yes - both_yes,
+            'both_platforms': both_yes,
+            'no_logging': neither
+        }
+        
+        compliance_by_region = conn.execute("""
+            SELECT 
+                COALESCE(region, 'Unknown') as region,
+                COUNT(DISTINCT host) as total,
+                SUM(CASE WHEN LOWER(logging_in_splunk) LIKE '%yes%' OR LOWER(logging_in_splunk) LIKE '%splunk%' THEN 1 ELSE 0 END) as splunk,
+                SUM(CASE WHEN LOWER(logging_in_gso) LIKE '%yes%' OR LOWER(logging_in_gso) LIKE '%gso%' THEN 1 ELSE 0 END) as gso
+            FROM universal_cmdb
+            GROUP BY region
+            ORDER BY total DESC
+        """).fetchall()
+        
+        regional_aggregates = defaultdict(lambda: {'total': 0, 'splunk': 0, 'gso': 0})
+        
+        for region, reg_total, reg_splunk, reg_gso in compliance_by_region:
+            normalized = normalize_region(region)
+            regional_aggregates[normalized]['total'] += reg_total
+            regional_aggregates[normalized]['splunk'] += reg_splunk
+            regional_aggregates[normalized]['gso'] += reg_gso
+        
+        regional_compliance = []
+        for region, data in regional_aggregates.items():
+            if data['total'] > 0:
+                regional_compliance.append({
+                    'region': region,
+                    'total_assets': data['total'],
+                    'splunk_coverage': round((data['splunk'] / data['total'] * 100), 2),
+                    'gso_coverage': round((data['gso'] / data['total'] * 100), 2),
+                    'any_logging': round(((data['splunk'] + data['gso'] - (data['splunk'] * data['gso'] / data['total'])) / data['total'] * 100), 2)
+                })
+        
+        regional_compliance.sort(key=lambda x: x['total_assets'], reverse=True)
+        
+        conn.close()
+        
+        overall_compliance = round(((splunk_yes + gso_yes - both_yes) / total * 100) if total > 0 else 0, 2)
+        
+        return jsonify({
+            'total_assets': total,
+            'platform_breakdown': platform_breakdown,
+            'platform_percentages': {
+                'splunk_only': round((platform_breakdown['splunk_only'] / total * 100) if total > 0 else 0, 2),
+                'gso_only': round((platform_breakdown['gso_only'] / total * 100) if total > 0 else 0, 2),
+                'both_platforms': round((platform_breakdown['both_platforms'] / total * 100) if total > 0 else 0, 2),
+                'no_logging': round((platform_breakdown['no_logging'] / total * 100) if total > 0 else 0, 2)
+            },
+            'regional_compliance': regional_compliance,
+            'overall_compliance': overall_compliance,
+            'compliance_status': 'COMPLIANT' if overall_compliance >= 95 else 'PARTIAL' if overall_compliance >= 80 else 'NON_COMPLIANT'
+        })
+        
+    except Exception as e:
+        logger.error(f"Logging compliance breakdown error: {e}")
+        return jsonify({'error': str(e)}), 500
 
-@app.route('/api/cloud_region_metrics')
-def cloud_region_metrics():
-    return get_cloud_region_metrics()
-
-@app.route('/api/class_metrics')
-def class_metrics():
-    return get_class_metrics()
-
-@app.route('/api/system_classification_metrics')
-def system_classification_metrics():
-    return get_system_classification_metrics()
-
-@app.route('/api/business_unit_metrics')
-def business_unit_metrics():
-    return get_business_unit_metrics()
-
-@app.route('/api/cio_metrics')
-def cio_metrics():
-    return get_cio_metrics()
-
-@app.route('/api/tanium_coverage')
-def tanium_coverage():
-    return get_tanium_coverage()
-
-@app.route('/api/cmdb_presence')
-def cmdb_presence():
-    return get_cmdb_presence()
-
-@app.route('/api/splunk_coverage')
-def splunk_coverage():
-    return get_splunk_coverage()
-
-@app.route('/api/logging_platforms')
-def logging_platforms():
-    return get_logging_platforms()
-
-@app.route('/api/ssc_coverage')
-def ssc_coverage():
-    return get_ssc_coverage()
-
-@app.route('/api/dlp_coverage')
-def dlp_coverage():
-    return get_dlp_coverage()
-
-@app.route('/api/crowdstrike_coverage')
-def crowdstrike_coverage():
-    return get_crowdstrike_coverage()
-
-@app.route('/api/temporal_analysis')
-def temporal_analysis():
-    return get_temporal_analysis()
-
-@app.route('/api/data_quality_analysis')
-def data_quality_analysis():
-    return get_data_quality_analysis()
-
-@app.route('/api/coverage_correlation')
-def coverage_correlation():
-    return get_coverage_correlation()
-
-@app.route('/api/security_stack_analysis')
-def security_stack_analysis():
-    return get_security_stack_analysis()
-
-@app.route('/api/modernization_analysis')
-def modernization_analysis():
-    return get_modernization_analysis()
-
-@app.route('/api/compliance_analysis')
-def compliance_analysis():
-    return get_compliance_analysis()
-
-@app.route('/api/risk_assessment')
-def risk_assessment():
-    return get_risk_assessment()
-
-@app.route('/api/visibility_score')
-def visibility_score():
-    return get_visibility_score()
-
-@app.route('/api/shadow_it_detection')
-def shadow_it_detection():
-    return get_shadow_it_detection()
-
-@app.route('/api/host_search')
-def host_search():
-    return get_host_search()
-
-@app.route('/api/comprehensive_dashboard')
-def comprehensive_dashboard():
-    return get_comprehensive_dashboard()
+@app.route('/api/domain_visibility/breakdown')
+def domain_visibility_breakdown():
+    try:
+        conn = get_db_connection()
+        
+        result = conn.execute("""
+            SELECT 
+                COALESCE(host, 'unknown') as host,
+                COALESCE(domain, '') as domain,
+                LOWER(present_in_cmdb) LIKE '%yes%' as in_cmdb,
+                LOWER(tanium_coverage) LIKE '%tanium%' as has_tanium,
+                LOWER(logging_in_splunk) LIKE '%yes%' OR LOWER(logging_in_splunk) LIKE '%splunk%' as has_splunk
+            FROM universal_cmdb
+        """).fetchall()
+        
+        domain_stats = {'1dc': 0, 'fead': 0, 'both': 0, 'other': 0}
+        domain_visibility = defaultdict(lambda: {'total': 0, 'cmdb': 0, 'tanium': 0, 'splunk': 0})
+        host_domain_map = {}
+        
+        for host, domain_str, in_cmdb, has_tanium, has_splunk in result:
+            domains = parse_pipe_separated(domain_str)
+            has_1dc = False
+            has_fead = False
+            
+            for domain in domains:
+                domain_lower = domain.lower()
+                if '1dc' in domain_lower:
+                    has_1dc = True
+                    domain_visibility['1dc']['total'] += 1
+                    if in_cmdb:
+                        domain_visibility['1dc']['cmdb'] += 1
+                    if has_tanium:
+                        domain_visibility['1dc']['tanium'] += 1
+                    if has_splunk:
+                        domain_visibility['1dc']['splunk'] += 1
+                elif 'fead' in domain_lower:
+                    has_fead = True
+                    domain_visibility['fead']['total'] += 1
+                    if in_cmdb:
+                        domain_visibility['fead']['cmdb'] += 1
+                    if has_tanium:
+                        domain_visibility['fead']['tanium'] += 1
+                    if has_splunk:
+                        domain_visibility['fead']['splunk'] += 1
+            
+            if has_1dc and has_fead:
+                domain_stats['both'] += 1
+            elif has_1dc:
+                domain_stats['1dc'] += 1
+            elif has_fead:
+                domain_stats['fead'] += 1
+            else:
+                domain_stats['other'] += 1
+            
+            host_domain_map[host] = {'1dc': has_1dc, 'fead': has_fead}
+        
+        total_hosts = len(host_domain_map)
+        
+        domain_distribution = {
+            '1dc_only': domain_stats['1dc'],
+            'fead_only': domain_stats['fead'],
+            'both_domains': domain_stats['both'],
+            'other': domain_stats['other']
+        }
+        
+        domain_coverage = {}
+        for domain, stats in domain_visibility.items():
+            if stats['total'] > 0:
+                domain_coverage[domain] = {
+                    'total_assets': stats['total'],
+                    'cmdb_coverage': round((stats['cmdb'] / stats['total'] * 100), 2),
+                    'tanium_coverage': round((stats['tanium'] / stats['total'] * 100), 2),
+                    'splunk_coverage': round((stats['splunk'] / stats['total'] * 100), 2)
+                }
+        
+        conn.close()
+        
+        return jsonify({
+            'total_hosts': total_hosts,
+            'domain_distribution': domain_distribution,
+            'domain_percentages': {
+                '1dc_only': round((domain_distribution['1dc_only'] / total_hosts * 100) if total_hosts > 0 else 0, 2),
+                'fead_only': round((domain_distribution['fead_only'] / total_hosts * 100) if total_hosts > 0 else 0, 2),
+                'both_domains': round((domain_distribution['both_domains'] / total_hosts * 100) if total_hosts > 0 else 0, 2),
+                'other': round((domain_distribution['other'] / total_hosts * 100) if total_hosts > 0 else 0, 2)
+            },
+            'domain_coverage': domain_coverage,
+            'warfare_status': '1DC DOMINANT' if domain_stats['1dc'] > domain_stats['fead'] else 
+                            'FEAD DOMINANT' if domain_stats['fead'] > domain_stats['1dc'] else 'BALANCED'
+        })
+        
+    except Exception as e:
+        logger.error(f"Domain visibility breakdown error: {e}")
+        return jsonify({'error': str(e)}), 500
 
 if __name__ == '__main__':
     try:
         conn = get_db_connection()
-        columns, row_count = verify_table_structure(conn)
+        result = conn.execute("SELECT COUNT(*) FROM universal_cmdb").fetchone()
         conn.close()
-        logger.info(f"Database initialized successfully. Columns: {len(columns)}, Rows: {row_count}")
-        print(f"Database connection successful! Found {row_count} rows with {len(columns)} columns.")
+        print(f"Database connected! Found {result[0]} records.")
         print("Starting Flask server on http://localhost:5000")
     except Exception as e:
-        logger.error(f"Database initialization failed: {e}")
         print(f"Database connection failed: {e}")
-        print("Please ensure your 'universal_cmdb.db' file exists in the project directory.")
     
     app.run(debug=True, host='0.0.0.0', port=5000)
