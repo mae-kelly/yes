@@ -1211,6 +1211,103 @@ def logging_compliance_breakdown():
         logger.error(f"Logging compliance breakdown error: {e}")
         return jsonify({'error': str(e)}), 500
 
+# Add this to your app.py to replace the existing domain_metrics endpoint
+
+@app.route('/api/domain_visibility/breakdown')
+def domain_visibility_breakdown():
+    try:
+        conn = get_db_connection()
+        
+        # Get all hosts with their domain information
+        result = conn.execute("""
+            SELECT 
+                host,
+                COALESCE(domain, '') as domain,
+                CASE WHEN LOWER(COALESCE(present_in_cmdb, '')) LIKE '%yes%' THEN 1 ELSE 0 END as in_cmdb,
+                CASE WHEN LOWER(COALESCE(tanium_coverage, '')) LIKE '%tanium%' THEN 1 ELSE 0 END as has_tanium,
+                CASE WHEN LOWER(COALESCE(logging_in_splunk, '')) LIKE '%yes%' 
+                     OR LOWER(COALESCE(logging_in_splunk, '')) LIKE '%splunk%' THEN 1 ELSE 0 END as has_splunk
+            FROM universal_cmdb
+        """).fetchall()
+        
+        # Initialize domain stats
+        domain_distribution = {'1dc_only': 0, 'fead_only': 0, 'both_domains': 0, 'other': 0}
+        domain_coverage = {}
+        total_hosts = 0
+        
+        # Process each host
+        for host, domain_str, in_cmdb, has_tanium, has_splunk in result:
+            total_hosts += 1
+            
+            # Check if domain contains 1dc or fead
+            domain_lower = domain_str.lower()
+            has_1dc = '1dc' in domain_lower
+            has_fead = 'fead' in domain_lower
+            
+            # Classify the host
+            if has_1dc and has_fead:
+                domain_key = 'both_domains'
+                domain_distribution['both_domains'] += 1
+            elif has_1dc:
+                domain_key = '1dc_only'
+                domain_distribution['1dc_only'] += 1
+            elif has_fead:
+                domain_key = 'fead_only'
+                domain_distribution['fead_only'] += 1
+            else:
+                domain_key = 'other'
+                domain_distribution['other'] += 1
+            
+            # Track coverage metrics
+            if domain_key != 'other':
+                if domain_key not in domain_coverage:
+                    domain_coverage[domain_key] = {
+                        'total_assets': 0,
+                        'cmdb_covered': 0,
+                        'tanium_covered': 0,
+                        'splunk_covered': 0
+                    }
+                
+                domain_coverage[domain_key]['total_assets'] += 1
+                domain_coverage[domain_key]['cmdb_covered'] += in_cmdb
+                domain_coverage[domain_key]['tanium_covered'] += has_tanium
+                domain_coverage[domain_key]['splunk_covered'] += has_splunk
+        
+        # Calculate coverage percentages
+        for domain, stats in domain_coverage.items():
+            if stats['total_assets'] > 0:
+                stats['cmdb_coverage'] = round((stats['cmdb_covered'] / stats['total_assets'] * 100), 2)
+                stats['tanium_coverage'] = round((stats['tanium_covered'] / stats['total_assets'] * 100), 2)
+                stats['splunk_coverage'] = round((stats['splunk_covered'] / stats['total_assets'] * 100), 2)
+        
+        # Calculate domain percentages
+        domain_percentages = {}
+        if total_hosts > 0:
+            for key, count in domain_distribution.items():
+                domain_percentages[key] = round((count / total_hosts * 100), 2)
+        
+        # Determine warfare status
+        if domain_distribution['1dc_only'] > domain_distribution['fead_only']:
+            warfare_status = '1DC DOMINANT'
+        elif domain_distribution['fead_only'] > domain_distribution['1dc_only']:
+            warfare_status = 'FEAD DOMINANT'
+        else:
+            warfare_status = 'BALANCED'
+        
+        conn.close()
+        
+        return jsonify({
+            'total_hosts': total_hosts,
+            'domain_distribution': domain_distribution,
+            'domain_percentages': domain_percentages,
+            'domain_coverage': domain_coverage,
+            'warfare_status': warfare_status
+        })
+        
+    except Exception as e:
+        logger.error(f"Domain visibility breakdown error: {e}")
+        return jsonify({'error': str(e)}), 500
+    
 @app.route('/api/domain_visibility/breakdown')
 def domain_visibility_breakdown():
     try:
