@@ -12,9 +12,6 @@
 	import SystemClassification from './SystemClassification.svelte';
 	import BusinessUnitMetrics from './BusinessUnitMetrics.svelte';
 	import CIOMetrics from './CIOMetrics.svelte';
-	import TaniumCoverage from './TaniumCoverage.svelte';
-	import CMDBPresence from './CMDBPresence.svelte';
-	import AdvancedAnalytics from './AdvancedAnalytics.svelte';
 
 	let currentView = 'source_tables';
 	let currentTime = '';
@@ -32,8 +29,6 @@
 		{ id: 'system_classification', name: 'SYSTEMS', color: '#0096ff', icon: '◑' },
 		{ id: 'business_units', name: 'BUSINESS', color: '#00ff85', icon: '◒' },
 		{ id: 'cio_metrics', name: 'CIO', color: '#ffaa00', icon: '◓' },
-		{ id: 'tanium_coverage', name: 'TANIUM', color: '#00ff85', icon: '⬠' },
-		{ id: 'cmdb_presence', name: 'CMDB', color: '#00ff85', icon: '⬢' },
 		{ id: 'advanced_analytics', name: 'AI ANALYTICS', color: '#ff00ff', icon: '◎' }
 	];
 
@@ -144,12 +139,6 @@
 					<BusinessUnitMetrics />
 				{:else if currentView === 'cio_metrics'}
 					<CIOMetrics />
-				{:else if currentView === 'tanium_coverage'}
-					<TaniumCoverage />
-				{:else if currentView === 'cmdb_presence'}
-					<CMDBPresence />
-				{:else if currentView === 'advanced_analytics'}
-					<AdvancedAnalytics />
 				{/if}
 			</div>
 		</div>
