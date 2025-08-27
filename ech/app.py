@@ -566,6 +566,571 @@ def security_control_coverage():
         logger.error(f"Security control coverage error: {e}")
         return jsonify({'error': str(e)}), 500
 
+# Add these additional API endpoints to your app.py file
+
+@app.route('/api/source_tables')
+def api_source_tables():
+    try:
+        conn = get_db_connection()
+        
+        result = conn.execute("""
+            SELECT 
+                COALESCE(source_tables, 'unknown') as source_tables,
+                COUNT(*) as frequency
+            FROM universal_cmdb 
+            GROUP BY source_tables
+            ORDER BY frequency DESC
+        """).fetchall()
+        
+        source_intelligence = {}
+        total_mentions = 0
+        
+        for row in result:
+            source_tables, frequency = row
+            if source_tables and source_tables != 'unknown':
+                source_values = [s.strip() for s in str(source_tables).split(',') if s.strip()]
+                for source in source_values:
+                    source_intelligence[source] = source_intelligence.get(source, 0) + frequency
+                    total_mentions += frequency
+        
+        conn.close()
+        
+        return jsonify({
+            'source_intelligence': source_intelligence,
+            'unique_sources': len(source_intelligence),
+            'total_mentions': total_mentions
+        })
+    except Exception as e:
+        logger.error(f"Source tables error: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/domain_metrics')
+def api_domain_metrics():
+    try:
+        conn = get_db_connection()
+        
+        result = conn.execute("""
+            SELECT 
+                COALESCE(domain, '') as domain,
+                COUNT(*) as count
+            FROM universal_cmdb
+            GROUP BY domain
+        """).fetchall()
+        
+        domain_analysis = {'1dc': 0, 'fead': 0, 'other': 0}
+        
+        for row in result:
+            domain, count = row
+            if domain:
+                domain_values = [d.strip() for d in str(domain).split('|') if d.strip()]
+                for d in domain_values:
+                    if '1dc' in d.lower():
+                        domain_analysis['1dc'] += count
+                    elif 'fead' in d.lower():
+                        domain_analysis['fead'] += count
+                    else:
+                        domain_analysis['other'] += count
+        
+        conn.close()
+        
+        return jsonify({
+            'domain_analysis': domain_analysis
+        })
+    except Exception as e:
+        logger.error(f"Domain metrics error: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/infrastructure_type')
+def api_infrastructure_type():
+    try:
+        conn = get_db_connection()
+        
+        result = conn.execute("""
+            SELECT 
+                COALESCE(infrastructure_type, 'unknown') as infrastructure_type,
+                COUNT(*) as count
+            FROM universal_cmdb
+            GROUP BY infrastructure_type
+            ORDER BY count DESC
+        """).fetchall()
+        
+        infrastructure_matrix = {}
+        
+        for row in result:
+            infra_type, count = row
+            if infra_type and infra_type != 'unknown':
+                infra_values = [i.strip() for i in str(infra_type).split('|') if i.strip()]
+                for i_type in infra_values:
+                    infrastructure_matrix[i_type] = infrastructure_matrix.get(i_type, 0) + count
+        
+        conn.close()
+        
+        return jsonify({
+            'infrastructure_matrix': infrastructure_matrix
+        })
+    except Exception as e:
+        logger.error(f"Infrastructure type error: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/region_metrics')
+def api_region_metrics():
+    try:
+        conn = get_db_connection()
+        
+        result = conn.execute("""
+            SELECT 
+                COALESCE(region, 'unknown') as region,
+                COUNT(*) as count
+            FROM universal_cmdb
+            GROUP BY region
+            ORDER BY count DESC
+        """).fetchall()
+        
+        global_surveillance = {}
+        total_coverage = 0
+        
+        for row in result:
+            region, count = row
+            if region and region != 'unknown':
+                normalized = normalize_region(region)
+                global_surveillance[normalized] = global_surveillance.get(normalized, 0) + count
+                total_coverage += count
+        
+        conn.close()
+        
+        return jsonify({
+            'global_surveillance': global_surveillance,
+            'total_coverage': total_coverage
+        })
+    except Exception as e:
+        logger.error(f"Region metrics error: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/country_metrics')
+def api_country_metrics():
+    try:
+        conn = get_db_connection()
+        
+        result = conn.execute("""
+            SELECT 
+                COALESCE(country, 'unknown') as country,
+                COUNT(*) as count
+            FROM universal_cmdb
+            GROUP BY country
+            ORDER BY count DESC
+        """).fetchall()
+        
+        global_intelligence = {}
+        total_countries = 0
+        
+        for row in result:
+            country, count = row
+            if country and country != 'unknown':
+                normalized = country.lower().strip()
+                global_intelligence[normalized] = count
+                total_countries += 1
+        
+        conn.close()
+        
+        return jsonify({
+            'global_intelligence': global_intelligence,
+            'total_countries': total_countries
+        })
+    except Exception as e:
+        logger.error(f"Country metrics error: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/data_center_metrics')
+def api_data_center_metrics():
+    try:
+        conn = get_db_connection()
+        
+        result = conn.execute("""
+            SELECT 
+                COALESCE(data_center, 'unknown') as data_center,
+                COUNT(*) as count
+            FROM universal_cmdb
+            GROUP BY data_center
+            ORDER BY count DESC
+        """).fetchall()
+        
+        facility_intelligence = {}
+        
+        for row in result:
+            data_center, count = row
+            if data_center and data_center != 'unknown':
+                first_word = str(data_center).split()[0] if str(data_center).split() else str(data_center)
+                facility_intelligence[first_word] = facility_intelligence.get(first_word, 0) + count
+        
+        conn.close()
+        
+        return jsonify({
+            'facility_intelligence': facility_intelligence
+        })
+    except Exception as e:
+        logger.error(f"Data center metrics error: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/cloud_region_metrics')
+def api_cloud_region_metrics():
+    try:
+        conn = get_db_connection()
+        
+        result = conn.execute("""
+            SELECT DISTINCT 
+                COALESCE(cloud_region, 'unknown') as cloud_region
+            FROM universal_cmdb
+            WHERE cloud_region IS NOT NULL AND cloud_region != ''
+        """).fetchall()
+        
+        cloud_matrix = []
+        
+        for row in result:
+            cloud_region = row[0]
+            if cloud_region and cloud_region != 'unknown':
+                cloud_values = [c.strip() for c in str(cloud_region).split('|') if c.strip()]
+                for cr in cloud_values:
+                    if cr not in cloud_matrix:
+                        cloud_matrix.append(cr)
+        
+        conn.close()
+        
+        return jsonify({
+            'cloud_matrix': cloud_matrix
+        })
+    except Exception as e:
+        logger.error(f"Cloud region metrics error: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/class_metrics')
+def api_class_metrics():
+    try:
+        conn = get_db_connection()
+        
+        result = conn.execute("""
+            SELECT 
+                COALESCE(class, 'unknown') as class,
+                COUNT(*) as count
+            FROM universal_cmdb
+            WHERE class IS NOT NULL AND class != ''
+            GROUP BY class
+            ORDER BY count DESC
+        """).fetchall()
+        
+        classification_matrix = {}
+        
+        for row in result:
+            class_name, count = row
+            if class_name and class_name != 'unknown':
+                import re
+                class_numbers = re.findall(r'class\s*(\d+)', str(class_name).lower())
+                if class_numbers:
+                    for class_num in class_numbers:
+                        key = f"class {class_num}"
+                        classification_matrix[key] = classification_matrix.get(key, 0) + count
+                else:
+                    classification_matrix[str(class_name)] = count
+        
+        conn.close()
+        
+        return jsonify({
+            'classification_matrix': classification_matrix
+        })
+    except Exception as e:
+        logger.error(f"Class metrics error: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/system_classification_metrics')
+def api_system_classification_metrics():
+    try:
+        conn = get_db_connection()
+        
+        result = conn.execute("""
+            SELECT 
+                COALESCE(system, 'unknown') as system,
+                COUNT(*) as count
+            FROM universal_cmdb
+            GROUP BY system
+            ORDER BY count DESC
+        """).fetchall()
+        
+        system_matrix = {}
+        
+        for row in result:
+            system_name, count = row
+            if system_name and system_name != 'unknown':
+                system_values = [s.strip() for s in str(system_name).split('|') if s.strip()]
+                for s in system_values:
+                    system_matrix[s] = system_matrix.get(s, 0) + count
+        
+        conn.close()
+        
+        return jsonify({
+            'system_matrix': system_matrix
+        })
+    except Exception as e:
+        logger.error(f"System classification error: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/business_unit_metrics')
+def api_business_unit_metrics():
+    try:
+        conn = get_db_connection()
+        
+        result = conn.execute("""
+            SELECT 
+                COALESCE(business_unit, 'unknown') as business_unit,
+                COUNT(*) as count
+            FROM universal_cmdb
+            GROUP BY business_unit
+            ORDER BY count DESC
+        """).fetchall()
+        
+        business_intelligence = {}
+        
+        for row in result:
+            bu_name, count = row
+            if bu_name and bu_name != 'unknown':
+                # Parse both comma and pipe separated values
+                separators = [',', '|']
+                units = [bu_name]
+                
+                for sep in separators:
+                    new_units = []
+                    for unit in units:
+                        new_units.extend([u.strip() for u in str(unit).split(sep) if u.strip()])
+                    units = new_units
+                
+                for unit in units:
+                    if unit:
+                        business_intelligence[unit] = business_intelligence.get(unit, 0) + count
+        
+        conn.close()
+        
+        return jsonify({
+            'business_intelligence': business_intelligence
+        })
+    except Exception as e:
+        logger.error(f"Business unit metrics error: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/cio_metrics')
+def api_cio_metrics():
+    try:
+        conn = get_db_connection()
+        
+        result = conn.execute("""
+            SELECT 
+                COALESCE(cio, 'unknown') as cio,
+                COUNT(*) as count
+            FROM universal_cmdb
+            WHERE cio IS NOT NULL AND cio != ''
+            GROUP BY cio
+            ORDER BY count DESC
+        """).fetchall()
+        
+        operative_intelligence = {}
+        
+        for row in result:
+            cio_name, count = row
+            if cio_name and cio_name != 'unknown':
+                cio_values = [c.strip() for c in str(cio_name).split('|') if c.strip()]
+                for c in cio_values:
+                    # Only include if it's not a number and has reasonable length
+                    if c and not c.isdigit() and len(c) > 1:
+                        operative_intelligence[c] = operative_intelligence.get(c, 0) + count
+        
+        conn.close()
+        
+        return jsonify({
+            'operative_intelligence': operative_intelligence
+        })
+    except Exception as e:
+        logger.error(f"CIO metrics error: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/tanium_coverage')
+def api_tanium_coverage():
+    try:
+        conn = get_db_connection()
+        
+        tanium_count = conn.execute("""
+            SELECT COUNT(*) 
+            FROM universal_cmdb 
+            WHERE LOWER(COALESCE(tanium_coverage, '')) LIKE '%tanium%'
+        """).fetchone()[0]
+        
+        total_count = conn.execute("SELECT COUNT(*) FROM universal_cmdb").fetchone()[0]
+        
+        coverage_percentage = (tanium_count / total_count * 100) if total_count > 0 else 0
+        
+        conn.close()
+        
+        return jsonify({
+            'tanium_deployed': tanium_count,
+            'total_assets': total_count,
+            'coverage_percentage': round(coverage_percentage, 2)
+        })
+    except Exception as e:
+        logger.error(f"Tanium coverage error: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/cmdb_presence')
+def api_cmdb_presence():
+    try:
+        conn = get_db_connection()
+        
+        yes_count = conn.execute("""
+            SELECT COUNT(*) 
+            FROM universal_cmdb 
+            WHERE LOWER(COALESCE(present_in_cmdb, '')) LIKE '%yes%'
+        """).fetchone()[0]
+        
+        total_count = conn.execute("SELECT COUNT(*) FROM universal_cmdb").fetchone()[0]
+        
+        registration_rate = (yes_count / total_count * 100) if total_count > 0 else 0
+        
+        conn.close()
+        
+        return jsonify({
+            'cmdb_registered': yes_count,
+            'total_assets': total_count,
+            'registration_rate': round(registration_rate, 2)
+        })
+    except Exception as e:
+        logger.error(f"CMDB presence error: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/advanced_analytics')
+def api_advanced_analytics():
+    try:
+        conn = get_db_connection()
+        
+        # Get correlation analysis
+        result = conn.execute("""
+            SELECT 
+                COALESCE(region, 'unknown') as region,
+                COALESCE(infrastructure_type, 'unknown') as infrastructure_type,
+                SUM(CASE WHEN LOWER(COALESCE(present_in_cmdb, '')) LIKE '%yes%' THEN 1 ELSE 0 END) as cmdb_count,
+                SUM(CASE WHEN LOWER(COALESCE(tanium_coverage, '')) LIKE '%tanium%' THEN 1 ELSE 0 END) as tanium_count,
+                COUNT(*) as total_count
+            FROM universal_cmdb
+            GROUP BY region, infrastructure_type
+            ORDER BY total_count DESC
+            LIMIT 20
+        """).fetchall()
+        
+        correlation_analysis = []
+        high_risk_combinations = []
+        
+        for row in result:
+            region, infra_type, cmdb_count, tanium_count, total = row
+            
+            cmdb_coverage = (cmdb_count / total * 100) if total > 0 else 0
+            tanium_coverage = (tanium_count / total * 100) if total > 0 else 0
+            security_score = (cmdb_coverage + tanium_coverage) / 2
+            
+            analysis_entry = {
+                'region': region,
+                'infrastructure_type': infra_type,
+                'cmdb_coverage': round(cmdb_coverage, 2),
+                'tanium_coverage': round(tanium_coverage, 2),
+                'security_score': round(security_score, 2),
+                'asset_count': total,
+                'business_unit_diversity': 1,  # Simplified
+                'datacenter_diversity': 1,     # Simplified
+                'risk_category': 'LOW' if security_score >= 75 else 'MEDIUM' if security_score >= 50 else 'HIGH'
+            }
+            
+            correlation_analysis.append(analysis_entry)
+            
+            if security_score < 50 and total > 10:
+                high_risk_combinations.append(analysis_entry)
+        
+        # Trend analysis by region
+        trend_analysis = {}
+        regions = conn.execute("""
+            SELECT DISTINCT COALESCE(region, 'unknown') as region
+            FROM universal_cmdb
+            LIMIT 10
+        """).fetchall()
+        
+        for (region,) in regions:
+            if region != 'unknown':
+                region_stats = conn.execute("""
+                    SELECT 
+                        COUNT(*) as total_assets,
+                        SUM(CASE WHEN LOWER(COALESCE(tanium_coverage, '')) LIKE '%tanium%' THEN 1 ELSE 0 END) as tanium_count
+                    FROM universal_cmdb
+                    WHERE region = ?
+                """, [region]).fetchone()
+                
+                total_assets, tanium_count = region_stats
+                avg_security_score = (tanium_count / total_assets * 100) if total_assets > 0 else 0
+                
+                trend_analysis[region] = {
+                    'total_assets': total_assets,
+                    'avg_security_score': round(avg_security_score, 2),
+                    'high_risk_segments': 1 if avg_security_score < 50 else 0
+                }
+        
+        conn.close()
+        
+        return jsonify({
+            'correlation_analysis': correlation_analysis,
+            'high_risk_combinations': high_risk_combinations,
+            'trend_analysis': trend_analysis
+        })
+    except Exception as e:
+        logger.error(f"Advanced analytics error: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/host_search')
+def api_host_search():
+    try:
+        search_term = request.args.get('q', '')
+        if not search_term:
+            return jsonify({'error': 'Search term required'}), 400
+            
+        conn = get_db_connection()
+        
+        result = conn.execute("""
+            SELECT 
+                COALESCE(host, 'unknown') as host,
+                COALESCE(region, 'unknown') as region,
+                COALESCE(country, 'unknown') as country,
+                COALESCE(infrastructure_type, 'unknown') as infrastructure_type,
+                COALESCE(present_in_cmdb, 'unknown') as present_in_cmdb,
+                COALESCE(tanium_coverage, 'unknown') as tanium_coverage
+            FROM universal_cmdb 
+            WHERE LOWER(COALESCE(host, '')) LIKE LOWER(?) 
+            OR LOWER(COALESCE(source_tables, '')) LIKE LOWER(?)
+            ORDER BY host 
+            LIMIT 100
+        """, [f'%{search_term}%', f'%{search_term}%']).fetchall()
+        
+        hosts = []
+        for row in result:
+            hosts.append({
+                'host': row[0],
+                'region': row[1],
+                'country': row[2],
+                'infrastructure_type': row[3],
+                'present_in_cmdb': row[4],
+                'tanium_coverage': row[5]
+            })
+        
+        conn.close()
+        
+        return jsonify({
+            'hosts': hosts,
+            'total_found': len(hosts),
+            'search_term': search_term
+        })
+    except Exception as e:
+        logger.error(f"Host search error: {e}")
+        return jsonify({'error': str(e)}), 500
+    
 @app.route('/api/logging_compliance/breakdown')
 def logging_compliance_breakdown():
     try:
