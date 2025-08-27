@@ -1,25 +1,39 @@
 <script>
 	import { onMount } from 'svelte';
-	import GlobalView from './GlobalView.svelte';
+	import SourceTables from './SourceTables.svelte';
+	import DomainMetrics from './DomainMetrics.svelte';
 	import InfrastructureType from './InfrastructureType.svelte';
-	import BUApplicationView from './BUApplicationView.svelte';
+	import RegionMetrics from './RegionMetrics.svelte';
+	import CountryMetrics from './CountryMetrics.svelte';
+	import DataCenter from './DataCenter.svelte';
+	import CloudRegionMetrics from './CloudRegionMetrics.svelte';
+	import ClassMetrics from './ClassMetrics.svelte';
 	import SystemClassification from './SystemClassification.svelte';
-	import SecurityControlCoverage from './SecurityControlCoverage.svelte';
-	import LoggingCompliance from './LoggingCompliance.svelte';
-	import DomainVisibility from './DomainVisibility.svelte';
+	import BusinessUnitMetrics from './BusinessUnitMetrics.svelte';
+	import CIOMetrics from './CIOMetrics.svelte';
+	import TaniumCoverage from './TaniumCoverage.svelte';
+	import CMDBPresence from './CMDBPresence.svelte';
+	import AdvancedAnalytics from './AdvancedAnalytics.svelte';
 
-	let currentView = 'global_view';
+	let currentView = 'source_tables';
 	let currentTime = '';
 	let systemStatus = 'INITIALIZING';
 	
 	let modules = [
-		{ id: 'global_view', name: 'GLOBAL VIEW', color: '#00ffff', icon: '🌐', description: 'Regional & Country Visibility' },
-		{ id: 'infrastructure_type', name: 'INFRASTRUCTURE', color: '#ff00ff', icon: '⬢', description: 'On-Prem, Cloud, SaaS, API' },
-		{ id: 'bu_application', name: 'BU & APPLICATION', color: '#0096ff', icon: '◈', description: 'Business Unit & CIO View' },
-		{ id: 'system_classification', name: 'SYSTEM CLASS', color: '#00ff85', icon: '◑', description: 'Windows, Linux, *Nix, Mainframe' },
-		{ id: 'security_control', name: 'SECURITY CONTROL', color: '#ff0066', icon: '🛡️', description: 'EDR, Tanium, DLP Coverage' },
-		{ id: 'logging_compliance', name: 'LOGGING', color: '#ffaa00', icon: '📊', description: 'GSO & Splunk Compliance' },
-		{ id: 'domain_visibility', name: 'DOMAIN', color: '#00ffff', icon: '◆', description: '1DC vs FEAD Analysis' }
+		{ id: 'source_tables', name: 'SOURCE TABLES', color: '#00ffff', icon: '◈', description: 'Data Source Analysis' },
+		{ id: 'domain_metrics', name: 'DOMAIN WARFARE', color: '#ff00ff', icon: '◆', description: '1DC vs FEAD Analysis' },
+		{ id: 'infrastructure_type', name: 'INFRASTRUCTURE', color: '#0096ff', icon: '⬢', description: 'On-Prem, Cloud, SaaS, API' },
+		{ id: 'region_metrics', name: 'REGIONS', color: '#00ff85', icon: '◉', description: 'Global Regional Analysis' },
+		{ id: 'country_metrics', name: 'COUNTRIES', color: '#ffaa00', icon: '⬟', description: 'Country Intelligence' },
+		{ id: 'data_center', name: 'DATA CENTERS', color: '#ff0066', icon: '⬡', description: 'Facility Intelligence' },
+		{ id: 'cloud_regions', name: 'CLOUD REGIONS', color: '#00ffff', icon: '◯', description: 'Cloud Infrastructure' },
+		{ id: 'class_metrics', name: 'CLASSES', color: '#ff00ff', icon: '◐', description: 'Classification Analysis' },
+		{ id: 'system_classification', name: 'SYSTEMS', color: '#0096ff', icon: '◑', description: 'System Taxonomy' },
+		{ id: 'business_units', name: 'BUSINESS UNITS', color: '#00ff85', icon: '◒', description: 'Organizational Analysis' },
+		{ id: 'cio_metrics', name: 'CIO ANALYSIS', color: '#ffaa00', icon: '◓', description: 'Leadership Intelligence' },
+		{ id: 'tanium_coverage', name: 'TANIUM', color: '#00ff85', icon: '⬠', description: 'Agent Deployment' },
+		{ id: 'cmdb_presence', name: 'CMDB', color: '#00ff85', icon: '⬢', description: 'Registration Status' },
+		{ id: 'advanced_analytics', name: 'AI ANALYTICS', color: '#ff00ff', icon: '◎', description: 'Advanced Intelligence' }
 	];
 
 	onMount(() => {
@@ -108,20 +122,34 @@
 			</div>
 			
 			<div class="content-stream">
-				{#if currentView === 'global_view'}
-					<GlobalView />
+				{#if currentView === 'source_tables'}
+					<SourceTables />
+				{:else if currentView === 'domain_metrics'}
+					<DomainMetrics />
 				{:else if currentView === 'infrastructure_type'}
 					<InfrastructureType />
-				{:else if currentView === 'bu_application'}
-					<BUApplicationView />
+				{:else if currentView === 'region_metrics'}
+					<RegionMetrics />
+				{:else if currentView === 'country_metrics'}
+					<CountryMetrics />
+				{:else if currentView === 'data_center'}
+					<DataCenter />
+				{:else if currentView === 'cloud_regions'}
+					<CloudRegionMetrics />
+				{:else if currentView === 'class_metrics'}
+					<ClassMetrics />
 				{:else if currentView === 'system_classification'}
 					<SystemClassification />
-				{:else if currentView === 'security_control'}
-					<SecurityControlCoverage />
-				{:else if currentView === 'logging_compliance'}
-					<LoggingCompliance />
-				{:else if currentView === 'domain_visibility'}
-					<DomainVisibility />
+				{:else if currentView === 'business_units'}
+					<BusinessUnitMetrics />
+				{:else if currentView === 'cio_metrics'}
+					<CIOMetrics />
+				{:else if currentView === 'tanium_coverage'}
+					<TaniumCoverage />
+				{:else if currentView === 'cmdb_presence'}
+					<CMDBPresence />
+				{:else if currentView === 'advanced_analytics'}
+					<AdvancedAnalytics />
 				{/if}
 			</div>
 		</div>
