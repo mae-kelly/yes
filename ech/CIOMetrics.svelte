@@ -1,22 +1,21 @@
-<!-- CIOMetrics.svelte - Enhanced with Perfect Screen Fit and 10x Cooler -->
+<!-- CIOMetrics.svelte - Enhanced Executive Intelligence Dashboard -->
 <script>
 	import { onMount } from 'svelte';
 	
 	let data = {};
 	let loading = true;
-	let selectedCIO = null;
+	let selectedCio = null;
 	let cioDetails = [];
 	let searchTerm = '';
 	let currentPage = 1;
 	let itemsPerPage = 10;
-	let viewMode = 'table';
-	let hoveredCIO = null;
+	let viewMode = 'dashboard';
+	let hoveredCio = null;
 
 	onMount(async () => {
 		try {
 			let response = await fetch('http://localhost:5000/api/cio_metrics');
-			let result = await response.json();
-			data = result;
+			data = await response.json();
 			loading = false;
 		} catch (err) {
 			console.error('CIO metrics error:', err);
@@ -24,27 +23,27 @@
 		}
 	});
 
-	$: filteredCIOs = data.operative_intelligence ? 
+	$: sortedCios = data.operative_intelligence ? 
 		Object.entries(data.operative_intelligence)
 			.filter(([cio]) => cio.toLowerCase().includes(searchTerm.toLowerCase()))
 			.sort((a, b) => b[1] - a[1]) : [];
 	
-	$: paginatedCIOs = filteredCIOs.slice(
+	$: paginatedCios = sortedCios.slice(
 		(currentPage - 1) * itemsPerPage,
 		currentPage * itemsPerPage
 	);
 	
-	$: totalPages = Math.ceil(filteredCIOs.length / itemsPerPage);
+	$: totalPages = Math.ceil(sortedCios.length / itemsPerPage);
 
-	$: maxCount = filteredCIOs.length > 0 ? Math.max(...filteredCIOs.map(([,c]) => c)) : 1;
+	$: maxAssets = sortedCios.length > 0 ? Math.max(...sortedCios.map(([,count]) => count)) : 1;
 
-	function getThreatLevel(count) {
-		if (!maxCount) return { level: 'LOW', color: '#00ffff', intensity: 0.3 };
-		let percentage = (count / maxCount) * 100;
-		if (percentage >= 75) return { level: 'EXECUTIVE', color: '#ff00ff', intensity: 1.0 };
-		if (percentage >= 50) return { level: 'SENIOR', color: '#ff0066', intensity: 0.8 };
-		if (percentage >= 25) return { level: 'DIRECTOR', color: '#ffaa00', intensity: 0.6 };
-		return { level: 'MANAGER', color: '#00ffff', intensity: 0.4 };
+	function getExecutiveLevel(count) {
+		if (!maxAssets) return { level: 'ANALYST', color: '#0096ff', icon: '📊' };
+		let percentage = (count / maxAssets) * 100;
+		if (percentage >= 70) return { level: 'C-SUITE', color: '#ff00ff', icon: '👔' };
+		if (percentage >= 40) return { level: 'VP', color: '#ff0066', icon: '💼' };
+		if (percentage >= 20) return { level: 'DIRECTOR', color: '#ffaa00', icon: '📋' };
+		return { level: 'ANALYST', color: '#00ffff', icon: '📊' };
 	}
 
 	function getPercentage(count) {
@@ -53,8 +52,8 @@
 		return ((count / total) * 100).toFixed(2);
 	}
 
-	async function drillDownCIO(cio, count) {
-		selectedCIO = { cio, count };
+	async function drillDownCio(cio, count) {
+		selectedCio = { cio, count };
 		loading = true;
 		
 		try {
@@ -70,40 +69,33 @@
 	}
 
 	function closeDetails() {
-		selectedCIO = null;
+		selectedCio = null;
 		cioDetails = [];
 	}
 
-	$: threatDistribution = filteredCIOs.reduce((acc, [_, count]) => {
-		let level = getThreatLevel(count).level;
+	$: executiveDistribution = sortedCios.reduce((acc, [_, count]) => {
+		let level = getExecutiveLevel(count).level;
 		acc[level] = (acc[level] || 0) + 1;
 		return acc;
 	}, {});
 
-	$: topCIOs = filteredCIOs.slice(0, 5);
+	$: topExecutives = sortedCios.slice(0, 5);
 </script>
 
 <div class="cio-dashboard">
-	<!-- Header Section -->
-	<div class="header-section">
+	<!-- Executive Header -->
+	<div class="executive-header">
 		<div class="header-content">
 			<div class="title-block">
-				<div class="neural-icon">
-					<div class="icon-rings">
-						<div class="ring ring-1"></div>
-						<div class="ring ring-2"></div>
-						<div class="ring ring-3"></div>
-					</div>
-					<div class="icon-core">◓</div>
-				</div>
+				<div class="executive-icon">👤</div>
 				<div class="title-text">
-					<h1>CIO INTELLIGENCE MATRIX</h1>
-					<p>Executive Leadership Asset Control</p>
+					<h1>EXECUTIVE INTELLIGENCE</h1>
+					<p>CIO Asset Ownership Analysis</p>
 				</div>
 			</div>
 			<div class="metrics-row">
 				<div class="metric-card">
-					<div class="metric-value">{filteredCIOs.length}</div>
+					<div class="metric-value">{sortedCios.length}</div>
 					<div class="metric-label">EXECUTIVES</div>
 				</div>
 				<div class="metric-card">
@@ -111,62 +103,78 @@
 					<div class="metric-label">TOTAL ASSETS</div>
 				</div>
 				<div class="metric-card primary">
-					<div class="metric-value">{filteredCIOs[0] ? filteredCIOs[0][0].toUpperCase() : 'N/A'}</div>
-					<div class="metric-label">PRIMARY CIO</div>
+					<div class="metric-value">{sortedCios[0] ? sortedCios[0][0].toUpperCase() : 'N/A'}</div>
+					<div class="metric-label">TOP EXEC</div>
 				</div>
 				<div class="metric-card critical">
-					<div class="metric-value">{threatDistribution['EXECUTIVE'] || 0}</div>
-					<div class="metric-label">EXECUTIVE LEVEL</div>
+					<div class="metric-value">{executiveDistribution['C-SUITE'] || 0}</div>
+					<div class="metric-label">C-LEVEL</div>
 				</div>
 			</div>
 		</div>
 	</div>
 
-	<!-- Main Content Area -->
+	<!-- Main Content Grid -->
 	<div class="main-content">
-		<!-- Left Panel: Table -->
-		<div class="table-panel">
+		<!-- Left Panel: Executive Table/Dashboard -->
+		<div class="executive-panel">
 			<div class="panel-header">
-				<h3>EXECUTIVE ANALYSIS</h3>
+				<h3>EXECUTIVE COMMAND</h3>
 				<div class="controls">
-					<div class="search-bar">
-						<input 
-							type="text" 
-							bind:value={searchTerm}
-							placeholder="Search executives..."
-							class="search-input"
-						/>
-						<div class="search-icon">🔍</div>
-					</div>
+					<input 
+						type="text" 
+						bind:value={searchTerm}
+						placeholder="Search executives..."
+						class="search-input"
+					/>
 					<div class="view-toggle">
-						<button class="toggle-btn {viewMode === 'table' ? 'active' : ''}" on:click={() => viewMode = 'table'}>
-							<span class="btn-icon">▦</span> TABLE
+						<button class="toggle-btn {viewMode === 'dashboard' ? 'active' : ''}" on:click={() => viewMode = 'dashboard'}>
+							DASHBOARD
 						</button>
-						<button class="toggle-btn {viewMode === 'grid' ? 'active' : ''}" on:click={() => viewMode = 'grid'}>
-							<span class="btn-icon">▣</span> GRID
+						<button class="toggle-btn {viewMode === 'table' ? 'active' : ''}" on:click={() => viewMode = 'table'}>
+							TABLE
+						</button>
+						<button class="toggle-btn {viewMode === 'org' ? 'active' : ''}" on:click={() => viewMode = 'org'}>
+							ORG CHART
 						</button>
 					</div>
 				</div>
 			</div>
 			
-			{#if loading && !selectedCIO}
+			{#if loading && !selectedCio}
 				<div class="loading-state">
-					<div class="quantum-loader">
-						<div class="loader-core"></div>
-						<div class="loader-ring"></div>
+					<div class="executive-scanner">
+						<div class="scan-rings">
+							<div class="ring ring-1"></div>
+							<div class="ring ring-2"></div>
+							<div class="ring ring-3"></div>
+						</div>
 					</div>
-					<p>SCANNING EXECUTIVE MATRIX...</p>
+					<p>Scanning executive hierarchy...</p>
 				</div>
-			{:else if selectedCIO}
+			{:else if selectedCio}
 				<!-- Drill-down View -->
 				<div class="drill-view">
 					<div class="drill-header">
-						<h4>{selectedCIO.cio.toUpperCase()}</h4>
-						<div class="drill-stats">
-							<span class="stat-badge">{selectedCIO.count.toLocaleString()} ASSETS</span>
-							<span class="stat-badge">{getPercentage(selectedCIO.count)}% CONTROL</span>
+						<div class="exec-profile">
+							<span class="profile-icon">👤</span>
+							<h4>{selectedCio.cio.toUpperCase()}</h4>
 						</div>
 						<button class="close-btn" on:click={closeDetails}>✕</button>
+					</div>
+					<div class="drill-stats">
+						<div class="stat-item">
+							<span class="stat-label">Total Assets</span>
+							<span class="stat-value">{selectedCio.count.toLocaleString()}</span>
+						</div>
+						<div class="stat-item">
+							<span class="stat-label">Coverage</span>
+							<span class="stat-value">{getPercentage(selectedCio.count)}%</span>
+						</div>
+						<div class="stat-item">
+							<span class="stat-label">Level</span>
+							<span class="stat-value">{getExecutiveLevel(selectedCio.count).level}</span>
+						</div>
 					</div>
 					<div class="table-container">
 						<table class="data-table">
@@ -174,7 +182,6 @@
 								<tr>
 									<th>HOST</th>
 									<th>REGION</th>
-									<th>COUNTRY</th>
 									<th>INFRASTRUCTURE</th>
 									<th>CMDB</th>
 									<th>TANIUM</th>
@@ -186,7 +193,6 @@
 									<tr>
 										<td class="host-cell">{host.host}</td>
 										<td>{host.region || 'Unknown'}</td>
-										<td>{host.country || 'Unknown'}</td>
 										<td>{host.infrastructure_type || 'Unknown'}</td>
 										<td>
 											<span class="status-badge {host.present_in_cmdb?.toLowerCase().includes('yes') ? 'active' : 'inactive'}">
@@ -199,7 +205,7 @@
 											</span>
 										</td>
 										<td>
-											<span class="exec-badge">CONTROLLED</span>
+											<span class="exec-badge">MANAGED</span>
 										</td>
 									</tr>
 								{/each}
@@ -207,55 +213,100 @@
 						</table>
 					</div>
 				</div>
+			{:else if viewMode === 'dashboard'}
+				<!-- Dashboard View with Cards -->
+				<div class="executive-dashboard">
+					<div class="dashboard-grid">
+						{#each paginatedCios as [cio, count]}
+							{@const exec = getExecutiveLevel(count)}
+							<div class="exec-card" 
+								style="--card-color: {exec.color}"
+								on:click={() => drillDownCio(cio, count)}
+								on:mouseenter={() => hoveredCio = cio}
+								on:mouseleave={() => hoveredCio = null}>
+								<div class="card-header">
+									<span class="exec-emoji">{exec.icon}</span>
+									<span class="exec-level {exec.level.toLowerCase()}">{exec.level}</span>
+								</div>
+								<div class="card-body">
+									<div class="exec-name">{cio.toUpperCase()}</div>
+									<div class="asset-count">{count.toLocaleString()}</div>
+									<div class="asset-label">ASSETS</div>
+									<div class="progress-ring">
+										<svg width="60" height="60">
+											<circle cx="30" cy="30" r="25" fill="none" stroke="rgba(255,255,255,0.1)" stroke-width="3"/>
+											<circle 
+												cx="30" cy="30" r="25" 
+												fill="none" 
+												stroke={exec.color} 
+												stroke-width="3"
+												stroke-dasharray={`${(count/maxAssets) * 157} 157`}
+												transform="rotate(-90 30 30)"
+											/>
+										</svg>
+										<div class="ring-value">{getPercentage(count)}%</div>
+									</div>
+								</div>
+								{#if hoveredCio === cio}
+									<div class="card-hover-info">
+										<div class="info-row">
+											<span>Portfolio Size:</span>
+											<span>{count}</span>
+										</div>
+										<div class="info-row">
+											<span>Coverage:</span>
+											<span>{getPercentage(count)}%</span>
+										</div>
+									</div>
+								{/if}
+							</div>
+						{/each}
+					</div>
+				</div>
 			{:else if viewMode === 'table'}
-				<!-- Main Table -->
+				<!-- Table View -->
 				<div class="table-container">
 					<table class="data-table">
 						<thead>
 							<tr>
 								<th>EXECUTIVE</th>
+								<th>LEVEL</th>
 								<th>ASSETS</th>
 								<th>COVERAGE</th>
-								<th>LEVEL</th>
+								<th>RISK</th>
 								<th>ACTION</th>
 							</tr>
 						</thead>
 						<tbody>
-							{#each paginatedCIOs as [cio, count]}
-								<tr on:mouseenter={() => hoveredCIO = cio} on:mouseleave={() => hoveredCIO = null}>
-									<td class="cio-cell">
+							{#each paginatedCios as [cio, count]}
+								{@const exec = getExecutiveLevel(count)}
+								<tr>
+									<td class="exec-cell">
 										<div class="cell-content">
-											<span class="indicator pulse" style="background: {getThreatLevel(count).color}"></span>
-											<div class="cio-info">
-												<span class="cio-name">{cio.toUpperCase()}</span>
-												<span class="cio-title">Chief Information Officer</span>
-											</div>
+											<span class="exec-icon">{exec.icon}</span>
+											<span>{cio.toUpperCase()}</span>
 										</div>
 									</td>
 									<td class="center">
-										<div class="asset-display">
-											<span class="asset-count">{count.toLocaleString()}</span>
-											<div class="mini-bar">
-												<div class="mini-fill" style="width: {(count/maxCount)*100}%; background: {getThreatLevel(count).color}"></div>
-											</div>
-										</div>
+										<span class="level-badge {exec.level.toLowerCase()}">{exec.level}</span>
 									</td>
+									<td class="center">{count.toLocaleString()}</td>
 									<td>
 										<div class="coverage-cell">
 											<div class="coverage-bar">
-												<div class="coverage-fill" style="width: {getPercentage(count)}%; background: {getThreatLevel(count).color}">
-													<span class="coverage-glow"></span>
-												</div>
+												<div class="coverage-fill" style="width: {getPercentage(count)}%; background: {exec.color}"></div>
 											</div>
 											<span class="coverage-text">{getPercentage(count)}%</span>
 										</div>
 									</td>
 									<td class="center">
-										<span class="threat-badge {getThreatLevel(count).level.toLowerCase()}">{getThreatLevel(count).level}</span>
+										<span class="risk-badge {exec.level === 'C-SUITE' ? 'low' : exec.level === 'VP' ? 'medium' : 'high'}">
+											{exec.level === 'C-SUITE' ? 'LOW' : exec.level === 'VP' ? 'MEDIUM' : 'HIGH'}
+										</span>
 									</td>
 									<td class="center">
-										<button class="drill-btn" on:click={() => drillDownCIO(cio, count)}>
-											ACCESS →
+										<button class="drill-btn" on:click={() => drillDownCio(cio, count)}>
+											ANALYZE →
 										</button>
 									</td>
 								</tr>
@@ -263,140 +314,65 @@
 						</tbody>
 					</table>
 				</div>
-				
-				<!-- Pagination -->
+			{:else}
+				<!-- Org Chart View -->
+				<div class="org-chart">
+					<div class="org-tree">
+						{#each topExecutives as [cio, count], i}
+							{@const exec = getExecutiveLevel(count)}
+							<div class="org-node level-{exec.level.toLowerCase()}" style="--delay: {i * 0.1}s">
+								<div class="node-icon">{exec.icon}</div>
+								<div class="node-name">{cio.toUpperCase()}</div>
+								<div class="node-assets">{count.toLocaleString()} assets</div>
+								<div class="node-connections">
+									{#if i < topExecutives.length - 1}
+										<div class="connection-line"></div>
+									{/if}
+								</div>
+							</div>
+						{/each}
+					</div>
+				</div>
+			{/if}
+			
+			<!-- Pagination -->
+			{#if !selectedCio && viewMode !== 'org'}
 				<div class="pagination">
 					<button 
 						on:click={() => currentPage = Math.max(1, currentPage - 1)}
 						disabled={currentPage === 1}
-						class="page-btn"
 					>
-						◀
+						←
 					</button>
-					<div class="page-info">
-						<span class="current-page">{currentPage}</span>
-						<span class="page-separator">/</span>
-						<span class="total-pages">{totalPages}</span>
-					</div>
+					<span>Page {currentPage} of {totalPages}</span>
 					<button 
 						on:click={() => currentPage = Math.min(totalPages, currentPage + 1)}
 						disabled={currentPage === totalPages}
-						class="page-btn"
 					>
-						▶
+						→
 					</button>
-				</div>
-			{:else}
-				<!-- Grid View -->
-				<div class="grid-container">
-					{#each paginatedCIOs as [cio, count]}
-						<div class="grid-card" 
-							style="--card-color: {getThreatLevel(count).color}"
-							on:click={() => drillDownCIO(cio, count)}
-							on:mouseenter={() => hoveredCIO = cio}
-							on:mouseleave={() => hoveredCIO = null}>
-							<div class="card-header">
-								<div class="executive-avatar">
-									<div class="avatar-ring"></div>
-									<span class="avatar-icon">👤</span>
-								</div>
-								<span class="level-indicator {getThreatLevel(count).level.toLowerCase()}">{getThreatLevel(count).level}</span>
-							</div>
-							<div class="card-body">
-								<div class="executive-name">{cio.toUpperCase()}</div>
-								<div class="executive-title">Chief Information Officer</div>
-								<div class="asset-counter">
-									<span class="counter-value">{count.toLocaleString()}</span>
-									<span class="counter-label">ASSETS</span>
-								</div>
-								<div class="control-bar">
-									<div class="control-fill" style="width: {getPercentage(count)}%; background: {getThreatLevel(count).color}"></div>
-								</div>
-								<div class="card-percentage">{getPercentage(count)}% CONTROL</div>
-							</div>
-							<div class="card-footer">
-								<button class="access-btn">ACCESS PROFILE →</button>
-							</div>
-						</div>
-					{/each}
 				</div>
 			{/if}
 		</div>
 
 		<!-- Right Panel: Visualizations -->
 		<div class="viz-panel">
-			<!-- Executive Hierarchy Chart -->
+			<!-- Executive Level Distribution -->
 			<div class="viz-card">
 				<h4>EXECUTIVE HIERARCHY</h4>
 				<div class="hierarchy-chart">
-					<svg viewBox="0 0 300 200">
-						<defs>
-							<linearGradient id="hierarchyGradient" x1="0%" y1="0%" x2="0%" y2="100%">
-								<stop offset="0%" style="stop-color:#ff00ff;stop-opacity:0.8" />
-								<stop offset="100%" style="stop-color:#ff00ff;stop-opacity:0" />
-							</linearGradient>
-							<filter id="glow">
-								<feGaussianBlur stdDeviation="3" result="coloredBlur"/>
-								<feMerge>
-									<feMergeNode in="coloredBlur"/>
-									<feMergeNode in="SourceGraphic"/>
-								</feMerge>
-							</filter>
-						</defs>
-						
-						<!-- Hierarchy levels -->
-						{#each topCIOs as [cio, count], i}
-							<circle 
-								cx={150} 
-								cy={40 + i * 30} 
-								r={Math.sqrt(count/maxCount) * 20 + 5}
-								fill="url(#hierarchyGradient)"
-								opacity="0.6"
-								filter="url(#glow)"
-							/>
-							<text 
-								x={150} 
-								y={45 + i * 30} 
-								text-anchor="middle" 
-								fill="#ff00ff" 
-								font-size="10"
-								font-weight="600"
-							>
-								{cio.substring(0, 10).toUpperCase()}
-							</text>
-						{/each}
-						
-						<!-- Connection lines -->
-						{#each topCIOs as [_, count], i}
-							{#if i < topCIOs.length - 1}
-								<line 
-									x1="150" y1={50 + i * 30}
-									x2="150" y2={30 + (i + 1) * 30}
-									stroke="#ff00ff"
-									stroke-width="1"
-									opacity="0.3"
-								/>
-							{/if}
-						{/each}
-					</svg>
-				</div>
-			</div>
-
-			<!-- Level Distribution -->
-			<div class="viz-card">
-				<h4>EXECUTIVE LEVELS</h4>
-				<div class="level-chart">
-					{#each Object.entries(threatDistribution) as [level, count]}
-						<div class="level-row">
-							<div class="level-label">{level}</div>
+					{#each Object.entries(executiveDistribution) as [level, count]}
+						{@const levelData = level === 'C-SUITE' ? {color: '#ff00ff', icon: '👔'} :
+							level === 'VP' ? {color: '#ff0066', icon: '💼'} :
+							level === 'DIRECTOR' ? {color: '#ffaa00', icon: '📋'} :
+							{color: '#00ffff', icon: '📊'}}
+						<div class="hierarchy-level">
+							<div class="level-header">
+								<span class="level-icon">{levelData.icon}</span>
+								<span class="level-name">{level}</span>
+							</div>
 							<div class="level-bar-container">
-								<div class="level-bar" 
-									style="width: {(count/filteredCIOs.length)*100}%; 
-										   background: {level === 'EXECUTIVE' ? '#ff00ff' : 
-													   level === 'SENIOR' ? '#ff0066' : 
-													   level === 'DIRECTOR' ? '#ffaa00' : '#00ffff'}">
-									<span class="bar-glow"></span>
-								</div>
+								<div class="level-bar" style="width: {(count/sortedCios.length)*100}%; background: {levelData.color}"></div>
 							</div>
 							<div class="level-count">{count}</div>
 						</div>
@@ -404,18 +380,20 @@
 				</div>
 			</div>
 
-			<!-- Top 5 Executives Bar Chart -->
+			<!-- Top 5 Executives Chart -->
 			<div class="viz-card">
-				<h4>TOP 5 EXECUTIVES</h4>
+				<h4>TOP EXECUTIVES</h4>
 				<div class="bar-chart">
-					{#each topCIOs as [cio, count]}
+					{#each topExecutives as [cio, count]}
+						{@const exec = getExecutiveLevel(count)}
 						<div class="bar-item">
-							<div class="bar-label">{cio.toUpperCase()}</div>
+							<div class="bar-label">
+								<span class="bar-icon">{exec.icon}</span>
+								<span>{cio.substring(0, 15)}{cio.length > 15 ? '...' : ''}</span>
+							</div>
 							<div class="bar-container">
 								<div class="bar-fill" 
-									style="width: {(count/maxCount)*100}%; 
-										   background: linear-gradient(90deg, {getThreatLevel(count).color}, {getThreatLevel(count).color}80)">
-									<div class="bar-shimmer"></div>
+									style="width: {(count/maxAssets)*100}%; background: linear-gradient(90deg, {exec.color}, {exec.color}80)">
 								</div>
 								<span class="bar-value">{count.toLocaleString()}</span>
 							</div>
@@ -424,45 +402,58 @@
 				</div>
 			</div>
 
-			<!-- Control Matrix -->
+			<!-- Portfolio Distribution -->
 			<div class="viz-card">
-				<h4>CONTROL MATRIX</h4>
-				<div class="matrix-grid">
-					{#each paginatedCIOs.slice(0, 9) as [cio, count]}
-						<div class="matrix-cell" 
-							style="background: linear-gradient(135deg, {getThreatLevel(count).color}40, {getThreatLevel(count).color}10); 
-								   border-color: {getThreatLevel(count).color}"
-							class:active={hoveredCIO === cio}>
-							<div class="cell-value">{getPercentage(count)}%</div>
-							<div class="cell-label">{cio.substring(0, 8)}</div>
-							<div class="cell-pulse"></div>
-						</div>
-					{/each}
+				<h4>PORTFOLIO DISTRIBUTION</h4>
+				<div class="donut-chart">
+					<svg viewBox="0 0 200 200">
+						{#if sortedCios.length > 0}
+							{@const total = Object.values(data.operative_intelligence || {}).reduce((a, b) => a + b, 0)}
+							{@const radius = 60}
+							{@const circumference = 2 * Math.PI * radius}
+							{#each sortedCios.slice(0, 5) as [cio, count], i}
+								{@const percentage = (count / total) * 100}
+								{@const strokeDasharray = (percentage / 100) * circumference}
+								{@const rotation = sortedCios.slice(0, i)
+									.reduce((acc, [_, c]) => acc + (c / total) * 360, -90)}
+								{@const exec = getExecutiveLevel(count)}
+								<circle
+									cx="100"
+									cy="100"
+									r={radius}
+									fill="none"
+									stroke={exec.color}
+									stroke-width="30"
+									stroke-dasharray="{strokeDasharray} {circumference}"
+									transform="rotate({rotation} 100 100)"
+									opacity="0.8"
+								/>
+							{/each}
+						{/if}
+						<text x="100" y="95" text-anchor="middle" fill="white" font-size="24" font-weight="bold">
+							{sortedCios.length}
+						</text>
+						<text x="100" y="110" text-anchor="middle" fill="rgba(255,255,255,0.6)" font-size="10">
+							EXECUTIVES
+						</text>
+					</svg>
 				</div>
 			</div>
 
-			<!-- Network Status -->
+			<!-- Executive Matrix -->
 			<div class="viz-card">
-				<h4>NEURAL NETWORK STATUS</h4>
-				<div class="network-status">
-					<div class="status-grid">
-						<div class="status-item">
-							<div class="status-indicator active"></div>
-							<span>EXECUTIVE TRACKING</span>
+				<h4>EXECUTIVE MATRIX</h4>
+				<div class="matrix-grid">
+					{#each sortedCios.slice(0, 9) as [cio, count]}
+						{@const exec = getExecutiveLevel(count)}
+						<div class="matrix-cell" 
+							style="background: {exec.color}20; border-color: {exec.color}"
+							on:click={() => drillDownCio(cio, count)}>
+							<div class="cell-icon">{exec.icon}</div>
+							<div class="cell-value">{getPercentage(count)}%</div>
+							<div class="cell-label">{cio.substring(0, 8)}</div>
 						</div>
-						<div class="status-item">
-							<div class="status-indicator active"></div>
-							<span>ASSET CORRELATION</span>
-						</div>
-						<div class="status-item">
-							<div class="status-indicator warning"></div>
-							<span>HIERARCHY MAPPING</span>
-						</div>
-						<div class="status-item">
-							<div class="status-indicator active"></div>
-							<span>CONTROL ANALYTICS</span>
-						</div>
-					</div>
+					{/each}
 				</div>
 			</div>
 		</div>
@@ -474,13 +465,13 @@
 		height: 100vh;
 		display: flex;
 		flex-direction: column;
-		background: linear-gradient(135deg, #0a0a0a 0%, #1a0033 100%);
+		background: linear-gradient(135deg, #0a0a0a 0%, #1a1a2e 100%);
 		color: #fff;
 		font-family: 'JetBrains Mono', monospace;
 		overflow: hidden;
 	}
 
-	.header-section {
+	.executive-header {
 		background: rgba(0, 0, 0, 0.8);
 		border-bottom: 2px solid rgba(255, 0, 255, 0.3);
 		padding: 0.8rem 1rem;
@@ -495,71 +486,21 @@
 	.title-block {
 		display: flex;
 		align-items: center;
-		gap: 1rem;
-		margin-bottom: 0.8rem;
+		gap: 0.8rem;
+		margin-bottom: 0.6rem;
 	}
 
-	.neural-icon {
-		position: relative;
-		width: 50px;
-		height: 50px;
-		display: flex;
-		align-items: center;
-		justify-content: center;
-	}
-
-	.icon-rings {
-		position: absolute;
-		width: 100%;
-		height: 100%;
-	}
-
-	.ring {
-		position: absolute;
-		border-radius: 50%;
-		border: 1px solid;
-		top: 50%;
-		left: 50%;
-		transform: translate(-50%, -50%);
-		animation: ringRotate 10s linear infinite;
-	}
-
-	.ring-1 {
-		width: 50px;
-		height: 50px;
-		border-color: rgba(255, 0, 255, 0.6);
-		animation-duration: 10s;
-	}
-
-	.ring-2 {
-		width: 35px;
-		height: 35px;
-		border-color: rgba(255, 0, 102, 0.4);
-		animation-duration: 8s;
-		animation-direction: reverse;
-	}
-
-	.ring-3 {
-		width: 20px;
-		height: 20px;
-		border-color: rgba(0, 255, 255, 0.3);
-		animation-duration: 6s;
-	}
-
-	.icon-core {
-		position: relative;
-		z-index: 3;
-		font-size: 1.5rem;
-		color: #ff00ff;
-		text-shadow: 0 0 20px #ff00ff;
-		animation: corePulse 3s ease-in-out infinite;
+	.executive-icon {
+		font-size: 1.8rem;
+		filter: hue-rotate(280deg) saturate(2);
+		animation: iconFloat 3s ease-in-out infinite;
 	}
 
 	.title-text h1 {
 		margin: 0;
 		font-size: 1.2rem;
 		color: #ff00ff;
-		text-shadow: 0 0 15px rgba(255, 0, 255, 0.5);
+		text-shadow: 0 0 10px rgba(255, 0, 255, 0.5);
 		letter-spacing: 0.1em;
 	}
 
@@ -579,22 +520,9 @@
 		background: rgba(255, 0, 255, 0.05);
 		border: 1px solid rgba(255, 0, 255, 0.3);
 		border-radius: 6px;
-		padding: 0.6rem;
+		padding: 0.5rem;
 		text-align: center;
 		transition: all 0.3s ease;
-		position: relative;
-		overflow: hidden;
-	}
-
-	.metric-card::before {
-		content: '';
-		position: absolute;
-		top: 0;
-		left: -100%;
-		width: 100%;
-		height: 100%;
-		background: linear-gradient(90deg, transparent, rgba(255, 0, 255, 0.2), transparent);
-		animation: sweep 3s linear infinite;
 	}
 
 	.metric-card:hover {
@@ -613,21 +541,17 @@
 	}
 
 	.metric-value {
-		font-size: 1.3rem;
+		font-size: 1.1rem;
 		font-weight: 700;
 		color: #ff00ff;
 		text-shadow: 0 0 10px currentColor;
-		position: relative;
-		z-index: 1;
 	}
 
 	.metric-label {
-		font-size: 0.65rem;
+		font-size: 0.6rem;
 		color: rgba(255, 255, 255, 0.6);
 		margin-top: 0.2rem;
 		letter-spacing: 0.05em;
-		position: relative;
-		z-index: 1;
 	}
 
 	.main-content {
@@ -639,7 +563,7 @@
 		min-height: 0;
 	}
 
-	.table-panel {
+	.executive-panel {
 		flex: 2;
 		background: rgba(0, 0, 0, 0.4);
 		border: 1px solid rgba(255, 0, 255, 0.2);
@@ -647,27 +571,15 @@
 		display: flex;
 		flex-direction: column;
 		overflow: hidden;
-		position: relative;
-	}
-
-	.table-panel::before {
-		content: '';
-		position: absolute;
-		top: 0;
-		left: 0;
-		right: 0;
-		height: 1px;
-		background: linear-gradient(90deg, transparent, #ff00ff, transparent);
-		animation: scanline 4s linear infinite;
 	}
 
 	.viz-panel {
 		flex: 1;
 		display: flex;
 		flex-direction: column;
-		gap: 0.8rem;
+		gap: 0.6rem;
 		overflow-y: auto;
-		min-width: 350px;
+		min-width: 300px;
 	}
 
 	.panel-header {
@@ -678,7 +590,7 @@
 
 	.panel-header h3 {
 		margin: 0 0 0.5rem 0;
-		font-size: 0.9rem;
+		font-size: 0.8rem;
 		color: #ff00ff;
 		letter-spacing: 0.05em;
 	}
@@ -689,21 +601,14 @@
 		align-items: center;
 	}
 
-	.search-bar {
-		flex: 1;
-		max-width: 300px;
-		position: relative;
-	}
-
 	.search-input {
-		width: 100%;
+		flex: 1;
 		background: rgba(0, 0, 0, 0.6);
 		border: 1px solid rgba(255, 0, 255, 0.3);
 		border-radius: 4px;
-		padding: 0.4rem 2rem 0.4rem 0.8rem;
+		padding: 0.3rem 0.6rem;
 		color: #fff;
-		font-size: 0.75rem;
-		transition: all 0.3s ease;
+		font-size: 0.7rem;
 	}
 
 	.search-input:focus {
@@ -712,52 +617,207 @@
 		box-shadow: 0 0 10px rgba(255, 0, 255, 0.3);
 	}
 
-	.search-icon {
-		position: absolute;
-		right: 0.5rem;
-		top: 50%;
-		transform: translateY(-50%);
-		font-size: 0.9rem;
-		color: #ff00ff;
-		pointer-events: none;
-	}
-
 	.view-toggle {
 		display: flex;
 		gap: 0.2rem;
-		background: rgba(0, 0, 0, 0.6);
-		border-radius: 4px;
-		padding: 0.1rem;
 	}
 
 	.toggle-btn {
-		background: transparent;
-		border: 1px solid transparent;
-		color: rgba(255, 255, 255, 0.6);
-		padding: 0.3rem 0.6rem;
-		border-radius: 3px;
+		background: rgba(0, 0, 0, 0.6);
+		border: 1px solid rgba(255, 0, 255, 0.3);
+		color: rgba(255, 255, 255, 0.7);
+		padding: 0.25rem 0.5rem;
+		border-radius: 4px;
 		cursor: pointer;
-		font-size: 0.65rem;
+		font-size: 0.6rem;
 		transition: all 0.3s ease;
-		display: flex;
-		align-items: center;
-		gap: 0.3rem;
-	}
-
-	.toggle-btn:hover {
-		color: #ff00ff;
-		background: rgba(255, 0, 255, 0.05);
 	}
 
 	.toggle-btn.active {
 		background: rgba(255, 0, 255, 0.1);
 		border-color: #ff00ff;
 		color: #ff00ff;
-		box-shadow: 0 0 8px rgba(255, 0, 255, 0.3);
 	}
 
-	.btn-icon {
-		font-size: 0.8rem;
+	.loading-state {
+		flex: 1;
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		justify-content: center;
+		gap: 1rem;
+	}
+
+	.executive-scanner {
+		position: relative;
+		width: 100px;
+		height: 100px;
+	}
+
+	.scan-rings {
+		position: relative;
+		width: 100%;
+		height: 100%;
+	}
+
+	.ring {
+		position: absolute;
+		border-radius: 50%;
+		border: 2px solid #ff00ff;
+		opacity: 0.6;
+		animation: ringExpand 2s ease-in-out infinite;
+	}
+
+	.ring-1 {
+		width: 100px;
+		height: 100px;
+		animation-delay: 0s;
+	}
+
+	.ring-2 {
+		width: 70px;
+		height: 70px;
+		top: 15px;
+		left: 15px;
+		animation-delay: 0.5s;
+	}
+
+	.ring-3 {
+		width: 40px;
+		height: 40px;
+		top: 30px;
+		left: 30px;
+		animation-delay: 1s;
+	}
+
+	.executive-dashboard {
+		flex: 1;
+		overflow-y: auto;
+		padding: 0.8rem;
+	}
+
+	.dashboard-grid {
+		display: grid;
+		grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+		gap: 0.8rem;
+	}
+
+	.exec-card {
+		background: rgba(0, 0, 0, 0.6);
+		border: 1px solid var(--card-color);
+		border-radius: 8px;
+		padding: 1rem;
+		cursor: pointer;
+		transition: all 0.3s ease;
+		position: relative;
+		overflow: hidden;
+	}
+
+	.exec-card:hover {
+		transform: translateY(-3px);
+		box-shadow: 0 8px 20px rgba(0, 0, 0, 0.4), 0 0 20px var(--card-color);
+	}
+
+	.card-header {
+		display: flex;
+		justify-content: space-between;
+		align-items: center;
+		margin-bottom: 0.6rem;
+	}
+
+	.exec-emoji {
+		font-size: 1.5rem;
+	}
+
+	.exec-level {
+		font-size: 0.5rem;
+		padding: 0.15rem 0.3rem;
+		border-radius: 3px;
+		font-weight: 600;
+	}
+
+	.exec-level.c-suite {
+		background: rgba(255, 0, 255, 0.2);
+		color: #ff00ff;
+		border: 1px solid #ff00ff;
+	}
+
+	.exec-level.vp {
+		background: rgba(255, 0, 102, 0.2);
+		color: #ff0066;
+		border: 1px solid #ff0066;
+	}
+
+	.exec-level.director {
+		background: rgba(255, 170, 0, 0.2);
+		color: #ffaa00;
+		border: 1px solid #ffaa00;
+	}
+
+	.exec-level.analyst {
+		background: rgba(0, 255, 255, 0.2);
+		color: #00ffff;
+		border: 1px solid #00ffff;
+	}
+
+	.card-body {
+		text-align: center;
+	}
+
+	.exec-name {
+		font-size: 0.7rem;
+		color: rgba(255, 255, 255, 0.9);
+		margin-bottom: 0.3rem;
+		font-weight: 600;
+	}
+
+	.asset-count {
+		font-size: 1.3rem;
+		font-weight: 700;
+		color: var(--card-color);
+		text-shadow: 0 0 10px var(--card-color);
+	}
+
+	.asset-label {
+		font-size: 0.55rem;
+		color: rgba(255, 255, 255, 0.6);
+		margin-bottom: 0.5rem;
+	}
+
+	.progress-ring {
+		position: relative;
+		width: 60px;
+		height: 60px;
+		margin: 0 auto;
+	}
+
+	.ring-value {
+		position: absolute;
+		top: 50%;
+		left: 50%;
+		transform: translate(-50%, -50%);
+		font-size: 0.6rem;
+		font-weight: 600;
+		color: rgba(255, 255, 255, 0.8);
+	}
+
+	.card-hover-info {
+		position: absolute;
+		bottom: 0;
+		left: 0;
+		right: 0;
+		background: rgba(0, 0, 0, 0.9);
+		padding: 0.5rem;
+		border-top: 1px solid var(--card-color);
+		animation: slideUp 0.3s ease;
+	}
+
+	.info-row {
+		display: flex;
+		justify-content: space-between;
+		font-size: 0.6rem;
+		color: rgba(255, 255, 255, 0.8);
+		margin-bottom: 0.2rem;
 	}
 
 	.table-container {
@@ -769,105 +829,50 @@
 	.data-table {
 		width: 100%;
 		border-collapse: collapse;
-		font-size: 0.75rem;
+		font-size: 0.7rem;
 	}
 
 	.data-table th {
 		background: rgba(255, 0, 255, 0.1);
 		color: #ff00ff;
-		padding: 0.8rem;
+		padding: 0.5rem;
 		text-align: left;
 		font-weight: 600;
 		letter-spacing: 0.05em;
 		position: sticky;
 		top: 0;
 		z-index: 10;
-		border-bottom: 2px solid rgba(255, 0, 255, 0.3);
 	}
 
 	.data-table td {
-		padding: 0.6rem 0.8rem;
+		padding: 0.4rem 0.5rem;
 		border-bottom: 1px solid rgba(255, 255, 255, 0.05);
 		color: rgba(255, 255, 255, 0.8);
-		transition: all 0.2s ease;
 	}
 
-	.data-table tr:hover td {
+	.data-table tr:hover {
 		background: rgba(255, 0, 255, 0.05);
-		color: #fff;
 	}
 
-	.cio-cell .cell-content {
+	.exec-cell .cell-content {
 		display: flex;
 		align-items: center;
-		gap: 0.8rem;
+		gap: 0.5rem;
 	}
 
-	.indicator {
-		width: 8px;
-		height: 8px;
-		border-radius: 50%;
-		flex-shrink: 0;
-		position: relative;
-	}
-
-	.indicator.pulse::before {
-		content: '';
-		position: absolute;
-		top: -4px;
-		left: -4px;
-		width: 16px;
-		height: 16px;
-		border-radius: 50%;
-		border: 1px solid currentColor;
-		animation: pulse 2s ease-out infinite;
-	}
-
-	.cio-info {
-		display: flex;
-		flex-direction: column;
-		gap: 0.1rem;
-	}
-
-	.cio-name {
-		font-weight: 600;
-		font-size: 0.8rem;
-	}
-
-	.cio-title {
-		font-size: 0.65rem;
-		color: rgba(255, 255, 255, 0.5);
+	.exec-icon {
+		font-size: 1rem;
 	}
 
 	.center {
 		text-align: center;
 	}
 
-	.asset-display {
-		display: flex;
-		flex-direction: column;
-		align-items: center;
-		gap: 0.3rem;
-	}
-
-	.asset-count {
-		font-size: 0.9rem;
+	.level-badge {
+		padding: 0.15rem 0.4rem;
+		border-radius: 3px;
+		font-size: 0.6rem;
 		font-weight: 600;
-		color: #ff00ff;
-		text-shadow: 0 0 8px currentColor;
-	}
-
-	.mini-bar {
-		width: 60px;
-		height: 3px;
-		background: rgba(0, 0, 0, 0.5);
-		border-radius: 2px;
-		overflow: hidden;
-	}
-
-	.mini-fill {
-		height: 100%;
-		transition: width 0.5s ease;
 	}
 
 	.coverage-cell {
@@ -878,428 +883,139 @@
 
 	.coverage-bar {
 		flex: 1;
-		height: 8px;
+		height: 5px;
 		background: rgba(0, 0, 0, 0.5);
-		border-radius: 4px;
+		border-radius: 3px;
 		overflow: hidden;
-		min-width: 80px;
-		position: relative;
+		min-width: 60px;
 	}
 
 	.coverage-fill {
 		height: 100%;
 		transition: width 0.5s ease;
-		position: relative;
 		box-shadow: 0 0 10px currentColor;
 	}
 
-	.coverage-glow {
-		position: absolute;
-		top: 0;
-		right: 0;
-		width: 20px;
-		height: 100%;
-		background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.8));
-		animation: glow 2s linear infinite;
-	}
-
 	.coverage-text {
-		font-size: 0.7rem;
-		min-width: 45px;
-		text-align: right;
-		font-weight: 600;
-		color: #ff00ff;
-		text-shadow: 0 0 5px currentColor;
-	}
-
-	.threat-badge {
-		padding: 0.25rem 0.6rem;
-		border-radius: 4px;
 		font-size: 0.65rem;
+		min-width: 40px;
+		text-align: right;
+	}
+
+	.risk-badge {
+		padding: 0.15rem 0.4rem;
+		border-radius: 3px;
+		font-size: 0.6rem;
 		font-weight: 600;
-		text-transform: uppercase;
-		letter-spacing: 0.05em;
-		position: relative;
-		overflow: hidden;
 	}
 
-	.threat-badge::before {
-		content: '';
-		position: absolute;
-		top: 0;
-		left: -100%;
-		width: 100%;
-		height: 100%;
-		background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.3), transparent);
-		animation: sweep 3s linear infinite;
+	.risk-badge.low {
+		background: rgba(0, 255, 133, 0.2);
+		color: #00ff85;
+		border: 1px solid #00ff85;
 	}
 
-	.threat-badge.executive {
-		background: rgba(255, 0, 255, 0.2);
-		color: #ff00ff;
-		border: 1px solid #ff00ff;
-		box-shadow: 0 0 8px rgba(255, 0, 255, 0.4);
-	}
-
-	.threat-badge.senior {
-		background: rgba(255, 0, 102, 0.2);
-		color: #ff0066;
-		border: 1px solid #ff0066;
-		box-shadow: 0 0 8px rgba(255, 0, 102, 0.4);
-	}
-
-	.threat-badge.director {
+	.risk-badge.medium {
 		background: rgba(255, 170, 0, 0.2);
 		color: #ffaa00;
 		border: 1px solid #ffaa00;
-		box-shadow: 0 0 8px rgba(255, 170, 0, 0.4);
 	}
 
-	.threat-badge.manager {
-		background: rgba(0, 255, 255, 0.2);
-		color: #00ffff;
-		border: 1px solid #00ffff;
-		box-shadow: 0 0 8px rgba(0, 255, 255, 0.4);
+	.risk-badge.high {
+		background: rgba(255, 0, 102, 0.2);
+		color: #ff0066;
+		border: 1px solid #ff0066;
 	}
 
 	.drill-btn {
-		background: linear-gradient(135deg, rgba(255, 0, 255, 0.1), rgba(255, 0, 255, 0.2));
+		background: rgba(255, 0, 255, 0.1);
 		border: 1px solid #ff00ff;
 		color: #ff00ff;
-		padding: 0.3rem 0.8rem;
+		padding: 0.2rem 0.5rem;
 		border-radius: 4px;
 		cursor: pointer;
-		font-size: 0.65rem;
-		font-weight: 600;
+		font-size: 0.6rem;
 		transition: all 0.3s ease;
-		text-transform: uppercase;
-		letter-spacing: 0.05em;
-		position: relative;
-		overflow: hidden;
-	}
-
-	.drill-btn::before {
-		content: '';
-		position: absolute;
-		top: 50%;
-		left: -100%;
-		width: 100%;
-		height: 2px;
-		background: linear-gradient(90deg, transparent, #ff00ff, transparent);
-		animation: laser 2s linear infinite;
 	}
 
 	.drill-btn:hover {
 		background: rgba(255, 0, 255, 0.2);
 		transform: translateX(2px);
-		box-shadow: 0 0 15px rgba(255, 0, 255, 0.4);
-		text-shadow: 0 0 8px currentColor;
+		box-shadow: 0 0 10px rgba(255, 0, 255, 0.3);
 	}
 
-	.pagination {
-		display: flex;
-		justify-content: center;
-		align-items: center;
-		gap: 1rem;
-		padding: 0.8rem;
-		border-top: 1px solid rgba(255, 0, 255, 0.2);
-		background: rgba(0, 0, 0, 0.3);
-	}
-
-	.page-btn {
-		background: rgba(255, 0, 255, 0.1);
-		border: 1px solid #ff00ff;
-		color: #ff00ff;
-		width: 36px;
-		height: 36px;
-		border-radius: 50%;
-		cursor: pointer;
-		transition: all 0.3s ease;
-		font-size: 0.8rem;
-		display: flex;
-		align-items: center;
-		justify-content: center;
-	}
-
-	.page-btn:hover:not(:disabled) {
-		background: rgba(255, 0, 255, 0.2);
-		transform: scale(1.1);
-		box-shadow: 0 0 15px rgba(255, 0, 255, 0.4);
-	}
-
-	.page-btn:disabled {
-		opacity: 0.3;
-		cursor: not-allowed;
-	}
-
-	.page-info {
-		display: flex;
-		align-items: center;
-		gap: 0.5rem;
-		font-size: 0.9rem;
-		font-weight: 600;
-	}
-
-	.current-page {
-		color: #ff00ff;
-		text-shadow: 0 0 10px currentColor;
-	}
-
-	.page-separator {
-		color: rgba(255, 255, 255, 0.3);
-	}
-
-	.total-pages {
-		color: rgba(255, 255, 255, 0.6);
-	}
-
-	.grid-container {
-		display: grid;
-		grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-		gap: 1rem;
-		padding: 1rem;
+	.org-chart {
+		flex: 1;
 		overflow-y: auto;
-		flex: 1;
+		padding: 1rem;
+		display: flex;
+		justify-content: center;
+		align-items: center;
 	}
 
-	.grid-card {
-		background: linear-gradient(135deg, rgba(0, 0, 0, 0.8), rgba(255, 0, 255, 0.05));
-		border: 1px solid var(--card-color);
+	.org-tree {
+		display: flex;
+		gap: 2rem;
+		align-items: center;
+		justify-content: center;
+	}
+
+	.org-node {
+		background: rgba(0, 0, 0, 0.6);
+		border: 2px solid;
 		border-radius: 8px;
 		padding: 1rem;
-		cursor: pointer;
-		transition: all 0.3s ease;
-		position: relative;
-		overflow: hidden;
-	}
-
-	.grid-card::before {
-		content: '';
-		position: absolute;
-		top: -2px;
-		left: -2px;
-		right: -2px;
-		bottom: -2px;
-		background: linear-gradient(45deg, var(--card-color), transparent, var(--card-color));
-		border-radius: 8px;
-		opacity: 0;
-		z-index: -1;
-		transition: opacity 0.3s ease;
-	}
-
-	.grid-card:hover::before {
-		opacity: 1;
-		animation: borderRotate 3s linear infinite;
-	}
-
-	.grid-card:hover {
-		transform: translateY(-5px);
-		box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5), 0 0 30px var(--card-color);
-	}
-
-	.card-header {
-		display: flex;
-		justify-content: space-between;
-		align-items: center;
-		margin-bottom: 1rem;
-	}
-
-	.executive-avatar {
-		position: relative;
-		width: 40px;
-		height: 40px;
-		display: flex;
-		align-items: center;
-		justify-content: center;
-	}
-
-	.avatar-ring {
-		position: absolute;
-		width: 100%;
-		height: 100%;
-		border: 2px solid var(--card-color);
-		border-radius: 50%;
-		animation: avatarPulse 3s ease-in-out infinite;
-	}
-
-	.avatar-icon {
-		font-size: 1.5rem;
-		filter: hue-rotate(280deg) saturate(2);
-		position: relative;
-		z-index: 1;
-	}
-
-	.level-indicator {
-		font-size: 0.55rem;
-		padding: 0.2rem 0.4rem;
-		border-radius: 4px;
-		font-weight: 600;
-		text-transform: uppercase;
-	}
-
-	.level-indicator.executive {
-		background: rgba(255, 0, 255, 0.2);
-		color: #ff00ff;
-		border: 1px solid #ff00ff;
-	}
-
-	.level-indicator.senior {
-		background: rgba(255, 0, 102, 0.2);
-		color: #ff0066;
-		border: 1px solid #ff0066;
-	}
-
-	.level-indicator.director {
-		background: rgba(255, 170, 0, 0.2);
-		color: #ffaa00;
-		border: 1px solid #ffaa00;
-	}
-
-	.level-indicator.manager {
-		background: rgba(0, 255, 255, 0.2);
-		color: #00ffff;
-		border: 1px solid #00ffff;
-	}
-
-	.card-body {
 		text-align: center;
+		position: relative;
+		animation: nodeAppear 0.6s ease-out;
+		animation-delay: var(--delay);
+		animation-fill-mode: both;
 	}
 
-	.executive-name {
-		font-size: 0.85rem;
+	.org-node.level-c-suite {
+		border-color: #ff00ff;
+		box-shadow: 0 0 20px rgba(255, 0, 255, 0.3);
+	}
+
+	.org-node.level-vp {
+		border-color: #ff0066;
+		box-shadow: 0 0 20px rgba(255, 0, 102, 0.3);
+	}
+
+	.org-node.level-director {
+		border-color: #ffaa00;
+		box-shadow: 0 0 20px rgba(255, 170, 0, 0.3);
+	}
+
+	.org-node.level-analyst {
+		border-color: #00ffff;
+		box-shadow: 0 0 20px rgba(0, 255, 255, 0.3);
+	}
+
+	.node-icon {
+		font-size: 2rem;
+		margin-bottom: 0.5rem;
+	}
+
+	.node-name {
+		font-size: 0.8rem;
+		font-weight: 600;
 		color: #fff;
-		font-weight: 600;
-		margin-bottom: 0.2rem;
-		text-shadow: 0 0 10px rgba(255, 0, 255, 0.5);
+		margin-bottom: 0.3rem;
 	}
 
-	.executive-title {
-		font-size: 0.6rem;
+	.node-assets {
+		font-size: 0.7rem;
 		color: rgba(255, 255, 255, 0.6);
-		margin-bottom: 0.8rem;
 	}
 
-	.asset-counter {
-		display: flex;
-		flex-direction: column;
-		align-items: center;
-		margin-bottom: 0.6rem;
-	}
-
-	.counter-value {
-		font-size: 1.5rem;
-		font-weight: 700;
-		color: var(--card-color);
-		text-shadow: 0 0 15px var(--card-color);
-	}
-
-	.counter-label {
-		font-size: 0.6rem;
-		color: rgba(255, 255, 255, 0.5);
-		text-transform: uppercase;
-		letter-spacing: 0.1em;
-	}
-
-	.control-bar {
-		width: 100%;
-		height: 6px;
-		background: rgba(0, 0, 0, 0.5);
-		border-radius: 3px;
-		overflow: hidden;
-		margin-bottom: 0.4rem;
-	}
-
-	.control-fill {
-		height: 100%;
-		transition: width 0.5s ease;
-		box-shadow: 0 0 10px currentColor;
-		position: relative;
-		overflow: hidden;
-	}
-
-	.control-fill::after {
-		content: '';
+	.connection-line {
 		position: absolute;
-		top: 0;
-		left: -100%;
-		width: 100%;
-		height: 100%;
-		background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.4), transparent);
-		animation: shimmer 2s linear infinite;
-	}
-
-	.card-percentage {
-		font-size: 0.65rem;
-		color: rgba(255, 255, 255, 0.7);
-		margin-bottom: 0.8rem;
-	}
-
-	.card-footer {
-		border-top: 1px solid rgba(255, 255, 255, 0.1);
-		padding-top: 0.8rem;
-	}
-
-	.access-btn {
-		width: 100%;
-		background: rgba(255, 0, 255, 0.1);
-		border: 1px solid var(--card-color);
-		color: var(--card-color);
-		padding: 0.4rem;
-		border-radius: 4px;
-		cursor: pointer;
-		font-size: 0.65rem;
-		font-weight: 600;
-		transition: all 0.3s ease;
-		text-transform: uppercase;
-		letter-spacing: 0.05em;
-	}
-
-	.access-btn:hover {
-		background: rgba(255, 0, 255, 0.2);
-		box-shadow: 0 0 10px var(--card-color);
-		text-shadow: 0 0 8px currentColor;
-	}
-
-	.loading-state {
-		flex: 1;
-		display: flex;
-		flex-direction: column;
-		align-items: center;
-		justify-content: center;
-		gap: 1.5rem;
-	}
-
-	.quantum-loader {
-		position: relative;
-		width: 80px;
-		height: 80px;
-	}
-
-	.loader-core {
-		position: absolute;
-		width: 100%;
-		height: 100%;
-		border: 3px solid rgba(255, 0, 255, 0.1);
-		border-radius: 50%;
-	}
-
-	.loader-ring {
-		position: absolute;
-		width: 100%;
-		height: 100%;
-		border: 3px solid transparent;
-		border-top-color: #ff00ff;
-		border-radius: 50%;
-		animation: spin 1s linear infinite;
-	}
-
-	.loading-state p {
-		color: #ff00ff;
-		font-size: 0.9rem;
-		font-weight: 600;
-		letter-spacing: 0.1em;
-		text-shadow: 0 0 10px currentColor;
-		animation: blink 1.5s ease-in-out infinite;
+		right: -2rem;
+		top: 50%;
+		width: 2rem;
+		height: 2px;
+		background: linear-gradient(90deg, #ff00ff, transparent);
 	}
 
 	.drill-view {
@@ -1312,67 +1028,83 @@
 		display: flex;
 		justify-content: space-between;
 		align-items: center;
-		padding: 1rem;
-		border-bottom: 2px solid rgba(255, 0, 255, 0.3);
-		background: linear-gradient(135deg, rgba(255, 0, 255, 0.1), rgba(0, 0, 0, 0.5));
+		padding: 0.8rem;
+		border-bottom: 1px solid rgba(255, 0, 255, 0.3);
+		background: rgba(255, 0, 255, 0.05);
+	}
+
+	.exec-profile {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+	}
+
+	.profile-icon {
+		font-size: 1.5rem;
 	}
 
 	.drill-header h4 {
 		margin: 0;
 		color: #ff00ff;
-		font-size: 1rem;
-		text-shadow: 0 0 10px currentColor;
-		letter-spacing: 0.05em;
-	}
-
-	.drill-stats {
-		display: flex;
-		gap: 1rem;
-	}
-
-	.stat-badge {
-		padding: 0.3rem 0.8rem;
-		background: rgba(255, 0, 255, 0.1);
-		border: 1px solid #ff00ff;
-		border-radius: 4px;
-		color: #ff00ff;
-		font-size: 0.7rem;
-		font-weight: 600;
-		text-shadow: 0 0 5px currentColor;
+		font-size: 0.9rem;
 	}
 
 	.close-btn {
 		background: transparent;
 		border: 1px solid #ff0066;
 		color: #ff0066;
-		width: 30px;
-		height: 30px;
+		width: 24px;
+		height: 24px;
 		border-radius: 50%;
 		cursor: pointer;
 		display: flex;
 		align-items: center;
 		justify-content: center;
 		transition: all 0.3s ease;
-		font-size: 0.9rem;
+		font-size: 0.7rem;
 	}
 
 	.close-btn:hover {
 		background: rgba(255, 0, 102, 0.2);
 		transform: rotate(90deg);
-		box-shadow: 0 0 15px rgba(255, 0, 102, 0.4);
+	}
+
+	.drill-stats {
+		display: flex;
+		gap: 1rem;
+		padding: 0.8rem;
+		background: rgba(0, 0, 0, 0.3);
+		border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+	}
+
+	.stat-item {
+		display: flex;
+		flex-direction: column;
+		gap: 0.2rem;
+	}
+
+	.stat-label {
+		font-size: 0.6rem;
+		color: rgba(255, 255, 255, 0.6);
+	}
+
+	.stat-value {
+		font-size: 0.9rem;
+		font-weight: 600;
+		color: #ff00ff;
+		text-shadow: 0 0 8px #ff00ff;
 	}
 
 	.host-cell {
 		font-family: monospace;
 		color: #00ffff;
-		font-size: 0.75rem;
-		text-shadow: 0 0 5px currentColor;
+		font-size: 0.7rem;
 	}
 
 	.status-badge {
-		padding: 0.2rem 0.4rem;
+		padding: 0.1rem 0.3rem;
 		border-radius: 3px;
-		font-size: 0.65rem;
+		font-size: 0.6rem;
 		font-weight: 600;
 	}
 
@@ -1380,125 +1112,128 @@
 		background: rgba(0, 255, 133, 0.2);
 		color: #00ff85;
 		border: 1px solid #00ff85;
-		text-shadow: 0 0 5px currentColor;
 	}
 
 	.status-badge.inactive {
 		background: rgba(255, 0, 102, 0.2);
 		color: #ff0066;
 		border: 1px solid #ff0066;
-		text-shadow: 0 0 5px currentColor;
 	}
 
 	.exec-badge {
-		padding: 0.2rem 0.6rem;
-		background: linear-gradient(135deg, rgba(255, 0, 255, 0.2), rgba(255, 0, 255, 0.1));
+		padding: 0.1rem 0.3rem;
+		background: rgba(255, 0, 255, 0.2);
 		color: #ff00ff;
 		border: 1px solid #ff00ff;
 		border-radius: 3px;
 		font-size: 0.6rem;
 		font-weight: 600;
-		text-transform: uppercase;
-		letter-spacing: 0.05em;
-		text-shadow: 0 0 5px currentColor;
+	}
+
+	.pagination {
+		display: flex;
+		justify-content: center;
+		align-items: center;
+		gap: 1rem;
+		padding: 0.6rem;
+		border-top: 1px solid rgba(255, 0, 255, 0.2);
+		background: rgba(0, 0, 0, 0.3);
+	}
+
+	.pagination button {
+		background: rgba(255, 0, 255, 0.1);
+		border: 1px solid #ff00ff;
+		color: #ff00ff;
+		padding: 0.3rem 0.6rem;
+		border-radius: 4px;
+		cursor: pointer;
+		transition: all 0.3s ease;
+		font-size: 0.65rem;
+	}
+
+	.pagination button:hover:not(:disabled) {
+		background: rgba(255, 0, 255, 0.2);
+		transform: scale(1.05);
+	}
+
+	.pagination button:disabled {
+		opacity: 0.5;
+		cursor: not-allowed;
+	}
+
+	.pagination span {
+		font-size: 0.65rem;
+		color: rgba(255, 255, 255, 0.8);
 	}
 
 	.viz-card {
 		background: rgba(0, 0, 0, 0.4);
 		border: 1px solid rgba(255, 0, 255, 0.2);
-		border-radius: 8px;
-		padding: 0.8rem;
-		animation: vizEntrance 0.6s ease-out;
-		position: relative;
-		overflow: hidden;
-	}
-
-	.viz-card::before {
-		content: '';
-		position: absolute;
-		top: 0;
-		left: 0;
-		width: 100%;
-		height: 1px;
-		background: linear-gradient(90deg, transparent, #ff00ff, transparent);
-		animation: scanline 3s linear infinite;
+		border-radius: 6px;
+		padding: 0.6rem;
 	}
 
 	.viz-card h4 {
-		margin: 0 0 0.8rem 0;
-		font-size: 0.75rem;
+		margin: 0 0 0.5rem 0;
+		font-size: 0.65rem;
 		color: #ff00ff;
 		letter-spacing: 0.05em;
 		text-align: center;
-		text-shadow: 0 0 8px currentColor;
-		position: relative;
-		z-index: 1;
 	}
 
 	.hierarchy-chart {
-		width: 100%;
-		display: flex;
-		justify-content: center;
-	}
-
-	.level-chart {
 		display: flex;
 		flex-direction: column;
-		gap: 0.6rem;
+		gap: 0.4rem;
 	}
 
-	.level-row {
+	.hierarchy-level {
 		display: flex;
 		align-items: center;
 		gap: 0.5rem;
 	}
 
-	.level-label {
-		font-size: 0.65rem;
+	.level-header {
+		display: flex;
+		align-items: center;
+		gap: 0.3rem;
+		min-width: 80px;
+	}
+
+	.level-icon {
+		font-size: 0.8rem;
+	}
+
+	.level-name {
+		font-size: 0.6rem;
 		color: rgba(255, 255, 255, 0.8);
-		min-width: 70px;
-		text-transform: uppercase;
-		font-weight: 600;
 	}
 
 	.level-bar-container {
 		flex: 1;
-		height: 8px;
+		height: 6px;
 		background: rgba(0, 0, 0, 0.5);
-		border-radius: 4px;
+		border-radius: 3px;
 		overflow: hidden;
 	}
 
 	.level-bar {
 		height: 100%;
 		transition: width 0.5s ease;
-		box-shadow: 0 0 10px currentColor;
-		position: relative;
-	}
-
-	.bar-glow {
-		position: absolute;
-		top: 0;
-		right: 0;
-		width: 20px;
-		height: 100%;
-		background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.8));
-		animation: glow 2s linear infinite;
+		box-shadow: 0 0 8px currentColor;
 	}
 
 	.level-count {
-		font-size: 0.7rem;
-		color: #ff00ff;
+		font-size: 0.6rem;
+		color: rgba(255, 255, 255, 0.6);
 		min-width: 20px;
 		text-align: right;
-		font-weight: 600;
-		text-shadow: 0 0 5px currentColor;
 	}
 
 	.bar-chart {
 		display: flex;
 		flex-direction: column;
-		gap: 0.6rem;
+		gap: 0.4rem;
 	}
 
 	.bar-item {
@@ -1508,18 +1243,23 @@
 	}
 
 	.bar-label {
-		font-size: 0.65rem;
+		display: flex;
+		align-items: center;
+		gap: 0.3rem;
+		font-size: 0.6rem;
 		color: rgba(255, 255, 255, 0.8);
-		font-weight: 600;
+	}
+
+	.bar-icon {
+		font-size: 0.8rem;
 	}
 
 	.bar-container {
 		position: relative;
-		height: 20px;
+		height: 16px;
 		background: rgba(0, 0, 0, 0.5);
-		border-radius: 4px;
+		border-radius: 3px;
 		overflow: hidden;
-		border: 1px solid rgba(255, 255, 255, 0.1);
 	}
 
 	.bar-fill {
@@ -1527,34 +1267,40 @@
 		transition: width 0.5s ease;
 		position: relative;
 		overflow: hidden;
-		box-shadow: inset 0 0 10px rgba(0, 0, 0, 0.3);
 	}
 
-	.bar-shimmer {
+	.bar-fill::after {
+		content: '';
 		position: absolute;
 		top: 0;
 		left: -100%;
 		width: 100%;
 		height: 100%;
-		background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.4), transparent);
-		animation: shimmer 2s linear infinite;
+		background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.3), transparent);
+		animation: shimmer 2s infinite;
 	}
 
 	.bar-value {
 		position: absolute;
-		right: 0.5rem;
+		right: 0.3rem;
 		top: 50%;
 		transform: translateY(-50%);
-		font-size: 0.65rem;
+		font-size: 0.55rem;
 		font-weight: 600;
 		color: #fff;
 		text-shadow: 0 0 4px rgba(0, 0, 0, 0.8);
 	}
 
+	.donut-chart {
+		width: 100%;
+		max-width: 180px;
+		margin: 0 auto;
+	}
+
 	.matrix-grid {
 		display: grid;
 		grid-template-columns: repeat(3, 1fr);
-		gap: 0.5rem;
+		gap: 0.3rem;
 	}
 
 	.matrix-cell {
@@ -1564,162 +1310,55 @@
 		align-items: center;
 		justify-content: center;
 		border: 1px solid;
-		border-radius: 4px;
-		padding: 0.4rem;
+		border-radius: 3px;
+		padding: 0.3rem;
+		cursor: pointer;
 		transition: all 0.3s ease;
-		position: relative;
-		overflow: hidden;
 	}
 
-	.matrix-cell.active {
-		animation: cellPulse 0.5s ease;
+	.matrix-cell:hover {
+		transform: scale(1.05);
+		box-shadow: 0 0 10px currentColor;
 	}
 
-	.cell-pulse {
-		position: absolute;
-		top: 50%;
-		left: 50%;
-		width: 100%;
-		height: 100%;
-		background: radial-gradient(circle, currentColor, transparent);
-		transform: translate(-50%, -50%);
-		opacity: 0;
-		pointer-events: none;
-	}
-
-	.matrix-cell:hover .cell-pulse {
-		animation: pulse 0.6s ease-out;
+	.cell-icon {
+		font-size: 0.8rem;
 	}
 
 	.cell-value {
-		font-size: 0.75rem;
+		font-size: 0.6rem;
 		font-weight: 600;
 		color: #fff;
-		text-shadow: 0 0 5px currentColor;
 	}
 
 	.cell-label {
-		font-size: 0.5rem;
+		font-size: 0.45rem;
 		color: rgba(255, 255, 255, 0.6);
-		margin-top: 0.2rem;
-		text-transform: uppercase;
+		margin-top: 0.1rem;
 	}
 
-	.network-status {
-		padding: 0.5rem;
+	@keyframes iconFloat {
+		0%, 100% { transform: translateY(0); }
+		50% { transform: translateY(-3px); }
 	}
 
-	.status-grid {
-		display: grid;
-		grid-template-columns: 1fr;
-		gap: 0.5rem;
+	@keyframes ringExpand {
+		0% { transform: scale(0.5); opacity: 1; }
+		100% { transform: scale(1.5); opacity: 0; }
 	}
 
-	.status-item {
-		display: flex;
-		align-items: center;
-		gap: 0.8rem;
-		padding: 0.4rem;
-		background: rgba(0, 0, 0, 0.3);
-		border-radius: 4px;
+	@keyframes nodeAppear {
+		0% { opacity: 0; transform: scale(0.8); }
+		100% { opacity: 1; transform: scale(1); }
 	}
 
-	.status-indicator {
-		width: 8px;
-		height: 8px;
-		border-radius: 50%;
-		position: relative;
-	}
-
-	.status-indicator.active {
-		background: #00ff85;
-		box-shadow: 0 0 10px #00ff85;
-		animation: statusBlink 2s ease-in-out infinite;
-	}
-
-	.status-indicator.warning {
-		background: #ffaa00;
-		box-shadow: 0 0 10px #ffaa00;
-		animation: statusBlink 1s ease-in-out infinite;
-	}
-
-	.status-item span {
-		font-size: 0.65rem;
-		color: rgba(255, 255, 255, 0.7);
-		text-transform: uppercase;
-		letter-spacing: 0.03em;
-	}
-
-	@keyframes ringRotate {
-		0% { transform: translate(-50%, -50%) rotate(0deg); }
-		100% { transform: translate(-50%, -50%) rotate(360deg); }
-	}
-
-	@keyframes corePulse {
-		0%, 100% { opacity: 0.9; transform: scale(1); }
-		50% { opacity: 1; transform: scale(1.1); }
-	}
-
-	@keyframes sweep {
-		to { left: 100%; }
-	}
-
-	@keyframes scanline {
-		0% { transform: translateY(0); }
-		100% { transform: translateY(100vh); }
-	}
-
-	@keyframes pulse {
-		0% { transform: scale(1); opacity: 1; }
-		100% { transform: scale(2); opacity: 0; }
-	}
-
-	@keyframes glow {
-		0% { transform: translateX(-20px); }
-		100% { transform: translateX(20px); }
-	}
-
-	@keyframes laser {
-		to { left: 100%; }
-	}
-
-	@keyframes borderRotate {
-		0% { transform: rotate(0deg); }
-		100% { transform: rotate(360deg); }
-	}
-
-	@keyframes avatarPulse {
-		0%, 100% { transform: scale(1); opacity: 0.8; }
-		50% { transform: scale(1.1); opacity: 1; }
+	@keyframes slideUp {
+		0% { transform: translateY(100%); }
+		100% { transform: translateY(0); }
 	}
 
 	@keyframes shimmer {
 		to { left: 100%; }
-	}
-
-	@keyframes spin {
-		to { transform: rotate(360deg); }
-	}
-
-	@keyframes blink {
-		0%, 100% { opacity: 1; }
-		50% { opacity: 0.5; }
-	}
-
-	@keyframes vizEntrance {
-		from { opacity: 0; transform: translateX(20px); }
-		to { opacity: 1; transform: translateX(0); }
-	}
-
-	@keyframes cellPulse {
-		0% { transform: scale(1); }
-		50% { transform: scale(1.05); }
-		100% { transform: scale(1); }
-	}
-
-	@keyframes statusBlink {
-		0%, 100% { opacity: 1; }
-		50% { opacity: 0.6; }
 	}
 
 	@media (max-width: 1200px) {
@@ -1734,7 +1373,11 @@
 		}
 		
 		.viz-card {
-			min-width: 280px;
+			min-width: 250px;
+		}
+		
+		.dashboard-grid {
+			grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
 		}
 	}
 
@@ -1749,15 +1392,19 @@
 		
 		.controls {
 			flex-direction: column;
-			gap: 0.5rem;
 		}
 		
-		.search-bar {
-			max-width: 100%;
-		}
-		
-		.grid-container {
+		.dashboard-grid {
 			grid-template-columns: 1fr;
+		}
+		
+		.org-tree {
+			flex-direction: column;
+			gap: 1rem;
+		}
+		
+		.connection-line {
+			display: none;
 		}
 	}
 </style>
