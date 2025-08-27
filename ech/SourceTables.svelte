@@ -282,38 +282,61 @@
 					
 					<div class="threat-chart">
 						<div class="chart-visual">
-							{@const criticalCount = filteredSources.filter(([_, freq]) => getThreatLevel(freq).level === 'CRIT').length}
-							{@const highCount = filteredSources.filter(([_, freq]) => getThreatLevel(freq).level === 'HIGH').length}
-							{@const mediumCount = filteredSources.filter(([_, freq]) => getThreatLevel(freq).level === 'MED').length}
-							{@const lowCount = filteredSources.filter(([_, freq]) => getThreatLevel(freq).level === 'LOW').length}
-							{@const total = criticalCount + highCount + mediumCount + lowCount}
+							{#if filteredSources.length > 0}
+								{@const criticalSources = filteredSources.filter(([_, freq]) => getThreatLevel(freq).level === 'CRIT')}
+								{@const highSources = filteredSources.filter(([_, freq]) => getThreatLevel(freq).level === 'HIGH')}
+								{@const mediumSources = filteredSources.filter(([_, freq]) => getThreatLevel(freq).level === 'MED')}
+								{@const lowSources = filteredSources.filter(([_, freq]) => getThreatLevel(freq).level === 'LOW')}
+								
+								{@const criticalCount = criticalSources.length}
+								{@const highCount = highSources.length}
+								{@const mediumCount = mediumSources.length}
+								{@const lowCount = lowSources.length}
+								{@const totalCount = criticalCount + highCount + mediumCount + lowCount}
 							
 							<div class="pie-chart">
-								<div class="pie-slice critical" style="--percentage: {(criticalCount/total*100).toFixed(1)}%"></div>
-								<div class="pie-slice high" style="--percentage: {(highCount/total*100).toFixed(1)}%"></div>
-								<div class="pie-slice medium" style="--percentage: {(mediumCount/total*100).toFixed(1)}%"></div>
-								<div class="pie-slice low" style="--percentage: {(lowCount/total*100).toFixed(1)}%"></div>
-								<div class="pie-center">{total}</div>
+								<div class="pie-slice critical" style="--percentage: {totalCount > 0 ? (criticalCount/totalCount*100).toFixed(1) : 0}%"></div>
+								<div class="pie-slice high" style="--percentage: {totalCount > 0 ? (highCount/totalCount*100).toFixed(1) : 0}%"></div>
+								<div class="pie-slice medium" style="--percentage: {totalCount > 0 ? (mediumCount/totalCount*100).toFixed(1) : 0}%"></div>
+								<div class="pie-slice low" style="--percentage: {totalCount > 0 ? (lowCount/totalCount*100).toFixed(1) : 0}%"></div>
+								<div class="pie-center">{totalCount}</div>
 							</div>
+						{:else}
+							<div class="pie-chart">
+								<div class="pie-center">0</div>
+							</div>
+						{/if}
 						</div>
 						
 						<div class="chart-legend">
-							<div class="legend-item">
-								<div class="legend-color critical"></div>
-								<span>CRITICAL ({criticalCount})</span>
-							</div>
-							<div class="legend-item">
-								<div class="legend-color high"></div>
-								<span>HIGH ({highCount})</span>
-							</div>
-							<div class="legend-item">
-								<div class="legend-color medium"></div>
-								<span>MEDIUM ({mediumCount})</span>
-							</div>
-							<div class="legend-item">
-								<div class="legend-color low"></div>
-								<span>LOW ({lowCount})</span>
-							</div>
+							{#if filteredSources.length > 0}
+								{@const criticalSources = filteredSources.filter(([_, freq]) => getThreatLevel(freq).level === 'CRIT')}
+								{@const highSources = filteredSources.filter(([_, freq]) => getThreatLevel(freq).level === 'HIGH')}
+								{@const mediumSources = filteredSources.filter(([_, freq]) => getThreatLevel(freq).level === 'MED')}
+								{@const lowSources = filteredSources.filter(([_, freq]) => getThreatLevel(freq).level === 'LOW')}
+								
+								<div class="legend-item">
+									<div class="legend-color critical"></div>
+									<span>CRITICAL ({criticalSources.length})</span>
+								</div>
+								<div class="legend-item">
+									<div class="legend-color high"></div>
+									<span>HIGH ({highSources.length})</span>
+								</div>
+								<div class="legend-item">
+									<div class="legend-color medium"></div>
+									<span>MEDIUM ({mediumSources.length})</span>
+								</div>
+								<div class="legend-item">
+									<div class="legend-color low"></div>
+									<span>LOW ({lowSources.length})</span>
+								</div>
+							{:else}
+								<div class="legend-item">
+									<div class="legend-color low"></div>
+									<span>NO DATA</span>
+								</div>
+							{/if}
 						</div>
 					</div>
 				</div>
