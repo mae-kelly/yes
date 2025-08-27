@@ -2,12 +2,10 @@
 <script>
 	import { onMount } from 'svelte';
 	import SourceTables from './SourceTables.svelte';
-	import DomainMetrics from './DomainMetrics.svelte';
 	import InfrastructureType from './InfrastructureType.svelte';
 	import RegionMetrics from './RegionMetrics.svelte';
 	import CountryMetrics from './CountryMetrics.svelte';
 	import DataCenter from './DataCenter.svelte';
-	import ClassMetrics from './ClassMetrics.svelte';
 	import BusinessUnitMetrics from './BusinessUnitMetrics.svelte';
 	import CIOMetrics from './CIOMetrics.svelte';
 
@@ -17,12 +15,10 @@
 	
 	let modules = [
 		{ id: 'source_tables', name: 'SOURCE', color: '#00ffff', icon: '◈' },
-		{ id: 'domain_metrics', name: '1DC vs FEAD', color: '#ff00ff', icon: '◆' },
 		{ id: 'infrastructure_type', name: 'INFRA', color: '#0096ff', icon: '⬢' },
 		{ id: 'region_metrics', name: 'REGIONS', color: '#00ff85', icon: '◉' },
 		{ id: 'country_metrics', name: 'COUNTRIES', color: '#ffaa00', icon: '⬟' },
 		{ id: 'data_center', name: 'CENTERS', color: '#ff0066', icon: '⬡' },
-		{ id: 'class_metrics', name: 'CLASSES', color: '#ff00ff', icon: '◐' },
 		{ id: 'business_units', name: 'BUSINESS', color: '#00ff85', icon: '◒' },
 		{ id: 'cio_metrics', name: 'CIO', color: '#ffaa00', icon: '◓' },
 		{ id: 'advanced_analytics', name: 'AI ANALYTICS', color: '#ff00ff', icon: '◎' }
@@ -115,8 +111,6 @@
 			<div class="content-stream">
 				{#if currentView === 'source_tables'}
 					<SourceTables />
-				{:else if currentView === 'domain_metrics'}
-					<DomainMetrics />
 				{:else if currentView === 'infrastructure_type'}
 					<InfrastructureType />
 				{:else if currentView === 'region_metrics'}
@@ -125,8 +119,6 @@
 					<CountryMetrics />
 				{:else if currentView === 'data_center'}
 					<DataCenter />
-				{:else if currentView === 'class_metrics'}
-					<ClassMetrics />
 				{:else if currentView === 'business_units'}
 					<BusinessUnitMetrics />
 				{:else if currentView === 'cio_metrics'}
