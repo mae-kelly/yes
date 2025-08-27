@@ -95,7 +95,7 @@ def api_security_control_coverage():
     """6. Security Control Coverage - EDR/Tanium/DLP agent based"""
     return get_security_control_coverage()
 
-@app.route '/api/logging_compliance')
+@app.route('/api/logging_compliance')
 def api_logging_compliance():
     """7. Logging Compliance in GSO and Splunk - Platform-based visibility"""
     return get_logging_compliance_metrics()
