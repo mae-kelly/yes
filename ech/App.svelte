@@ -9,7 +9,6 @@
 	import DataCenter from './DataCenter.svelte';
 	import CloudRegionMetrics from './CloudRegionMetrics.svelte';
 	import ClassMetrics from './ClassMetrics.svelte';
-	import SystemClassification from './SystemClassification.svelte';
 	import BusinessUnitMetrics from './BusinessUnitMetrics.svelte';
 	import CIOMetrics from './CIOMetrics.svelte';
 
@@ -26,7 +25,6 @@
 		{ id: 'data_center', name: 'CENTERS', color: '#ff0066', icon: '⬡' },
 		{ id: 'cloud_regions', name: 'CLOUD', color: '#00ffff', icon: '◯' },
 		{ id: 'class_metrics', name: 'CLASSES', color: '#ff00ff', icon: '◐' },
-		{ id: 'system_classification', name: 'SYSTEMS', color: '#0096ff', icon: '◑' },
 		{ id: 'business_units', name: 'BUSINESS', color: '#00ff85', icon: '◒' },
 		{ id: 'cio_metrics', name: 'CIO', color: '#ffaa00', icon: '◓' },
 		{ id: 'advanced_analytics', name: 'AI ANALYTICS', color: '#ff00ff', icon: '◎' }
@@ -133,8 +131,6 @@
 					<CloudRegionMetrics />
 				{:else if currentView === 'class_metrics'}
 					<ClassMetrics />
-				{:else if currentView === 'system_classification'}
-					<SystemClassification />
 				{:else if currentView === 'business_units'}
 					<BusinessUnitMetrics />
 				{:else if currentView === 'cio_metrics'}
