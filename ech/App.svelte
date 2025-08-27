@@ -1,3 +1,4 @@
+<!-- Updated App.svelte with inline navigation -->
 <script>
 	import { onMount } from 'svelte';
 	import SourceTables from './SourceTables.svelte';
@@ -20,20 +21,20 @@
 	let systemStatus = 'INITIALIZING';
 	
 	let modules = [
-		{ id: 'source_tables', name: 'SOURCE TABLES', color: '#00ffff', icon: '◈', description: 'Data Source Analysis' },
-		{ id: 'domain_metrics', name: 'DOMAIN WARFARE', color: '#ff00ff', icon: '◆', description: '1DC vs FEAD Analysis' },
-		{ id: 'infrastructure_type', name: 'INFRASTRUCTURE', color: '#0096ff', icon: '⬢', description: 'On-Prem, Cloud, SaaS, API' },
-		{ id: 'region_metrics', name: 'REGIONS', color: '#00ff85', icon: '◉', description: 'Global Regional Analysis' },
-		{ id: 'country_metrics', name: 'COUNTRIES', color: '#ffaa00', icon: '⬟', description: 'Country Intelligence' },
-		{ id: 'data_center', name: 'DATA CENTERS', color: '#ff0066', icon: '⬡', description: 'Facility Intelligence' },
-		{ id: 'cloud_regions', name: 'CLOUD REGIONS', color: '#00ffff', icon: '◯', description: 'Cloud Infrastructure' },
-		{ id: 'class_metrics', name: 'CLASSES', color: '#ff00ff', icon: '◐', description: 'Classification Analysis' },
-		{ id: 'system_classification', name: 'SYSTEMS', color: '#0096ff', icon: '◑', description: 'System Taxonomy' },
-		{ id: 'business_units', name: 'BUSINESS UNITS', color: '#00ff85', icon: '◒', description: 'Organizational Analysis' },
-		{ id: 'cio_metrics', name: 'CIO ANALYSIS', color: '#ffaa00', icon: '◓', description: 'Leadership Intelligence' },
-		{ id: 'tanium_coverage', name: 'TANIUM', color: '#00ff85', icon: '⬠', description: 'Agent Deployment' },
-		{ id: 'cmdb_presence', name: 'CMDB', color: '#00ff85', icon: '⬢', description: 'Registration Status' },
-		{ id: 'advanced_analytics', name: 'AI ANALYTICS', color: '#ff00ff', icon: '◎', description: 'Advanced Intelligence' }
+		{ id: 'source_tables', name: 'SOURCE', color: '#00ffff', icon: '◈' },
+		{ id: 'domain_metrics', name: '1DC vs FEAD', color: '#ff00ff', icon: '◆' },
+		{ id: 'infrastructure_type', name: 'INFRA', color: '#0096ff', icon: '⬢' },
+		{ id: 'region_metrics', name: 'REGIONS', color: '#00ff85', icon: '◉' },
+		{ id: 'country_metrics', name: 'COUNTRIES', color: '#ffaa00', icon: '⬟' },
+		{ id: 'data_center', name: 'CENTERS', color: '#ff0066', icon: '⬡' },
+		{ id: 'cloud_regions', name: 'CLOUD', color: '#00ffff', icon: '◯' },
+		{ id: 'class_metrics', name: 'CLASSES', color: '#ff00ff', icon: '◐' },
+		{ id: 'system_classification', name: 'SYSTEMS', color: '#0096ff', icon: '◑' },
+		{ id: 'business_units', name: 'BUSINESS', color: '#00ff85', icon: '◒' },
+		{ id: 'cio_metrics', name: 'CIO', color: '#ffaa00', icon: '◓' },
+		{ id: 'tanium_coverage', name: 'TANIUM', color: '#00ff85', icon: '⬠' },
+		{ id: 'cmdb_presence', name: 'CMDB', color: '#00ff85', icon: '⬢' },
+		{ id: 'advanced_analytics', name: 'AI ANALYTICS', color: '#ff00ff', icon: '◎' }
 	];
 
 	onMount(() => {
@@ -65,6 +66,7 @@
 
 	<header class="system-header">
 		<div class="header-content">
+			<!-- Left side - Brand and title -->
 			<div class="brand-section">
 				<div class="ao1-logo">
 					<div class="logo-rings">
@@ -80,6 +82,23 @@
 				</div>
 			</div>
 			
+			<!-- Center - Navigation tabs -->
+			<nav class="header-navigation">
+				<div class="nav-scroll">
+					{#each modules as module}
+						<button 
+							class="nav-tab {currentView === module.id ? 'active' : ''}"
+							style="--module-color: {module.color}"
+							on:click={() => switchView(module.id)}
+						>
+							<span class="tab-icon">{module.icon}</span>
+							<span class="tab-name">{module.name}</span>
+						</button>
+					{/each}
+				</div>
+			</nav>
+			
+			<!-- Right side - Status panel -->
 			<div class="status-panel">
 				<div class="status-indicator {systemStatus === 'OPERATIONAL' ? 'active' : 'initializing'}">
 					<div class="indicator-light"></div>
@@ -91,25 +110,6 @@
 				</div>
 			</div>
 		</div>
-		
-		<nav class="module-navigation">
-			{#each modules as module}
-				<button 
-					class="nav-module {currentView === module.id ? 'active' : ''}"
-					style="--module-color: {module.color}"
-					on:click={() => switchView(module.id)}
-				>
-					<span class="module-icon">{module.icon}</span>
-					<div class="module-info">
-						<span class="module-name">{module.name}</span>
-						<span class="module-desc">{module.description}</span>
-					</div>
-					{#if currentView === module.id}
-						<div class="active-indicator"></div>
-					{/if}
-				</button>
-			{/each}
-		</nav>
 	</header>
 
 	<section class="data-viewport">
@@ -212,28 +212,32 @@
 		position: relative;
 		box-shadow: 0 4px 30px rgba(0, 255, 255, 0.2);
 		flex-shrink: 0;
+		padding: 1rem 1.5rem;
 	}
 
 	.header-content {
-		display: flex;
-		justify-content: space-between;
+		display: grid;
+		grid-template-columns: auto 1fr auto;
 		align-items: center;
-		padding: 1rem 1.5rem;
+		gap: 2rem;
+		max-width: 100%;
 	}
 
 	.brand-section {
 		display: flex;
 		align-items: center;
 		gap: 1rem;
+		min-width: 0;
 	}
 
 	.ao1-logo {
 		position: relative;
-		width: 60px;
-		height: 60px;
+		width: 50px;
+		height: 50px;
 		display: flex;
 		align-items: center;
 		justify-content: center;
+		flex-shrink: 0;
 	}
 
 	.logo-rings {
@@ -253,28 +257,28 @@
 	}
 
 	.ring-outer {
-		width: 60px;
-		height: 60px;
+		width: 50px;
+		height: 50px;
 		border-color: rgba(0, 255, 255, 0.6);
 	}
 
 	.ring-middle {
-		width: 45px;
-		height: 45px;
+		width: 38px;
+		height: 38px;
 		border-color: rgba(255, 0, 255, 0.4);
 		animation-direction: reverse;
 		animation-duration: 6s;
 	}
 
 	.ring-inner {
-		width: 30px;
-		height: 30px;
+		width: 26px;
+		height: 26px;
 		border-color: rgba(0, 150, 255, 0.8);
 		animation-duration: 4s;
 	}
 
 	.logo-center {
-		font-size: 1rem;
+		font-size: 0.9rem;
 		font-weight: 700;
 		color: rgba(0, 255, 255, 0.9);
 		text-shadow: 0 0 15px rgba(0, 255, 255, 0.8);
@@ -288,44 +292,115 @@
 		display: flex;
 		flex-direction: column;
 		gap: 0.2rem;
+		min-width: 0;
 	}
 
 	.title {
-		font-size: 1.3rem;
+		font-size: 1.1rem;
 		font-weight: 700;
 		color: #ffffff;
 		margin: 0;
 		text-shadow: 0 0 15px rgba(0, 255, 255, 0.5);
 		letter-spacing: 0.05em;
+		white-space: nowrap;
 	}
 
 	.subtitle {
-		font-size: 0.7rem;
+		font-size: 0.6rem;
 		color: rgba(255, 255, 255, 0.6);
 		text-transform: uppercase;
 		letter-spacing: 0.1em;
+		white-space: nowrap;
+	}
+
+	.header-navigation {
+		flex: 1;
+		display: flex;
+		justify-content: center;
+		min-width: 0;
+		overflow: hidden;
+	}
+
+	.nav-scroll {
+		display: flex;
+		gap: 0.3rem;
+		overflow-x: auto;
+		padding: 0.2rem;
+		scrollbar-width: none;
+		-ms-overflow-style: none;
+		max-width: 100%;
+	}
+
+	.nav-scroll::-webkit-scrollbar {
+		display: none;
+	}
+
+	.nav-tab {
+		background: linear-gradient(135deg, rgba(0, 0, 0, 0.6), rgba(255, 255, 255, 0.02));
+		border: 1px solid rgba(255, 255, 255, 0.1);
+		border-radius: 4px;
+		padding: 0.4rem 0.7rem;
+		color: rgba(255, 255, 255, 0.7);
+		cursor: pointer;
+		transition: all 0.3s ease;
+		white-space: nowrap;
+		display: flex;
+		align-items: center;
+		gap: 0.3rem;
+		font-size: 0.65rem;
+		font-weight: 600;
+		text-transform: uppercase;
+		letter-spacing: 0.02em;
+		flex-shrink: 0;
+	}
+
+	.nav-tab:hover,
+	.nav-tab.active {
+		border-color: var(--module-color);
+		color: var(--module-color);
+		box-shadow: 0 0 15px rgba(0, 255, 255, 0.2);
+		transform: translateY(-1px);
+		text-shadow: 0 0 6px var(--module-color);
+	}
+
+	.nav-tab.active {
+		background: linear-gradient(135deg, rgba(0, 0, 0, 0.8), rgba(255, 255, 255, 0.05));
+		box-shadow: 0 0 20px rgba(0, 255, 255, 0.3);
+	}
+
+	.tab-icon {
+		font-size: 0.8rem;
+		animation: iconFloat 3s ease-in-out infinite;
+		filter: drop-shadow(0 0 6px var(--module-color));
+	}
+
+	.tab-name {
+		font-size: 0.6rem;
+		letter-spacing: 0.05em;
 	}
 
 	.status-panel {
 		display: flex;
-		align-items: center;
-		gap: 2rem;
+		flex-direction: column;
+		gap: 0.8rem;
+		align-items: flex-end;
+		flex-shrink: 0;
 	}
 
 	.status-indicator {
 		display: flex;
 		align-items: center;
 		gap: 0.5rem;
-		padding: 0.5rem 1rem;
+		padding: 0.4rem 0.8rem;
 		background: linear-gradient(135deg, rgba(0, 0, 0, 0.6), rgba(0, 255, 255, 0.05));
 		border: 1px solid rgba(0, 255, 255, 0.3);
-		border-radius: 6px;
+		border-radius: 4px;
 		backdrop-filter: blur(10px);
 	}
 
 	.indicator-light {
-		width: 8px;
-		height: 8px;
+		width: 6px;
+		height: 6px;
 		border-radius: 50%;
 		background: #ff0066;
 		animation: statusPulse 2s ease-in-out infinite;
@@ -333,11 +408,11 @@
 
 	.status-indicator.active .indicator-light {
 		background: #00ff85;
-		box-shadow: 0 0 10px #00ff85;
+		box-shadow: 0 0 8px #00ff85;
 	}
 
 	.status-text {
-		font-size: 0.7rem;
+		font-size: 0.6rem;
 		font-weight: 600;
 		color: #00ffff;
 		letter-spacing: 0.05em;
@@ -346,11 +421,12 @@
 	.time-display {
 		display: flex;
 		flex-direction: column;
-		gap: 0.2rem;
+		gap: 0.1rem;
+		text-align: right;
 	}
 
 	.time-label {
-		font-size: 0.6rem;
+		font-size: 0.5rem;
 		color: rgba(255, 255, 255, 0.5);
 		font-weight: 600;
 		text-transform: uppercase;
@@ -358,79 +434,11 @@
 	}
 
 	.time-value {
-		font-size: 0.8rem;
+		font-size: 0.6rem;
 		font-weight: 600;
 		color: #00ffff;
-		text-shadow: 0 0 8px rgba(0, 255, 255, 0.5);
-	}
-
-	.module-navigation {
-		display: flex;
-		gap: 0.5rem;
-		padding: 0.5rem 1.5rem;
-		background: rgba(0, 0, 0, 0.3);
-		overflow-x: auto;
-	}
-
-	.nav-module {
-		position: relative;
-		display: flex;
-		align-items: center;
-		gap: 0.8rem;
-		padding: 0.8rem 1.2rem;
-		background: linear-gradient(135deg, rgba(0, 0, 0, 0.6), rgba(255, 255, 255, 0.02));
-		border: 1px solid rgba(255, 255, 255, 0.1);
-		border-radius: 8px;
-		color: rgba(255, 255, 255, 0.7);
-		cursor: pointer;
-		transition: all 0.3s ease;
-		white-space: nowrap;
-	}
-
-	.nav-module:hover {
-		border-color: var(--module-color);
-		background: linear-gradient(135deg, rgba(0, 0, 0, 0.7), rgba(255, 255, 255, 0.05));
-		transform: translateY(-2px);
-		box-shadow: 0 6px 20px rgba(0, 0, 0, 0.4);
-	}
-
-	.nav-module.active {
-		border-color: var(--module-color);
-		background: linear-gradient(135deg, rgba(0, 0, 0, 0.8), rgba(255, 255, 255, 0.08));
-		box-shadow: 0 0 25px rgba(0, 255, 255, 0.2);
-	}
-
-	.module-icon {
-		font-size: 1.5rem;
-		filter: drop-shadow(0 0 8px var(--module-color));
-	}
-
-	.module-info {
-		display: flex;
-		flex-direction: column;
-		gap: 0.2rem;
-	}
-
-	.module-name {
-		font-size: 0.8rem;
-		font-weight: 600;
-		letter-spacing: 0.05em;
-	}
-
-	.module-desc {
-		font-size: 0.65rem;
-		color: rgba(255, 255, 255, 0.5);
-	}
-
-	.active-indicator {
-		position: absolute;
-		bottom: -2px;
-		left: 0;
-		right: 0;
-		height: 3px;
-		background: var(--module-color);
-		box-shadow: 0 0 10px var(--module-color);
-		animation: indicatorGlow 2s ease-in-out infinite;
+		text-shadow: 0 0 6px rgba(0, 255, 255, 0.5);
+		font-family: 'JetBrains Mono', monospace;
 	}
 
 	.data-viewport {
@@ -539,8 +547,73 @@
 		50% { opacity: 0.5; }
 	}
 
-	@keyframes indicatorGlow {
-		0%, 100% { opacity: 0.8; }
-		50% { opacity: 1; }
+	@keyframes iconFloat {
+		0%, 100% { transform: translateY(0px); }
+		50% { transform: translateY(-1px); }
+	}
+
+	/* Responsive design */
+	@media (max-width: 1400px) {
+		.header-content {
+			grid-template-columns: 1fr auto;
+		}
+		
+		.brand-section {
+			justify-self: start;
+		}
+		
+		.header-navigation {
+			order: 3;
+			grid-column: 1 / -1;
+			margin-top: 1rem;
+			padding-top: 1rem;
+			border-top: 1px solid rgba(255, 255, 255, 0.1);
+		}
+		
+		.status-panel {
+			order: 2;
+		}
+	}
+
+	@media (max-width: 768px) {
+		.system-header {
+			padding: 0.8rem 1rem;
+		}
+		
+		.header-content {
+			grid-template-columns: 1fr;
+			gap: 1rem;
+		}
+		
+		.brand-section {
+			justify-self: center;
+			text-align: center;
+		}
+		
+		.title {
+			font-size: 1rem;
+		}
+		
+		.subtitle {
+			font-size: 0.55rem;
+		}
+		
+		.nav-tab {
+			padding: 0.3rem 0.5rem;
+		}
+		
+		.tab-name {
+			font-size: 0.55rem;
+		}
+		
+		.status-panel {
+			flex-direction: row;
+			justify-content: space-between;
+			align-items: center;
+		}
+		
+		.time-display {
+			text-align: left;
+		}
 	}
 </style>
