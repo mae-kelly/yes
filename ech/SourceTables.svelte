@@ -1,4 +1,4 @@
-<!-- SourceTables.svelte - Quantum Frequency Analysis -->
+<!-- SourceTables.svelte - Premium Frequency Analysis -->
 <script>
 	import { onMount } from 'svelte';
 	
@@ -7,52 +7,18 @@
 	let selectedSource = null;
 	let hostDetails = [];
 	let searchTerm = '';
-	let particles = [];
-	let glitchEffect = false;
-	let hologramActive = false;
-	
-	// 3D rotation states
-	let rotationX = 0;
-	let rotationY = 0;
-	let perspective = 1000;
-	
+	let hoveredIndex = -1;
+
 	onMount(async () => {
 		try {
 			let response = await fetch('http://localhost:5000/api/source_tables');
 			let result = await response.json();
 			data = result;
 			loading = false;
-			
-			// Initialize particle system
-			for (let i = 0; i < 50; i++) {
-				particles.push({
-					x: Math.random() * 100,
-					y: Math.random() * 100,
-					z: Math.random() * 100,
-					speed: Math.random() * 2 + 0.5
-				});
-			}
 		} catch (err) {
 			console.error('Source tables error:', err);
 			loading = false;
 		}
-		
-		// Glitch effect timer
-		const glitchInterval = setInterval(() => {
-			glitchEffect = true;
-			setTimeout(() => glitchEffect = false, 100);
-		}, 5000);
-		
-		// 3D rotation animation
-		const rotateInterval = setInterval(() => {
-			rotationY = Math.sin(Date.now() * 0.0005) * 10;
-			rotationX = Math.cos(Date.now() * 0.0003) * 5;
-		}, 50);
-		
-		return () => {
-			clearInterval(glitchInterval);
-			clearInterval(rotateInterval);
-		};
 	});
 
 	$: filteredSources = data.source_intelligence ? 
@@ -62,17 +28,21 @@
 	
 	$: maxFreq = filteredSources.length > 0 ? Math.max(...filteredSources.map(([,f]) => f)) : 1;
 
+	function getPercentage(frequency) {
+		if (!data.total_mentions) return 0;
+		return ((frequency / data.total_mentions) * 100).toFixed(2);
+	}
+
 	function getThreatLevel(frequency) {
 		const percentage = (frequency / maxFreq) * 100;
-		if (percentage >= 75) return { level: 'CRITICAL', color: '#ff0066', glow: '0 0 40px #ff0066' };
-		if (percentage >= 50) return { level: 'HIGH', color: '#ff9900', glow: '0 0 30px #ff9900' };
-		if (percentage >= 25) return { level: 'MEDIUM', color: '#ffcc00', glow: '0 0 25px #ffcc00' };
-		return { level: 'LOW', color: '#00ffff', glow: '0 0 20px #00ffff' };
+		if (percentage >= 75) return { level: 'CRITICAL', color: '#FF1744', glow: 'rgba(255, 23, 68, 0.4)' };
+		if (percentage >= 50) return { level: 'HIGH', color: '#FFA726', glow: 'rgba(255, 167, 38, 0.4)' };
+		if (percentage >= 25) return { level: 'MEDIUM', color: '#FFD600', glow: 'rgba(255, 214, 0, 0.4)' };
+		return { level: 'LOW', color: '#00E5FF', glow: 'rgba(0, 229, 255, 0.4)' };
 	}
 
 	async function drillDownSource(source, frequency) {
 		selectedSource = { source, frequency };
-		hologramActive = true;
 		loading = true;
 		
 		try {
@@ -88,219 +58,336 @@
 	}
 
 	function closeDetails() {
-		hologramActive = false;
-		setTimeout(() => {
-			selectedSource = null;
-			hostDetails = [];
-		}, 300);
+		selectedSource = null;
+		hostDetails = [];
 	}
 </script>
 
-<div class="quantum-container {glitchEffect ? 'glitch' : ''}">
-	<!-- Particle Background -->
-	<div class="particle-system">
-		{#each particles as particle}
-			<div class="quantum-particle" 
-				style="left: {particle.x}%; top: {particle.y}%; 
-					   animation-duration: {particle.speed}s;
-					   transform: translateZ({particle.z}px)">
-			</div>
-		{/each}
+<div class="dashboard-container">
+	<!-- Premium Background Effects -->
+	<div class="background-effects">
+		<div class="gradient-orb orb-1"></div>
+		<div class="gradient-orb orb-2"></div>
+		<div class="gradient-orb orb-3"></div>
+		<div class="grid-overlay"></div>
 	</div>
 
-	<div class="main-interface" style="transform: perspective({perspective}px) rotateX({rotationX}deg) rotateY({rotationY}deg)">
-		<!-- Neural Grid Panel -->
-		<div class="neural-panel">
-			<div class="panel-frame">
-				<div class="corner-accent top-left"></div>
-				<div class="corner-accent top-right"></div>
-				<div class="corner-accent bottom-left"></div>
-				<div class="corner-accent bottom-right"></div>
-				
-				<div class="panel-header">
-					<div class="header-circuits">
-						<svg class="circuit-pattern" viewBox="0 0 200 40">
-							<path d="M0,20 L50,20 L60,10 L90,10 L100,20 L200,20" 
-								  stroke="#00ffff" stroke-width="1" fill="none" opacity="0.5"/>
-							<circle cx="60" cy="10" r="3" fill="#00ffff"/>
-							<circle cx="90" cy="10" r="3" fill="#00ffff"/>
+	<div class="main-content">
+		<!-- Left Panel: Premium Table -->
+		<div class="table-panel glass-panel">
+			<div class="panel-header">
+				<div class="header-content">
+					<div class="title-group">
+						<h3 class="panel-title">
+							<span class="title-icon">◈</span>
+							SOURCE TABLES
+						</h3>
+						<div class="subtitle">FREQUENCY ANALYSIS MATRIX</div>
+					</div>
+					<div class="header-stats">
+						<div class="stat-pill">
+							<span class="stat-label">SOURCES</span>
+							<span class="stat-value">{filteredSources.length}</span>
+						</div>
+						<div class="stat-pill">
+							<span class="stat-label">MENTIONS</span>
+							<span class="stat-value">{(data.total_mentions || 0).toLocaleString()}</span>
+						</div>
+					</div>
+				</div>
+				<div class="search-wrapper">
+					<input 
+						type="text" 
+						bind:value={searchTerm}
+						placeholder="Search sources..."
+						class="search-input premium-input"
+					/>
+					<div class="search-icon">
+						<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+							<circle cx="11" cy="11" r="8"></circle>
+							<path d="m21 21-4.35-4.35"></path>
 						</svg>
 					</div>
-					
-					<h3 class="panel-title">
-						<span class="title-glow">QUANTUM FREQUENCY MATRIX</span>
-						<span class="title-subtitle">SOURCE TABLE ANALYSIS</span>
-					</h3>
-					
-					<div class="search-module">
-						<div class="search-frame">
-							<input 
-								type="text" 
-								bind:value={searchTerm}
-								placeholder="INITIATE SEARCH PROTOCOL..."
-								class="quantum-search"
-							/>
-							<div class="search-scanner"></div>
+				</div>
+			</div>
+			
+			{#if loading && !selectedSource}
+				<div class="loading-state">
+					<div class="premium-loader">
+						<div class="loader-ring"></div>
+						<div class="loader-ring"></div>
+						<div class="loader-ring"></div>
+						<div class="loader-core">
+							<span>◈</span>
 						</div>
+					</div>
+					<p class="loading-text">ANALYZING SOURCE MATRICES</p>
+				</div>
+			{:else if selectedSource}
+				<div class="drill-view">
+					<div class="drill-header glass-header">
+						<div class="drill-title">
+							<span class="drill-icon">▸</span>
+							<h4>{selectedSource.source.toUpperCase()}</h4>
+							<span class="drill-badge">{selectedSource.frequency.toLocaleString()} mentions</span>
+						</div>
+						<button class="close-btn premium-btn" on:click={closeDetails}>
+							<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+								<line x1="18" y1="6" x2="6" y2="18"></line>
+								<line x1="6" y1="6" x2="18" y2="18"></line>
+							</svg>
+						</button>
+					</div>
+					<div class="drill-table-container">
+						<table class="data-table premium-table">
+							<thead>
+								<tr>
+									<th>HOST</th>
+									<th>REGION</th>
+									<th>COUNTRY</th>
+									<th>INFRASTRUCTURE</th>
+									<th>CMDB</th>
+									<th>TANIUM</th>
+								</tr>
+							</thead>
+							<tbody>
+								{#each hostDetails as host, index}
+									<tr class="table-row {hoveredIndex === index ? 'hovered' : ''}"
+										on:mouseenter={() => hoveredIndex = index}
+										on:mouseleave={() => hoveredIndex = -1}>
+										<td class="host-cell">{host.host}</td>
+										<td>{host.region || 'UNKNOWN'}</td>
+										<td>{host.country || 'UNKNOWN'}</td>
+										<td>{host.infrastructure_type || 'UNKNOWN'}</td>
+										<td>
+											<span class="status-badge {host.present_in_cmdb?.toLowerCase().includes('yes') ? 'badge-success' : 'badge-danger'}">
+												{host.present_in_cmdb?.toLowerCase().includes('yes') ? 'ACTIVE' : 'INACTIVE'}
+											</span>
+										</td>
+										<td>
+											<span class="status-badge {host.tanium_coverage?.toLowerCase().includes('tanium') ? 'badge-success' : 'badge-warning'}">
+												{host.tanium_coverage?.toLowerCase().includes('tanium') ? 'DEPLOYED' : 'MISSING'}
+											</span>
+										</td>
+									</tr>
+								{/each}
+							</tbody>
+						</table>
 					</div>
 				</div>
-				
-				{#if loading && !selectedSource}
-					<div class="loading-vortex">
-						<div class="vortex-rings">
-							<div class="vortex-ring ring-1"></div>
-							<div class="vortex-ring ring-2"></div>
-							<div class="vortex-ring ring-3"></div>
-						</div>
-						<p class="loading-text">QUANTUM TUNNELING IN PROGRESS...</p>
-					</div>
-				{:else if selectedSource}
-					<div class="hologram-view {hologramActive ? 'active' : ''}">
-						<div class="hologram-header">
-							<h4 class="hologram-title">{selectedSource.source.toUpperCase()}</h4>
-							<button class="close-hologram" on:click={closeDetails}>
-								<svg width="24" height="24" viewBox="0 0 24 24">
-									<path d="M6 6L18 18M18 6L6 18" stroke="#ff0066" stroke-width="2"/>
-								</svg>
-							</button>
-						</div>
-						
-						<div class="hologram-stats">
-							<div class="stat-orb">
-								<div class="orb-value">{selectedSource.frequency.toLocaleString()}</div>
-								<div class="orb-label">FREQUENCY</div>
-							</div>
-							<div class="stat-orb">
-								<div class="orb-value">{hostDetails.length}</div>
-								<div class="orb-label">HOSTS</div>
-							</div>
-						</div>
-						
-						<div class="hologram-grid">
-							{#each hostDetails.slice(0, 10) as host}
-								<div class="host-card">
-									<div class="host-id">{host.host.substring(0, 20)}</div>
-									<div class="host-metrics">
-										<span class="metric-badge {host.present_in_cmdb?.toLowerCase().includes('yes') ? 'active' : 'inactive'}">
-											CMDB
+			{:else}
+				<div class="table-scroll-container">
+					<table class="data-table premium-table">
+						<thead>
+							<tr>
+								<th>SOURCE TABLE</th>
+								<th>FREQUENCY</th>
+								<th>COVERAGE</th>
+								<th>THREAT LEVEL</th>
+								<th>VISIBILITY MATRIX</th>
+							</tr>
+						</thead>
+						<tbody>
+							{#each filteredSources as [source, frequency], index}
+								{@const threat = getThreatLevel(frequency)}
+								<tr class="table-row {hoveredIndex === index ? 'hovered' : ''}"
+									on:click={() => drillDownSource(source, frequency)}
+									on:mouseenter={() => hoveredIndex = index}
+									on:mouseleave={() => hoveredIndex = -1}>
+									<td class="source-cell">
+										<div class="source-indicator" style="background: {threat.color}; box-shadow: 0 0 12px {threat.glow}"></div>
+										<span class="source-name">{source.toUpperCase()}</span>
+									</td>
+									<td class="frequency-cell">
+										<div class="frequency-content">
+											<span class="frequency-value">{frequency.toLocaleString()}</span>
+											<div class="frequency-bar-bg">
+												<div class="frequency-bar" style="width: {(frequency/maxFreq)*100}%; background: linear-gradient(90deg, {threat.color}, {threat.glow})"></div>
+											</div>
+										</div>
+									</td>
+									<td class="coverage-cell">
+										<div class="coverage-content">
+											<span class="coverage-value">{getPercentage(frequency)}%</span>
+											<div class="coverage-ring">
+												<svg width="24" height="24" viewBox="0 0 36 36">
+													<circle cx="18" cy="18" r="15" fill="none" stroke="rgba(255,255,255,0.1)" stroke-width="2"/>
+													<circle cx="18" cy="18" r="15" fill="none" stroke={threat.color} stroke-width="2"
+														stroke-dasharray="{getPercentage(frequency)} 100"
+														transform="rotate(-90 18 18)"/>
+												</svg>
+											</div>
+										</div>
+									</td>
+									<td class="threat-cell">
+										<span class="threat-badge" style="background: linear-gradient(135deg, {threat.color}22, {threat.color}44); border-color: {threat.color}">
+											<span class="threat-icon">⚡</span>
+											{threat.level}
 										</span>
-										<span class="metric-badge {host.tanium_coverage?.toLowerCase().includes('tanium') ? 'active' : 'inactive'}">
-											TANIUM
-										</span>
-									</div>
-								</div>
+									</td>
+									<td class="matrix-cell">
+										<div class="matrix-visualization">
+											{#each Array(10) as _, i}
+												<div class="matrix-bar" 
+													style="height: {(frequency/maxFreq) * (10 - i) * 10}%; 
+														  background: {threat.color};
+														  opacity: {0.3 + (i * 0.07)};
+														  animation-delay: {i * 0.05}s">
+												</div>
+											{/each}
+										</div>
+									</td>
+								</tr>
 							{/each}
-						</div>
-					</div>
-				{:else}
-					<div class="frequency-matrix">
-						{#each filteredSources.slice(0, 12) as [source, frequency]}
-							{@const threat = getThreatLevel(frequency)}
-							<div class="frequency-node" 
-								 on:click={() => drillDownSource(source, frequency)}
-								 style="--node-color: {threat.color}; --node-glow: {threat.glow}">
-								
-								<div class="node-hexagon">
-									<svg viewBox="0 0 100 100" class="hex-svg">
-										<polygon points="50,5 90,25 90,75 50,95 10,75 10,25" 
-												fill="none" 
-												stroke={threat.color} 
-												stroke-width="2"/>
-										<polygon points="50,10 85,28 85,72 50,90 15,72 15,28" 
-												fill={threat.color} 
-												opacity="0.1"/>
-									</svg>
-									
-									<div class="node-core">
-										<div class="frequency-value">{frequency}</div>
-									</div>
-								</div>
-								
-								<div class="node-label">{source.substring(0, 10).toUpperCase()}</div>
-								
-								<div class="threat-indicator">
-									<span class="threat-level" style="color: {threat.color}">{threat.level}</span>
-								</div>
-								
-								<div class="energy-field"></div>
-							</div>
-						{/each}
-					</div>
-				{/if}
-			</div>
+						</tbody>
+					</table>
+				</div>
+			{/if}
 		</div>
 
-		<!-- Visualization Panel -->
+		<!-- Right Panel: Premium Visualizations -->
 		<div class="viz-panel">
-			<!-- Quantum Metrics Display -->
-			<div class="quantum-metrics">
-				<div class="metric-module">
-					<div class="metric-hologram">
-						<div class="hologram-number">{filteredSources.length}</div>
-						<div class="hologram-label">SOURCES</div>
-						<div class="metric-pulse"></div>
+			<!-- Top Metrics Cards -->
+			<div class="metrics-row">
+				<div class="metric-card glass-card">
+					<div class="metric-icon-wrapper">
+						<div class="metric-icon">◈</div>
+					</div>
+					<div class="metric-content">
+						<div class="metric-value">{filteredSources.length}</div>
+						<div class="metric-label">UNIQUE SOURCES</div>
+					</div>
+					<div class="metric-sparkline">
+						<svg viewBox="0 0 100 30">
+							{#each Array(20) as _, i}
+								<rect x="{i * 5}" y="{30 - Math.random() * 25}" 
+									  width="3" height="{Math.random() * 25}"
+									  fill="url(#sparkGradient)" opacity="{0.4 + Math.random() * 0.6}"/>
+							{/each}
+							<defs>
+								<linearGradient id="sparkGradient" x1="0%" y1="0%" x2="0%" y2="100%">
+									<stop offset="0%" style="stop-color:#00E5FF;stop-opacity:1" />
+									<stop offset="100%" style="stop-color:#00E5FF;stop-opacity:0.3" />
+								</linearGradient>
+							</defs>
+						</svg>
 					</div>
 				</div>
 				
-				<div class="metric-module">
-					<div class="metric-hologram">
-						<div class="hologram-number">{(data.total_mentions || 0).toLocaleString()}</div>
-						<div class="hologram-label">MENTIONS</div>
-						<div class="metric-pulse"></div>
+				<div class="metric-card glass-card">
+					<div class="metric-icon-wrapper">
+						<div class="metric-icon">◉</div>
+					</div>
+					<div class="metric-content">
+						<div class="metric-value">{(data.total_mentions || 0).toLocaleString()}</div>
+						<div class="metric-label">TOTAL MENTIONS</div>
+					</div>
+					<div class="metric-sparkline">
+						<svg viewBox="0 0 100 30">
+							<polyline points="0,25 10,20 20,22 30,15 40,18 50,10 60,15 70,12 80,20 90,18 100,25" 
+									  fill="none" stroke="url(#lineGradient)" stroke-width="2"/>
+							<defs>
+								<linearGradient id="lineGradient" x1="0%" y1="0%" x2="100%" y2="0%">
+									<stop offset="0%" style="stop-color:#00E5FF;stop-opacity:0.3" />
+									<stop offset="50%" style="stop-color:#00E5FF;stop-opacity:1" />
+									<stop offset="100%" style="stop-color:#00E5FF;stop-opacity:0.3" />
+								</linearGradient>
+							</defs>
+						</svg>
 					</div>
 				</div>
 			</div>
 
-			<!-- Waveform Visualizer -->
-			<div class="waveform-display">
-				<h4 class="display-title">FREQUENCY WAVEFORM</h4>
-				<svg viewBox="0 0 400 200" class="waveform-svg">
-					<defs>
-						<linearGradient id="waveGradient" x1="0%" y1="0%" x2="0%" y2="100%">
-							<stop offset="0%" style="stop-color:#00ffff;stop-opacity:0.8" />
-							<stop offset="100%" style="stop-color:#00ffff;stop-opacity:0" />
-						</linearGradient>
-					</defs>
-					
-					{#each filteredSources.slice(0, 20) as [source, frequency], i}
-						{@const height = (frequency / maxFreq) * 80}
-						{@const x = i * 20 + 10}
-						<g class="wave-bar">
-							<rect x="{x}" y="{100 - height}" width="15" height="{height}" 
-								  fill="url(#waveGradient)" opacity="0.8"/>
-							<rect x="{x}" y="{100}" width="15" height="{height}" 
-								  fill="url(#waveGradient)" opacity="0.3" transform="scale(1, -1) translate(0, -200)"/>
-						</g>
+			<!-- Frequency Spectrum -->
+			<div class="viz-card glass-card">
+				<div class="card-header">
+					<h4>FREQUENCY SPECTRUM</h4>
+					<div class="card-status-indicator"></div>
+				</div>
+				<div class="spectrum-chart">
+					{#each filteredSources.slice(0, 8) as [source, frequency]}
+						{@const threat = getThreatLevel(frequency)}
+						{@const percentage = (frequency/maxFreq)*100}
+						<div class="spectrum-item">
+							<div class="spectrum-label">{source.substring(0, 12).toUpperCase()}</div>
+							<div class="spectrum-visual">
+								<div class="spectrum-track"></div>
+								<div class="spectrum-fill" 
+									 style="width: {percentage}%; 
+											background: linear-gradient(90deg, {threat.color}, {threat.glow})">
+									<div class="spectrum-glow"></div>
+								</div>
+								<span class="spectrum-value">{frequency.toLocaleString()}</span>
+							</div>
+						</div>
 					{/each}
-					
-					<line x1="0" y1="100" x2="400" y2="100" stroke="#00ffff" stroke-width="0.5" opacity="0.5"/>
-				</svg>
+				</div>
 			</div>
 
-			<!-- Threat Matrix 3D -->
-			<div class="threat-matrix-3d">
-				<h4 class="display-title">THREAT MATRIX</h4>
-				<div class="matrix-3d-container">
-					<div class="matrix-cube">
-						{#each filteredSources.slice(0, 8) as [source, frequency], i}
-							{@const threat = getThreatLevel(frequency)}
-							{@const angle = (i / 8) * 360}
-							{@const radius = 60}
-							{@const x = Math.cos(angle * Math.PI / 180) * radius}
-							{@const y = Math.sin(angle * Math.PI / 180) * radius}
-							
-							<div class="threat-node-3d" 
-								 style="transform: translate3d({x}px, {y}px, {frequency/maxFreq * 50}px)">
-								<div class="node-sphere" style="background: {threat.color}; box-shadow: {threat.glow}">
-									<span class="node-freq">{frequency}</span>
-								</div>
-							</div>
+			<!-- Threat Matrix Grid -->
+			<div class="viz-card glass-card">
+				<div class="card-header">
+					<h4>THREAT MATRIX</h4>
+					<div class="card-status-indicator active"></div>
+				</div>
+				<div class="threat-matrix">
+					<svg viewBox="0 0 200 150" class="matrix-svg">
+						<defs>
+							<radialGradient id="nodeGradient">
+								<stop offset="0%" style="stop-color:#00E5FF;stop-opacity:0.8" />
+								<stop offset="100%" style="stop-color:#00E5FF;stop-opacity:0" />
+							</radialGradient>
+							<filter id="glowFilter">
+								<feGaussianBlur stdDeviation="3" result="coloredBlur"/>
+								<feMerge>
+									<feMergeNode in="coloredBlur"/>
+									<feMergeNode in="SourceGraphic"/>
+								</feMerge>
+							</filter>
+						</defs>
+						
+						<!-- Background grid -->
+						{#each Array(10) as _, i}
+							<line x1="{i * 20}" y1="0" x2="{i * 20}" y2="150" 
+								  stroke="rgba(0,229,255,0.05)" stroke-width="0.5"/>
+							<line x1="0" y1="{i * 15}" x2="200" y2="{i * 15}" 
+								  stroke="rgba(0,229,255,0.05)" stroke-width="0.5"/>
 						{/each}
 						
-						<div class="matrix-core">
-							<div class="core-pulse"></div>
-						</div>
-					</div>
+						<!-- Data nodes -->
+						{#each filteredSources.slice(0, 8) as [source, frequency], i}
+							{@const x = (i % 4) * 50 + 25}
+							{@const y = Math.floor(i / 4) * 50 + 25}
+							{@const size = (frequency / maxFreq) * 20 + 5}
+							{@const threat = getThreatLevel(frequency)}
+							
+							<circle cx="{x}" cy="{y}" r="{size}" 
+									fill="url(#nodeGradient)" opacity="0.3" filter="url(#glowFilter)"/>
+							<circle cx="{x}" cy="{y}" r="{size/2}" 
+									fill={threat.color} opacity="0.8"/>
+							<circle cx="{x}" cy="{y}" r="2" 
+									fill="#ffffff"/>
+							
+							<!-- Pulse animation -->
+							<circle cx="{x}" cy="{y}" r="{size/2}" 
+									fill="none" stroke={threat.color} stroke-width="1" opacity="0">
+								<animate attributeName="r" values="{size/2};{size};{size/2}" dur="3s" repeatCount="indefinite"/>
+								<animate attributeName="opacity" values="0.8;0;0.8" dur="3s" repeatCount="indefinite"/>
+							</circle>
+						{/each}
+						
+						<!-- Connection lines -->
+						{#each filteredSources.slice(0, 7) as [source, frequency], i}
+							{#if i < filteredSources.slice(0, 7).length - 1}
+								{@const x1 = (i % 4) * 50 + 25}
+								{@const y1 = Math.floor(i / 4) * 50 + 25}
+								{@const x2 = ((i + 1) % 4) * 50 + 25}
+								{@const y2 = Math.floor((i + 1) / 4) * 50 + 25}
+								<line x1="{x1}" y1="{y1}" x2="{x2}" y2="{y2}" 
+									  stroke="rgba(0,229,255,0.2)" stroke-width="0.5" stroke-dasharray="2,3"/>
+							{/if}
+						{/each}
+					</svg>
 				</div>
 			</div>
 		</div>
@@ -308,463 +395,470 @@
 </div>
 
 <style>
-	.quantum-container {
+	.dashboard-container {
 		height: calc(100vh - 180px);
+		display: flex;
 		position: relative;
-		background: linear-gradient(135deg, #000000 0%, #0a0f1c 50%, #000000 100%);
+		background: #000000;
+		color: #ffffff;
+		font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Inter', sans-serif;
 		overflow: hidden;
 		padding: 1.5rem;
 	}
 
-	.quantum-container.glitch {
-		animation: glitchEffect 0.1s linear;
-	}
-
-	@keyframes glitchEffect {
-		0%, 100% { transform: translateX(0); }
-		20% { transform: translateX(-2px); }
-		40% { transform: translateX(2px); }
-		60% { transform: translateX(-1px); }
-		80% { transform: translateX(1px); }
-	}
-
-	.particle-system {
+	.background-effects {
 		position: absolute;
 		top: 0;
 		left: 0;
 		width: 100%;
 		height: 100%;
 		pointer-events: none;
-		transform-style: preserve-3d;
+		z-index: 0;
 	}
 
-	.quantum-particle {
+	.gradient-orb {
 		position: absolute;
-		width: 2px;
-		height: 2px;
-		background: #00ffff;
 		border-radius: 50%;
-		animation: particleFloat 10s linear infinite;
-		box-shadow: 0 0 10px #00ffff;
+		filter: blur(80px);
+		opacity: 0.3;
+		animation: orbFloat 20s infinite ease-in-out;
 	}
 
-	@keyframes particleFloat {
-		0% { transform: translateY(100vh) translateZ(0px); opacity: 0; }
-		10% { opacity: 1; }
-		90% { opacity: 1; }
-		100% { transform: translateY(-10vh) translateZ(100px); opacity: 0; }
+	.orb-1 {
+		width: 600px;
+		height: 600px;
+		background: radial-gradient(circle, #00E5FF 0%, transparent 70%);
+		top: -200px;
+		left: -200px;
+		animation-duration: 25s;
 	}
 
-	.main-interface {
-		display: flex;
-		gap: 2rem;
-		height: 100%;
-		transform-style: preserve-3d;
-		transition: transform 0.3s ease;
+	.orb-2 {
+		width: 400px;
+		height: 400px;
+		background: radial-gradient(circle, #7C4DFF 0%, transparent 70%);
+		bottom: -100px;
+		right: -100px;
+		animation-duration: 20s;
+		animation-delay: -5s;
 	}
 
-	.neural-panel {
-		flex: 1.5;
-		position: relative;
+	.orb-3 {
+		width: 300px;
+		height: 300px;
+		background: radial-gradient(circle, #FF1744 0%, transparent 70%);
+		top: 50%;
+		left: 50%;
+		animation-duration: 30s;
+		animation-delay: -10s;
 	}
 
-	.panel-frame {
-		height: 100%;
-		background: rgba(0, 0, 0, 0.8);
-		border: 1px solid #00ffff;
-		border-radius: 8px;
-		position: relative;
-		backdrop-filter: blur(10px);
-		overflow: hidden;
+	@keyframes orbFloat {
+		0%, 100% { transform: translate(0, 0) scale(1); }
+		33% { transform: translate(50px, -50px) scale(1.1); }
+		66% { transform: translate(-50px, 50px) scale(0.9); }
 	}
 
-	.corner-accent {
+	.grid-overlay {
 		position: absolute;
-		width: 20px;
-		height: 20px;
-		border: 2px solid #00ffff;
+		top: 0;
+		left: 0;
+		width: 100%;
+		height: 100%;
+		background-image: 
+			linear-gradient(rgba(0,229,255,0.03) 1px, transparent 1px),
+			linear-gradient(90deg, rgba(0,229,255,0.03) 1px, transparent 1px);
+		background-size: 50px 50px;
+		animation: gridMove 10s linear infinite;
 	}
 
-	.corner-accent.top-left {
-		top: -1px;
-		left: -1px;
-		border-right: none;
-		border-bottom: none;
+	@keyframes gridMove {
+		0% { transform: translate(0, 0); }
+		100% { transform: translate(50px, 50px); }
 	}
 
-	.corner-accent.top-right {
-		top: -1px;
-		right: -1px;
-		border-left: none;
-		border-bottom: none;
+	.main-content {
+		flex: 1;
+		display: flex;
+		gap: 1.5rem;
+		overflow: hidden;
+		position: relative;
+		z-index: 1;
 	}
 
-	.corner-accent.bottom-left {
-		bottom: -1px;
-		left: -1px;
-		border-right: none;
-		border-top: none;
+	.glass-panel, .glass-card, .glass-header {
+		background: rgba(255, 255, 255, 0.03);
+		backdrop-filter: blur(20px);
+		-webkit-backdrop-filter: blur(20px);
+		border: 1px solid rgba(255, 255, 255, 0.1);
 	}
 
-	.corner-accent.bottom-right {
-		bottom: -1px;
-		right: -1px;
-		border-left: none;
-		border-top: none;
+	.table-panel {
+		flex: 1.5;
+		border-radius: 24px;
+		display: flex;
+		flex-direction: column;
+		overflow: hidden;
+		box-shadow: 
+			0 20px 60px rgba(0, 0, 0, 0.5),
+			inset 0 1px 0 rgba(255, 255, 255, 0.1);
 	}
 
 	.panel-header {
-		padding: 1.5rem;
-		border-bottom: 1px solid rgba(0, 255, 255, 0.3);
-		background: linear-gradient(180deg, rgba(0, 255, 255, 0.05) 0%, transparent 100%);
-		position: relative;
+		padding: 2rem;
+		border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+		background: rgba(0, 0, 0, 0.3);
+		flex-shrink: 0;
 	}
 
-	.header-circuits {
-		position: absolute;
-		top: 0;
-		left: 0;
-		width: 100%;
-		height: 100%;
-		opacity: 0.3;
+	.header-content {
+		display: flex;
+		justify-content: space-between;
+		align-items: flex-start;
+		margin-bottom: 1.5rem;
+	}
+
+	.title-group {
+		flex: 1;
 	}
 
 	.panel-title {
-		position: relative;
-		z-index: 1;
-		margin-bottom: 1rem;
-	}
-
-	.title-glow {
+		margin: 0;
 		font-size: 1.5rem;
-		color: #00ffff;
-		text-shadow: 0 0 30px #00ffff, 0 0 60px #00ffff;
-		font-weight: 700;
-		letter-spacing: 0.1em;
-		display: block;
+		font-weight: 600;
+		background: linear-gradient(135deg, #ffffff 0%, #00E5FF 100%);
+		-webkit-background-clip: text;
+		-webkit-text-fill-color: transparent;
+		background-clip: text;
+		display: flex;
+		align-items: center;
+		gap: 0.75rem;
 	}
 
-	.title-subtitle {
-		font-size: 0.7rem;
-		color: rgba(0, 255, 255, 0.6);
-		letter-spacing: 0.3em;
+	.title-icon {
+		font-size: 1.8rem;
+		color: #00E5FF;
+		text-shadow: 0 0 20px rgba(0, 229, 255, 0.5);
+		animation: iconPulse 2s ease-in-out infinite;
+	}
+
+	@keyframes iconPulse {
+		0%, 100% { opacity: 1; transform: scale(1); }
+		50% { opacity: 0.8; transform: scale(1.05); }
+	}
+
+	.subtitle {
+		font-size: 0.75rem;
+		color: rgba(255, 255, 255, 0.5);
+		letter-spacing: 0.2em;
 		margin-top: 0.5rem;
-		display: block;
+		font-weight: 500;
 	}
 
-	.search-module {
+	.header-stats {
+		display: flex;
+		gap: 1rem;
+	}
+
+	.stat-pill {
+		background: rgba(0, 229, 255, 0.1);
+		border: 1px solid rgba(0, 229, 255, 0.3);
+		border-radius: 100px;
+		padding: 0.5rem 1rem;
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		gap: 0.25rem;
+		min-width: 80px;
+	}
+
+	.stat-label {
+		font-size: 0.65rem;
+		color: rgba(255, 255, 255, 0.5);
+		letter-spacing: 0.1em;
+		font-weight: 600;
+	}
+
+	.stat-value {
+		font-size: 1rem;
+		font-weight: 700;
+		color: #00E5FF;
+	}
+
+	.search-wrapper {
 		position: relative;
-		z-index: 1;
-	}
-
-	.search-frame {
-		position: relative;
-		overflow: hidden;
-		border-radius: 4px;
-	}
-
-	.quantum-search {
 		width: 100%;
-		padding: 0.8rem 1rem;
-		background: rgba(0, 0, 0, 0.6);
-		border: 1px solid rgba(0, 255, 255, 0.3);
-		color: #00ffff;
-		font-family: inherit;
+	}
+
+	.premium-input {
+		width: 100%;
+		background: rgba(0, 0, 0, 0.4);
+		border: 1px solid rgba(255, 255, 255, 0.1);
+		border-radius: 12px;
+		padding: 0.875rem 1rem 0.875rem 2.75rem;
+		color: #ffffff;
 		font-size: 0.9rem;
-		letter-spacing: 0.05em;
-		transition: all 0.3s ease;
+		font-family: inherit;
+		transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 	}
 
-	.quantum-search:focus {
+	.premium-input:focus {
 		outline: none;
-		border-color: #00ffff;
-		box-shadow: 0 0 20px rgba(0, 255, 255, 0.5);
-		background: rgba(0, 255, 255, 0.02);
+		border-color: #00E5FF;
+		background: rgba(0, 229, 255, 0.05);
+		box-shadow: 0 0 0 3px rgba(0, 229, 255, 0.1);
 	}
 
-	.search-scanner {
+	.premium-input::placeholder {
+		color: rgba(255, 255, 255, 0.3);
+	}
+
+	.search-icon {
 		position: absolute;
-		top: 0;
-		left: -100%;
-		width: 100%;
-		height: 100%;
-		background: linear-gradient(90deg, transparent, rgba(0, 255, 255, 0.2), transparent);
-		animation: scanLine 3s linear infinite;
+		left: 1rem;
+		top: 50%;
+		transform: translateY(-50%);
+		color: rgba(255, 255, 255, 0.5);
 		pointer-events: none;
 	}
 
-	@keyframes scanLine {
-		0% { left: -100%; }
-		100% { left: 100%; }
-	}
-
-	.loading-vortex {
+	.loading-state {
+		flex: 1;
 		display: flex;
 		flex-direction: column;
 		align-items: center;
 		justify-content: center;
-		height: 400px;
+		gap: 2rem;
 	}
 
-	.vortex-rings {
-		position: relative;
-		width: 150px;
-		height: 150px;
-	}
-
-	.vortex-ring {
-		position: absolute;
-		border: 2px solid #00ffff;
-		border-radius: 50%;
-		box-shadow: 0 0 20px #00ffff;
-	}
-
-	.ring-1 {
-		width: 150px;
-		height: 150px;
-		animation: vortexSpin 3s linear infinite;
-	}
-
-	.ring-2 {
+	.premium-loader {
 		width: 100px;
 		height: 100px;
-		top: 25px;
-		left: 25px;
-		animation: vortexSpin 2s linear infinite reverse;
+		position: relative;
 	}
 
-	.ring-3 {
-		width: 50px;
-		height: 50px;
-		top: 50px;
-		left: 50px;
-		animation: vortexSpin 1s linear infinite;
+	.loader-ring {
+		position: absolute;
+		width: 100%;
+		height: 100%;
+		border: 2px solid transparent;
+		border-top-color: #00E5FF;
+		border-radius: 50%;
+		animation: loaderSpin 1.5s linear infinite;
 	}
 
-	@keyframes vortexSpin {
+	.loader-ring:nth-child(2) {
+		width: 80%;
+		height: 80%;
+		top: 10%;
+		left: 10%;
+		animation-delay: 0.2s;
+		border-top-color: #7C4DFF;
+	}
+
+	.loader-ring:nth-child(3) {
+		width: 60%;
+		height: 60%;
+		top: 20%;
+		left: 20%;
+		animation-delay: 0.4s;
+		border-top-color: #FF1744;
+	}
+
+	.loader-core {
+		position: absolute;
+		top: 50%;
+		left: 50%;
+		transform: translate(-50%, -50%);
+		font-size: 2rem;
+		color: #00E5FF;
+		text-shadow: 0 0 20px rgba(0, 229, 255, 0.8);
+	}
+
+	@keyframes loaderSpin {
 		0% { transform: rotate(0deg); }
 		100% { transform: rotate(360deg); }
 	}
 
-	.frequency-matrix {
-		display: grid;
-		grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
-		gap: 1.5rem;
-		padding: 2rem;
-		overflow-y: auto;
-		height: calc(100% - 120px);
-	}
-
-	.frequency-node {
-		position: relative;
-		cursor: pointer;
-		transition: all 0.3s ease;
-		transform-style: preserve-3d;
-	}
-
-	.frequency-node:hover {
-		transform: translateZ(20px) scale(1.05);
-	}
-
-	.node-hexagon {
-		position: relative;
-		width: 120px;
-		height: 120px;
-		margin: 0 auto;
-	}
-
-	.hex-svg {
-		width: 100%;
-		height: 100%;
-		filter: drop-shadow(var(--node-glow));
-		animation: hexPulse 3s ease-in-out infinite;
-	}
-
-	@keyframes hexPulse {
-		0%, 100% { opacity: 0.8; }
-		50% { opacity: 1; }
-	}
-
-	.node-core {
-		position: absolute;
-		top: 50%;
-		left: 50%;
-		transform: translate(-50%, -50%);
-		text-align: center;
-	}
-
-	.frequency-value {
-		font-size: 1.5rem;
-		font-weight: 700;
-		color: #ffffff;
-		text-shadow: 0 0 20px var(--node-color);
-	}
-
-	.node-label {
-		text-align: center;
-		margin-top: 0.5rem;
-		font-size: 0.8rem;
-		color: rgba(255, 255, 255, 0.8);
-		letter-spacing: 0.1em;
-	}
-
-	.threat-indicator {
-		text-align: center;
-		margin-top: 0.3rem;
-	}
-
-	.threat-level {
-		font-size: 0.65rem;
-		font-weight: 600;
-		letter-spacing: 0.1em;
-	}
-
-	.energy-field {
-		position: absolute;
-		top: 50%;
-		left: 50%;
-		transform: translate(-50%, -50%);
-		width: 150%;
-		height: 150%;
-		border-radius: 50%;
-		background: radial-gradient(circle, var(--node-color), transparent);
-		opacity: 0;
-		transition: opacity 0.3s ease;
-		pointer-events: none;
-	}
-
-	.frequency-node:hover .energy-field {
-		opacity: 0.2;
-	}
-
-	.hologram-view {
-		padding: 2rem;
-		opacity: 0;
-		transform: scale(0.9);
-		transition: all 0.3s ease;
-	}
-
-	.hologram-view.active {
-		opacity: 1;
-		transform: scale(1);
-	}
-
-	.hologram-header {
-		display: flex;
-		justify-content: space-between;
-		align-items: center;
-		margin-bottom: 2rem;
-		padding-bottom: 1rem;
-		border-bottom: 1px solid rgba(0, 255, 255, 0.3);
-	}
-
-	.hologram-title {
-		font-size: 1.5rem;
-		color: #00ffff;
-		text-shadow: 0 0 30px #00ffff;
-		margin: 0;
-	}
-
-	.close-hologram {
-		background: rgba(255, 0, 102, 0.1);
-		border: 1px solid #ff0066;
-		width: 40px;
-		height: 40px;
-		border-radius: 4px;
-		cursor: pointer;
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		transition: all 0.3s ease;
-	}
-
-	.close-hologram:hover {
-		background: rgba(255, 0, 102, 0.2);
-		transform: scale(1.1);
-		box-shadow: 0 0 20px rgba(255, 0, 102, 0.5);
-	}
-
-	.hologram-stats {
-		display: flex;
-		gap: 2rem;
-		margin-bottom: 2rem;
-		justify-content: center;
-	}
-
-	.stat-orb {
-		text-align: center;
-		padding: 1.5rem;
-		background: radial-gradient(circle, rgba(0, 255, 255, 0.1), transparent);
-		border-radius: 50%;
-		border: 1px solid rgba(0, 255, 255, 0.3);
-	}
-
-	.orb-value {
-		font-size: 2rem;
-		font-weight: 700;
-		color: #00ffff;
-		text-shadow: 0 0 20px #00ffff;
-	}
-
-	.orb-label {
-		font-size: 0.7rem;
-		color: rgba(0, 255, 255, 0.6);
+	.loading-text {
+		color: rgba(255, 255, 255, 0.6);
+		font-size: 0.85rem;
 		letter-spacing: 0.2em;
-		margin-top: 0.5rem;
+		font-weight: 500;
 	}
 
-	.hologram-grid {
-		display: grid;
-		grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
-		gap: 1rem;
-		max-height: 400px;
+	.table-scroll-container {
+		flex: 1;
 		overflow-y: auto;
+		overflow-x: hidden;
+		padding: 0 1rem;
 	}
 
-	.host-card {
-		background: rgba(0, 0, 0, 0.6);
-		border: 1px solid rgba(0, 255, 255, 0.2);
-		border-radius: 4px;
+	.table-scroll-container::-webkit-scrollbar {
+		width: 6px;
+	}
+
+	.table-scroll-container::-webkit-scrollbar-track {
+		background: rgba(255, 255, 255, 0.02);
+	}
+
+	.table-scroll-container::-webkit-scrollbar-thumb {
+		background: rgba(255, 255, 255, 0.1);
+		border-radius: 3px;
+	}
+
+	.table-scroll-container::-webkit-scrollbar-thumb:hover {
+		background: rgba(255, 255, 255, 0.2);
+	}
+
+	.premium-table {
+		width: 100%;
+		border-collapse: separate;
+		border-spacing: 0;
+		font-size: 0.875rem;
+	}
+
+	.premium-table th {
+		background: rgba(0, 0, 0, 0.4);
+		color: rgba(255, 255, 255, 0.6);
 		padding: 1rem;
-		transition: all 0.3s ease;
+		text-align: left;
+		font-weight: 600;
+		font-size: 0.75rem;
+		letter-spacing: 0.1em;
+		position: sticky;
+		top: 0;
+		z-index: 10;
+		border-bottom: 1px solid rgba(255, 255, 255, 0.1);
 	}
 
-	.host-card:hover {
-		border-color: #00ffff;
-		background: rgba(0, 255, 255, 0.02);
-		transform: translateY(-2px);
+	.premium-table td {
+		padding: 1rem;
+		border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+		color: rgba(255, 255, 255, 0.8);
+		transition: all 0.2s ease;
 	}
 
-	.host-id {
-		font-family: 'Courier New', monospace;
-		color: #00ffff;
-		margin-bottom: 0.5rem;
-		font-size: 0.9rem;
+	.table-row {
+		cursor: pointer;
+		transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+		position: relative;
 	}
 
-	.host-metrics {
+	.table-row:hover {
+		background: rgba(0, 229, 255, 0.05);
+	}
+
+	.table-row.hovered td {
+		color: #ffffff;
+	}
+
+	.source-cell {
 		display: flex;
+		align-items: center;
+		gap: 0.75rem;
+	}
+
+	.source-indicator {
+		width: 8px;
+		height: 8px;
+		border-radius: 50%;
+		flex-shrink: 0;
+		animation: indicatorPulse 2s ease-in-out infinite;
+	}
+
+	@keyframes indicatorPulse {
+		0%, 100% { transform: scale(1); }
+		50% { transform: scale(1.2); }
+	}
+
+	.source-name {
+		font-weight: 500;
+	}
+
+	.frequency-cell, .coverage-cell {
+		min-width: 120px;
+	}
+
+	.frequency-content {
+		display: flex;
+		flex-direction: column;
 		gap: 0.5rem;
 	}
 
-	.metric-badge {
-		padding: 0.2rem 0.5rem;
+	.frequency-value {
+		font-weight: 600;
+		font-size: 0.9rem;
+		color: #ffffff;
+	}
+
+	.frequency-bar-bg {
+		height: 3px;
+		background: rgba(255, 255, 255, 0.1);
 		border-radius: 3px;
-		font-size: 0.65rem;
+		overflow: hidden;
+		width: 80px;
+	}
+
+	.frequency-bar {
+		height: 100%;
+		transition: width 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+	}
+
+	.coverage-content {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+	}
+
+	.coverage-value {
+		font-weight: 600;
+	}
+
+	.coverage-ring {
+		flex-shrink: 0;
+	}
+
+	.threat-cell {
+		min-width: 120px;
+	}
+
+	.threat-badge {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.5rem;
+		padding: 0.375rem 0.75rem;
+		border: 1px solid;
+		border-radius: 8px;
+		font-size: 0.75rem;
 		font-weight: 600;
 		letter-spacing: 0.05em;
 	}
 
-	.metric-badge.active {
-		background: rgba(0, 255, 133, 0.2);
-		color: #00ff85;
-		border: 1px solid #00ff85;
+	.threat-icon {
+		font-size: 1rem;
 	}
 
-	.metric-badge.inactive {
-		background: rgba(255, 0, 102, 0.1);
-		color: #ff0066;
-		border: 1px solid #ff0066;
+	.matrix-cell {
+		min-width: 100px;
+	}
+
+	.matrix-visualization {
+		display: flex;
+		align-items: flex-end;
+		gap: 2px;
+		height: 30px;
+	}
+
+	.matrix-bar {
+		width: 3px;
+		background: #00E5FF;
+		animation: matrixPulse 2s ease-in-out infinite;
+	}
+
+	@keyframes matrixPulse {
+		0%, 100% { opacity: 1; }
+		50% { opacity: 0.6; }
 	}
 
 	.viz-panel {
@@ -773,183 +867,321 @@
 		flex-direction: column;
 		gap: 1.5rem;
 		overflow-y: auto;
+		padding-right: 0.5rem;
 	}
 
-	.quantum-metrics {
-		display: flex;
-		gap: 1rem;
+	.viz-panel::-webkit-scrollbar {
+		width: 6px;
 	}
 
-	.metric-module {
-		flex: 1;
-		background: rgba(0, 0, 0, 0.8);
-		border: 1px solid rgba(0, 255, 255, 0.3);
-		border-radius: 8px;
+	.viz-panel::-webkit-scrollbar-track {
+		background: rgba(255, 255, 255, 0.02);
+	}
+
+	.viz-panel::-webkit-scrollbar-thumb {
+		background: rgba(255, 255, 255, 0.1);
+		border-radius: 3px;
+	}
+
+	.metrics-row {
+		display: grid;
+		grid-template-columns: repeat(2, 1fr);
+		gap: 1.5rem;
+	}
+
+	.metric-card {
+		border-radius: 16px;
 		padding: 1.5rem;
 		position: relative;
 		overflow: hidden;
+		box-shadow: 
+			0 10px 40px rgba(0, 0, 0, 0.3),
+			inset 0 1px 0 rgba(255, 255, 255, 0.1);
 	}
 
-	.metric-hologram {
-		text-align: center;
+	.metric-icon-wrapper {
+		position: absolute;
+		top: 1.5rem;
+		right: 1.5rem;
+		width: 40px;
+		height: 40px;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		background: rgba(0, 229, 255, 0.1);
+		border-radius: 12px;
+	}
+
+	.metric-icon {
+		font-size: 1.5rem;
+		color: #00E5FF;
+		text-shadow: 0 0 20px rgba(0, 229, 255, 0.5);
+	}
+
+	.metric-content {
 		position: relative;
 		z-index: 1;
 	}
 
-	.hologram-number {
-		font-size: 2.5rem;
+	.metric-value {
+		font-size: 2rem;
 		font-weight: 700;
-		color: #00ffff;
-		text-shadow: 0 0 30px #00ffff;
-		animation: hologramFlicker 3s ease-in-out infinite;
+		background: linear-gradient(135deg, #ffffff 0%, #00E5FF 100%);
+		-webkit-background-clip: text;
+		-webkit-text-fill-color: transparent;
+		background-clip: text;
+		margin-bottom: 0.25rem;
 	}
 
-	@keyframes hologramFlicker {
-		0%, 100% { opacity: 1; }
-		50% { opacity: 0.8; }
-	}
-
-	.hologram-label {
-		font-size: 0.8rem;
-		color: rgba(0, 255, 255, 0.6);
-		letter-spacing: 0.2em;
-		margin-top: 0.5rem;
-	}
-
-	.metric-pulse {
-		position: absolute;
-		top: 50%;
-		left: 50%;
-		transform: translate(-50%, -50%);
-		width: 200%;
-		height: 200%;
-		border-radius: 50%;
-		background: radial-gradient(circle, rgba(0, 255, 255, 0.2), transparent);
-		animation: metricPulse 2s ease-in-out infinite;
-	}
-
-	@keyframes metricPulse {
-		0%, 100% { transform: translate(-50%, -50%) scale(0.8); opacity: 0; }
-		50% { transform: translate(-50%, -50%) scale(1); opacity: 1; }
-	}
-
-	.waveform-display, .threat-matrix-3d {
-		background: rgba(0, 0, 0, 0.8);
-		border: 1px solid rgba(0, 255, 255, 0.3);
-		border-radius: 8px;
-		padding: 1.5rem;
-		backdrop-filter: blur(10px);
-	}
-
-	.display-title {
-		margin: 0 0 1rem 0;
-		font-size: 0.9rem;
-		color: #00ffff;
-		letter-spacing: 0.1em;
+	.metric-label {
+		font-size: 0.7rem;
+		color: rgba(255, 255, 255, 0.5);
+		letter-spacing: 0.15em;
 		font-weight: 600;
-		text-shadow: 0 0 10px #00ffff;
 	}
 
-	.waveform-svg {
+	.metric-sparkline {
+		position: absolute;
+		bottom: 0;
+		left: 0;
+		right: 0;
+		height: 30px;
+		opacity: 0.5;
+	}
+
+	.metric-sparkline svg {
+		width: 100%;
+		height: 100%;
+	}
+
+	.viz-card {
+		border-radius: 16px;
+		padding: 1.5rem;
+		box-shadow: 
+			0 10px 40px rgba(0, 0, 0, 0.3),
+			inset 0 1px 0 rgba(255, 255, 255, 0.1);
+	}
+
+	.card-header {
+		display: flex;
+		justify-content: space-between;
+		align-items: center;
+		margin-bottom: 1.5rem;
+	}
+
+	.viz-card h4 {
+		margin: 0;
+		font-size: 0.875rem;
+		font-weight: 600;
+		color: rgba(255, 255, 255, 0.7);
+		letter-spacing: 0.1em;
+	}
+
+	.card-status-indicator {
+		width: 6px;
+		height: 6px;
+		background: rgba(0, 229, 255, 0.5);
+		border-radius: 50%;
+		animation: statusBlink 2s ease-in-out infinite;
+	}
+
+	.card-status-indicator.active {
+		background: #00E5FF;
+		animation: statusBlink 0.5s ease-in-out infinite;
+		box-shadow: 0 0 10px rgba(0, 229, 255, 0.5);
+	}
+
+	@keyframes statusBlink {
+		0%, 100% { opacity: 1; }
+		50% { opacity: 0.3; }
+	}
+
+	.spectrum-chart {
+		display: flex;
+		flex-direction: column;
+		gap: 0.875rem;
+	}
+
+	.spectrum-item {
+		display: flex;
+		flex-direction: column;
+		gap: 0.5rem;
+	}
+
+	.spectrum-label {
+		font-size: 0.75rem;
+		color: rgba(255, 255, 255, 0.6);
+		font-weight: 500;
+	}
+
+	.spectrum-visual {
+		position: relative;
+		height: 24px;
+		display: flex;
+		align-items: center;
+	}
+
+	.spectrum-track {
+		position: absolute;
+		width: 100%;
+		height: 6px;
+		background: rgba(255, 255, 255, 0.05);
+		border-radius: 6px;
+	}
+
+	.spectrum-fill {
+		position: relative;
+		height: 6px;
+		border-radius: 6px;
+		transition: width 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+		overflow: hidden;
+	}
+
+	.spectrum-glow {
+		position: absolute;
+		right: 0;
+		top: 50%;
+		transform: translateY(-50%);
+		width: 20px;
+		height: 200%;
+		background: rgba(255, 255, 255, 0.5);
+		filter: blur(10px);
+		animation: spectrumGlow 2s ease-in-out infinite;
+	}
+
+	@keyframes spectrumGlow {
+		0%, 100% { opacity: 0; transform: translateY(-50%) translateX(-10px); }
+		50% { opacity: 1; transform: translateY(-50%) translateX(0); }
+	}
+
+	.spectrum-value {
+		position: absolute;
+		right: 0;
+		font-size: 0.75rem;
+		color: rgba(255, 255, 255, 0.7);
+		font-weight: 600;
+	}
+
+	.threat-matrix {
+		display: flex;
+		justify-content: center;
+		align-items: center;
+		min-height: 150px;
+		padding: 1rem;
+	}
+
+	.matrix-svg {
 		width: 100%;
 		height: auto;
 	}
 
-	.wave-bar {
-		transition: all 0.3s ease;
-	}
-
-	.wave-bar:hover {
-		opacity: 1;
-		filter: brightness(1.2);
-	}
-
-	.matrix-3d-container {
-		height: 200px;
-		position: relative;
-		perspective: 800px;
-	}
-
-	.matrix-cube {
-		width: 100%;
+	.drill-view {
+		display: flex;
+		flex-direction: column;
 		height: 100%;
-		position: relative;
-		transform-style: preserve-3d;
-		animation: cubeRotate 10s linear infinite;
 	}
 
-	@keyframes cubeRotate {
-		0% { transform: rotateY(0deg) rotateX(10deg); }
-		100% { transform: rotateY(360deg) rotateX(10deg); }
+	.drill-header {
+		display: flex;
+		justify-content: space-between;
+		align-items: center;
+		padding: 1.5rem;
+		border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+		background: rgba(0, 229, 255, 0.03);
 	}
 
-	.threat-node-3d {
-		position: absolute;
-		top: 50%;
-		left: 50%;
-		transform-style: preserve-3d;
-		transition: all 0.3s ease;
-	}
-
-	.node-sphere {
-		width: 30px;
-		height: 30px;
-		border-radius: 50%;
+	.drill-title {
 		display: flex;
 		align-items: center;
-		justify-content: center;
+		gap: 1rem;
+	}
+
+	.drill-icon {
+		font-size: 1.5rem;
+		color: #00E5FF;
+		animation: drillPulse 1s ease-in-out infinite;
+	}
+
+	@keyframes drillPulse {
+		0%, 100% { transform: translateX(0); }
+		50% { transform: translateX(5px); }
+	}
+
+	.drill-header h4 {
+		margin: 0;
+		font-size: 1.125rem;
+		font-weight: 600;
 		color: #ffffff;
-		font-size: 0.7rem;
+	}
+
+	.drill-badge {
+		background: rgba(0, 229, 255, 0.1);
+		border: 1px solid rgba(0, 229, 255, 0.3);
+		border-radius: 100px;
+		padding: 0.25rem 0.75rem;
+		font-size: 0.75rem;
+		color: #00E5FF;
 		font-weight: 600;
 	}
 
-	.matrix-core {
-		position: absolute;
-		top: 50%;
-		left: 50%;
-		transform: translate(-50%, -50%);
-		width: 40px;
-		height: 40px;
-		border-radius: 50%;
-		background: radial-gradient(circle, #00ffff, transparent);
-		animation: corePulse 2s ease-in-out infinite;
+	.premium-btn {
+		background: rgba(255, 23, 68, 0.1);
+		border: 1px solid rgba(255, 23, 68, 0.3);
+		width: 36px;
+		height: 36px;
+		border-radius: 12px;
+		cursor: pointer;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		color: #FF1744;
+		transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 	}
 
-	.core-pulse {
-		width: 100%;
-		height: 100%;
-		border-radius: 50%;
-		border: 2px solid #00ffff;
-		animation: corePulseRing 2s ease-in-out infinite;
+	.premium-btn:hover {
+		background: rgba(255, 23, 68, 0.2);
+		transform: scale(1.05);
+		box-shadow: 0 0 20px rgba(255, 23, 68, 0.3);
 	}
 
-	@keyframes corePulse {
-		0%, 100% { transform: translate(-50%, -50%) scale(1); }
-		50% { transform: translate(-50%, -50%) scale(1.2); }
+	.drill-table-container {
+		flex: 1;
+		overflow: auto;
+		padding: 1rem;
 	}
 
-	@keyframes corePulseRing {
-		0%, 100% { transform: scale(1); opacity: 1; }
-		50% { transform: scale(1.5); opacity: 0.3; }
+	.host-cell {
+		font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Fira Code', monospace;
+		color: #00E5FF;
+		font-weight: 500;
+		font-size: 0.875rem;
 	}
 
-	/* Scrollbar styling */
-	::-webkit-scrollbar {
-		width: 8px;
-		height: 8px;
+	.status-badge {
+		padding: 0.25rem 0.625rem;
+		border-radius: 6px;
+		font-size: 0.7rem;
+		font-weight: 600;
+		text-transform: uppercase;
+		letter-spacing: 0.05em;
+		display: inline-block;
 	}
 
-	::-webkit-scrollbar-track {
-		background: rgba(0, 0, 0, 0.3);
-		border-radius: 4px;
+	.badge-success {
+		background: rgba(0, 229, 255, 0.15);
+		color: #00E5FF;
+		border: 1px solid rgba(0, 229, 255, 0.3);
 	}
 
-	::-webkit-scrollbar-thumb {
-		background: linear-gradient(135deg, #00ffff, #0088ff);
-		border-radius: 4px;
+	.badge-warning {
+		background: rgba(255, 214, 0, 0.15);
+		color: #FFD600;
+		border: 1px solid rgba(255, 214, 0, 0.3);
 	}
 
-	::-webkit-scrollbar-thumb:hover {
-		background: linear-gradient(135deg, #00ffff, #00ff85);
+	.badge-danger {
+		background: rgba(255, 23, 68, 0.15);
+		color: #FF1744;
+		border: 1px solid rgba(255, 23, 68, 0.3);
 	}
 </style>
