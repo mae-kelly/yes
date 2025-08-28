@@ -1,4 +1,4 @@
-<!-- CountryMetrics.svelte - Enhanced with Perfect Screen Fit -->
+<!-- CountryMetrics.svelte - Optimized -->
 <script>
 	import { onMount } from 'svelte';
 	
@@ -8,7 +8,7 @@
 	let countryDetails = [];
 	let searchTerm = '';
 	let currentPage = 1;
-	let itemsPerPage = 10;
+	let itemsPerPage = 8;
 	let viewMode = 'table';
 
 	onMount(async () => {
@@ -34,16 +34,15 @@
 	);
 	
 	$: totalPages = Math.ceil(sortedCountries.length / itemsPerPage);
-
 	$: maxCount = sortedCountries.length > 0 ? Math.max(...sortedCountries.map(([,c]) => c)) : 1;
 
 	function getThreatLevel(count) {
-		if (!data.total_countries) return { level: 'LOW', color: '#00ffff', intensity: 0.3 };
+		if (!maxCount) return { level: 'LOW', color: '#0a4f3c' };
 		let percentage = (count / maxCount) * 100;
-		if (percentage >= 60) return { level: 'CRITICAL', color: '#ff00ff', intensity: 1.0 };
-		if (percentage >= 40) return { level: 'HIGH', color: '#ff0066', intensity: 0.8 };
-		if (percentage >= 20) return { level: 'MEDIUM', color: '#ffaa00', intensity: 0.6 };
-		return { level: 'LOW', color: '#00ffff', intensity: 0.4 };
+		if (percentage >= 60) return { level: 'CRITICAL', color: '#ff0066' };
+		if (percentage >= 40) return { level: 'HIGH', color: '#ff9900' };
+		if (percentage >= 20) return { level: 'MEDIUM', color: '#ffcc00' };
+		return { level: 'LOW', color: '#0a4f3c' };
 	}
 
 	function getPercentage(count) {
@@ -81,43 +80,10 @@
 </script>
 
 <div class="dashboard-container">
-	<!-- Header Section -->
-	<div class="header-section">
-		<div class="header-content">
-			<div class="title-block">
-				<div class="title-icon">🌍</div>
-				<div class="title-text">
-					<h1>GLOBAL SURVEILLANCE</h1>
-					<p>Country Distribution Matrix</p>
-				</div>
-			</div>
-			<div class="metrics-row">
-				<div class="metric-card">
-					<div class="metric-value">{(data.total_countries || 0).toLocaleString()}</div>
-					<div class="metric-label">COUNTRIES</div>
-				</div>
-				<div class="metric-card">
-					<div class="metric-value">{Object.values(data.global_intelligence || {}).reduce((a, b) => a + b, 0).toLocaleString()}</div>
-					<div class="metric-label">TOTAL ASSETS</div>
-				</div>
-				<div class="metric-card primary">
-					<div class="metric-value">{sortedCountries[0] ? sortedCountries[0][0].toUpperCase() : 'N/A'}</div>
-					<div class="metric-label">PRIMARY</div>
-				</div>
-				<div class="metric-card critical">
-					<div class="metric-value">{threatDistribution['CRITICAL'] || 0}</div>
-					<div class="metric-label">CRITICAL</div>
-				</div>
-			</div>
-		</div>
-	</div>
-
-	<!-- Main Content Area -->
 	<div class="main-content">
-		<!-- Left Panel: Table -->
+		<!-- Left Panel -->
 		<div class="table-panel">
 			<div class="panel-header">
-				<h3>COUNTRY ANALYSIS</h3>
 				<div class="controls">
 					<input 
 						type="text" 
@@ -139,10 +105,9 @@
 			{#if loading && !selectedCountry}
 				<div class="loading-state">
 					<div class="spinner"></div>
-					<p>Scanning global network...</p>
+					<p>Scanning network...</p>
 				</div>
 			{:else if selectedCountry}
-				<!-- Drill-down View -->
 				<div class="drill-view">
 					<div class="drill-header">
 						<h4>{selectedCountry.country.toUpperCase()}</h4>
@@ -154,19 +119,19 @@
 								<tr>
 									<th>HOST</th>
 									<th>REGION</th>
-									<th>INFRASTRUCTURE</th>
-									<th>DATACENTER</th>
+									<th>INFRA</th>
+									<th>DC</th>
 									<th>CMDB</th>
 									<th>TANIUM</th>
 								</tr>
 							</thead>
 							<tbody>
-								{#each countryDetails as host}
+								{#each countryDetails.slice(0, 6) as host}
 									<tr>
-										<td class="host-cell">{host.host}</td>
-										<td>{host.region || 'Unknown'}</td>
-										<td>{host.infrastructure_type || 'Unknown'}</td>
-										<td>{host.data_center || 'N/A'}</td>
+										<td class="host-cell">{host.host.substring(0, 20)}</td>
+										<td>{host.region || '-'}</td>
+										<td>{host.infrastructure_type || '-'}</td>
+										<td>{host.data_center || '-'}</td>
 										<td>
 											<span class="status-badge {host.present_in_cmdb?.toLowerCase().includes('yes') ? 'active' : 'inactive'}">
 												{host.present_in_cmdb?.toLowerCase().includes('yes') ? '✓' : '✗'}
@@ -184,7 +149,6 @@
 					</div>
 				</div>
 			{:else if viewMode === 'table'}
-				<!-- Main Table -->
 				<div class="table-container">
 					<table class="data-table">
 						<thead>
@@ -200,10 +164,8 @@
 							{#each paginatedCountries as [country, count]}
 								<tr>
 									<td class="country-cell">
-										<div class="cell-content">
-											<span class="indicator" style="background: {getThreatLevel(count).color}"></span>
-											<span>{country.toUpperCase()}</span>
-										</div>
+										<span class="indicator" style="background: {getThreatLevel(count).color}"></span>
+										<span>{country.substring(0, 20).toUpperCase()}</span>
 									</td>
 									<td class="center">{count.toLocaleString()}</td>
 									<td>
@@ -218,9 +180,7 @@
 										<span class="threat-badge {getThreatLevel(count).level.toLowerCase()}">{getThreatLevel(count).level}</span>
 									</td>
 									<td class="center">
-										<button class="drill-btn" on:click={() => drillDownCountry(country, count)}>
-											ANALYZE →
-										</button>
+										<button class="drill-btn" on:click={() => drillDownCountry(country, count)}>→</button>
 									</td>
 								</tr>
 							{/each}
@@ -228,38 +188,24 @@
 					</table>
 				</div>
 				
-				<!-- Pagination -->
 				<div class="pagination">
-					<button 
-						on:click={() => currentPage = Math.max(1, currentPage - 1)}
-						disabled={currentPage === 1}
-					>
-						←
-					</button>
-					<span>Page {currentPage} of {totalPages}</span>
-					<button 
-						on:click={() => currentPage = Math.min(totalPages, currentPage + 1)}
-						disabled={currentPage === totalPages}
-					>
-						→
-					</button>
+					<button on:click={() => currentPage = Math.max(1, currentPage - 1)} disabled={currentPage === 1}>←</button>
+					<span>{currentPage}/{totalPages}</span>
+					<button on:click={() => currentPage = Math.min(totalPages, currentPage + 1)} disabled={currentPage === totalPages}>→</button>
 				</div>
 			{:else}
-				<!-- Grid View -->
 				<div class="grid-container">
-					{#each paginatedCountries as [country, count]}
+					{#each paginatedCountries.slice(0, 6) as [country, count]}
 						<div class="grid-card" style="--card-color: {getThreatLevel(count).color}" on:click={() => drillDownCountry(country, count)}>
 							<div class="card-header">
-								<span class="card-icon">🌐</span>
 								<span class="threat-indicator {getThreatLevel(count).level.toLowerCase()}">{getThreatLevel(count).level}</span>
 							</div>
 							<div class="card-body">
-								<div class="country-name">{country.toUpperCase()}</div>
+								<div class="country-name">{country.substring(0, 12).toUpperCase()}</div>
 								<div class="country-count">{count.toLocaleString()}</div>
 								<div class="progress-bar">
 									<div class="progress-fill" style="width: {(count/maxCount)*100}%; background: {getThreatLevel(count).color}"></div>
 								</div>
-								<div class="card-percentage">{getPercentage(count)}%</div>
 							</div>
 						</div>
 					{/each}
@@ -267,38 +213,17 @@
 			{/if}
 		</div>
 
-		<!-- Right Panel: Visualizations -->
+		<!-- Right Panel -->
 		<div class="viz-panel">
-			<!-- World Heat Map -->
-			<div class="viz-card">
-				<h4>GLOBAL HEATMAP</h4>
-				<div class="world-map">
-					<svg viewBox="0 0 300 150">
-						<defs>
-							<radialGradient id="heat">
-								<stop offset="0%" style="stop-color:#ff00ff;stop-opacity:0.8" />
-								<stop offset="100%" style="stop-color:#ff00ff;stop-opacity:0" />
-							</radialGradient>
-						</defs>
-						{#each sortedCountries.slice(0, 8) as [country, count], i}
-							<circle 
-								cx={50 + (i % 4) * 70} 
-								cy={50 + Math.floor(i / 4) * 60} 
-								r={Math.sqrt((count/maxCount)) * 25} 
-								fill="url(#heat)" 
-								opacity="0.7"
-							/>
-							<text 
-								x={50 + (i % 4) * 70} 
-								y={50 + Math.floor(i / 4) * 60 + 35} 
-								text-anchor="middle" 
-								fill="#00ffff" 
-								font-size="8"
-							>
-								{country.substring(0, 6).toUpperCase()}
-							</text>
-						{/each}
-					</svg>
+			<!-- Metrics -->
+			<div class="metrics-row">
+				<div class="metric-card">
+					<div class="metric-value">{(data.total_countries || 0)}</div>
+					<div class="metric-label">COUNTRIES</div>
+				</div>
+				<div class="metric-card">
+					<div class="metric-value">{Object.values(data.global_intelligence || {}).reduce((a, b) => a + b, 0).toLocaleString()}</div>
+					<div class="metric-label">ASSETS</div>
 				</div>
 			</div>
 
@@ -306,44 +231,38 @@
 			<div class="viz-card">
 				<h4>THREAT DISTRIBUTION</h4>
 				<div class="donut-chart">
-					<svg viewBox="0 0 200 200">
-						{#if Object.keys(threatDistribution).length > 0}
-							{#each Object.entries(threatDistribution) as [level, count], i}
-								<circle
-									cx="100"
-									cy="100"
-									r={60 - i * 10}
-									fill="none"
-									stroke={level === 'CRITICAL' ? '#ff00ff' : level === 'HIGH' ? '#ff0066' : level === 'MEDIUM' ? '#ffaa00' : '#00ffff'}
-									stroke-width="8"
-									stroke-dasharray={`${(count / sortedCountries.length) * 377} 377`}
-									transform="rotate(-90 100 100)"
-									opacity="0.8"
-								/>
-							{/each}
-						{/if}
-						<text x="100" y="100" text-anchor="middle" fill="white" font-size="24" font-weight="bold">
+					<svg viewBox="0 0 120 120">
+						{#each Object.entries(threatDistribution) as [level, count], i}
+							<circle
+								cx="60"
+								cy="60"
+								r={40 - i * 8}
+								fill="none"
+								stroke={level === 'CRITICAL' ? '#ff0066' : level === 'HIGH' ? '#ff9900' : level === 'MEDIUM' ? '#ffcc00' : '#0a4f3c'}
+								stroke-width="6"
+								stroke-dasharray={`${(count / sortedCountries.length) * 251} 251`}
+								transform="rotate(-90 60 60)"
+								opacity="0.8"
+							/>
+						{/each}
+						<text x="60" y="60" text-anchor="middle" fill="#b8a678" font-size="16" font-weight="bold">
 							{sortedCountries.length}
 						</text>
-						<text x="100" y="115" text-anchor="middle" fill="rgba(255,255,255,0.6)" font-size="10">
-							COUNTRIES
-						</text>
+						<text x="60" y="72" text-anchor="middle" fill="#b8a678" font-size="6">TOTAL</text>
 					</svg>
 				</div>
 			</div>
 
-			<!-- Top Countries Bar Chart -->
+			<!-- Top Countries -->
 			<div class="viz-card">
-				<h4>TOP 5 COUNTRIES</h4>
+				<h4>TOP COUNTRIES</h4>
 				<div class="bar-chart">
-					{#each sortedCountries.slice(0, 5) as [country, count]}
+					{#each sortedCountries.slice(0, 4) as [country, count]}
 						<div class="bar-item">
-							<div class="bar-label">{country.toUpperCase()}</div>
+							<div class="bar-label">{country.substring(0, 10).toUpperCase()}</div>
 							<div class="bar-container">
-								<div class="bar-fill" 
-									style="width: {(count/maxCount)*100}%; background: linear-gradient(90deg, {getThreatLevel(count).color}, {getThreatLevel(count).color}80)">
-								</div>
-								<span class="bar-value">{count.toLocaleString()}</span>
+								<div class="bar-fill" style="width: {(count/maxCount)*100}%; background: {getThreatLevel(count).color}"></div>
+								<span class="bar-value">{count}</span>
 							</div>
 						</div>
 					{/each}
@@ -354,10 +273,9 @@
 			<div class="viz-card">
 				<h4>ACTIVITY MATRIX</h4>
 				<div class="matrix-grid">
-					{#each paginatedCountries.slice(0, 9) as [country, count]}
+					{#each sortedCountries.slice(0, 6) as [country, count]}
 						<div class="matrix-cell" style="background: {getThreatLevel(count).color}20; border-color: {getThreatLevel(count).color}">
 							<div class="cell-value">{getPercentage(count)}%</div>
-							<div class="cell-label">{country.substring(0, 3).toUpperCase()}</div>
 						</div>
 					{/each}
 				</div>
@@ -368,112 +286,27 @@
 
 <style>
 	.dashboard-container {
-		height: 100vh;
+		height: calc(100vh - 100px);
 		display: flex;
-		flex-direction: column;
-		background: linear-gradient(135deg, #0a0a0a 0%, #1a1a2e 100%);
+		background: #000;
 		color: #fff;
 		font-family: 'JetBrains Mono', monospace;
 		overflow: hidden;
 	}
 
-	.header-section {
-		background: rgba(0, 0, 0, 0.8);
-		border-bottom: 2px solid rgba(255, 0, 255, 0.3);
-		padding: 0.8rem 1rem;
-		backdrop-filter: blur(10px);
-		flex-shrink: 0;
-	}
-
-	.header-content {
-		max-width: 100%;
-	}
-
-	.title-block {
-		display: flex;
-		align-items: center;
-		gap: 0.8rem;
-		margin-bottom: 0.6rem;
-	}
-
-	.title-icon {
-		font-size: 1.5rem;
-		filter: hue-rotate(280deg) saturate(2);
-		animation: iconFloat 3s ease-in-out infinite;
-	}
-
-	.title-text h1 {
-		margin: 0;
-		font-size: 1.2rem;
-		color: #ff00ff;
-		text-shadow: 0 0 10px rgba(255, 0, 255, 0.5);
-		letter-spacing: 0.1em;
-	}
-
-	.title-text p {
-		margin: 0.2rem 0 0 0;
-		font-size: 0.7rem;
-		color: rgba(255, 255, 255, 0.6);
-	}
-
-	.metrics-row {
-		display: flex;
-		gap: 0.8rem;
-	}
-
-	.metric-card {
-		flex: 1;
-		background: rgba(255, 0, 255, 0.05);
-		border: 1px solid rgba(255, 0, 255, 0.3);
-		border-radius: 6px;
-		padding: 0.5rem;
-		text-align: center;
-		transition: all 0.3s ease;
-	}
-
-	.metric-card:hover {
-		transform: translateY(-2px);
-		box-shadow: 0 4px 12px rgba(255, 0, 255, 0.2);
-	}
-
-	.metric-card.primary {
-		background: rgba(0, 255, 133, 0.05);
-		border-color: rgba(0, 255, 133, 0.3);
-	}
-
-	.metric-card.critical {
-		background: rgba(255, 0, 102, 0.05);
-		border-color: rgba(255, 0, 102, 0.3);
-	}
-
-	.metric-value {
-		font-size: 1.1rem;
-		font-weight: 700;
-		color: #ff00ff;
-		text-shadow: 0 0 10px currentColor;
-	}
-
-	.metric-label {
-		font-size: 0.6rem;
-		color: rgba(255, 255, 255, 0.6);
-		margin-top: 0.2rem;
-		letter-spacing: 0.05em;
-	}
-
 	.main-content {
 		flex: 1;
 		display: flex;
-		gap: 0.8rem;
-		padding: 0.8rem;
+		gap: 0.5rem;
+		padding: 0.5rem;
 		overflow: hidden;
-		min-height: 0;
 	}
 
 	.table-panel {
 		flex: 2;
-		background: rgba(0, 0, 0, 0.4);
-		border: 1px solid rgba(255, 0, 255, 0.2);
-		border-radius: 8px;
+		background: rgba(0, 0, 0, 0.6);
+		border: 1px solid #1e3a5f;
+		border-radius: 4px;
 		display: flex;
 		flex-direction: column;
 		overflow: hidden;
@@ -483,44 +316,37 @@
 		flex: 1;
 		display: flex;
 		flex-direction: column;
-		gap: 0.6rem;
-		overflow-y: auto;
-		min-width: 300px;
+		gap: 0.5rem;
+		min-width: 260px;
+		max-width: 320px;
 	}
 
 	.panel-header {
-		padding: 0.8rem;
-		border-bottom: 1px solid rgba(255, 0, 255, 0.2);
+		padding: 0.4rem;
+		border-bottom: 1px solid #1e3a5f;
 		background: rgba(0, 0, 0, 0.3);
-	}
-
-	.panel-header h3 {
-		margin: 0 0 0.5rem 0;
-		font-size: 0.8rem;
-		color: #ff00ff;
-		letter-spacing: 0.05em;
 	}
 
 	.controls {
 		display: flex;
-		gap: 0.8rem;
+		gap: 0.4rem;
 		align-items: center;
 	}
 
 	.search-input {
 		flex: 1;
 		background: rgba(0, 0, 0, 0.6);
-		border: 1px solid rgba(255, 0, 255, 0.3);
-		border-radius: 4px;
-		padding: 0.3rem 0.6rem;
-		color: #fff;
-		font-size: 0.7rem;
+		border: 1px solid #1e3a5f;
+		border-radius: 3px;
+		padding: 0.2rem 0.4rem;
+		color: #b8a678;
+		font-size: 0.6rem;
 	}
 
 	.search-input:focus {
 		outline: none;
-		border-color: #ff00ff;
-		box-shadow: 0 0 10px rgba(255, 0, 255, 0.3);
+		border-color: #0a4f3c;
+		box-shadow: 0 0 5px rgba(10, 79, 60, 0.3);
 	}
 
 	.view-toggle {
@@ -529,68 +355,67 @@
 	}
 
 	.toggle-btn {
-		background: rgba(0, 0, 0, 0.6);
-		border: 1px solid rgba(255, 0, 255, 0.3);
-		color: rgba(255, 255, 255, 0.7);
-		padding: 0.25rem 0.5rem;
-		border-radius: 4px;
+		background: rgba(0, 0, 0, 0.7);
+		border: 1px solid #1e3a5f;
+		color: #b8a678;
+		padding: 0.15rem 0.3rem;
+		border-radius: 3px;
 		cursor: pointer;
-		font-size: 0.6rem;
-		transition: all 0.3s ease;
+		font-size: 0.5rem;
+		transition: all 0.2s ease;
 	}
 
 	.toggle-btn.active {
-		background: rgba(255, 0, 255, 0.1);
-		border-color: #ff00ff;
-		color: #ff00ff;
+		background: linear-gradient(135deg, rgba(10, 79, 60, 0.2), rgba(30, 58, 95, 0.15));
+		border-color: #0a4f3c;
+		color: #fff;
 	}
 
 	.table-container {
 		flex: 1;
 		overflow: auto;
-		padding: 0.5rem;
+		padding: 0.3rem;
 	}
 
 	.data-table {
 		width: 100%;
 		border-collapse: collapse;
-		font-size: 0.7rem;
+		font-size: 0.6rem;
 	}
 
 	.data-table th {
-		background: rgba(255, 0, 255, 0.1);
-		color: #ff00ff;
-		padding: 0.5rem;
+		background: rgba(10, 79, 60, 0.1);
+		color: #0a4f3c;
+		padding: 0.25rem;
 		text-align: left;
 		font-weight: 600;
-		letter-spacing: 0.05em;
+		letter-spacing: 0.03em;
 		position: sticky;
 		top: 0;
 		z-index: 10;
 	}
 
 	.data-table td {
-		padding: 0.4rem 0.5rem;
-		border-bottom: 1px solid rgba(255, 255, 255, 0.05);
-		color: rgba(255, 255, 255, 0.8);
+		padding: 0.2rem 0.25rem;
+		border-bottom: 1px solid rgba(30, 58, 95, 0.2);
+		color: #b8a678;
 	}
 
 	.data-table tr:hover {
-		background: rgba(255, 0, 255, 0.05);
+		background: rgba(10, 79, 60, 0.05);
 	}
 
-	.country-cell .cell-content {
+	.country-cell {
 		display: flex;
 		align-items: center;
-		gap: 0.5rem;
+		gap: 0.3rem;
 	}
 
 	.indicator {
-		width: 6px;
-		height: 6px;
+		width: 5px;
+		height: 5px;
 		border-radius: 50%;
 		flex-shrink: 0;
-		animation: pulse 2s infinite;
 	}
 
 	.center {
@@ -600,169 +425,139 @@
 	.coverage-cell {
 		display: flex;
 		align-items: center;
-		gap: 0.5rem;
+		gap: 0.3rem;
 	}
 
 	.coverage-bar {
 		flex: 1;
-		height: 5px;
-		background: rgba(0, 0, 0, 0.5);
-		border-radius: 3px;
+		height: 3px;
+		background: rgba(30, 58, 95, 0.3);
+		border-radius: 2px;
 		overflow: hidden;
-		min-width: 60px;
+		min-width: 35px;
 	}
 
 	.coverage-fill {
 		height: 100%;
 		transition: width 0.5s ease;
-		box-shadow: 0 0 10px currentColor;
 	}
 
 	.coverage-text {
-		font-size: 0.65rem;
-		min-width: 40px;
+		font-size: 0.5rem;
+		min-width: 30px;
 		text-align: right;
 	}
 
 	.threat-badge {
-		padding: 0.15rem 0.4rem;
-		border-radius: 3px;
-		font-size: 0.6rem;
+		padding: 0.1rem 0.25rem;
+		border-radius: 2px;
+		font-size: 0.45rem;
 		font-weight: 600;
 	}
 
 	.threat-badge.critical {
-		background: rgba(255, 0, 255, 0.2);
-		color: #ff00ff;
-		border: 1px solid #ff00ff;
-	}
-
-	.threat-badge.high {
 		background: rgba(255, 0, 102, 0.2);
 		color: #ff0066;
 		border: 1px solid #ff0066;
 	}
 
+	.threat-badge.high {
+		background: rgba(255, 153, 0, 0.2);
+		color: #ff9900;
+		border: 1px solid #ff9900;
+	}
+
 	.threat-badge.medium {
-		background: rgba(255, 170, 0, 0.2);
-		color: #ffaa00;
-		border: 1px solid #ffaa00;
+		background: rgba(255, 204, 0, 0.2);
+		color: #ffcc00;
+		border: 1px solid #ffcc00;
 	}
 
 	.threat-badge.low {
-		background: rgba(0, 255, 255, 0.2);
-		color: #00ffff;
-		border: 1px solid #00ffff;
+		background: rgba(10, 79, 60, 0.2);
+		color: #0a4f3c;
+		border: 1px solid #0a4f3c;
 	}
 
 	.drill-btn {
-		background: rgba(255, 0, 255, 0.1);
-		border: 1px solid #ff00ff;
-		color: #ff00ff;
-		padding: 0.2rem 0.5rem;
-		border-radius: 4px;
+		background: rgba(10, 79, 60, 0.2);
+		border: 1px solid #0a4f3c;
+		color: #0a4f3c;
+		padding: 0.1rem 0.25rem;
+		border-radius: 2px;
 		cursor: pointer;
-		font-size: 0.6rem;
-		transition: all 0.3s ease;
+		font-size: 0.5rem;
+		font-weight: 700;
 	}
 
 	.drill-btn:hover {
-		background: rgba(255, 0, 255, 0.2);
-		transform: translateX(2px);
-		box-shadow: 0 0 10px rgba(255, 0, 255, 0.3);
+		background: rgba(10, 79, 60, 0.3);
+		box-shadow: 0 0 5px rgba(10, 79, 60, 0.5);
 	}
 
 	.grid-container {
 		display: grid;
-		grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
-		gap: 0.6rem;
-		padding: 0.6rem;
-		overflow-y: auto;
-		flex: 1;
+		grid-template-columns: repeat(2, 1fr);
+		gap: 0.4rem;
+		padding: 0.4rem;
 	}
 
 	.grid-card {
-		background: rgba(0, 0, 0, 0.6);
+		background: rgba(0, 0, 0, 0.7);
 		border: 1px solid var(--card-color);
-		border-radius: 6px;
-		padding: 0.8rem;
+		border-radius: 3px;
+		padding: 0.4rem;
 		cursor: pointer;
-		transition: all 0.3s ease;
+		transition: all 0.2s ease;
 	}
 
 	.grid-card:hover {
-		transform: translateY(-3px);
-		box-shadow: 0 8px 20px rgba(0, 0, 0, 0.4), 0 0 20px var(--card-color);
+		transform: translateY(-2px);
+		box-shadow: 0 4px 10px rgba(0, 0, 0, 0.3);
 	}
 
 	.card-header {
 		display: flex;
-		justify-content: space-between;
-		align-items: center;
-		margin-bottom: 0.5rem;
-	}
-
-	.card-icon {
-		font-size: 1rem;
+		justify-content: flex-end;
+		margin-bottom: 0.2rem;
 	}
 
 	.threat-indicator {
-		font-size: 0.5rem;
-		padding: 0.1rem 0.3rem;
-		border-radius: 3px;
+		font-size: 0.4rem;
+		padding: 0.05rem 0.15rem;
+		border-radius: 2px;
 		font-weight: 600;
 	}
 
-	.threat-indicator.critical {
-		background: rgba(255, 0, 255, 0.2);
-		color: #ff00ff;
-		border: 1px solid #ff00ff;
-	}
-
-	.threat-indicator.high {
-		background: rgba(255, 0, 102, 0.2);
-		color: #ff0066;
-		border: 1px solid #ff0066;
-	}
-
-	.threat-indicator.medium {
-		background: rgba(255, 170, 0, 0.2);
-		color: #ffaa00;
-		border: 1px solid #ffaa00;
-	}
-
-	.threat-indicator.low {
-		background: rgba(0, 255, 255, 0.2);
-		color: #00ffff;
-		border: 1px solid #00ffff;
-	}
+	.threat-indicator.critical { background: rgba(255, 0, 102, 0.2); color: #ff0066; border: 1px solid #ff0066; }
+	.threat-indicator.high { background: rgba(255, 153, 0, 0.2); color: #ff9900; border: 1px solid #ff9900; }
+	.threat-indicator.medium { background: rgba(255, 204, 0, 0.2); color: #ffcc00; border: 1px solid #ffcc00; }
+	.threat-indicator.low { background: rgba(10, 79, 60, 0.2); color: #0a4f3c; border: 1px solid #0a4f3c; }
 
 	.card-body {
 		text-align: center;
 	}
 
 	.country-name {
-		font-size: 0.65rem;
-		color: rgba(255, 255, 255, 0.9);
-		margin-bottom: 0.3rem;
+		font-size: 0.55rem;
+		color: #b8a678;
+		margin-bottom: 0.2rem;
 		font-weight: 600;
 	}
 
 	.country-count {
-		font-size: 1.1rem;
+		font-size: 0.8rem;
 		font-weight: 700;
 		color: var(--card-color);
-		text-shadow: 0 0 10px var(--card-color);
-		margin-bottom: 0.3rem;
+		margin-bottom: 0.2rem;
 	}
 
 	.progress-bar {
 		width: 100%;
-		height: 3px;
-		background: rgba(0, 0, 0, 0.5);
-		border-radius: 2px;
+		height: 2px;
+		background: rgba(30, 58, 95, 0.3);
+		border-radius: 1px;
 		overflow: hidden;
-		margin-bottom: 0.2rem;
 	}
 
 	.progress-fill {
@@ -770,35 +565,25 @@
 		transition: width 0.5s ease;
 	}
 
-	.card-percentage {
-		font-size: 0.6rem;
-		color: rgba(255, 255, 255, 0.6);
-	}
-
 	.pagination {
 		display: flex;
 		justify-content: center;
 		align-items: center;
-		gap: 1rem;
-		padding: 0.6rem;
-		border-top: 1px solid rgba(255, 0, 255, 0.2);
+		gap: 0.4rem;
+		padding: 0.25rem;
+		border-top: 1px solid #1e3a5f;
 		background: rgba(0, 0, 0, 0.3);
 	}
 
 	.pagination button {
-		background: rgba(255, 0, 255, 0.1);
-		border: 1px solid #ff00ff;
-		color: #ff00ff;
-		padding: 0.3rem 0.6rem;
-		border-radius: 4px;
+		background: rgba(10, 79, 60, 0.1);
+		border: 1px solid #0a4f3c;
+		color: #0a4f3c;
+		padding: 0.15rem 0.3rem;
+		border-radius: 3px;
 		cursor: pointer;
-		transition: all 0.3s ease;
-		font-size: 0.65rem;
-	}
-
-	.pagination button:hover:not(:disabled) {
-		background: rgba(255, 0, 255, 0.2);
-		transform: scale(1.05);
+		font-size: 0.5rem;
+		font-weight: 600;
 	}
 
 	.pagination button:disabled {
@@ -807,119 +592,121 @@
 	}
 
 	.pagination span {
-		font-size: 0.65rem;
-		color: rgba(255, 255, 255, 0.8);
+		font-size: 0.55rem;
+		color: #b8a678;
 	}
 
-	.viz-card {
-		background: rgba(0, 0, 0, 0.4);
-		border: 1px solid rgba(255, 0, 255, 0.2);
-		border-radius: 6px;
-		padding: 0.6rem;
-		animation: vizEntrance 0.6s ease-out;
+	.metrics-row {
+		display: flex;
+		gap: 0.3rem;
 	}
 
-	.viz-card h4 {
-		margin: 0 0 0.5rem 0;
-		font-size: 0.65rem;
-		color: #ff00ff;
-		letter-spacing: 0.05em;
+	.metric-card {
+		flex: 1;
+		background: rgba(0, 0, 0, 0.5);
+		border: 1px solid #1e3a5f;
+		border-radius: 3px;
+		padding: 0.3rem;
 		text-align: center;
 	}
 
-	.world-map {
-		width: 100%;
-		display: flex;
-		justify-content: center;
+	.metric-value {
+		font-size: 0.9rem;
+		font-weight: 700;
+		color: #0a4f3c;
+		text-shadow: 0 0 8px rgba(10, 79, 60, 0.3);
+	}
+
+	.metric-label {
+		font-size: 0.45rem;
+		color: #b8a678;
+		margin-top: 0.1rem;
+		letter-spacing: 0.03em;
+	}
+
+	.viz-card {
+		background: rgba(0, 0, 0, 0.5);
+		border: 1px solid #1e3a5f;
+		border-radius: 3px;
+		padding: 0.4rem;
+	}
+
+	.viz-card h4 {
+		margin: 0 0 0.3rem 0;
+		font-size: 0.55rem;
+		color: #0a4f3c;
+		letter-spacing: 0.03em;
+		text-align: center;
+		font-weight: 600;
 	}
 
 	.donut-chart {
 		width: 100%;
-		max-width: 180px;
+		max-width: 120px;
 		margin: 0 auto;
 	}
 
 	.bar-chart {
 		display: flex;
 		flex-direction: column;
-		gap: 0.4rem;
+		gap: 0.2rem;
 	}
 
 	.bar-item {
 		display: flex;
 		flex-direction: column;
-		gap: 0.2rem;
+		gap: 0.1rem;
 	}
 
 	.bar-label {
-		font-size: 0.6rem;
-		color: rgba(255, 255, 255, 0.8);
+		font-size: 0.45rem;
+		color: #b8a678;
 	}
 
 	.bar-container {
 		position: relative;
-		height: 16px;
-		background: rgba(0, 0, 0, 0.5);
-		border-radius: 3px;
+		height: 10px;
+		background: rgba(30, 58, 95, 0.3);
+		border-radius: 2px;
 		overflow: hidden;
 	}
 
 	.bar-fill {
 		height: 100%;
 		transition: width 0.5s ease;
-		position: relative;
-		overflow: hidden;
-	}
-
-	.bar-fill::after {
-		content: '';
-		position: absolute;
-		top: 0;
-		left: -100%;
-		width: 100%;
-		height: 100%;
-		background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.3), transparent);
-		animation: shimmer 2s infinite;
 	}
 
 	.bar-value {
 		position: absolute;
-		right: 0.3rem;
+		right: 0.2rem;
 		top: 50%;
 		transform: translateY(-50%);
-		font-size: 0.55rem;
+		font-size: 0.4rem;
 		font-weight: 600;
 		color: #fff;
-		text-shadow: 0 0 4px rgba(0, 0, 0, 0.8);
+		text-shadow: 0 0 2px #000;
 	}
 
 	.matrix-grid {
 		display: grid;
 		grid-template-columns: repeat(3, 1fr);
-		gap: 0.3rem;
+		gap: 0.2rem;
 	}
 
 	.matrix-cell {
 		aspect-ratio: 1;
 		display: flex;
-		flex-direction: column;
 		align-items: center;
 		justify-content: center;
 		border: 1px solid;
-		border-radius: 3px;
-		padding: 0.3rem;
+		border-radius: 2px;
+		padding: 0.2rem;
 	}
 
 	.cell-value {
-		font-size: 0.6rem;
+		font-size: 0.45rem;
 		font-weight: 600;
 		color: #fff;
-	}
-
-	.cell-label {
-		font-size: 0.45rem;
-		color: rgba(255, 255, 255, 0.6);
-		margin-top: 0.1rem;
 	}
 
 	.loading-state {
@@ -928,14 +715,14 @@
 		flex-direction: column;
 		align-items: center;
 		justify-content: center;
-		gap: 1rem;
+		gap: 0.4rem;
 	}
 
 	.spinner {
-		width: 40px;
-		height: 40px;
-		border: 3px solid rgba(255, 0, 255, 0.2);
-		border-top-color: #ff00ff;
+		width: 25px;
+		height: 25px;
+		border: 2px solid #1e3a5f;
+		border-top-color: #0a4f3c;
 		border-radius: 50%;
 		animation: spin 1s linear infinite;
 	}
@@ -950,98 +737,57 @@
 		display: flex;
 		justify-content: space-between;
 		align-items: center;
-		padding: 0.8rem;
-		border-bottom: 1px solid rgba(255, 0, 102, 0.3);
-		background: rgba(255, 0, 102, 0.05);
+		padding: 0.4rem;
+		border-bottom: 1px solid #0a4f3c;
+		background: rgba(10, 79, 60, 0.05);
 	}
 
 	.drill-header h4 {
 		margin: 0;
-		color: #ff0066;
-		font-size: 0.8rem;
+		color: #0a4f3c;
+		font-size: 0.65rem;
 	}
 
 	.close-btn {
-		background: transparent;
+		background: rgba(255, 0, 102, 0.1);
 		border: 1px solid #ff0066;
 		color: #ff0066;
-		width: 24px;
-		height: 24px;
-		border-radius: 50%;
+		width: 18px;
+		height: 18px;
+		border-radius: 2px;
 		cursor: pointer;
 		display: flex;
 		align-items: center;
 		justify-content: center;
-		transition: all 0.3s ease;
-		font-size: 0.7rem;
-	}
-
-	.close-btn:hover {
-		background: rgba(255, 0, 102, 0.2);
-		transform: rotate(90deg);
+		font-size: 0.5rem;
 	}
 
 	.host-cell {
 		font-family: monospace;
-		color: #00ffff;
-		font-size: 0.7rem;
+		color: #0a4f3c;
+		font-size: 0.55rem;
 	}
 
 	.status-badge {
-		padding: 0.1rem 0.3rem;
-		border-radius: 3px;
-		font-size: 0.6rem;
+		padding: 0.05rem 0.15rem;
+		border-radius: 2px;
+		font-size: 0.45rem;
 		font-weight: 600;
 	}
 
 	.status-badge.active {
-		background: rgba(0, 255, 133, 0.2);
-		color: #00ff85;
-		border: 1px solid #00ff85;
+		background: rgba(10, 79, 60, 0.2);
+		color: #0a4f3c;
+		border: 1px solid #0a4f3c;
 	}
 
 	.status-badge.inactive {
-		background: rgba(255, 0, 102, 0.2);
+		background: rgba(255, 0, 102, 0.1);
 		color: #ff0066;
 		border: 1px solid #ff0066;
 	}
 
 	@keyframes spin {
 		to { transform: rotate(360deg); }
-	}
-
-	@keyframes pulse {
-		0%, 100% { opacity: 1; }
-		50% { opacity: 0.5; }
-	}
-
-	@keyframes shimmer {
-		to { left: 100%; }
-	}
-
-	@keyframes iconFloat {
-		0%, 100% { transform: translateY(0); }
-		50% { transform: translateY(-3px); }
-	}
-
-	@keyframes vizEntrance {
-		from { opacity: 0; transform: translateX(20px); }
-		to { opacity: 1; transform: translateX(0); }
-	}
-
-	@media (max-width: 1200px) {
-		.main-content {
-			flex-direction: column;
-		}
-		
-		.viz-panel {
-			flex-direction: row;
-			overflow-x: auto;
-			min-width: auto;
-		}
-		
-		.viz-card {
-			min-width: 250px;
-		}
 	}
 </style>
