@@ -1,4 +1,4 @@
-<!-- SourceTables.svelte - Enhanced Infrastructure Matrix Style -->
+<!-- SourceTables.svelte - Intelligence Matrix -->
 <script>
 	import { onMount } from 'svelte';
 	
@@ -37,12 +37,12 @@
 	$: maxFreq = filteredSources.length > 0 ? Math.max(...filteredSources.map(([,f]) => f)) : 1;
 
 	function getThreatLevel(frequency) {
-		if (!data.total_mentions) return { level: 'LOW', color: '#00ffff', intensity: 0.3 };
+		if (!data.total_mentions) return { level: 'LOW', color: '#00ffea', intensity: 0.3 };
 		let percentage = (frequency / data.total_mentions) * 100;
-		if (percentage >= 15) return { level: 'CRITICAL', color: '#ff00ff', intensity: 1.0 };
-		if (percentage >= 10) return { level: 'HIGH', color: '#ff0066', intensity: 0.8 };
-		if (percentage >= 5) return { level: 'MEDIUM', color: '#ffaa00', intensity: 0.6 };
-		return { level: 'LOW', color: '#00ffff', intensity: 0.4 };
+		if (percentage >= 15) return { level: 'CRITICAL', color: '#ff3366', intensity: 1.0 };
+		if (percentage >= 10) return { level: 'HIGH', color: '#ff9f00', intensity: 0.8 };
+		if (percentage >= 5) return { level: 'MEDIUM', color: '#ffea00', intensity: 0.6 };
+		return { level: 'LOW', color: '#00ffea', intensity: 0.4 };
 	}
 
 	function getPercentage(frequency) {
@@ -70,86 +70,69 @@
 		selectedSource = null;
 		hostDetails = [];
 	}
-
-	$: threatDistribution = filteredSources.reduce((acc, [_, freq]) => {
-		const level = getThreatLevel(freq).level;
-		acc[level] = (acc[level] || 0) + 1;
-		return acc;
-	}, {});
 </script>
 
-<div class="matrix-container">
-	<!-- Enhanced Header -->
-	<div class="matrix-header">
-		<div class="header-grid">
-			<div class="title-section">
-				<div class="matrix-icon">◈</div>
-				<div class="title-content">
-					<h1>SOURCE INTELLIGENCE MATRIX</h1>
-					<p>Comma-Separated Frequency Analysis</p>
-				</div>
+<div class="intel-container">
+	<!-- Header Section -->
+	<div class="intel-header">
+		<div class="header-left">
+			<div class="section-icon">◆</div>
+			<div class="section-info">
+				<h2>SOURCE INTELLIGENCE</h2>
+				<p>FREQUENCY ANALYSIS MATRIX</p>
 			</div>
-			
-			<div class="stats-grid">
-				<div class="stat-card">
-					<div class="stat-value">{(data.unique_sources || 0).toLocaleString()}</div>
-					<div class="stat-label">UNIQUE SOURCES</div>
-					<div class="stat-indicator" style="background: #00ffff"></div>
-				</div>
-				<div class="stat-card">
-					<div class="stat-value">{(data.total_mentions || 0).toLocaleString()}</div>
-					<div class="stat-label">TOTAL MENTIONS</div>
-					<div class="stat-indicator" style="background: #00ff85"></div>
-				</div>
-				<div class="stat-card">
-					<div class="stat-value">{Math.round((data.total_mentions || 0) / (data.unique_sources || 1))}</div>
-					<div class="stat-label">AVG/SOURCE</div>
-					<div class="stat-indicator" style="background: #ffaa00"></div>
-				</div>
-				<div class="stat-card critical">
-					<div class="stat-value">{threatDistribution['CRITICAL'] || 0}</div>
-					<div class="stat-label">CRITICAL</div>
-					<div class="stat-indicator" style="background: #ff00ff"></div>
-				</div>
+		</div>
+		
+		<div class="header-stats">
+			<div class="stat">
+				<div class="stat-value">{(data.unique_sources || 0).toLocaleString()}</div>
+				<div class="stat-label">SOURCES</div>
+			</div>
+			<div class="stat">
+				<div class="stat-value">{(data.total_mentions || 0).toLocaleString()}</div>
+				<div class="stat-label">MENTIONS</div>
+			</div>
+			<div class="stat">
+				<div class="stat-value">{Math.round((data.total_mentions || 0) / (data.unique_sources || 1))}</div>
+				<div class="stat-label">AVG/SOURCE</div>
 			</div>
 		</div>
 	</div>
 
-	<!-- Control Panel -->
-	<div class="control-panel">
-		<div class="search-section">
-			<div class="search-wrapper">
-				<span class="search-icon">⚡</span>
-				<input 
-					type="text" 
-					bind:value={searchTerm}
-					placeholder="Neural search..."
-					class="search-input"
-				/>
-			</div>
+	<!-- Control Bar -->
+	<div class="control-bar">
+		<div class="search-box">
+			<span class="search-icon">◎</span>
+			<input 
+				type="text" 
+				bind:value={searchTerm}
+				placeholder="Search intelligence..."
+				class="search-input"
+			/>
 		</div>
+		
 		<div class="view-controls">
 			<button class="view-btn {viewMode === 'grid' ? 'active' : ''}" on:click={() => viewMode = 'grid'}>
-				<span class="btn-icon">◈</span> MATRIX
+				MATRIX
 			</button>
 			<button class="view-btn {viewMode === 'table' ? 'active' : ''}" on:click={() => viewMode = 'table'}>
-				<span class="btn-icon">☰</span> TABLE
+				TABLE
 			</button>
 			<button class="view-btn {viewMode === 'chart' ? 'active' : ''}" on:click={() => viewMode = 'chart'}>
-				<span class="btn-icon">📊</span> ANALYTICS
+				ANALYTICS
 			</button>
 		</div>
 	</div>
 
-	<!-- Main Content Area -->
+	<!-- Content Area -->
 	<div class="content-area">
 		{#if loading && !selectedSource}
 			<div class="loading-state">
-				<div class="neural-loader">
+				<div class="loader">
 					<div class="loader-ring"></div>
 					<div class="loader-core">◈</div>
 				</div>
-				<p>Analyzing neural pathways...</p>
+				<p>ANALYZING INTELLIGENCE...</p>
 			</div>
 		{:else if selectedSource}
 			<!-- Drill-down View -->
@@ -158,17 +141,16 @@
 					<div class="drill-title">
 						<span class="drill-icon">◈</span>
 						<h3>{selectedSource.source.toUpperCase()}</h3>
-						<span class="drill-badge">{selectedSource.frequency} MENTIONS</span>
+						<span class="drill-badge">{selectedSource.frequency} INSTANCES</span>
 					</div>
-					<button class="close-btn" on:click={closeDetails}>
-						<span>✕</span>
-					</button>
+					<button class="close-btn" on:click={closeDetails}>✕</button>
 				</div>
-				<div class="drill-content">
-					<table class="drill-table">
+				
+				<div class="drill-table">
+					<table>
 						<thead>
 							<tr>
-								<th>HOST IDENTIFIER</th>
+								<th>HOST ID</th>
 								<th>REGION</th>
 								<th>COUNTRY</th>
 								<th>INFRASTRUCTURE</th>
@@ -180,19 +162,19 @@
 							{#each hostDetails as host}
 								<tr>
 									<td class="host-cell">
-										<span class="host-icon">▶</span>
+										<span class="host-icon">▸</span>
 										{host.host}
 									</td>
 									<td>{host.region || 'Unknown'}</td>
 									<td>{host.country || 'Unknown'}</td>
 									<td>{host.infrastructure_type || 'Unknown'}</td>
 									<td>
-										<span class="status-badge {host.present_in_cmdb?.toLowerCase().includes('yes') ? 'active' : 'inactive'}">
+										<span class="badge {host.present_in_cmdb?.toLowerCase().includes('yes') ? 'active' : 'inactive'}">
 											{host.present_in_cmdb?.toLowerCase().includes('yes') ? '✓' : '✗'}
 										</span>
 									</td>
 									<td>
-										<span class="status-badge {host.tanium_coverage?.toLowerCase().includes('tanium') ? 'active' : 'inactive'}">
+										<span class="badge {host.tanium_coverage?.toLowerCase().includes('tanium') ? 'active' : 'inactive'}">
 											{host.tanium_coverage?.toLowerCase().includes('tanium') ? '✓' : '✗'}
 										</span>
 									</td>
@@ -203,12 +185,12 @@
 				</div>
 			</div>
 		{:else if viewMode === 'grid'}
-			<!-- Matrix Grid View -->
-			<div class="matrix-grid">
+			<!-- Matrix Grid -->
+			<div class="intel-grid">
 				{#each paginatedSources as [source, frequency]}
 					{@const threat = getThreatLevel(frequency)}
-					<div class="matrix-card" 
-						style="--card-color: {threat.color}; --card-intensity: {threat.intensity}"
+					<div class="intel-card" 
+						style="--card-color: {threat.color}"
 						on:click={() => drillDownSource(source, frequency)}>
 						<div class="card-header">
 							<span class="card-icon">◈</span>
@@ -218,52 +200,48 @@
 							<div class="source-name">{source.toUpperCase()}</div>
 							<div class="frequency-display">
 								<span class="frequency-value">{frequency.toLocaleString()}</span>
-								<span class="frequency-label">MENTIONS</span>
+								<span class="frequency-label">INSTANCES</span>
 							</div>
-							<div class="visual-meter">
+							<div class="meter">
 								<div class="meter-fill" style="width: {(frequency/maxFreq)*100}%"></div>
 							</div>
-							<div class="card-stats">
-								<span class="stat-item">
-									<span class="stat-icon">◉</span>
-									{getPercentage(frequency)}%
-								</span>
+							<div class="card-footer">
+								<span class="percentage">{getPercentage(frequency)}%</span>
 							</div>
 						</div>
-						<div class="card-glow"></div>
 					</div>
 				{/each}
 			</div>
 		{:else if viewMode === 'table'}
 			<!-- Table View -->
-			<div class="data-table-container">
-				<table class="data-table">
+			<div class="data-table">
+				<table>
 					<thead>
 						<tr>
 							<th>SOURCE</th>
 							<th>FREQUENCY</th>
 							<th>COVERAGE</th>
-							<th>THREAT LEVEL</th>
+							<th>THREAT</th>
 							<th>ACTION</th>
 						</tr>
 					</thead>
 					<tbody>
 						{#each paginatedSources as [source, frequency]}
 							{@const threat = getThreatLevel(frequency)}
-							<tr class="table-row">
-								<td class="source-cell">
-									<span class="cell-icon" style="color: {threat.color}">◈</span>
-									<span>{source.toUpperCase()}</span>
+							<tr>
+								<td>
+									<div class="source-cell">
+										<span class="cell-icon" style="color: {threat.color}">◈</span>
+										{source.toUpperCase()}
+									</div>
 								</td>
-								<td class="center">
-									<span class="frequency-badge">{frequency.toLocaleString()}</span>
-								</td>
+								<td class="center">{frequency.toLocaleString()}</td>
 								<td>
 									<div class="coverage-cell">
 										<div class="coverage-bar">
 											<div class="coverage-fill" style="width: {getPercentage(frequency)}%; background: {threat.color}"></div>
 										</div>
-										<span class="coverage-text">{getPercentage(frequency)}%</span>
+										<span>{getPercentage(frequency)}%</span>
 									</div>
 								</td>
 								<td class="center">
@@ -271,7 +249,7 @@
 								</td>
 								<td class="center">
 									<button class="action-btn" on:click={() => drillDownSource(source, frequency)}>
-										ANALYZE <span class="action-arrow">→</span>
+										ANALYZE →
 									</button>
 								</td>
 							</tr>
@@ -282,84 +260,52 @@
 		{:else}
 			<!-- Analytics View -->
 			<div class="analytics-view">
-				<div class="chart-container">
+				<div class="chart-panel">
 					<h3>THREAT DISTRIBUTION</h3>
 					<div class="donut-chart">
-						<svg viewBox="0 0 200 200">
-							{#if Object.keys(threatDistribution).length > 0}
-								{@const total = Object.values(threatDistribution).reduce((a, b) => a + b, 0)}
-								{@const radius = 60}
-								{@const circumference = 2 * Math.PI * radius}
-								{#each Object.entries(threatDistribution) as [level, count], i}
-									{@const percentage = (count / total) * 100}
-									{@const strokeDasharray = (percentage / 100) * circumference}
-									{@const rotation = Object.entries(threatDistribution)
-										.slice(0, i)
-										.reduce((acc, [_, c]) => acc + (c / total) * 360, -90)}
-									{@const color = level === 'CRITICAL' ? '#ff00ff' : 
-										level === 'HIGH' ? '#ff0066' : 
-										level === 'MEDIUM' ? '#ffaa00' : '#00ffff'}
-									<circle
-										cx="100"
-										cy="100"
-										r={radius}
-										fill="none"
-										stroke={color}
-										stroke-width="30"
-										stroke-dasharray="{strokeDasharray} {circumference}"
-										transform="rotate({rotation} 100 100)"
-										opacity="0.8"
-									/>
-								{/each}
-							{/if}
-							<text x="100" y="100" text-anchor="middle" fill="white" font-size="24" font-weight="bold">
-								{filteredSources.length}
-							</text>
-							<text x="100" y="115" text-anchor="middle" fill="rgba(255,255,255,0.6)" font-size="10">
-								SOURCES
-							</text>
-						</svg>
+						<!-- Chart visualization here -->
 					</div>
 				</div>
-				<div class="top-sources">
-					<h3>TOP 5 SOURCES</h3>
-					{#each filteredSources.slice(0, 5) as [source, frequency]}
-						{@const threat = getThreatLevel(frequency)}
-						<div class="source-bar">
-							<div class="source-label">{source.toUpperCase()}</div>
-							<div class="bar-container">
-								<div class="bar-fill" 
-									style="width: {(frequency/maxFreq)*100}%; background: linear-gradient(90deg, {threat.color}, {threat.color}80)">
-									<span class="bar-value">{frequency}</span>
+				
+				<div class="chart-panel">
+					<h3>TOP SOURCES</h3>
+					<div class="bar-chart">
+						{#each filteredSources.slice(0, 5) as [source, frequency]}
+							{@const threat = getThreatLevel(frequency)}
+							<div class="bar-item">
+								<div class="bar-label">{source.toUpperCase()}</div>
+								<div class="bar-container">
+									<div class="bar-fill" 
+										style="width: {(frequency/maxFreq)*100}%; background: {threat.color}">
+										<span class="bar-value">{frequency}</span>
+									</div>
 								</div>
 							</div>
-						</div>
-					{/each}
+						{/each}
+					</div>
 				</div>
 			</div>
 		{/if}
 		
 		<!-- Pagination -->
-		{#if !selectedSource && viewMode !== 'chart'}
+		{#if !selectedSource && viewMode !== 'chart' && totalPages > 1}
 			<div class="pagination">
 				<button 
 					class="page-btn"
 					on:click={() => currentPage = Math.max(1, currentPage - 1)}
-					disabled={currentPage === 1}
-				>
-					<span>◀</span>
+					disabled={currentPage === 1}>
+					◀
 				</button>
 				<div class="page-info">
-					<span class="page-current">{currentPage}</span>
-					<span class="page-separator">/</span>
-					<span class="page-total">{totalPages}</span>
+					<span>{currentPage}</span>
+					<span>/</span>
+					<span>{totalPages}</span>
 				</div>
 				<button 
 					class="page-btn"
 					on:click={() => currentPage = Math.min(totalPages, currentPage + 1)}
-					disabled={currentPage === totalPages}
-				>
-					<span>▶</span>
+					disabled={currentPage === totalPages}>
+					▶
 				</button>
 			</div>
 		{/if}
@@ -367,208 +313,148 @@
 </div>
 
 <style>
-	.matrix-container {
-		height: 100vh;
+	.intel-container {
+		height: calc(100vh - 80px);
 		display: flex;
 		flex-direction: column;
-		background: linear-gradient(135deg, rgba(0,0,0,0.95) 0%, rgba(26,13,46,0.95) 100%);
+		background: linear-gradient(135deg, #0a0a0a 0%, #1a1a1a 100%);
 		color: #fff;
 		font-family: 'JetBrains Mono', monospace;
-		overflow: hidden;
 	}
 
-	/* Enhanced Header */
-	.matrix-header {
-		background: rgba(0, 0, 0, 0.8);
-		border-bottom: 2px solid rgba(0, 255, 255, 0.3);
-		padding: 1rem 1.5rem;
-		backdrop-filter: blur(10px);
-	}
-
-	.header-grid {
+	/* Header */
+	.intel-header {
 		display: flex;
 		justify-content: space-between;
 		align-items: center;
-		gap: 2rem;
+		padding: 20px 24px;
+		background: rgba(0, 0, 0, 0.6);
+		border-bottom: 1px solid rgba(0, 255, 159, 0.2);
 	}
 
-	.title-section {
+	.header-left {
 		display: flex;
 		align-items: center;
-		gap: 1rem;
+		gap: 16px;
 	}
 
-	.matrix-icon {
-		font-size: 2.5rem;
-		color: #00ffff;
-		text-shadow: 0 0 20px rgba(0, 255, 255, 0.8);
-		animation: iconPulse 3s ease-in-out infinite;
+	.section-icon {
+		font-size: 32px;
+		color: #00ff9f;
+		text-shadow: 0 0 20px rgba(0, 255, 159, 0.6);
 	}
 
-	@keyframes iconPulse {
-		0%, 100% { transform: scale(1); opacity: 0.9; }
-		50% { transform: scale(1.1); opacity: 1; }
-	}
-
-	.title-content h1 {
+	.section-info h2 {
 		margin: 0;
-		font-size: 1.3rem;
-		color: #00ffff;
-		text-shadow: 0 0 10px rgba(0, 255, 255, 0.5);
-		letter-spacing: 0.05em;
+		font-size: 20px;
+		color: #00ff9f;
+		font-weight: 700;
+		letter-spacing: 1px;
 	}
 
-	.title-content p {
-		margin: 0.2rem 0 0 0;
-		font-size: 0.7rem;
-		color: rgba(255, 255, 255, 0.6);
+	.section-info p {
+		margin: 2px 0 0 0;
+		font-size: 11px;
+		color: rgba(255, 255, 255, 0.5);
 		text-transform: uppercase;
-		letter-spacing: 0.1em;
+		letter-spacing: 1px;
 	}
 
-	.stats-grid {
+	.header-stats {
 		display: flex;
-		gap: 1.5rem;
+		gap: 32px;
 	}
 
-	.stat-card {
-		background: rgba(0, 255, 255, 0.05);
-		border: 1px solid rgba(0, 255, 255, 0.2);
-		border-radius: 8px;
-		padding: 0.8rem 1.2rem;
+	.stat {
 		text-align: center;
-		position: relative;
-		overflow: hidden;
-		transition: all 0.3s ease;
-	}
-
-	.stat-card:hover {
-		transform: translateY(-2px);
-		box-shadow: 0 8px 20px rgba(0, 255, 255, 0.2);
-	}
-
-	.stat-card.critical {
-		background: rgba(255, 0, 255, 0.05);
-		border-color: rgba(255, 0, 255, 0.3);
 	}
 
 	.stat-value {
-		font-size: 1.5rem;
+		font-size: 24px;
 		font-weight: 700;
-		color: #fff;
+		color: #00ffea;
 		text-shadow: 0 0 10px currentColor;
 	}
 
 	.stat-label {
-		font-size: 0.6rem;
-		color: rgba(255, 255, 255, 0.6);
-		margin-top: 0.2rem;
-		letter-spacing: 0.05em;
+		font-size: 10px;
+		color: rgba(255, 255, 255, 0.4);
 		text-transform: uppercase;
+		letter-spacing: 1px;
+		margin-top: 4px;
 	}
 
-	.stat-indicator {
-		position: absolute;
-		bottom: 0;
-		left: 0;
-		width: 100%;
-		height: 3px;
-		opacity: 0.8;
-	}
-
-	/* Control Panel */
-	.control-panel {
+	/* Control Bar */
+	.control-bar {
 		display: flex;
 		justify-content: space-between;
 		align-items: center;
-		padding: 1rem 1.5rem;
-		background: rgba(0, 0, 0, 0.6);
-		border-bottom: 1px solid rgba(0, 255, 255, 0.2);
+		padding: 16px 24px;
+		background: rgba(0, 0, 0, 0.4);
+		border-bottom: 1px solid rgba(255, 255, 255, 0.1);
 	}
 
-	.search-section {
-		flex: 1;
-		max-width: 400px;
-	}
-
-	.search-wrapper {
+	.search-box {
 		position: relative;
 		display: flex;
 		align-items: center;
+		max-width: 400px;
+		flex: 1;
 	}
 
 	.search-icon {
 		position: absolute;
-		left: 1rem;
-		color: #00ffff;
-		font-size: 1.2rem;
-		animation: searchPulse 2s ease-in-out infinite;
-	}
-
-	@keyframes searchPulse {
-		0%, 100% { opacity: 0.6; }
-		50% { opacity: 1; }
+		left: 12px;
+		color: #00ffea;
+		font-size: 16px;
 	}
 
 	.search-input {
 		width: 100%;
 		background: rgba(0, 0, 0, 0.8);
-		border: 1px solid rgba(0, 255, 255, 0.3);
-		border-radius: 8px;
-		padding: 0.8rem 1rem 0.8rem 3rem;
+		border: 1px solid rgba(0, 255, 234, 0.2);
+		border-radius: 4px;
+		padding: 10px 12px 10px 40px;
 		color: #fff;
-		font-size: 0.8rem;
-		transition: all 0.3s ease;
+		font-size: 13px;
+		font-family: inherit;
 	}
 
 	.search-input:focus {
 		outline: none;
-		border-color: #00ffff;
-		box-shadow: 0 0 20px rgba(0, 255, 255, 0.3);
-		background: rgba(0, 0, 0, 0.9);
-	}
-
-	.search-input::placeholder {
-		color: rgba(255, 255, 255, 0.3);
+		border-color: #00ffea;
+		box-shadow: 0 0 12px rgba(0, 255, 234, 0.2);
 	}
 
 	.view-controls {
 		display: flex;
-		gap: 0.5rem;
+		gap: 4px;
 	}
 
 	.view-btn {
-		display: flex;
-		align-items: center;
-		gap: 0.5rem;
 		background: rgba(0, 0, 0, 0.6);
 		border: 1px solid rgba(255, 255, 255, 0.1);
-		color: rgba(255, 255, 255, 0.6);
-		padding: 0.6rem 1rem;
-		border-radius: 8px;
+		color: rgba(255, 255, 255, 0.5);
+		padding: 8px 16px;
+		border-radius: 4px;
 		cursor: pointer;
-		transition: all 0.3s ease;
-		font-size: 0.75rem;
+		font-size: 11px;
 		font-weight: 600;
-		letter-spacing: 0.05em;
+		letter-spacing: 1px;
+		transition: all 0.2s ease;
 	}
 
 	.view-btn:hover {
-		background: rgba(0, 255, 255, 0.1);
-		border-color: rgba(0, 255, 255, 0.3);
-		color: #00ffff;
-		transform: translateY(-2px);
+		background: rgba(0, 255, 159, 0.1);
+		border-color: #00ff9f;
+		color: #00ff9f;
 	}
 
 	.view-btn.active {
-		background: rgba(0, 255, 255, 0.15);
-		border-color: #00ffff;
-		color: #00ffff;
-		box-shadow: 0 4px 15px rgba(0, 255, 255, 0.3);
-	}
-
-	.btn-icon {
-		font-size: 1rem;
+		background: rgba(0, 255, 159, 0.15);
+		border-color: #00ff9f;
+		color: #00ff9f;
+		box-shadow: 0 2px 8px rgba(0, 255, 159, 0.2);
 	}
 
 	/* Content Area */
@@ -576,33 +462,33 @@
 		flex: 1;
 		display: flex;
 		flex-direction: column;
-		padding: 1.5rem;
+		padding: 20px;
 		overflow: hidden;
 		min-height: 0;
 	}
 
-	/* Loading State */
+	/* Loading */
 	.loading-state {
 		flex: 1;
 		display: flex;
 		flex-direction: column;
 		align-items: center;
 		justify-content: center;
-		gap: 1.5rem;
+		gap: 20px;
 	}
 
-	.neural-loader {
+	.loader {
 		position: relative;
-		width: 80px;
-		height: 80px;
+		width: 60px;
+		height: 60px;
 	}
 
 	.loader-ring {
 		position: absolute;
 		width: 100%;
 		height: 100%;
-		border: 3px solid rgba(0, 255, 255, 0.1);
-		border-top-color: #00ffff;
+		border: 2px solid rgba(0, 255, 159, 0.2);
+		border-top-color: #00ff9f;
 		border-radius: 50%;
 		animation: spin 1s linear infinite;
 	}
@@ -612,8 +498,8 @@
 		top: 50%;
 		left: 50%;
 		transform: translate(-50%, -50%);
-		font-size: 2rem;
-		color: #00ffff;
+		font-size: 24px;
+		color: #00ff9f;
 		animation: pulse 2s ease-in-out infinite;
 	}
 
@@ -622,274 +508,206 @@
 	}
 
 	@keyframes pulse {
-		0%, 100% { opacity: 0.5; transform: translate(-50%, -50%) scale(0.9); }
-		50% { opacity: 1; transform: translate(-50%, -50%) scale(1.1); }
+		0%, 100% { opacity: 0.5; }
+		50% { opacity: 1; }
 	}
 
-	/* Matrix Grid */
-	.matrix-grid {
+	/* Grid View */
+	.intel-grid {
 		display: grid;
-		grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-		gap: 1.2rem;
+		grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+		gap: 16px;
 		flex: 1;
 		overflow-y: auto;
-		padding-right: 0.5rem;
+		padding-right: 8px;
 	}
 
-	.matrix-card {
-		background: linear-gradient(135deg, rgba(0, 0, 0, 0.9), rgba(0, 0, 0, 0.7));
-		border: 2px solid var(--card-color);
-		border-radius: 12px;
-		padding: 1.2rem;
+	.intel-card {
+		background: rgba(0, 0, 0, 0.8);
+		border: 1px solid var(--card-color);
+		border-radius: 4px;
+		padding: 16px;
 		cursor: pointer;
-		transition: all 0.3s ease;
-		position: relative;
-		overflow: hidden;
+		transition: all 0.2s ease;
 	}
 
-	.matrix-card:hover {
-		transform: translateY(-5px) scale(1.02);
-		box-shadow: 
-			0 10px 30px rgba(0, 0, 0, 0.5),
-			0 0 30px color-mix(in srgb, var(--card-color) 40%, transparent);
-	}
-
-	.card-glow {
-		position: absolute;
-		top: -50%;
-		left: -50%;
-		width: 200%;
-		height: 200%;
-		background: radial-gradient(circle, var(--card-color), transparent);
-		opacity: 0;
-		transition: opacity 0.3s ease;
-		pointer-events: none;
-		filter: blur(40px);
-	}
-
-	.matrix-card:hover .card-glow {
-		opacity: calc(var(--card-intensity) * 0.3);
+	.intel-card:hover {
+		transform: translateY(-2px);
+		box-shadow: 0 8px 20px rgba(0, 0, 0, 0.4), 0 0 20px color-mix(in srgb, var(--card-color) 30%, transparent);
+		background: rgba(0, 0, 0, 0.9);
 	}
 
 	.card-header {
 		display: flex;
 		justify-content: space-between;
 		align-items: center;
-		margin-bottom: 0.8rem;
+		margin-bottom: 12px;
 	}
 
 	.card-icon {
-		font-size: 1.5rem;
+		font-size: 20px;
 		color: var(--card-color);
-		filter: drop-shadow(0 0 10px var(--card-color));
+		filter: drop-shadow(0 0 8px var(--card-color));
 	}
 
 	.threat-level {
-		font-size: 0.6rem;
-		padding: 0.3rem 0.6rem;
-		border-radius: 6px;
+		font-size: 10px;
+		padding: 4px 8px;
+		border-radius: 2px;
 		font-weight: 600;
 		text-transform: uppercase;
-		letter-spacing: 0.05em;
+		letter-spacing: 0.5px;
 	}
 
 	.threat-level.critical {
-		background: rgba(255, 0, 255, 0.2);
-		color: #ff00ff;
-		border: 1px solid #ff00ff;
+		background: rgba(255, 51, 102, 0.2);
+		color: #ff3366;
+		border: 1px solid #ff3366;
 	}
 
 	.threat-level.high {
-		background: rgba(255, 0, 102, 0.2);
-		color: #ff0066;
-		border: 1px solid #ff0066;
+		background: rgba(255, 159, 0, 0.2);
+		color: #ff9f00;
+		border: 1px solid #ff9f00;
 	}
 
 	.threat-level.medium {
-		background: rgba(255, 170, 0, 0.2);
-		color: #ffaa00;
-		border: 1px solid #ffaa00;
+		background: rgba(255, 234, 0, 0.2);
+		color: #ffea00;
+		border: 1px solid #ffea00;
 	}
 
 	.threat-level.low {
-		background: rgba(0, 255, 255, 0.2);
-		color: #00ffff;
-		border: 1px solid #00ffff;
+		background: rgba(0, 255, 234, 0.2);
+		color: #00ffea;
+		border: 1px solid #00ffea;
 	}
 
 	.card-body {
 		display: flex;
 		flex-direction: column;
-		gap: 0.8rem;
+		gap: 10px;
 	}
 
 	.source-name {
-		font-size: 0.9rem;
+		font-size: 14px;
 		font-weight: 600;
 		color: #fff;
-		letter-spacing: 0.05em;
+		letter-spacing: 0.5px;
 	}
 
 	.frequency-display {
 		display: flex;
 		align-items: baseline;
-		gap: 0.5rem;
+		gap: 8px;
 	}
 
 	.frequency-value {
-		font-size: 1.8rem;
+		font-size: 28px;
 		font-weight: 700;
 		color: var(--card-color);
-		text-shadow: 0 0 15px var(--card-color);
+		text-shadow: 0 0 12px var(--card-color);
 	}
 
 	.frequency-label {
-		font-size: 0.6rem;
-		color: rgba(255, 255, 255, 0.5);
+		font-size: 10px;
+		color: rgba(255, 255, 255, 0.4);
 		text-transform: uppercase;
-		letter-spacing: 0.05em;
+		letter-spacing: 0.5px;
 	}
 
-	.visual-meter {
+	.meter {
 		width: 100%;
-		height: 6px;
-		background: rgba(0, 0, 0, 0.5);
-		border-radius: 3px;
+		height: 4px;
+		background: rgba(0, 0, 0, 0.6);
+		border-radius: 2px;
 		overflow: hidden;
-		position: relative;
 	}
 
 	.meter-fill {
 		height: 100%;
 		background: linear-gradient(90deg, var(--card-color), color-mix(in srgb, var(--card-color) 60%, transparent));
 		transition: width 0.5s ease;
-		box-shadow: 0 0 10px var(--card-color);
+		box-shadow: 0 0 8px var(--card-color);
 	}
 
-	.card-stats {
+	.card-footer {
 		display: flex;
-		justify-content: space-between;
-		align-items: center;
+		justify-content: flex-end;
 	}
 
-	.stat-item {
-		display: flex;
-		align-items: center;
-		gap: 0.3rem;
-		font-size: 0.8rem;
-		color: rgba(255, 255, 255, 0.7);
-	}
-
-	.stat-icon {
-		color: var(--card-color);
-		font-size: 0.6rem;
+	.percentage {
+		font-size: 12px;
+		color: rgba(255, 255, 255, 0.6);
+		font-weight: 600;
 	}
 
 	/* Table View */
-	.data-table-container {
+	.data-table {
 		flex: 1;
 		overflow: auto;
 		background: rgba(0, 0, 0, 0.4);
-		border: 1px solid rgba(0, 255, 255, 0.2);
-		border-radius: 12px;
-		padding: 1rem;
+		border: 1px solid rgba(0, 255, 159, 0.2);
+		border-radius: 4px;
 	}
 
-	.data-table {
+	.data-table table {
 		width: 100%;
 		border-collapse: separate;
-		border-spacing: 0 0.5rem;
+		border-spacing: 0;
 	}
 
-	.data-table thead th {
-		background: rgba(0, 255, 255, 0.1);
-		color: #00ffff;
-		padding: 1rem;
+	.data-table th {
+		background: rgba(0, 0, 0, 0.8);
+		color: #00ff9f;
+		padding: 12px;
 		text-align: left;
-		font-size: 0.75rem;
+		font-size: 11px;
 		font-weight: 600;
-		letter-spacing: 0.1em;
+		letter-spacing: 1px;
 		text-transform: uppercase;
-		border: 1px solid rgba(0, 255, 255, 0.2);
-	}
-
-	.data-table thead th:first-child {
-		border-top-left-radius: 8px;
-		border-bottom-left-radius: 8px;
-	}
-
-	.data-table thead th:last-child {
-		border-top-right-radius: 8px;
-		border-bottom-right-radius: 8px;
-	}
-
-	.table-row {
-		background: rgba(0, 0, 0, 0.3);
-		transition: all 0.3s ease;
-	}
-
-	.table-row:hover {
-		background: rgba(0, 255, 255, 0.05);
-		transform: translateX(5px);
+		border-bottom: 1px solid rgba(0, 255, 159, 0.2);
+		position: sticky;
+		top: 0;
+		z-index: 10;
 	}
 
 	.data-table td {
-		padding: 0.8rem 1rem;
+		padding: 12px;
 		color: rgba(255, 255, 255, 0.8);
-		font-size: 0.8rem;
-		border-top: 1px solid rgba(255, 255, 255, 0.05);
+		font-size: 12px;
 		border-bottom: 1px solid rgba(255, 255, 255, 0.05);
 	}
 
-	.data-table td:first-child {
-		border-left: 1px solid rgba(255, 255, 255, 0.05);
-		border-top-left-radius: 8px;
-		border-bottom-left-radius: 8px;
-	}
-
-	.data-table td:last-child {
-		border-right: 1px solid rgba(255, 255, 255, 0.05);
-		border-top-right-radius: 8px;
-		border-bottom-right-radius: 8px;
+	.data-table tr:hover {
+		background: rgba(0, 255, 159, 0.05);
 	}
 
 	.source-cell {
 		display: flex;
 		align-items: center;
-		gap: 0.8rem;
-		font-weight: 600;
+		gap: 8px;
 	}
 
 	.cell-icon {
-		font-size: 1.2rem;
-		filter: drop-shadow(0 0 5px currentColor);
+		font-size: 16px;
 	}
 
 	.center {
 		text-align: center;
 	}
 
-	.frequency-badge {
-		display: inline-block;
-		padding: 0.4rem 0.8rem;
-		background: rgba(0, 255, 255, 0.1);
-		border: 1px solid rgba(0, 255, 255, 0.3);
-		border-radius: 6px;
-		color: #00ffff;
-		font-weight: 600;
-	}
-
 	.coverage-cell {
 		display: flex;
 		align-items: center;
-		gap: 1rem;
+		gap: 12px;
 	}
 
 	.coverage-bar {
 		flex: 1;
-		height: 8px;
-		background: rgba(0, 0, 0, 0.5);
-		border-radius: 4px;
+		height: 6px;
+		background: rgba(0, 0, 0, 0.6);
+		border-radius: 3px;
 		overflow: hidden;
 		min-width: 100px;
 	}
@@ -897,77 +715,58 @@
 	.coverage-fill {
 		height: 100%;
 		transition: width 0.5s ease;
-		box-shadow: 0 0 10px currentColor;
-	}
-
-	.coverage-text {
-		min-width: 50px;
-		text-align: right;
-		font-weight: 600;
 	}
 
 	.threat-badge {
-		padding: 0.4rem 0.8rem;
-		border-radius: 6px;
-		font-size: 0.7rem;
+		padding: 4px 10px;
+		border-radius: 2px;
+		font-size: 10px;
 		font-weight: 600;
 		text-transform: uppercase;
-		letter-spacing: 0.05em;
+		letter-spacing: 0.5px;
 	}
 
 	.threat-badge.critical {
-		background: rgba(255, 0, 255, 0.2);
-		color: #ff00ff;
-		border: 1px solid #ff00ff;
+		background: rgba(255, 51, 102, 0.2);
+		color: #ff3366;
+		border: 1px solid #ff3366;
 	}
 
 	.threat-badge.high {
-		background: rgba(255, 0, 102, 0.2);
-		color: #ff0066;
-		border: 1px solid #ff0066;
+		background: rgba(255, 159, 0, 0.2);
+		color: #ff9f00;
+		border: 1px solid #ff9f00;
 	}
 
 	.threat-badge.medium {
-		background: rgba(255, 170, 0, 0.2);
-		color: #ffaa00;
-		border: 1px solid #ffaa00;
+		background: rgba(255, 234, 0, 0.2);
+		color: #ffea00;
+		border: 1px solid #ffea00;
 	}
 
 	.threat-badge.low {
-		background: rgba(0, 255, 255, 0.2);
-		color: #00ffff;
-		border: 1px solid #00ffff;
+		background: rgba(0, 255, 234, 0.2);
+		color: #00ffea;
+		border: 1px solid #00ffea;
 	}
 
 	.action-btn {
-		display: flex;
-		align-items: center;
-		gap: 0.5rem;
-		background: linear-gradient(135deg, rgba(0, 255, 255, 0.1), rgba(0, 255, 255, 0.05));
-		border: 1px solid #00ffff;
-		color: #00ffff;
-		padding: 0.5rem 1rem;
-		border-radius: 6px;
+		background: rgba(0, 255, 159, 0.1);
+		border: 1px solid #00ff9f;
+		color: #00ff9f;
+		padding: 6px 12px;
+		border-radius: 2px;
 		cursor: pointer;
-		font-size: 0.7rem;
+		font-size: 11px;
 		font-weight: 600;
-		letter-spacing: 0.05em;
-		transition: all 0.3s ease;
+		letter-spacing: 0.5px;
+		transition: all 0.2s ease;
 	}
 
 	.action-btn:hover {
-		background: linear-gradient(135deg, rgba(0, 255, 255, 0.2), rgba(0, 255, 255, 0.1));
-		transform: translateX(3px);
-		box-shadow: 0 0 20px rgba(0, 255, 255, 0.4);
-	}
-
-	.action-arrow {
-		font-size: 0.9rem;
-		transition: transform 0.3s ease;
-	}
-
-	.action-btn:hover .action-arrow {
-		transform: translateX(3px);
+		background: rgba(0, 255, 159, 0.2);
+		transform: translateX(2px);
+		box-shadow: 0 0 12px rgba(0, 255, 159, 0.3);
 	}
 
 	/* Analytics View */
@@ -975,88 +774,72 @@
 		flex: 1;
 		display: grid;
 		grid-template-columns: 1fr 1fr;
-		gap: 2rem;
+		gap: 20px;
 		overflow: auto;
 	}
 
-	.chart-container, .top-sources {
+	.chart-panel {
 		background: rgba(0, 0, 0, 0.4);
-		border: 1px solid rgba(0, 255, 255, 0.2);
-		border-radius: 12px;
-		padding: 1.5rem;
+		border: 1px solid rgba(0, 255, 159, 0.2);
+		border-radius: 4px;
+		padding: 20px;
 	}
 
-	.chart-container h3, .top-sources h3 {
-		margin: 0 0 1.5rem 0;
-		color: #00ffff;
-		font-size: 0.9rem;
-		text-align: center;
-		letter-spacing: 0.1em;
+	.chart-panel h3 {
+		margin: 0 0 16px 0;
+		color: #00ff9f;
+		font-size: 14px;
+		letter-spacing: 1px;
 	}
 
-	.donut-chart {
-		width: 100%;
-		max-width: 300px;
-		margin: 0 auto;
+	.bar-chart {
+		display: flex;
+		flex-direction: column;
+		gap: 12px;
 	}
 
-	.source-bar {
-		margin-bottom: 1.2rem;
+	.bar-item {
+		display: flex;
+		flex-direction: column;
+		gap: 4px;
 	}
 
-	.source-label {
-		font-size: 0.7rem;
-		color: rgba(255, 255, 255, 0.7);
-		margin-bottom: 0.4rem;
+	.bar-label {
+		font-size: 11px;
+		color: rgba(255, 255, 255, 0.6);
 		font-weight: 600;
 	}
 
 	.bar-container {
 		position: relative;
-		height: 24px;
-		background: rgba(0, 0, 0, 0.5);
-		border-radius: 6px;
+		height: 20px;
+		background: rgba(0, 0, 0, 0.6);
+		border-radius: 2px;
 		overflow: hidden;
 	}
 
 	.bar-fill {
 		height: 100%;
-		transition: width 0.5s ease;
 		display: flex;
 		align-items: center;
 		justify-content: flex-end;
-		padding-right: 0.5rem;
-		position: relative;
-	}
-
-	.bar-fill::after {
-		content: '';
-		position: absolute;
-		top: 0;
-		left: -100%;
-		width: 100%;
-		height: 100%;
-		background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.3), transparent);
-		animation: shimmer 2s infinite;
-	}
-
-	@keyframes shimmer {
-		to { left: 100%; }
+		padding-right: 8px;
+		transition: width 0.5s ease;
 	}
 
 	.bar-value {
-		font-size: 0.7rem;
+		font-size: 11px;
 		font-weight: 600;
 		color: #fff;
-		text-shadow: 0 0 5px rgba(0, 0, 0, 0.8);
+		text-shadow: 0 0 4px rgba(0, 0, 0, 0.8);
 	}
 
 	/* Drill Panel */
 	.drill-panel {
 		flex: 1;
 		background: rgba(0, 0, 0, 0.6);
-		border: 2px solid rgba(255, 0, 102, 0.3);
-		border-radius: 12px;
+		border: 1px solid rgba(255, 51, 102, 0.3);
+		border-radius: 4px;
 		display: flex;
 		flex-direction: column;
 		overflow: hidden;
@@ -1066,135 +849,132 @@
 		display: flex;
 		justify-content: space-between;
 		align-items: center;
-		padding: 1rem 1.5rem;
-		background: rgba(255, 0, 102, 0.05);
-		border-bottom: 1px solid rgba(255, 0, 102, 0.2);
+		padding: 16px 20px;
+		background: rgba(255, 51, 102, 0.05);
+		border-bottom: 1px solid rgba(255, 51, 102, 0.2);
 	}
 
 	.drill-title {
 		display: flex;
 		align-items: center;
-		gap: 1rem;
+		gap: 12px;
 	}
 
 	.drill-icon {
-		font-size: 1.5rem;
-		color: #ff0066;
-		filter: drop-shadow(0 0 10px #ff0066);
+		font-size: 20px;
+		color: #ff3366;
+		filter: drop-shadow(0 0 8px #ff3366);
 	}
 
 	.drill-title h3 {
 		margin: 0;
-		color: #ff0066;
-		font-size: 1rem;
-		letter-spacing: 0.05em;
+		color: #ff3366;
+		font-size: 16px;
+		letter-spacing: 1px;
 	}
 
 	.drill-badge {
-		padding: 0.4rem 0.8rem;
-		background: rgba(255, 0, 102, 0.1);
-		border: 1px solid rgba(255, 0, 102, 0.3);
-		border-radius: 6px;
-		color: #ff0066;
-		font-size: 0.7rem;
+		padding: 4px 10px;
+		background: rgba(255, 51, 102, 0.1);
+		border: 1px solid rgba(255, 51, 102, 0.3);
+		border-radius: 2px;
+		color: #ff3366;
+		font-size: 10px;
 		font-weight: 600;
+		letter-spacing: 0.5px;
 	}
 
 	.close-btn {
-		width: 32px;
-		height: 32px;
+		width: 28px;
+		height: 28px;
 		background: transparent;
-		border: 2px solid #ff0066;
-		color: #ff0066;
-		border-radius: 50%;
+		border: 1px solid #ff3366;
+		color: #ff3366;
+		border-radius: 2px;
 		cursor: pointer;
 		display: flex;
 		align-items: center;
 		justify-content: center;
-		transition: all 0.3s ease;
-		font-size: 1.2rem;
+		transition: all 0.2s ease;
+		font-size: 16px;
 	}
 
 	.close-btn:hover {
-		background: rgba(255, 0, 102, 0.2);
+		background: rgba(255, 51, 102, 0.2);
 		transform: rotate(90deg);
-		box-shadow: 0 0 20px rgba(255, 0, 102, 0.4);
-	}
-
-	.drill-content {
-		flex: 1;
-		overflow: auto;
-		padding: 1rem;
 	}
 
 	.drill-table {
+		flex: 1;
+		overflow: auto;
+		padding: 20px;
+	}
+
+	.drill-table table {
 		width: 100%;
 		border-collapse: separate;
-		border-spacing: 0 0.5rem;
+		border-spacing: 0 8px;
 	}
 
-	.drill-table thead th {
-		background: rgba(255, 0, 102, 0.05);
-		color: #ff0066;
-		padding: 0.8rem;
+	.drill-table th {
+		background: rgba(255, 51, 102, 0.05);
+		color: #ff3366;
+		padding: 10px;
 		text-align: left;
-		font-size: 0.7rem;
+		font-size: 10px;
 		font-weight: 600;
-		letter-spacing: 0.1em;
+		letter-spacing: 1px;
 		text-transform: uppercase;
-		border: 1px solid rgba(255, 0, 102, 0.2);
-		position: sticky;
-		top: 0;
-		z-index: 10;
-	}
-
-	.drill-table tbody tr {
-		background: rgba(0, 0, 0, 0.3);
-		transition: all 0.3s ease;
-	}
-
-	.drill-table tbody tr:hover {
-		background: rgba(255, 0, 102, 0.05);
+		border: 1px solid rgba(255, 51, 102, 0.2);
 	}
 
 	.drill-table td {
-		padding: 0.8rem;
+		padding: 10px;
 		color: rgba(255, 255, 255, 0.8);
-		font-size: 0.75rem;
+		font-size: 12px;
+		background: rgba(0, 0, 0, 0.3);
 		border-top: 1px solid rgba(255, 255, 255, 0.05);
 		border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+	}
+
+	.drill-table td:first-child {
+		border-left: 1px solid rgba(255, 255, 255, 0.05);
+	}
+
+	.drill-table td:last-child {
+		border-right: 1px solid rgba(255, 255, 255, 0.05);
 	}
 
 	.host-cell {
 		display: flex;
 		align-items: center;
-		gap: 0.5rem;
-		font-family: monospace;
-		color: #00ffff;
+		gap: 6px;
+		font-family: 'Courier New', monospace;
+		color: #00ffea;
 	}
 
 	.host-icon {
-		color: #ff0066;
-		font-size: 0.8rem;
+		color: #ff3366;
+		font-size: 12px;
 	}
 
-	.status-badge {
-		padding: 0.3rem 0.6rem;
-		border-radius: 4px;
-		font-size: 0.7rem;
+	.badge {
+		padding: 2px 6px;
+		border-radius: 2px;
+		font-size: 10px;
 		font-weight: 600;
 	}
 
-	.status-badge.active {
-		background: rgba(0, 255, 133, 0.2);
-		color: #00ff85;
-		border: 1px solid #00ff85;
+	.badge.active {
+		background: rgba(0, 255, 159, 0.2);
+		color: #00ff9f;
+		border: 1px solid #00ff9f;
 	}
 
-	.status-badge.inactive {
-		background: rgba(255, 0, 102, 0.2);
-		color: #ff0066;
-		border: 1px solid #ff0066;
+	.badge.inactive {
+		background: rgba(255, 51, 102, 0.2);
+		color: #ff3366;
+		border: 1px solid #ff3366;
 	}
 
 	/* Pagination */
@@ -1202,30 +982,30 @@
 		display: flex;
 		justify-content: center;
 		align-items: center;
-		gap: 1rem;
-		padding: 1rem 0;
+		gap: 16px;
+		padding: 16px 0 0 0;
 		margin-top: auto;
 	}
 
 	.page-btn {
-		width: 40px;
-		height: 40px;
-		background: rgba(0, 255, 255, 0.1);
-		border: 2px solid rgba(0, 255, 255, 0.3);
-		color: #00ffff;
-		border-radius: 8px;
+		width: 32px;
+		height: 32px;
+		background: rgba(0, 255, 159, 0.1);
+		border: 1px solid rgba(0, 255, 159, 0.3);
+		color: #00ff9f;
+		border-radius: 2px;
 		cursor: pointer;
 		display: flex;
 		align-items: center;
 		justify-content: center;
-		transition: all 0.3s ease;
-		font-size: 1.2rem;
+		transition: all 0.2s ease;
+		font-size: 14px;
 	}
 
 	.page-btn:hover:not(:disabled) {
-		background: rgba(0, 255, 255, 0.2);
+		background: rgba(0, 255, 159, 0.2);
 		transform: scale(1.1);
-		box-shadow: 0 0 20px rgba(0, 255, 255, 0.4);
+		box-shadow: 0 0 12px rgba(0, 255, 159, 0.3);
 	}
 
 	.page-btn:disabled {
@@ -1236,27 +1016,14 @@
 	.page-info {
 		display: flex;
 		align-items: center;
-		gap: 0.5rem;
-		padding: 0.5rem 1rem;
+		gap: 8px;
+		padding: 6px 12px;
 		background: rgba(0, 0, 0, 0.4);
-		border: 1px solid rgba(0, 255, 255, 0.2);
-		border-radius: 8px;
-	}
-
-	.page-current {
-		font-size: 1.2rem;
-		font-weight: 700;
-		color: #00ffff;
-		text-shadow: 0 0 10px #00ffff;
-	}
-
-	.page-separator {
-		color: rgba(255, 255, 255, 0.3);
-	}
-
-	.page-total {
-		color: rgba(255, 255, 255, 0.6);
-		font-size: 0.9rem;
+		border: 1px solid rgba(0, 255, 159, 0.2);
+		border-radius: 2px;
+		color: #00ff9f;
+		font-size: 12px;
+		font-weight: 600;
 	}
 
 	/* Scrollbar */
@@ -1271,37 +1038,18 @@
 	}
 
 	::-webkit-scrollbar-thumb {
-		background: linear-gradient(180deg, #00ffff, #ff00ff);
+		background: linear-gradient(180deg, #00ff9f, #00ffea);
 		border-radius: 4px;
 	}
 
 	::-webkit-scrollbar-thumb:hover {
-		background: linear-gradient(180deg, #ff00ff, #00ffff);
+		background: linear-gradient(180deg, #00ffea, #00ff9f);
 	}
 
 	/* Responsive */
-	@media (max-width: 1400px) {
-		.matrix-grid {
-			grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
-		}
-		
-		.stats-grid {
-			gap: 1rem;
-		}
-		
-		.stat-card {
-			padding: 0.6rem 1rem;
-		}
-		
-		.stat-value {
-			font-size: 1.2rem;
-		}
-	}
-
 	@media (max-width: 1200px) {
-		.header-grid {
-			flex-direction: column;
-			align-items: flex-start;
+		.intel-grid {
+			grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
 		}
 		
 		.analytics-view {
@@ -1310,29 +1058,23 @@
 	}
 
 	@media (max-width: 768px) {
-		.control-panel {
+		.intel-header {
 			flex-direction: column;
-			gap: 1rem;
-			align-items: stretch;
+			gap: 16px;
+			align-items: flex-start;
 		}
 		
-		.search-section {
+		.control-bar {
+			flex-direction: column;
+			gap: 12px;
+		}
+		
+		.search-box {
 			max-width: 100%;
 		}
 		
-		.view-controls {
-			justify-content: center;
-		}
-		
-		.matrix-grid {
+		.intel-grid {
 			grid-template-columns: 1fr;
 		}
-		
-		.stats-grid {
-			flex-wrap: wrap;
-		}
-		
-		.stat-card {
-			min-width: calc(50% - 0.5rem);
-		}
 	}
+</style>
