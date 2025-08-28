@@ -1,6 +1,7 @@
 <!-- App.svelte - Log Lens Command Center -->
 <script>
 	import { onMount, onDestroy } from 'svelte';
+	import { Eye, Shield, Database, Server, Globe, Building, Users, Activity } from 'lucide-svelte';
 	import SourceTables from './SourceTables.svelte';
 	import RegionMetrics from './RegionMetrics.svelte';
 	import CountryMetrics from './CountryMetrics.svelte';
@@ -14,12 +15,12 @@
 	let dataFlowRate = 0;
 	
 	let modules = [
-		{ id: 'source_tables', name: 'TABLES', color: '#00ff88', icon: '⬢', status: 'ACTIVE', load: 87 },
-		{ id: 'region_metrics', name: 'REGIONS', color: '#00ffdd', icon: '◈', status: 'ACTIVE', load: 78 },
-		{ id: 'country_metrics', name: 'COUNTRIES', color: '#88ff00', icon: '⬡', status: 'ACTIVE', load: 85 },
-		{ id: 'data_center', name: 'DATA CENTERS', color: '#00aaff', icon: '◇', status: 'MONITORING', load: 73 },
-		{ id: 'business_units', name: 'DIVISIONS', color: '#0088ff', icon: '◉', status: 'ACTIVE', load: 81 },
-		{ id: 'cio_metrics', name: 'CIOS', color: '#44ff00', icon: '◎', status: 'ACTIVE', load: 89 }
+		{ id: 'source_tables', name: 'TABLES', color: '#4a5d23', icon: Database, status: 'ACTIVE', load: 87 },
+		{ id: 'region_metrics', name: 'REGIONS', color: '#2d4a22', icon: Globe, status: 'ACTIVE', load: 78 },
+		{ id: 'country_metrics', name: 'COUNTRIES', color: '#1e3a1e', icon: Shield, status: 'ACTIVE', load: 85 },
+		{ id: 'data_center', name: 'DATA CENTERS', color: '#3d4f2a', icon: Server, status: 'MONITORING', load: 73 },
+		{ id: 'business_units', name: 'DIVISIONS', color: '#2a3d1f', icon: Building, status: 'ACTIVE', load: 81 },
+		{ id: 'cio_metrics', name: 'CIOS', color: '#1a2d14', icon: Users, status: 'ACTIVE', load: 89 }
 	];
 
 	// Dynamic title mapping
@@ -108,7 +109,9 @@
 			<!-- Brand Section -->
 			<div class="brand-section">
 				<div class="logo-container">
-					<div class="logo-core">👁</div>
+					<div class="logo-core">
+						<Eye size={32} color="#d4af37" strokeWidth={2} />
+					</div>
 					<div class="logo-ring"></div>
 				</div>
 				<div class="brand-text">
@@ -124,7 +127,9 @@
 						class="nav-module {currentView === module.id ? 'active' : ''}"
 						style="--module-color: {module.color}"
 						on:click={() => switchView(module.id)}>
-						<span class="module-icon">{module.icon}</span>
+						<span class="module-icon">
+							<svelte:component this={module.icon} size={20} strokeWidth={2} />
+						</span>
 						<div class="module-info">
 							<span class="module-name">{module.name}</span>
 							<div class="module-load">
@@ -158,8 +163,8 @@
 <style>
 	:global(body) {
 		font-family: 'JetBrains Mono', 'Courier New', monospace;
-		background: #0a0f0a;
-		color: #e0ffe0;
+		background: #0d1117;
+		color: #f0f6fc;
 		overflow: hidden;
 		margin: 0;
 		padding: 0;
@@ -172,7 +177,7 @@
 		height: 100vh;
 		display: flex;
 		flex-direction: column;
-		background: radial-gradient(ellipse at center, #0f1f0f 0%, #051005 50%, #000800 100%);
+		background: linear-gradient(135deg, #0d1117 0%, #1a2332 50%, #2d3748 100%);
 		position: relative;
 	}
 
@@ -193,7 +198,7 @@
 	}
 
 	.circuit-line {
-		stroke: #00ff88;
+		stroke: #4a5d23;
 		stroke-width: 1;
 		fill: none;
 		opacity: 0.3;
@@ -201,13 +206,13 @@
 	}
 
 	.circuit-node {
-		fill: #00ffdd;
+		fill: #d4af37;
 		opacity: 0.6;
 		animation: nodePulse 2s ease-in-out infinite;
 	}
 
 	.circuit-node.small {
-		fill: #88ff00;
+		fill: #8fbc8f;
 		opacity: 0.4;
 		animation: nodePulse 3s ease-in-out infinite;
 	}
@@ -225,13 +230,13 @@
 	/* Header - Fixed Height */
 	.command-header {
 		height: 100px;
-		background: rgba(5, 20, 5, 0.95);
-		border-bottom: 2px solid #00ff88;
+		background: rgba(29, 44, 51, 0.95);
+		border-bottom: 2px solid #4a5d23;
 		backdrop-filter: blur(15px);
 		flex-shrink: 0;
 		z-index: 10;
 		position: relative;
-		box-shadow: 0 2px 20px rgba(0, 255, 136, 0.3);
+		box-shadow: 0 2px 20px rgba(74, 93, 35, 0.3);
 	}
 
 	.header-grid {
@@ -260,22 +265,21 @@
 	}
 
 	.logo-core {
-		font-size: 32px;
-		color: #00ffdd;
-		text-shadow: 0 0 25px rgba(0, 255, 221, 0.8), 0 0 40px rgba(0, 255, 221, 0.4);
+		color: #d4af37;
 		z-index: 1;
 		animation: eyePulse 3s ease-in-out infinite;
+		filter: drop-shadow(0 0 25px rgba(212, 175, 55, 0.8));
 	}
 
 	.logo-ring {
 		position: absolute;
 		width: 100%;
 		height: 100%;
-		border: 3px solid #00ff88;
+		border: 3px solid #4a5d23;
 		border-radius: 8px;
 		animation: ringRotate 12s linear infinite;
 		opacity: 0.6;
-		box-shadow: 0 0 15px rgba(0, 255, 136, 0.5);
+		box-shadow: 0 0 15px rgba(74, 93, 35, 0.5);
 	}
 
 	@keyframes eyePulse {
@@ -291,20 +295,20 @@
 	.brand-text h1 {
 		margin: 0;
 		font-size: 22px;
-		color: #00ffdd;
+		color: #d4af37;
 		font-weight: 700;
 		letter-spacing: 3px;
-		text-shadow: 0 0 15px rgba(0, 255, 221, 0.6);
+		text-shadow: 0 0 15px rgba(212, 175, 55, 0.6);
 	}
 
 	.brand-text p {
 		margin: 5px 0 0 0;
 		font-size: 14px;
-		color: #88ff00;
+		color: #8fbc8f;
 		text-transform: uppercase;
 		letter-spacing: 2px;
 		font-weight: 600;
-		text-shadow: 0 0 10px rgba(136, 255, 0, 0.5);
+		text-shadow: 0 0 10px rgba(143, 188, 143, 0.5);
 	}
 
 	/* Navigation */
@@ -319,11 +323,11 @@
 		display: flex;
 		align-items: center;
 		gap: 10px;
-		background: rgba(5, 20, 5, 0.8);
-		border: 2px solid rgba(0, 255, 136, 0.3);
+		background: rgba(29, 44, 51, 0.8);
+		border: 2px solid rgba(74, 93, 35, 0.3);
 		border-radius: 8px;
 		padding: 10px 16px;
-		color: rgba(224, 255, 224, 0.7);
+		color: rgba(240, 246, 252, 0.7);
 		cursor: pointer;
 		transition: all 0.3s ease;
 		min-width: 140px;
@@ -338,7 +342,7 @@
 		left: 0;
 		right: 0;
 		bottom: 0;
-		background: linear-gradient(45deg, transparent, rgba(0, 255, 136, 0.1), transparent);
+		background: linear-gradient(45deg, transparent, rgba(74, 93, 35, 0.1), transparent);
 		opacity: 0;
 		transition: opacity 0.3s ease;
 		border-radius: 6px;
@@ -349,7 +353,7 @@
 	}
 
 	.nav-module:hover {
-		background: rgba(10, 30, 10, 0.9);
+		background: rgba(45, 74, 34, 0.9);
 		border-color: var(--module-color);
 		color: var(--module-color);
 		transform: translateY(-2px);
@@ -358,8 +362,8 @@
 
 	.nav-module.active {
 		background: linear-gradient(135deg, 
-			color-mix(in srgb, var(--module-color) 20%, transparent),
-			color-mix(in srgb, var(--module-color) 8%, transparent));
+			rgba(74, 93, 35, 0.3),
+			rgba(74, 93, 35, 0.15));
 		border-color: var(--module-color);
 		color: var(--module-color);
 		box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3), 0 0 25px var(--module-color);
@@ -367,7 +371,8 @@
 	}
 
 	.module-icon {
-		font-size: 20px;
+		display: flex;
+		align-items: center;
 		filter: drop-shadow(0 0 8px var(--module-color));
 	}
 
@@ -390,7 +395,7 @@
 		background: rgba(0, 0, 0, 0.6);
 		border-radius: 2px;
 		overflow: hidden;
-		border: 1px solid rgba(0, 255, 136, 0.2);
+		border: 1px solid rgba(74, 93, 35, 0.2);
 	}
 
 	.load-fill {
@@ -421,7 +426,7 @@
 		flex: 1;
 		position: relative;
 		overflow: hidden;
-		background: linear-gradient(180deg, rgba(5, 20, 5, 0.3) 0%, rgba(0, 15, 0, 0.6) 100%);
+		background: linear-gradient(180deg, rgba(29, 44, 51, 0.3) 0%, rgba(13, 17, 23, 0.6) 100%);
 		z-index: 5;
 	}
 
