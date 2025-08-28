@@ -1,4 +1,4 @@
-<!-- Enhanced App.svelte with Professional Matrix-Style Header -->
+<!-- App.svelte - Intelligence Command Center -->
 <script>
 	import { onMount, onDestroy } from 'svelte';
 	import SourceTables from './SourceTables.svelte';
@@ -17,12 +17,12 @@
 	let quantumCoherence = 98.7;
 	
 	let modules = [
-		{ id: 'source_tables', name: 'SOURCE INTELLIGENCE', color: '#00ffff', icon: '◈', status: 'ACTIVE', load: 87 },
-		{ id: 'region_metrics', name: 'REGIONAL MATRIX', color: '#00ff85', icon: '◉', status: 'ACTIVE', load: 78 },
-		{ id: 'country_metrics', name: 'GLOBAL SURVEILLANCE', color: '#ffaa00', icon: '⬟', status: 'ACTIVE', load: 85 },
-		{ id: 'data_center', name: 'FACILITY INTELLIGENCE', color: '#ff0066', icon: '⬡', status: 'MONITORING', load: 73 },
-		{ id: 'business_units', name: 'BUSINESS MATRIX', color: '#00ff85', icon: '◒', status: 'ACTIVE', load: 81 },
-		{ id: 'cio_metrics', name: 'EXECUTIVE COMMAND', color: '#ff00ff', icon: '◓', status: 'ACTIVE', load: 89 }
+		{ id: 'source_tables', name: 'SOURCE INTEL', color: '#00ff9f', icon: '◆', status: 'ACTIVE', load: 87 },
+		{ id: 'region_metrics', name: 'REGIONAL OPS', color: '#00ffea', icon: '▣', status: 'ACTIVE', load: 78 },
+		{ id: 'country_metrics', name: 'GLOBAL SCAN', color: '#ff9f00', icon: '◈', status: 'ACTIVE', load: 85 },
+		{ id: 'data_center', name: 'FACILITY NET', color: '#ff3366', icon: '⬢', status: 'MONITORING', load: 73 },
+		{ id: 'business_units', name: 'DIVISION CTL', color: '#9f00ff', icon: '◉', status: 'ACTIVE', load: 81 },
+		{ id: 'cio_metrics', name: 'EXEC COMMAND', color: '#00ff00', icon: '◎', status: 'ACTIVE', load: 89 }
 	];
 
 	onMount(() => {
@@ -58,286 +58,232 @@
 	}
 </script>
 
-<main class="matrix-interface">
-	<!-- Professional Matrix Header -->
-	<header class="matrix-header">
-		<div class="header-background"></div>
-		<div class="header-container">
-			<!-- Logo and Title Section -->
+<main class="command-interface">
+	<!-- Command Header -->
+	<header class="command-header">
+		<div class="header-grid">
+			<!-- Brand Section -->
 			<div class="brand-section">
-				<div class="matrix-logo">
-					<div class="logo-icon">◈</div>
-					<div class="logo-pulse"></div>
+				<div class="logo-container">
+					<div class="logo-core">◈</div>
+					<div class="logo-ring"></div>
 				</div>
-				<div class="brand-info">
-					<h1 class="system-title">NEURAL INTELLIGENCE MATRIX</h1>
-					<p class="system-subtitle">FISERV QUANTUM THREAT DETECTION SYSTEM</p>
+				<div class="brand-text">
+					<h1>NEURAL COMMAND</h1>
+					<p>FISERV INTELLIGENCE NETWORK</p>
 				</div>
 			</div>
 
-			<!-- Navigation Modules -->
-			<nav class="matrix-nav">
-				<div class="nav-container">
-					{#each modules as module}
-						<button 
-							class="nav-module {currentView === module.id ? 'active' : ''}"
-							style="--module-color: {module.color}"
-							on:click={() => switchView(module.id)}>
-							<span class="module-icon">{module.icon}</span>
-							<div class="module-info">
-								<span class="module-name">{module.name}</span>
-								<div class="module-load">
-									<div class="load-fill" style="width: {module.load}%; background: {module.color}"></div>
-								</div>
+			<!-- Navigation -->
+			<nav class="nav-section">
+				{#each modules as module}
+					<button 
+						class="nav-module {currentView === module.id ? 'active' : ''}"
+						style="--module-color: {module.color}"
+						on:click={() => switchView(module.id)}>
+						<span class="module-icon">{module.icon}</span>
+						<div class="module-info">
+							<span class="module-name">{module.name}</span>
+							<div class="module-load">
+								<div class="load-fill" style="width: {module.load}%; background: {module.color}"></div>
 							</div>
-							{#if currentView === module.id}
-								<div class="active-indicator"></div>
-							{/if}
-						</button>
-					{/each}
-				</div>
+						</div>
+					</button>
+				{/each}
 			</nav>
 
 			<!-- Status Metrics -->
-			<div class="status-metrics">
-				<div class="metric-item">
+			<div class="status-section">
+				<div class="metric">
 					<span class="metric-label">STATUS</span>
 					<span class="metric-value active">{systemStatus}</span>
 				</div>
-				<div class="metric-item">
+				<div class="metric">
 					<span class="metric-label">THREAT</span>
 					<span class="metric-value" style="color: hsl({120 - threatLevel * 1.2}, 100%, 50%)">{threatLevel.toFixed(1)}%</span>
 				</div>
-				<div class="metric-item">
-					<span class="metric-label">COHERENCE</span>
-					<span class="metric-value">{quantumCoherence.toFixed(1)}%</span>
-				</div>
-				<div class="metric-item">
+				<div class="metric">
 					<span class="metric-label">ALERTS</span>
 					<span class="metric-value {activeAlerts > 0 ? 'alert' : ''}">{activeAlerts}</span>
 				</div>
-				<div class="metric-item time">
-					<span class="metric-label">SYSTEM TIME</span>
+				<div class="metric time">
 					<span class="metric-value">{currentTime}</span>
 				</div>
 			</div>
 		</div>
 	</header>
 
-	<!-- Main Content -->
-	<section class="matrix-viewport">
-		<div class="content-container">
-			{#if currentView === 'source_tables'}
-				<SourceTables />
-			{:else if currentView === 'region_metrics'}
-				<RegionMetrics />
-			{:else if currentView === 'country_metrics'}
-				<CountryMetrics />
-			{:else if currentView === 'data_center'}
-				<DataCenter />
-			{:else if currentView === 'business_units'}
-				<BusinessUnitMetrics />
-			{:else if currentView === 'cio_metrics'}
-				<CIOMetrics />
-			{/if}
-		</div>
+	<!-- Main Viewport -->
+	<section class="viewport">
+		{#if currentView === 'source_tables'}
+			<SourceTables />
+		{:else if currentView === 'region_metrics'}
+			<RegionMetrics />
+		{:else if currentView === 'country_metrics'}
+			<CountryMetrics />
+		{:else if currentView === 'data_center'}
+			<DataCenter />
+		{:else if currentView === 'business_units'}
+			<BusinessUnitMetrics />
+		{:else if currentView === 'cio_metrics'}
+			<CIOMetrics />
+		{/if}
 	</section>
 </main>
 
 <style>
 	:global(body) {
-		font-family: 'JetBrains Mono', 'Consolas', monospace;
+		font-family: 'JetBrains Mono', 'Courier New', monospace;
 		background: #000;
 		color: #fff;
 		overflow: hidden;
 		margin: 0;
 		padding: 0;
-		font-size: 14px;
+		font-size: 13px;
 		line-height: 1.4;
 	}
 
-	.matrix-interface {
+	.command-interface {
 		width: 100vw;
 		height: 100vh;
 		display: flex;
 		flex-direction: column;
-		background: linear-gradient(135deg, rgba(0,0,0,0.95) 0%, rgba(26,13,46,0.95) 100%);
-		overflow: hidden;
+		background: linear-gradient(180deg, #0a0a0a 0%, #1a1a1a 100%);
 	}
 
-	/* Professional Matrix Header */
-	.matrix-header {
-		background: rgba(0, 0, 0, 0.8);
-		border-bottom: 1px solid rgba(0, 255, 255, 0.3);
-		padding: 1.2rem 1.5rem;
+	/* Header - Fixed Height */
+	.command-header {
+		height: 80px;
+		background: rgba(0, 0, 0, 0.95);
+		border-bottom: 1px solid rgba(0, 255, 159, 0.2);
 		backdrop-filter: blur(10px);
-		position: relative;
 		flex-shrink: 0;
 	}
 
-	.header-background {
-		position: absolute;
-		top: 0;
-		left: 0;
-		width: 100%;
+	.header-grid {
 		height: 100%;
-		background: linear-gradient(90deg, 
-			rgba(0, 255, 255, 0.03) 0%,
-			rgba(255, 0, 255, 0.02) 50%,
-			rgba(0, 255, 255, 0.03) 100%);
-		opacity: 0.5;
-		pointer-events: none;
-	}
-
-	.header-container {
 		display: grid;
-		grid-template-columns: minmax(300px, auto) 1fr minmax(400px, auto);
+		grid-template-columns: 280px 1fr 320px;
 		gap: 2rem;
+		padding: 0 1.5rem;
 		align-items: center;
-		position: relative;
-		z-index: 1;
-		max-width: 100%;
 	}
 
-	/* Brand Section */
+	/* Brand */
 	.brand-section {
 		display: flex;
 		align-items: center;
 		gap: 1rem;
 	}
 
-	.matrix-logo {
+	.logo-container {
 		position: relative;
-		width: 50px;
-		height: 50px;
+		width: 45px;
+		height: 45px;
 		display: flex;
 		align-items: center;
 		justify-content: center;
-		flex-shrink: 0;
 	}
 
-	.logo-icon {
-		font-size: 2.5rem;
-		color: #00ffff;
-		text-shadow: 0 0 20px rgba(0, 255, 255, 0.8);
-		animation: iconPulse 3s ease-in-out infinite;
+	.logo-core {
+		font-size: 24px;
+		color: #00ff9f;
+		text-shadow: 0 0 20px rgba(0, 255, 159, 0.8);
 		z-index: 1;
-		position: relative;
+		animation: corePulse 3s ease-in-out infinite;
 	}
 
-	.logo-pulse {
+	.logo-ring {
 		position: absolute;
 		width: 100%;
 		height: 100%;
-		border: 2px solid #00ffff;
-		border-radius: 50%;
-		animation: pulse 2s ease-out infinite;
-		opacity: 0;
+		border: 2px solid #00ff9f;
+		border-radius: 4px;
+		animation: ringRotate 8s linear infinite;
+		opacity: 0.3;
 	}
 
-	@keyframes iconPulse {
-		0%, 100% { transform: scale(1); opacity: 0.9; }
-		50% { transform: scale(1.1); opacity: 1; }
+	@keyframes corePulse {
+		0%, 100% { opacity: 0.8; transform: scale(1); }
+		50% { opacity: 1; transform: scale(1.1); }
 	}
 
-	@keyframes pulse {
-		0% {
-			transform: scale(1);
-			opacity: 0.8;
-		}
-		100% {
-			transform: scale(1.5);
-			opacity: 0;
-		}
+	@keyframes ringRotate {
+		from { transform: rotate(0deg); }
+		to { transform: rotate(360deg); }
 	}
 
-	.brand-info h1 {
+	.brand-text h1 {
 		margin: 0;
-		font-size: 1.3rem;
-		color: #00ffff;
-		text-shadow: 0 0 10px rgba(0, 255, 255, 0.5);
-		letter-spacing: 0.05em;
-		font-weight: 600;
-		white-space: nowrap;
+		font-size: 18px;
+		color: #00ff9f;
+		font-weight: 700;
+		letter-spacing: 2px;
+		text-shadow: 0 0 10px rgba(0, 255, 159, 0.5);
 	}
 
-	.system-subtitle {
-		margin: 0.2rem 0 0 0;
-		font-size: 0.7rem;
-		color: rgba(255, 255, 255, 0.6);
+	.brand-text p {
+		margin: 2px 0 0 0;
+		font-size: 10px;
+		color: rgba(255, 255, 255, 0.5);
 		text-transform: uppercase;
-		letter-spacing: 0.1em;
-		white-space: nowrap;
+		letter-spacing: 1px;
 	}
 
-	/* Navigation in Header */
-	.matrix-nav {
+	/* Navigation */
+	.nav-section {
 		display: flex;
-		align-items: center;
+		gap: 8px;
 		justify-content: center;
-	}
-
-	.nav-container {
-		display: flex;
-		gap: 0.8rem;
-		background: rgba(0, 0, 0, 0.4);
-		padding: 0.5rem;
-		border-radius: 10px;
-		border: 1px solid rgba(255, 255, 255, 0.05);
 	}
 
 	.nav-module {
 		display: flex;
 		align-items: center;
-		gap: 0.6rem;
-		background: rgba(0, 0, 0, 0.6);
+		gap: 8px;
+		background: rgba(0, 0, 0, 0.8);
 		border: 1px solid rgba(255, 255, 255, 0.1);
-		border-radius: 8px;
-		padding: 0.6rem 1rem;
-		color: rgba(255, 255, 255, 0.6);
+		border-radius: 4px;
+		padding: 8px 12px;
+		color: rgba(255, 255, 255, 0.5);
 		cursor: pointer;
-		transition: all 0.3s ease;
-		position: relative;
-		min-width: 150px;
+		transition: all 0.2s ease;
+		min-width: 130px;
 	}
 
 	.nav-module:hover {
-		background: rgba(0, 0, 0, 0.8);
+		background: rgba(0, 0, 0, 0.9);
 		border-color: var(--module-color);
 		color: var(--module-color);
-		transform: translateY(-2px);
-		box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
+		transform: translateY(-1px);
+		box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
 	}
 
 	.nav-module.active {
 		background: linear-gradient(135deg, 
-			color-mix(in srgb, var(--module-color) 10%, transparent),
+			color-mix(in srgb, var(--module-color) 15%, transparent),
 			color-mix(in srgb, var(--module-color) 5%, transparent));
 		border-color: var(--module-color);
 		color: var(--module-color);
-		box-shadow: 
-			0 4px 12px rgba(0, 0, 0, 0.3),
-			inset 0 1px 0 rgba(255, 255, 255, 0.05);
+		box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
 	}
 
 	.module-icon {
-		font-size: 1.2rem;
-		filter: drop-shadow(0 0 5px var(--module-color));
+		font-size: 16px;
+		filter: drop-shadow(0 0 4px var(--module-color));
 	}
 
 	.module-info {
 		flex: 1;
 		display: flex;
 		flex-direction: column;
-		gap: 0.2rem;
+		gap: 3px;
 	}
 
 	.module-name {
-		font-size: 0.65rem;
+		font-size: 10px;
 		font-weight: 600;
-		letter-spacing: 0.05em;
-		text-transform: uppercase;
-		line-height: 1;
+		letter-spacing: 0.5px;
 	}
 
 	.module-load {
@@ -351,189 +297,117 @@
 	.load-fill {
 		height: 100%;
 		transition: width 0.5s ease;
-		box-shadow: 0 0 5px currentColor;
-		position: relative;
+		box-shadow: 0 0 4px currentColor;
 	}
 
-	.load-fill::after {
-		content: '';
-		position: absolute;
-		top: 0;
-		left: -100%;
-		width: 100%;
-		height: 100%;
-		background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.3), transparent);
-		animation: shimmer 2s infinite;
-	}
-
-	@keyframes shimmer {
-		to { left: 100%; }
-	}
-
-	.active-indicator {
-		position: absolute;
-		bottom: -6px;
-		left: 50%;
-		transform: translateX(-50%);
-		width: 30px;
-		height: 2px;
-		background: var(--module-color);
-		box-shadow: 0 0 10px var(--module-color);
-		border-radius: 1px;
-	}
-
-	/* Status Metrics */
-	.status-metrics {
+	/* Status */
+	.status-section {
 		display: flex;
-		gap: 1.5rem;
+		gap: 20px;
 		align-items: center;
 		justify-content: flex-end;
 	}
 
-	.metric-item {
+	.metric {
 		display: flex;
 		flex-direction: column;
-		gap: 0.2rem;
+		gap: 2px;
 	}
 
 	.metric-label {
-		font-size: 0.6rem;
-		color: rgba(255, 255, 255, 0.5);
+		font-size: 9px;
+		color: rgba(255, 255, 255, 0.4);
 		text-transform: uppercase;
-		letter-spacing: 0.1em;
+		letter-spacing: 1px;
 		font-weight: 600;
 	}
 
 	.metric-value {
-		font-size: 0.9rem;
+		font-size: 14px;
 		font-weight: 700;
-		color: #00ffff;
-		text-shadow: 0 0 10px currentColor;
+		color: #00ffea;
+		text-shadow: 0 0 8px currentColor;
 	}
 
 	.metric-value.active {
-		color: #00ff85;
+		color: #00ff9f;
 	}
 
 	.metric-value.alert {
-		color: #ff0066;
-		animation: alertBlink 1s ease-in-out infinite;
+		color: #ff3366;
+		animation: alertPulse 1s ease-in-out infinite;
 	}
 
-	@keyframes alertBlink {
+	@keyframes alertPulse {
 		0%, 100% { opacity: 1; }
-		50% { opacity: 0.6; }
+		50% { opacity: 0.5; }
 	}
 
-	.metric-item.time .metric-value {
-		font-size: 0.75rem;
-		color: #ff00ff;
-		font-family: 'JetBrains Mono', monospace;
+	.metric.time .metric-value {
+		font-size: 11px;
+		color: #9f00ff;
+		font-family: 'Courier New', monospace;
 	}
 
-	/* Main Viewport */
-	.matrix-viewport {
+	/* Viewport */
+	.viewport {
 		flex: 1;
 		position: relative;
 		overflow: hidden;
-		display: flex;
+		background: linear-gradient(180deg, rgba(0, 0, 0, 0.5) 0%, rgba(0, 0, 0, 0.8) 100%);
 	}
 
-	.content-container {
-		width: 100%;
-		height: 100%;
-		position: relative;
-		overflow: hidden;
-	}
-
-	/* Responsive Design */
-	@media (max-width: 1600px) {
-		.header-container {
-			grid-template-columns: minmax(280px, auto) 1fr minmax(350px, auto);
+	/* Responsive */
+	@media (max-width: 1400px) {
+		.header-grid {
+			grid-template-columns: 260px 1fr 280px;
 			gap: 1.5rem;
 		}
 		
 		.nav-module {
-			min-width: 140px;
-			padding: 0.5rem 0.8rem;
-		}
-		
-		.module-name {
-			font-size: 0.6rem;
-		}
-	}
-
-	@media (max-width: 1400px) {
-		.header-container {
-			grid-template-columns: minmax(260px, auto) 1fr minmax(320px, auto);
-			gap: 1.2rem;
-		}
-		
-		.nav-module {
-			min-width: 130px;
-			padding: 0.5rem 0.7rem;
-		}
-		
-		.status-metrics {
-			gap: 1.2rem;
-		}
-		
-		.system-title {
-			font-size: 1.2rem;
+			min-width: 120px;
+			padding: 6px 10px;
 		}
 	}
 
 	@media (max-width: 1200px) {
-		.header-container {
+		.command-header {
+			height: auto;
+			padding: 12px 0;
+		}
+		
+		.header-grid {
 			grid-template-columns: 1fr;
-			gap: 1rem;
+			gap: 12px;
 		}
 		
 		.brand-section {
 			justify-content: center;
 		}
 		
-		.matrix-nav {
-			order: 2;
-		}
-		
-		.nav-container {
-			width: 100%;
-			justify-content: center;
+		.nav-section {
 			flex-wrap: wrap;
+			padding: 8px 0;
 		}
 		
 		.nav-module {
-			min-width: calc(33.33% - 0.6rem);
+			min-width: calc(33.33% - 6px);
 		}
 		
-		.status-metrics {
-			order: 3;
-			justify-content: space-around;
-			width: 100%;
+		.status-section {
+			justify-content: center;
+			padding: 8px 0;
 		}
 	}
 
 	@media (max-width: 768px) {
-		.matrix-header {
-			padding: 0.8rem 1rem;
-		}
-		
-		.system-title {
-			font-size: 1.1rem;
-		}
-		
 		.nav-module {
-			min-width: calc(50% - 0.4rem);
-			padding: 0.4rem 0.6rem;
+			min-width: calc(50% - 4px);
 		}
 		
-		.module-icon {
-			font-size: 1rem;
-		}
-		
-		.module-name {
-			font-size: 0.55rem;
+		.status-section {
+			flex-wrap: wrap;
+			gap: 12px;
 		}
 	}
 </style>
