@@ -188,7 +188,8 @@
 
 	<!-- Ultra-Modern Header -->
 	<header class="system-header">
-		<div class="header-glow"></div>
+		<div class="header-quantum-field"></div>
+		<div class="header-energy-wave"></div>
 		<div class="header-content">
 			<!-- Enhanced Logo Section -->
 			<div class="brand-section">
@@ -323,7 +324,7 @@
 		overflow: hidden;
 		margin: 0;
 		padding: 0;
-		font-size: clamp(12px, 1.2vw, 14px);
+		font-size: 14px;
 		line-height: 1.4;
 		cursor: crosshair;
 	}
@@ -347,7 +348,7 @@
 		background: 
 			radial-gradient(ellipse at 20% 30%, rgba(0, 255, 255, 0.15) 0%, transparent 40%),
 			radial-gradient(ellipse at 80% 70%, rgba(255, 0, 255, 0.1) 0%, transparent 40%),
-			radial-gradient(ellipse at center, #1a0d2e 0%, #0f0520 40%, #000000 100%);
+			radial-gradient(ellipse at center, rgba(26, 13, 46, 0.95) 0%, rgba(15, 5, 32, 0.95) 40%, rgba(0, 0, 0, 0.98) 100%);
 		overflow: hidden;
 	}
 
@@ -428,30 +429,50 @@
 		backdrop-filter: blur(20px);
 		z-index: 100;
 		position: relative;
-		padding: 1rem 1.5rem;
+		padding: 1.5rem 2rem;
 		flex-shrink: 0;
 		overflow: visible;
+		box-shadow: 0 10px 40px rgba(0, 0, 0, 0.8);
 	}
 
-	.header-glow {
+	.header-quantum-field {
 		position: absolute;
 		top: 0;
 		left: 0;
 		right: 0;
 		height: 100%;
-		background: linear-gradient(90deg,
-			transparent 0%,
-			rgba(0, 255, 255, 0.1) 20%,
-			rgba(255, 0, 255, 0.1) 50%,
-			rgba(0, 255, 255, 0.1) 80%,
-			transparent 100%);
-		opacity: 0.5;
-		animation: glowSlide 8s linear infinite;
+		background: 
+			radial-gradient(ellipse at 25% 0%, rgba(0, 255, 255, 0.15) 0%, transparent 35%),
+			radial-gradient(ellipse at 75% 0%, rgba(255, 0, 255, 0.1) 0%, transparent 35%),
+			radial-gradient(ellipse at 50% 0%, rgba(0, 150, 255, 0.08) 0%, transparent 40%);
+		animation: quantumShift 15s ease-in-out infinite;
+		pointer-events: none;
 	}
 
-	@keyframes glowSlide {
-		0% { transform: translateX(-100%); }
-		100% { transform: translateX(100%); }
+	@keyframes quantumShift {
+		0%, 100% { transform: translateY(0) scale(1); opacity: 0.8; }
+		50% { transform: translateY(-10px) scale(1.05); opacity: 1; }
+	}
+
+	.header-energy-wave {
+		position: absolute;
+		bottom: 0;
+		left: -100%;
+		width: 300%;
+		height: 2px;
+		background: linear-gradient(90deg,
+			transparent 0%,
+			rgba(0, 255, 255, 0.8) 15%,
+			rgba(255, 0, 255, 0.6) 30%,
+			rgba(0, 255, 255, 0.8) 45%,
+			transparent 60%);
+		animation: energyWave 8s linear infinite;
+		pointer-events: none;
+	}
+
+	@keyframes energyWave {
+		0% { transform: translateX(0); }
+		100% { transform: translateX(33.33%); }
 	}
 
 	.header-border {
@@ -469,6 +490,7 @@
 			#00ffff 90%,
 			transparent 100%);
 		animation: borderFlow 4s linear infinite;
+		box-shadow: 0 0 20px rgba(0, 255, 255, 0.6);
 	}
 
 	@keyframes borderFlow {
@@ -478,9 +500,9 @@
 
 	.header-content {
 		display: grid;
-		grid-template-columns: minmax(320px, auto) minmax(600px, 1fr) minmax(280px, auto);
+		grid-template-columns: minmax(350px, auto) minmax(650px, 1fr) minmax(320px, auto);
 		align-items: center;
-		gap: 2rem;
+		gap: 2.5rem;
 		max-width: 100%;
 		position: relative;
 		z-index: 1;
@@ -490,13 +512,13 @@
 	.brand-section {
 		display: flex;
 		align-items: center;
-		gap: 1.2rem;
+		gap: 1.5rem;
 	}
 
 	.ao1-logo-ultra {
 		position: relative;
-		width: 80px;
-		height: 80px;
+		width: 100px;
+		height: 100px;
 		display: flex;
 		align-items: center;
 		justify-content: center;
@@ -521,7 +543,9 @@
 		border: 2px solid;
 		border-image: linear-gradient(45deg, #00ffff, #ff00ff, #00ffff) 1;
 		border-radius: 50%;
-		box-shadow: 0 0 20px currentColor;
+		box-shadow: 
+			0 0 30px currentColor,
+			inset 0 0 20px currentColor;
 	}
 
 	@keyframes hologramRotate {
@@ -532,25 +556,25 @@
 
 	.logo-core {
 		position: relative;
-		width: 60%;
-		height: 60%;
-		background: radial-gradient(circle, rgba(0, 255, 255, 0.8), rgba(255, 0, 255, 0.4));
+		width: 70%;
+		height: 70%;
+		background: radial-gradient(circle, rgba(0, 255, 255, 0.9), rgba(255, 0, 255, 0.5));
 		border-radius: 50%;
 		display: flex;
 		align-items: center;
 		justify-content: center;
 		box-shadow: 
-			0 0 30px rgba(0, 255, 255, 0.8),
-			inset 0 0 20px rgba(255, 0, 255, 0.5);
+			0 0 40px rgba(0, 255, 255, 0.8),
+			inset 0 0 30px rgba(255, 0, 255, 0.5);
 		animation: corePulse 2s ease-in-out infinite;
 	}
 
 	.logo-energy {
 		position: absolute;
-		width: 120%;
-		height: 120%;
-		top: -10%;
-		left: -10%;
+		width: 130%;
+		height: 130%;
+		top: -15%;
+		left: -15%;
 		border-radius: 50%;
 		background: radial-gradient(circle, transparent 30%, rgba(0, 255, 255, 0.2) 70%, transparent);
 		animation: energyPulse 3s ease-in-out infinite;
@@ -562,14 +586,20 @@
 	}
 
 	.logo-text {
-		font-size: 1.3rem;
+		font-size: 1.6rem;
 		font-weight: 900;
 		color: #ffffff;
 		text-shadow: 
-			0 0 10px rgba(0, 255, 255, 1),
-			0 0 20px rgba(0, 255, 255, 0.8),
-			0 0 30px rgba(255, 0, 255, 0.6);
-		letter-spacing: 0.1em;
+			0 0 20px rgba(0, 255, 255, 1),
+			0 0 40px rgba(0, 255, 255, 0.8),
+			0 0 60px rgba(255, 0, 255, 0.6);
+		letter-spacing: 0.15em;
+		animation: textGlow 3s ease-in-out infinite;
+	}
+
+	@keyframes textGlow {
+		0%, 100% { text-shadow: 0 0 20px rgba(0, 255, 255, 1), 0 0 40px rgba(0, 255, 255, 0.8), 0 0 60px rgba(255, 0, 255, 0.6); }
+		50% { text-shadow: 0 0 30px rgba(0, 255, 255, 1), 0 0 60px rgba(0, 255, 255, 0.9), 0 0 80px rgba(255, 0, 255, 0.7); }
 	}
 
 	.quantum-indicator {
@@ -585,8 +615,8 @@
 	}
 
 	@keyframes corePulse {
-		0%, 100% { transform: scale(1); }
-		50% { transform: scale(1.05); }
+		0%, 100% { transform: scale(1); box-shadow: 0 0 40px rgba(0, 255, 255, 0.8), inset 0 0 30px rgba(255, 0, 255, 0.5); }
+		50% { transform: scale(1.05); box-shadow: 0 0 60px rgba(0, 255, 255, 1), inset 0 0 40px rgba(255, 0, 255, 0.7); }
 	}
 
 	@keyframes quantumPulse {
@@ -597,82 +627,92 @@
 	.brand-info {
 		display: flex;
 		flex-direction: column;
-		gap: 0.3rem;
+		gap: 0.4rem;
 	}
 
 	.title {
 		margin: 0;
-		font-size: 1.4rem;
+		font-size: 1.6rem;
 		font-weight: 800;
 		background: linear-gradient(90deg, #00ffff, #ffffff, #ff00ff);
 		-webkit-background-clip: text;
 		-webkit-text-fill-color: transparent;
 		background-clip: text;
-		text-shadow: 0 0 20px rgba(0, 255, 255, 0.5);
-		letter-spacing: 0.05em;
+		text-shadow: 0 0 30px rgba(0, 255, 255, 0.5);
+		letter-spacing: 0.08em;
+		animation: titleShimmer 4s ease-in-out infinite;
+	}
+
+	@keyframes titleShimmer {
+		0%, 100% { filter: brightness(1); }
+		50% { filter: brightness(1.2); }
 	}
 
 	.subtitle {
-		font-size: 0.7rem;
+		font-size: 0.75rem;
 		color: rgba(255, 255, 255, 0.7);
 		text-transform: uppercase;
-		letter-spacing: 0.15em;
-		opacity: 0.8;
+		letter-spacing: 0.2em;
+		opacity: 0.9;
 	}
 
 	.status-row {
 		display: flex;
-		gap: 1rem;
+		gap: 1.2rem;
 		align-items: center;
-		margin-top: 0.3rem;
+		margin-top: 0.4rem;
 	}
 
 	.status-indicator {
-		font-size: 0.65rem;
+		font-size: 0.7rem;
 		color: rgba(255, 255, 255, 0.6);
 		display: flex;
 		align-items: center;
-		gap: 0.4rem;
-		padding: 0.2rem 0.5rem;
+		gap: 0.5rem;
+		padding: 0.3rem 0.6rem;
 		background: rgba(0, 255, 255, 0.05);
 		border: 1px solid rgba(0, 255, 255, 0.2);
-		border-radius: 4px;
+		border-radius: 6px;
+		transition: all 0.3s ease;
 	}
 
 	.status-dot {
-		width: 6px;
-		height: 6px;
+		width: 8px;
+		height: 8px;
 		border-radius: 50%;
 		background: #00ff85;
 		animation: statusPulse 2s ease-in-out infinite;
+		box-shadow: 0 0 10px currentColor;
 	}
 
 	@keyframes statusPulse {
-		0%, 100% { opacity: 0.4; }
-		50% { opacity: 1; box-shadow: 0 0 10px currentColor; }
+		0%, 100% { opacity: 0.4; box-shadow: 0 0 10px currentColor; }
+		50% { opacity: 1; box-shadow: 0 0 20px currentColor; }
 	}
 
 	.status-indicator.active {
 		color: #00ff85;
-		text-shadow: 0 0 10px currentColor;
-		border-color: rgba(0, 255, 133, 0.3);
+		text-shadow: 0 0 15px currentColor;
+		border-color: rgba(0, 255, 133, 0.4);
+		background: rgba(0, 255, 133, 0.08);
 	}
 
 	.threat-indicator {
-		font-size: 0.65rem;
+		font-size: 0.7rem;
 		font-weight: 600;
 		display: flex;
 		align-items: center;
-		gap: 0.3rem;
-		padding: 0.2rem 0.5rem;
+		gap: 0.4rem;
+		padding: 0.3rem 0.6rem;
 		background: rgba(255, 0, 255, 0.05);
 		border: 1px solid rgba(255, 0, 255, 0.2);
-		border-radius: 4px;
+		border-radius: 6px;
 		color: var(--threat-color);
+		transition: all 0.3s ease;
 	}
 
 	.threat-icon {
-		font-size: 0.8rem;
+		font-size: 0.9rem;
 		animation: threatPulse 1s ease-in-out infinite;
 	}
 
@@ -682,32 +722,33 @@
 	}
 
 	.alert-counter {
-		font-size: 0.65rem;
+		font-size: 0.7rem;
 		display: flex;
 		align-items: center;
-		gap: 0.3rem;
-		padding: 0.2rem 0.5rem;
+		gap: 0.4rem;
+		padding: 0.3rem 0.6rem;
 		background: rgba(255, 102, 0, 0.05);
 		border: 1px solid rgba(255, 102, 0, 0.2);
-		border-radius: 4px;
+		border-radius: 6px;
 		color: rgba(255, 255, 255, 0.4);
 		transition: all 0.3s ease;
 	}
 
 	.alert-icon {
-		font-size: 0.8rem;
+		font-size: 0.9rem;
 	}
 
 	.alert-counter.active {
 		color: #ff0066;
 		animation: alertPulse 1s ease-in-out infinite;
-		border-color: rgba(255, 0, 102, 0.3);
-		background: rgba(255, 0, 102, 0.1);
+		border-color: rgba(255, 0, 102, 0.4);
+		background: rgba(255, 0, 102, 0.12);
+		box-shadow: 0 0 15px rgba(255, 0, 102, 0.3);
 	}
 
 	@keyframes alertPulse {
-		0%, 100% { opacity: 1; }
-		50% { opacity: 0.5; }
+		0%, 100% { opacity: 1; transform: scale(1); }
+		50% { opacity: 0.7; transform: scale(1.05); }
 	}
 
 	/* Ultra Navigation */
@@ -721,13 +762,16 @@
 
 	.nav-container {
 		display: flex;
-		gap: 0.8rem;
+		gap: 1rem;
 		position: relative;
-		padding: 0.6rem;
-		background: rgba(0, 0, 0, 0.4);
-		border-radius: 12px;
-		backdrop-filter: blur(10px);
-		border: 1px solid rgba(255, 255, 255, 0.05);
+		padding: 0.8rem;
+		background: rgba(0, 0, 0, 0.5);
+		border-radius: 16px;
+		backdrop-filter: blur(15px);
+		border: 1px solid rgba(255, 255, 255, 0.08);
+		box-shadow: 
+			0 8px 32px rgba(0, 0, 0, 0.4),
+			inset 0 1px 0 rgba(255, 255, 255, 0.05);
 	}
 
 	.nav-background {
@@ -740,24 +784,25 @@
 			rgba(0, 255, 255, 0.03),
 			rgba(255, 0, 255, 0.03),
 			rgba(0, 255, 255, 0.03));
-		border-radius: 12px;
+		border-radius: 16px;
 		opacity: 0.5;
 		z-index: -1;
 	}
 
 	.nav-energy-field {
 		position: absolute;
-		top: -5px;
-		left: -5px;
-		right: -5px;
-		bottom: -5px;
-		border-radius: 14px;
+		top: -8px;
+		left: -8px;
+		right: -8px;
+		bottom: -8px;
+		border-radius: 20px;
 		background: linear-gradient(45deg,
 			transparent 30%,
 			rgba(0, 255, 255, 0.1) 50%,
 			transparent 70%);
 		animation: energyField 4s linear infinite;
 		z-index: -2;
+		pointer-events: none;
 	}
 
 	@keyframes energyField {
@@ -768,16 +813,16 @@
 	.nav-module {
 		position: relative;
 		background: transparent;
-		border: 1px solid rgba(255, 255, 255, 0.1);
-		border-radius: 10px;
-		padding: 0.6rem 0.8rem;
-		color: rgba(255, 255, 255, 0.6);
+		border: 1px solid rgba(255, 255, 255, 0.15);
+		border-radius: 12px;
+		padding: 0.8rem 1.2rem;
+		color: rgba(255, 255, 255, 0.7);
 		cursor: pointer;
 		transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 		overflow: hidden;
 		animation: moduleEntry 0.6s ease-out backwards;
 		animation-delay: var(--delay);
-		min-width: 110px;
+		min-width: 140px;
 	}
 
 	@keyframes moduleEntry {
@@ -798,46 +843,48 @@
 		width: 100%;
 		height: 100%;
 		background: linear-gradient(135deg, 
-			rgba(0, 0, 0, 0.8),
+			rgba(0, 0, 0, 0.9),
 			rgba(255, 255, 255, 0.02));
 		z-index: -1;
 		transition: all 0.3s ease;
+		border-radius: 12px;
 	}
 
 	.module-glow {
 		position: absolute;
 		top: 50%;
 		left: 50%;
-		width: 80%;
-		height: 80%;
+		width: 100%;
+		height: 100%;
 		transform: translate(-50%, -50%);
 		background: radial-gradient(circle, var(--module-color), transparent);
 		opacity: 0;
 		transition: all 0.3s ease;
-		filter: blur(20px);
+		filter: blur(25px);
+		pointer-events: none;
 	}
 
 	.nav-module:hover .module-glow,
 	.nav-module.active .module-glow {
-		opacity: 0.3;
+		opacity: 0.4;
 	}
 
 	.nav-module:hover .module-background,
 	.nav-module.active .module-background {
 		background: linear-gradient(135deg, 
-			color-mix(in srgb, var(--module-color) 20%, transparent),
-			color-mix(in srgb, var(--module-color) 10%, transparent));
+			color-mix(in srgb, var(--module-color) 25%, transparent),
+			color-mix(in srgb, var(--module-color) 15%, transparent));
 	}
 
 	.nav-module:hover,
 	.nav-module.active {
 		border-color: var(--module-color);
 		color: var(--module-color);
-		transform: translateY(-2px) scale(1.02);
+		transform: translateY(-3px) scale(1.03);
 		box-shadow: 
-			0 10px 25px color-mix(in srgb, var(--module-color) 30%, transparent),
-			inset 0 1px 0 color-mix(in srgb, var(--module-color) 50%, transparent),
-			0 0 30px color-mix(in srgb, var(--module-color) 20%, transparent);
+			0 15px 35px color-mix(in srgb, var(--module-color) 35%, transparent),
+			inset 0 1px 0 color-mix(in srgb, var(--module-color) 60%, transparent),
+			0 0 40px color-mix(in srgb, var(--module-color) 25%, transparent);
 	}
 
 	.nav-module.alert {
@@ -854,106 +901,138 @@
 	}
 
 	@keyframes moduleAlert {
-		0%, 100% { box-shadow: 0 0 15px rgba(255, 0, 102, 0.5); }
-		50% { box-shadow: 0 0 30px rgba(255, 0, 102, 0.8); }
+		0%, 100% { box-shadow: 0 0 20px rgba(255, 0, 102, 0.5); }
+		50% { box-shadow: 0 0 40px rgba(255, 0, 102, 0.8); }
 	}
 
 	@keyframes quantumShimmer {
-		0%, 100% { filter: hue-rotate(0deg); }
-		50% { filter: hue-rotate(60deg); }
+		0%, 100% { filter: hue-rotate(0deg) brightness(1); }
+		50% { filter: hue-rotate(60deg) brightness(1.2); }
 	}
 
 	.module-content {
 		display: flex;
 		flex-direction: column;
 		align-items: center;
-		gap: 0.3rem;
+		gap: 0.4rem;
 		position: relative;
 		z-index: 1;
 	}
 
 	.module-icon {
-		font-size: 1.4rem;
-		filter: drop-shadow(0 0 10px var(--module-color));
+		font-size: 1.8rem;
+		filter: drop-shadow(0 0 15px var(--module-color));
 		animation: iconFloat 3s ease-in-out infinite;
 		animation-delay: var(--delay);
 	}
 
 	@keyframes iconFloat {
 		0%, 100% { transform: translateY(0); }
-		50% { transform: translateY(-2px); }
+		50% { transform: translateY(-3px); }
 	}
 
 	.module-name {
-		font-size: 0.6rem;
-		font-weight: 600;
-		letter-spacing: 0.08em;
+		font-size: 0.65rem;
+		font-weight: 700;
+		letter-spacing: 0.1em;
 		text-transform: uppercase;
 	}
 
 	.module-load {
 		width: 100%;
-		height: 2px;
-		background: rgba(0, 0, 0, 0.5);
-		border-radius: 1px;
+		height: 3px;
+		background: rgba(0, 0, 0, 0.6);
+		border-radius: 2px;
 		overflow: hidden;
-		margin: 0.2rem 0;
+		margin: 0.3rem 0;
 	}
 
 	.load-bar {
 		height: 100%;
 		background: linear-gradient(90deg, var(--module-color), transparent);
 		transition: width 0.5s ease;
-		box-shadow: 0 0 5px var(--module-color);
+		box-shadow: 0 0 8px var(--module-color);
+		position: relative;
+		overflow: hidden;
+	}
+
+	.load-bar::after {
+		content: '';
+		position: absolute;
+		top: 0;
+		left: -100%;
+		width: 100%;
+		height: 100%;
+		background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.4), transparent);
+		animation: loadShimmer 2s infinite;
+	}
+
+	@keyframes loadShimmer {
+		to { left: 100%; }
 	}
 
 	.module-status {
-		font-size: 0.5rem;
-		opacity: 0.6;
-		letter-spacing: 0.05em;
+		font-size: 0.55rem;
+		opacity: 0.7;
+		letter-spacing: 0.08em;
+		font-weight: 600;
 	}
 
 	.module-active-indicator {
 		position: absolute;
-		bottom: -8px;
+		bottom: -10px;
 		left: 50%;
 		transform: translateX(-50%);
-		width: 30px;
-		height: 3px;
+		width: 40px;
+		height: 4px;
 		background: var(--module-color);
 		border-radius: 2px;
-		box-shadow: 0 0 10px var(--module-color);
+		box-shadow: 0 0 15px var(--module-color);
 		animation: activeGlow 1s ease-in-out infinite;
 	}
 
 	@keyframes activeGlow {
-		0%, 100% { opacity: 0.8; }
-		50% { opacity: 1; box-shadow: 0 0 20px var(--module-color); }
+		0%, 100% { opacity: 0.8; width: 40px; }
+		50% { opacity: 1; width: 50px; box-shadow: 0 0 25px var(--module-color); }
 	}
 
 	/* Enhanced Metrics Panel */
 	.metrics-panel {
 		display: flex;
 		flex-direction: column;
-		gap: 0.8rem;
+		gap: 1rem;
 		align-items: flex-end;
 	}
 
 	.metric-display {
 		display: flex;
 		align-items: center;
-		gap: 0.6rem;
-		padding: 0.4rem 0.6rem;
-		background: rgba(0, 0, 0, 0.3);
-		border: 1px solid rgba(0, 255, 255, 0.1);
-		border-radius: 6px;
-		min-width: 200px;
+		gap: 0.8rem;
+		padding: 0.5rem 0.8rem;
+		background: rgba(0, 0, 0, 0.4);
+		border: 1px solid rgba(0, 255, 255, 0.15);
+		border-radius: 8px;
+		min-width: 240px;
+		backdrop-filter: blur(10px);
+		transition: all 0.3s ease;
+	}
+
+	.metric-display:hover {
+		transform: translateX(-5px);
+		border-color: rgba(0, 255, 255, 0.3);
+		box-shadow: 0 5px 20px rgba(0, 255, 255, 0.2);
 	}
 
 	.metric-icon {
-		font-size: 1.2rem;
+		font-size: 1.4rem;
 		color: #00ffff;
-		filter: drop-shadow(0 0 5px currentColor);
+		filter: drop-shadow(0 0 8px currentColor);
+		animation: metricPulse 3s ease-in-out infinite;
+	}
+
+	@keyframes metricPulse {
+		0%, 100% { transform: scale(1); opacity: 0.8; }
+		50% { transform: scale(1.1); opacity: 1; }
 	}
 
 	.metric-info {
@@ -961,69 +1040,97 @@
 	}
 
 	.metric-label {
-		font-size: 0.55rem;
+		font-size: 0.6rem;
 		color: rgba(255, 255, 255, 0.5);
 		text-transform: uppercase;
-		letter-spacing: 0.1em;
+		letter-spacing: 0.12em;
+		font-weight: 600;
 	}
 
 	.metric-value {
-		font-size: 0.9rem;
+		font-size: 1rem;
 		font-weight: 700;
 		color: #00ffff;
-		text-shadow: 0 0 10px currentColor;
+		text-shadow: 0 0 15px currentColor;
 	}
 
 	.metric-bar {
 		width: 100%;
-		height: 3px;
-		background: rgba(0, 0, 0, 0.5);
+		height: 4px;
+		background: rgba(0, 0, 0, 0.6);
 		border-radius: 2px;
 		overflow: hidden;
-		margin-top: 0.3rem;
+		margin-top: 0.4rem;
 	}
 
 	.bar-fill {
 		height: 100%;
 		background: linear-gradient(90deg, #00ffff, #ff00ff);
 		transition: width 0.3s ease;
-		box-shadow: 0 0 10px currentColor;
+		box-shadow: 0 0 12px currentColor;
+		position: relative;
+	}
+
+	.bar-fill::after {
+		content: '';
+		position: absolute;
+		top: 0;
+		right: 0;
+		width: 10px;
+		height: 100%;
+		background: rgba(255, 255, 255, 0.8);
+		filter: blur(4px);
+		animation: barGlint 2s ease-in-out infinite;
+	}
+
+	@keyframes barGlint {
+		0%, 100% { opacity: 0; }
+		50% { opacity: 1; }
 	}
 
 	.flow-indicator {
 		display: flex;
-		gap: 0.2rem;
+		gap: 0.3rem;
 		justify-content: flex-end;
-		margin-top: 0.2rem;
+		margin-top: 0.3rem;
 	}
 
 	.flow-dot {
-		width: 4px;
-		height: 4px;
+		width: 5px;
+		height: 5px;
 		background: #00ffff;
 		border-radius: 50%;
 		animation: flowAnimation 1s ease-in-out infinite;
+		box-shadow: 0 0 5px currentColor;
 	}
 
 	@keyframes flowAnimation {
 		0%, 100% { opacity: 0.3; transform: scale(0.8); }
-		50% { opacity: 1; transform: scale(1.2); }
+		50% { opacity: 1; transform: scale(1.3); }
 	}
 
 	.time-display-ultra {
 		display: flex;
 		align-items: center;
-		gap: 0.6rem;
-		padding: 0.4rem 0.6rem;
+		gap: 0.8rem;
+		padding: 0.5rem 0.8rem;
 		background: rgba(255, 0, 255, 0.05);
 		border: 1px solid rgba(255, 0, 255, 0.2);
-		border-radius: 6px;
+		border-radius: 8px;
+		backdrop-filter: blur(10px);
+		transition: all 0.3s ease;
+	}
+
+	.time-display-ultra:hover {
+		transform: translateX(-5px);
+		border-color: rgba(255, 0, 255, 0.3);
+		box-shadow: 0 5px 20px rgba(255, 0, 255, 0.2);
 	}
 
 	.time-icon {
-		font-size: 1.2rem;
+		font-size: 1.4rem;
 		color: #ff00ff;
-		filter: drop-shadow(0 0 5px currentColor);
+		filter: drop-shadow(0 0 8px currentColor);
 		animation: timeRotate 10s linear infinite;
 	}
 
@@ -1039,17 +1146,19 @@
 
 	.time-value {
 		font-family: 'JetBrains Mono', monospace;
-		font-size: 0.7rem;
+		font-size: 0.75rem;
 		color: #ff00ff;
-		text-shadow: 0 0 8px currentColor;
+		text-shadow: 0 0 10px currentColor;
 		letter-spacing: 0.05em;
+		font-weight: 600;
 	}
 
 	.time-label {
-		font-size: 0.55rem;
+		font-size: 0.6rem;
 		color: rgba(255, 255, 255, 0.5);
 		text-transform: uppercase;
-		letter-spacing: 0.1em;
+		letter-spacing: 0.12em;
+		font-weight: 600;
 	}
 
 	/* Main Viewport */
@@ -1080,26 +1189,46 @@
 	}
 
 	/* Responsive Design */
+	@media (max-width: 1600px) {
+		.header-content {
+			grid-template-columns: minmax(320px, auto) minmax(600px, 1fr) minmax(280px, auto);
+			gap: 2rem;
+		}
+		
+		.nav-module {
+			min-width: 120px;
+			padding: 0.7rem 1rem;
+		}
+		
+		.module-icon {
+			font-size: 1.6rem;
+		}
+		
+		.module-name {
+			font-size: 0.6rem;
+		}
+	}
+
 	@media (max-width: 1400px) {
 		.header-content {
-			grid-template-columns: minmax(280px, auto) minmax(500px, 1fr) minmax(240px, auto);
+			grid-template-columns: minmax(300px, auto) minmax(550px, 1fr) minmax(260px, auto);
 			gap: 1.5rem;
 		}
 		
 		.nav-module {
-			min-width: 95px;
-			padding: 0.5rem 0.6rem;
+			min-width: 110px;
+			padding: 0.6rem 0.8rem;
 		}
 		
-		.module-name {
-			font-size: 0.55rem;
+		.title {
+			font-size: 1.4rem;
 		}
 	}
 
 	@media (max-width: 1200px) {
 		.header-content {
 			grid-template-columns: 1fr;
-			gap: 1rem;
+			gap: 1.2rem;
 		}
 		
 		.quantum-navigation {
@@ -1135,7 +1264,7 @@
 		}
 		
 		.metrics-panel {
-			gap: 0.5rem;
+			gap: 0.6rem;
 		}
 		
 		.metric-display {
