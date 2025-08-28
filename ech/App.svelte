@@ -1,4 +1,4 @@
-<!-- App.svelte - Military Intelligence Dashboard -->
+<!-- App.svelte - Enhanced Dashboard -->
 <script>
 	import { onMount, onDestroy } from 'svelte';
 	import SourceTables from './SourceTables.svelte';
@@ -11,7 +11,7 @@
 	let currentView = 'source_tables';
 	
 	let modules = [
-		{ id: 'source_tables', name: 'TABLES', status: 'ACTIVE' },
+		{ id: 'source_tables', name: 'SOURCE TABLES', status: 'ACTIVE' },
 		{ id: 'region_metrics', name: 'REGIONS', status: 'ACTIVE' },
 		{ id: 'country_metrics', name: 'COUNTRIES', status: 'ACTIVE' },
 		{ id: 'data_center', name: 'DATA CENTERS', status: 'MONITORING' },
@@ -25,13 +25,13 @@
 
 	function getCurrentTitle() {
 		const module = modules.find(m => m.id === currentView);
-		return module ? module.name : 'TABLES';
+		return module ? module.name : 'SOURCE TABLES';
 	}
 </script>
 
-<main class="military-interface">
-	<!-- Military Header -->
-	<header class="military-header">
+<main class="dashboard-interface">
+	<!-- Header -->
+	<header class="dashboard-header">
 		<div class="header-container">
 			<!-- Logo and Title Section -->
 			<div class="brand-section">
@@ -48,27 +48,25 @@
 				</div>
 			</div>
 
-			<!-- Navigation Modules -->
-			<nav class="military-nav">
-				<div class="nav-container">
-					{#each modules as module}
-						<button 
-							class="nav-module {currentView === module.id ? 'active' : ''}"
-							on:click={() => switchView(module.id)}>
-							<span class="module-name">{module.name}</span>
-							{#if currentView === module.id}
-								<div class="active-indicator"></div>
-							{/if}
-						</button>
-					{/each}
-				</div>
+			<!-- Navigation -->
+			<nav class="nav-container">
+				{#each modules as module}
+					<button 
+						class="nav-module {currentView === module.id ? 'active' : ''}"
+						on:click={() => switchView(module.id)}>
+						<span class="module-name">{module.name}</span>
+						{#if currentView === module.id}
+							<div class="active-indicator"></div>
+						{/if}
+					</button>
+				{/each}
 			</nav>
 		</div>
 	</header>
 
 	<!-- Main Content -->
-	<section class="military-viewport">
-		<div class="content-container">
+	<section class="viewport">
+		<div class="content-wrapper">
 			{#if currentView === 'source_tables'}
 				<SourceTables />
 			{:else if currentView === 'region_metrics'}
@@ -89,29 +87,50 @@
 <style>
 	:global(body) {
 		font-family: 'JetBrains Mono', 'Courier New', monospace;
-		background: #000;
-		color: #fff;
+		background: #0a0a0a;
+		color: #e0e0e0;
 		overflow: hidden;
 		margin: 0;
 		padding: 0;
-		font-size: 13px;
-		line-height: 1.4;
+		font-size: 14px;
+		line-height: 1.5;
 	}
 
-	.military-interface {
+	:global(*) {
+		box-sizing: border-box;
+	}
+
+	:global(::-webkit-scrollbar) {
+		width: 8px;
+		height: 8px;
+	}
+
+	:global(::-webkit-scrollbar-track) {
+		background: rgba(0, 0, 0, 0.3);
+	}
+
+	:global(::-webkit-scrollbar-thumb) {
+		background: #0a4f3c;
+		border-radius: 4px;
+	}
+
+	:global(::-webkit-scrollbar-thumb:hover) {
+		background: #0d6b4f;
+	}
+
+	.dashboard-interface {
 		width: 100vw;
 		height: 100vh;
 		display: flex;
 		flex-direction: column;
-		background: #000;
+		background: #0a0a0a;
 		overflow: hidden;
 	}
 
-	/* Military Header */
-	.military-header {
-		background: rgba(0, 0, 0, 0.95);
-		border-bottom: 2px solid #0a4f3c; /* Deep emerald green */
-		padding: 0.75rem 1rem;
+	.dashboard-header {
+		background: linear-gradient(180deg, #0f0f0f 0%, #0a0a0a 100%);
+		border-bottom: 1px solid #0a4f3c;
+		padding: 1rem 1.5rem;
 		flex-shrink: 0;
 	}
 
@@ -122,106 +141,80 @@
 		max-width: 100%;
 	}
 
-	/* Brand Section */
 	.brand-section {
 		display: flex;
 		align-items: center;
-		gap: 0.75rem;
+		gap: 1rem;
 	}
 
 	.logo-container {
-		width: 42px;
-		height: 42px;
+		width: 48px;
+		height: 48px;
 		display: flex;
 		align-items: center;
 		justify-content: center;
-		position: relative;
 	}
 
 	.eye-logo {
 		width: 100%;
 		height: 100%;
 		color: #0a4f3c;
-		filter: drop-shadow(0 0 8px rgba(10, 79, 60, 0.5));
-		animation: eyePulse 4s ease-in-out infinite;
-	}
-
-	@keyframes eyePulse {
-		0%, 100% { 
-			opacity: 0.9;
-			filter: drop-shadow(0 0 8px rgba(10, 79, 60, 0.5));
-		}
-		50% { 
-			opacity: 1;
-			filter: drop-shadow(0 0 12px rgba(10, 79, 60, 0.8));
-		}
+		filter: drop-shadow(0 0 10px rgba(10, 79, 60, 0.4));
 	}
 
 	.brand-info h1 {
 		margin: 0;
-		font-size: 1.1rem;
+		font-size: 1.4rem;
 		color: #0a4f3c;
-		text-shadow: 0 0 8px rgba(10, 79, 60, 0.4);
-		letter-spacing: 0.15em;
-		font-weight: 700;
+		letter-spacing: 0.1em;
+		font-weight: 600;
 	}
 
 	.system-subtitle {
-		margin: 0.1rem 0 0 0;
-		font-size: 0.7rem;
-		color: #1e3a5f; /* Navy */
+		margin: 0.2rem 0 0 0;
+		font-size: 0.8rem;
+		color: #b8a678;
 		text-transform: uppercase;
-		letter-spacing: 0.2em;
-		font-weight: 500;
-	}
-
-	/* Navigation */
-	.military-nav {
-		display: flex;
-		align-items: center;
+		letter-spacing: 0.15em;
+		font-weight: 400;
 	}
 
 	.nav-container {
 		display: flex;
 		gap: 0.5rem;
-		background: rgba(0, 0, 0, 0.5);
-		padding: 0.3rem;
+		background: rgba(0, 0, 0, 0.4);
+		padding: 0.4rem;
 		border: 1px solid rgba(10, 79, 60, 0.2);
-		border-radius: 4px;
+		border-radius: 6px;
 	}
 
 	.nav-module {
 		position: relative;
-		background: rgba(0, 0, 0, 0.7);
-		border: 1px solid rgba(30, 58, 95, 0.3); /* Navy border */
-		border-radius: 3px;
-		padding: 0.4rem 0.8rem;
-		color: #b8a678; /* Beige */
+		background: rgba(0, 0, 0, 0.6);
+		border: 1px solid transparent;
+		border-radius: 4px;
+		padding: 0.6rem 1.2rem;
+		color: #b8a678;
 		cursor: pointer;
 		transition: all 0.2s ease;
-		font-size: 0.65rem;
-		font-weight: 600;
-		letter-spacing: 0.1em;
+		font-size: 0.75rem;
+		font-weight: 500;
+		letter-spacing: 0.08em;
 		text-transform: uppercase;
-		min-width: 90px;
+		min-width: 110px;
 		text-align: center;
 	}
 
 	.nav-module:hover {
 		background: rgba(10, 79, 60, 0.1);
 		border-color: #0a4f3c;
-		color: #fff;
+		color: #e0e0e0;
 	}
 
 	.nav-module.active {
-		background: linear-gradient(135deg, 
-			rgba(10, 79, 60, 0.2),
-			rgba(30, 58, 95, 0.15));
+		background: rgba(10, 79, 60, 0.15);
 		border-color: #0a4f3c;
-		color: #fff;
-		box-shadow: 
-			0 2px 8px rgba(10, 79, 60, 0.2),
-			inset 0 1px 0 rgba(255, 255, 255, 0.05);
+		color: #ffffff;
 	}
 
 	.module-name {
@@ -231,83 +224,46 @@
 
 	.active-indicator {
 		position: absolute;
-		bottom: -2px;
+		bottom: 0;
 		left: 20%;
 		right: 20%;
 		height: 2px;
 		background: #0a4f3c;
-		box-shadow: 0 0 6px rgba(10, 79, 60, 0.6);
 		border-radius: 1px;
 	}
 
-	/* Main Viewport */
-	.military-viewport {
+	.viewport {
 		flex: 1;
 		position: relative;
 		overflow: hidden;
 		display: flex;
-		background: #000;
+		background: #0a0a0a;
 	}
 
-	.content-container {
+	.content-wrapper {
 		width: 100%;
 		height: 100%;
 		position: relative;
 		overflow: hidden;
 	}
 
-	/* Responsive Design */
 	@media (max-width: 1400px) {
 		.nav-module {
-			min-width: 80px;
-			padding: 0.35rem 0.6rem;
-			font-size: 0.6rem;
-		}
-		
-		.brand-info h1 {
-			font-size: 1rem;
-		}
-		
-		.system-subtitle {
-			font-size: 0.65rem;
+			min-width: 100px;
+			padding: 0.5rem 1rem;
+			font-size: 0.7rem;
 		}
 	}
 
 	@media (max-width: 1200px) {
-		.military-header {
-			padding: 0.6rem 0.8rem;
+		.dashboard-header {
+			padding: 0.8rem 1rem;
 		}
 		
 		.nav-module {
-			min-width: 70px;
-			padding: 0.3rem 0.5rem;
-			font-size: 0.55rem;
-		}
-		
-		.logo-container {
-			width: 36px;
-			height: 36px;
-		}
-	}
-
-	@media (max-width: 768px) {
-		.nav-container {
-			gap: 0.3rem;
-		}
-		
-		.nav-module {
-			min-width: 60px;
-			padding: 0.25rem 0.4rem;
-			font-size: 0.5rem;
-			letter-spacing: 0.05em;
-		}
-		
-		.brand-info h1 {
-			font-size: 0.9rem;
-		}
-		
-		.system-subtitle {
-			font-size: 0.6rem;
+			min-width: 90px;
+			padding: 0.45rem 0.8rem;
+			font-size: 0.65rem;
 		}
 	}
 </style>
