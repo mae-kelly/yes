@@ -1,4 +1,4 @@
-<!-- RegionMetrics.svelte - Enhanced Regional Analysis -->
+<!-- RegionMetrics.svelte - Global Surveillance Grid -->
 <script>
 	import { onMount } from 'svelte';
 	
@@ -7,7 +7,8 @@
 	let selectedRegion = null;
 	let regionDetails = [];
 	let searchTerm = '';
-	let viewMode = 'globe'; // 'globe', 'table', 'radar'
+	let radarAngle = 0;
+	let gridPulse = [];
 
 	onMount(async () => {
 		try {
@@ -15,10 +16,22 @@
 			let result = await response.json();
 			data = result;
 			loading = false;
+			
+			// Initialize grid pulse for visualization
+			for (let i = 0; i < 16; i++) {
+				gridPulse.push(Math.random());
+			}
 		} catch (err) {
 			console.error('Region metrics error:', err);
 			loading = false;
 		}
+		
+		// Radar sweep animation
+		const radarInterval = setInterval(() => {
+			radarAngle = (radarAngle + 2) % 360;
+		}, 50);
+		
+		return () => clearInterval(radarInterval);
 	});
 
 	$: sortedRegions = data.global_surveillance ? 
@@ -33,24 +46,11 @@
 		return ((count / data.total_coverage) * 100).toFixed(2);
 	}
 
-	function getRegionStatus(count) {
-		const percentage = (count / maxCount) * 100;
-		if (percentage >= 80) return { status: 'DOMINANT', color: '#00ff88', icon: '◆' };
-		if (percentage >= 60) return { status: 'STRONG', color: '#00ffff', icon: '▲' };
-		if (percentage >= 40) return { status: 'MODERATE', color: '#ffcc00', icon: '●' };
-		if (percentage >= 20) return { status: 'EMERGING', color: '#ff9900', icon: '■' };
-		return { status: 'MINIMAL', color: '#ff0066', icon: '▼' };
-	}
-
-	function getRegionCode(region) {
-		const codes = {
-			'North America': 'NA',
-			'EMEA': 'EU',
-			'APAC': 'AP',
-			'LATAM': 'LA',
-			'Unknown': 'XX'
-		};
-		return codes[region] || region.substring(0, 2).toUpperCase();
+	function getThreatStatus(percentage) {
+		if (percentage >= 30) return { status: 'SECURE', color: '#0a4f3c' };
+		if (percentage >= 20) return { status: 'ELEVATED', color: '#ffcc00' };
+		if (percentage >= 10) return { status: 'WARNING', color: '#ff9900' };
+		return { status: 'CRITICAL', color: '#ff0066' };
 	}
 
 	async function drillDownRegion(region, count) {
@@ -74,494 +74,406 @@
 		regionDetails = [];
 	}
 
-	// Calculate angles for radar chart
-	$: radarData = sortedRegions.slice(0, 8).map((item, i) => {
-		const angle = (i / 8) * Math.PI * 2 - Math.PI / 2;
-		const radius = (item[1] / maxCount) * 150;
-		return {
-			region: item[0],
-			count: item[1],
-			x: 200 + Math.cos(angle) * radius,
-			y: 200 + Math.sin(angle) * radius,
-			angle,
-			radius
+	function getRegionCoordinates(region) {
+		const coords = {
+			'NORTH AMERICA': { x: 30, y: 35 },
+			'EMEA': { x: 50, y: 40 },
+			'APAC': { x: 75, y: 50 },
+			'LATAM': { x: 35, y: 65 },
+			'OTHER': { x: 50, y: 60 }
 		};
-	});
+		return coords[region.toUpperCase()] || { x: 50, y: 50 };
+	}
 </script>
 
 <div class="dashboard-container">
-	<!-- Header Section -->
-	<div class="module-header">
-		<div class="header-content">
-			<div class="module-title">
-				<svg class="module-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-					<circle cx="12" cy="12" r="10" />
-					<path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
-				</svg>
-				<h1>REGIONS</h1>
-				<span class="module-subtitle">// GLOBAL SURVEILLANCE NETWORK</span>
+	<div class="main-content">
+		<!-- Left Panel: Regional Command -->
+		<div class="table-panel">
+			<div class="panel-header">
+				<div class="header-grid">
+					<div>
+						<h3 class="panel-title">REGIONS</h3>
+						<div class="subtitle">GLOBAL SURVEILLANCE NETWORK</div>
+					</div>
+					<div class="radar-indicator">
+						<svg viewBox="0 0 40 40" class="radar-svg">
+							<circle cx="20" cy="20" r="18" fill="none" stroke="#0a4f3c" stroke-width="0.5" opacity="0.3"/>
+							<circle cx="20" cy="20" r="12" fill="none" stroke="#0a4f3c" stroke-width="0.5" opacity="0.5"/>
+							<circle cx="20" cy="20" r="6" fill="none" stroke="#0a4f3c" stroke-width="0.5" opacity="0.7"/>
+							<line x1="20" y1="20" x2="20" y2="2" 
+								  stroke="#0a4f3c" stroke-width="1" opacity="0.8"
+								  transform="rotate({radarAngle} 20 20)">
+								<animate attributeName="opacity" values="0.8;0.2;0.8" dur="2s" repeatCount="indefinite"/>
+							</line>
+							<circle cx="20" cy="20" r="2" fill="#0a4f3c"/>
+						</svg>
+					</div>
+				</div>
+				<div class="controls">
+					<input 
+						type="text" 
+						bind:value={searchTerm}
+						placeholder="SEARCH REGIONS..."
+						class="search-input"
+					/>
+				</div>
 			</div>
 			
-			<div class="header-metrics">
-				<div class="metric-badge">
-					<span class="metric-icon">🌍</span>
-					<span class="metric-value">{sortedRegions.length}</span>
-					<span class="metric-label">REGIONS</span>
-				</div>
-				<div class="metric-badge">
-					<span class="metric-icon">◆</span>
-					<span class="metric-value">{(data.total_coverage || 0).toLocaleString()}</span>
-					<span class="metric-label">ASSETS</span>
-				</div>
-				<div class="metric-badge">
-					<span class="metric-icon">▲</span>
-					<span class="metric-value">{maxCount.toLocaleString()}</span>
-					<span class="metric-label">PEAK</span>
-				</div>
-			</div>
-		</div>
-		
-		<div class="controls-bar">
-			<input 
-				type="text" 
-				bind:value={searchTerm}
-				placeholder="Search regions..."
-				class="search-input"
-			/>
-			<div class="view-toggles">
-				<button class="view-btn {viewMode === 'globe' ? 'active' : ''}" on:click={() => viewMode = 'globe'}>
-					<span class="btn-icon">🌍</span> GLOBE
-				</button>
-				<button class="view-btn {viewMode === 'table' ? 'active' : ''}" on:click={() => viewMode = 'table'}>
-					<span class="btn-icon">▦</span> TABLE
-				</button>
-				<button class="view-btn {viewMode === 'radar' ? 'active' : ''}" on:click={() => viewMode = 'radar'}>
-					<span class="btn-icon">◈</span> RADAR
-				</button>
-			</div>
-		</div>
-	</div>
-
-	<!-- Main Content Area -->
-	<div class="main-content">
-		{#if loading && !selectedRegion}
-			<div class="loading-state">
-				<div class="globe-loader">
-					<div class="globe-ring"></div>
-					<div class="globe-ring"></div>
-					<div class="globe-ring"></div>
-				</div>
-				<p>ESTABLISHING SATELLITE UPLINK...</p>
-			</div>
-		{:else if selectedRegion}
-			<!-- Drill-down View -->
-			<div class="drill-view">
-				<div class="drill-header">
-					<div class="drill-title">
-						<span class="drill-icon">🌍</span>
-						<h3>{selectedRegion.region.toUpperCase()}</h3>
-						<span class="drill-stats">// {selectedRegion.count.toLocaleString()} ASSETS</span>
+			{#if loading && !selectedRegion}
+				<div class="loading-state">
+					<div class="globe-loader">
+						<div class="globe-ring"></div>
+						<div class="globe-ring"></div>
+						<div class="globe-ring"></div>
 					</div>
-					<button class="close-btn" on:click={closeDetails}>
-						<span>✕</span>
-					</button>
+					<p class="loading-text">SCANNING GLOBAL NETWORKS...</p>
 				</div>
-				
-				<div class="drill-table-container">
+			{:else if selectedRegion}
+				<div class="drill-view">
+					<div class="drill-header">
+						<h4>{selectedRegion.region.toUpperCase()}</h4>
+						<button class="close-btn" on:click={closeDetails}>
+							<svg width="20" height="20" viewBox="0 0 20 20">
+								<path d="M2 2L18 18M18 2L2 18" stroke="#ff0066" stroke-width="2"/>
+							</svg>
+						</button>
+					</div>
+					<div class="drill-table-container">
+						<table class="data-table">
+							<thead>
+								<tr>
+									<th>HOST</th>
+									<th>COUNTRY</th>
+									<th>INFRASTRUCTURE</th>
+									<th>CMDB</th>
+									<th>TANIUM</th>
+								</tr>
+							</thead>
+							<tbody>
+								{#each regionDetails as host}
+									<tr>
+										<td class="host-cell">{host.host}</td>
+										<td>{host.country || 'CLASSIFIED'}</td>
+										<td>{host.infrastructure_type || 'CLASSIFIED'}</td>
+										<td>
+											<span class="status-badge {host.present_in_cmdb?.toLowerCase().includes('yes') ? 'active' : 'inactive'}">
+												{host.present_in_cmdb?.toLowerCase().includes('yes') ? 'VERIFIED' : 'UNKNOWN'}
+											</span>
+										</td>
+										<td>
+											<span class="status-badge {host.tanium_coverage?.toLowerCase().includes('tanium') ? 'active' : 'inactive'}">
+												{host.tanium_coverage?.toLowerCase().includes('tanium') ? 'SECURED' : 'EXPOSED'}
+											</span>
+										</td>
+									</tr>
+								{/each}
+							</tbody>
+						</table>
+					</div>
+				</div>
+			{:else}
+				<div class="table-scroll-container">
 					<table class="data-table">
 						<thead>
 							<tr>
-								<th>HOST IDENTIFIER</th>
-								<th>COUNTRY</th>
-								<th>INFRASTRUCTURE</th>
-								<th>CMDB</th>
-								<th>TANIUM</th>
+								<th>REGION</th>
+								<th>ASSETS</th>
+								<th>COVERAGE</th>
+								<th>STATUS</th>
+								<th>SURVEILLANCE GRID</th>
 							</tr>
 						</thead>
 						<tbody>
-							{#each regionDetails as host}
-								<tr>
-									<td class="host-cell">
-										<span class="host-icon">▸</span>
-										{host.host}
+							{#each sortedRegions as [region, count]}
+								{@const percentage = getPercentage(count)}
+								{@const threat = getThreatStatus(percentage)}
+								<tr on:click={() => drillDownRegion(region, count)}>
+									<td class="region-cell">
+										<div class="region-marker" style="background: {threat.color}"></div>
+										<span class="region-name">{region.toUpperCase()}</span>
 									</td>
-									<td>{host.country || 'Unknown'}</td>
-									<td>{host.infrastructure_type || 'Unknown'}</td>
-									<td>
-										<span class="status-badge {host.present_in_cmdb?.toLowerCase().includes('yes') ? 'active' : 'inactive'}">
-											{host.present_in_cmdb?.toLowerCase().includes('yes') ? '◉' : '○'}
+									<td class="center asset-cell">
+										<span class="asset-count">{count.toLocaleString()}</span>
+										<div class="asset-bar" style="width: {(count/maxCount)*100}%"></div>
+									</td>
+									<td class="center">{percentage}%</td>
+									<td class="center">
+										<span class="status-badge" style="color: {threat.color}; border-color: {threat.color}">
+											{threat.status}
 										</span>
 									</td>
 									<td>
-										<span class="status-badge {host.tanium_coverage?.toLowerCase().includes('tanium') ? 'active' : 'inactive'}">
-											{host.tanium_coverage?.toLowerCase().includes('tanium') ? '◉' : '○'}
-										</span>
+										<div class="grid-visualization">
+											<svg viewBox="0 0 60 20" class="grid-svg">
+												{#each Array(15) as _, i}
+													<rect x="{i * 4}" y="5" width="3" height="{10 * (count/maxCount)}" 
+														  fill={threat.color} opacity="{0.3 + (i * 0.05)}"/>
+												{/each}
+											</svg>
+										</div>
 									</td>
 								</tr>
 							{/each}
 						</tbody>
 					</table>
 				</div>
+			{/if}
+		</div>
+
+		<!-- Right Panel: Tactical Map -->
+		<div class="viz-panel">
+			<!-- Global Metrics -->
+			<div class="metrics-row">
+				<div class="metric-card">
+					<div class="metric-header">
+						<span class="metric-icon">◈</span>
+						<span class="metric-label">REGIONS</span>
+					</div>
+					<div class="metric-value">{sortedRegions.length}</div>
+					<div class="metric-subtext">ACTIVE ZONES</div>
+				</div>
+				<div class="metric-card">
+					<div class="metric-header">
+						<span class="metric-icon">◉</span>
+						<span class="metric-label">ASSETS</span>
+					</div>
+					<div class="metric-value">{(data.total_coverage || 0).toLocaleString()}</div>
+					<div class="metric-subtext">MONITORED</div>
+				</div>
 			</div>
-		{:else if viewMode === 'globe'}
-			<!-- Globe View -->
-			<div class="globe-view">
-				<div class="globe-container">
-					<svg viewBox="0 0 800 600" class="world-map">
+
+			<!-- Global Surveillance Map -->
+			<div class="viz-card">
+				<div class="card-header">
+					<h4>GLOBAL SURVEILLANCE GRID</h4>
+					<div class="card-indicator active"></div>
+				</div>
+				<div class="world-map">
+					<svg viewBox="0 0 100 100" class="map-svg">
 						<defs>
-							<radialGradient id="globeGrad">
-								<stop offset="0%" style="stop-color:#00ffff;stop-opacity:0.3" />
-								<stop offset="100%" style="stop-color:#00ffff;stop-opacity:0" />
+							<radialGradient id="regionGlow">
+								<stop offset="0%" style="stop-color:#0a4f3c;stop-opacity:0.8" />
+								<stop offset="100%" style="stop-color:#0a4f3c;stop-opacity:0" />
 							</radialGradient>
+							<filter id="glow">
+								<feGaussianBlur stdDeviation="2" result="coloredBlur"/>
+								<feMerge>
+									<feMergeNode in="coloredBlur"/>
+									<feMergeNode in="SourceGraphic"/>
+								</feMerge>
+							</filter>
 						</defs>
 						
-						<!-- World Grid -->
-						<g class="grid-lines">
-							{#each Array(6) as _, i}
-								<line x1="0" y1={100 + i * 100} x2="800" y2={100 + i * 100} stroke="#0a4f3c" stroke-width="0.5" opacity="0.3"/>
-								<line x1={133 + i * 133} y1="0" x2={133 + i * 133} y2="600" stroke="#0a4f3c" stroke-width="0.5" opacity="0.3"/>
-							{/each}
-						</g>
+						<!-- Grid lines -->
+						{#each Array(10) as _, i}
+							<line x1="{i * 10}" y1="0" x2="{i * 10}" y2="100" 
+								  stroke="#0a4f3c" stroke-width="0.2" opacity="0.2"/>
+							<line x1="0" y1="{i * 10}" x2="100" y2="{i * 10}" 
+								  stroke="#0a4f3c" stroke-width="0.2" opacity="0.2"/>
+						{/each}
 						
-						<!-- Region Zones -->
-						{#each sortedRegions as [region, count], i}
-							{@const status = getRegionStatus(count)}
-							{@const x = region.includes('America') ? 200 : 
-									   region.includes('EMEA') ? 400 : 
-									   region.includes('APAC') ? 600 : 
-									   region.includes('LATAM') ? 250 : 400}
-							{@const y = region.includes('America') ? 200 : 
-									   region.includes('EMEA') ? 250 : 
-									   region.includes('APAC') ? 300 : 
-									   region.includes('LATAM') ? 400 : 450}
-							{@const size = Math.sqrt(count / maxCount) * 120 + 40}
+						<!-- Region nodes -->
+						{#each sortedRegions as [region, count]}
+							{@const coords = getRegionCoordinates(region)}
+							{@const size = Math.sqrt(count / maxCount) * 15}
+							{@const threat = getThreatStatus(getPercentage(count))}
 							
-							<g class="region-zone" on:click={() => drillDownRegion(region, count)}>
-								<circle cx={x} cy={y} r={size} fill="url(#globeGrad)" stroke={status.color} stroke-width="2" opacity="0.8">
-									<animate attributeName="r" values="{size};{size + 5};{size}" dur="3s" repeatCount="indefinite"/>
+							<g class="region-node">
+								<circle cx="{coords.x}" cy="{coords.y}" r="{size}" 
+										fill="url(#regionGlow)" opacity="0.3"/>
+								<circle cx="{coords.x}" cy="{coords.y}" r="{size/2}" 
+										fill="none" stroke={threat.color} stroke-width="1" 
+										opacity="0.8" filter="url(#glow)"/>
+								<circle cx="{coords.x}" cy="{coords.y}" r="2" 
+										fill={threat.color}/>
+								
+								<!-- Pulse animation -->
+								<circle cx="{coords.x}" cy="{coords.y}" r="{size/2}" 
+										fill="none" stroke={threat.color} stroke-width="1" 
+										opacity="0">
+									<animate attributeName="r" values="{size/2};{size}" dur="2s" repeatCount="indefinite"/>
+									<animate attributeName="opacity" values="0.8;0" dur="2s" repeatCount="indefinite"/>
 								</circle>
-								<circle cx={x} cy={y} r="5" fill={status.color}/>
-								<text x={x} y={y - size - 10} text-anchor="middle" fill={status.color} font-size="14" font-weight="600">
-									{getRegionCode(region)}
-								</text>
-								<text x={x} y={y + 20} text-anchor="middle" fill="#b8a678" font-size="10">
-									{count.toLocaleString()}
-								</text>
-								<text x={x} y={y + 35} text-anchor="middle" fill="#666" font-size="9">
-									{getPercentage(count)}%
-								</text>
 							</g>
 						{/each}
 						
-						<!-- Connection Lines -->
-						<g class="connections">
-							{#each sortedRegions as [region, count], i}
-								{#if i < sortedRegions.length - 1}
-									{@const x1 = region.includes('America') ? 200 : 
-											    region.includes('EMEA') ? 400 : 
-											    region.includes('APAC') ? 600 : 250}
-									{@const y1 = region.includes('America') ? 200 : 
-											    region.includes('EMEA') ? 250 : 
-											    region.includes('APAC') ? 300 : 400}
-									{@const nextRegion = sortedRegions[i + 1][0]}
-									{@const x2 = nextRegion.includes('America') ? 200 : 
-											    nextRegion.includes('EMEA') ? 400 : 
-											    nextRegion.includes('APAC') ? 600 : 250}
-									{@const y2 = nextRegion.includes('America') ? 200 : 
-											    nextRegion.includes('EMEA') ? 250 : 
-											    nextRegion.includes('APAC') ? 300 : 400}
-									
-									<line x1={x1} y1={y1} x2={x2} y2={y2} stroke="#0a4f3c" stroke-width="0.5" opacity="0.3" stroke-dasharray="5,5">
-										<animate attributeName="stroke-dashoffset" values="0;10" dur="1s" repeatCount="indefinite"/>
-									</line>
-								{/if}
+						<!-- Connection lines -->
+						{#each sortedRegions as [region1, count1], i}
+							{#each sortedRegions.slice(i + 1) as [region2, count2]}
+								{@const coords1 = getRegionCoordinates(region1)}
+								{@const coords2 = getRegionCoordinates(region2)}
+								<line x1="{coords1.x}" y1="{coords1.y}" 
+									  x2="{coords2.x}" y2="{coords2.y}" 
+									  stroke="#0a4f3c" stroke-width="0.3" 
+									  opacity="0.2" stroke-dasharray="2,2"/>
 							{/each}
-						</g>
+						{/each}
 					</svg>
 				</div>
-				
-				<div class="region-cards">
-					{#each sortedRegions as [region, count]}
-						{@const status = getRegionStatus(count)}
-						<div class="region-card" style="border-color: {status.color}">
-							<div class="card-header">
-								<span class="card-icon" style="color: {status.color}">{status.icon}</span>
-								<span class="card-name">{region}</span>
+			</div>
+
+			<!-- Regional Distribution -->
+			<div class="viz-card">
+				<div class="card-header">
+					<h4>ASSET DISTRIBUTION</h4>
+					<div class="card-indicator"></div>
+				</div>
+				<div class="distribution-chart">
+					{#each sortedRegions.slice(0, 6) as [region, count]}
+						{@const percentage = getPercentage(count)}
+						{@const threat = getThreatStatus(percentage)}
+						<div class="dist-item">
+							<div class="dist-header">
+								<span class="dist-region">{region.toUpperCase()}</span>
+								<span class="dist-count">{count.toLocaleString()}</span>
 							</div>
-							<div class="card-metrics">
-								<div class="card-stat">
-									<span class="stat-value">{count.toLocaleString()}</span>
-									<span class="stat-label">ASSETS</span>
-								</div>
-								<div class="card-stat">
-									<span class="stat-value">{getPercentage(count)}%</span>
-									<span class="stat-label">COVERAGE</span>
+							<div class="dist-visual">
+								<div class="dist-track"></div>
+								<div class="dist-fill" 
+									 style="width: {(count/maxCount)*100}%; 
+											background: linear-gradient(90deg, #0a4f3c, {threat.color})">
+									<div class="dist-glow"></div>
 								</div>
 							</div>
-							<div class="card-status" style="color: {status.color}">{status.status}</div>
+							<div class="dist-stats">
+								<span class="dist-percentage">{percentage}%</span>
+								<span class="dist-status" style="color: {threat.color}">{threat.status}</span>
+							</div>
 						</div>
 					{/each}
 				</div>
 			</div>
-		{:else if viewMode === 'table'}
-			<!-- Table View -->
-			<div class="table-view">
-				<table class="data-table">
-					<thead>
-						<tr>
-							<th>STATUS</th>
-							<th>REGION</th>
-							<th>CODE</th>
-							<th>ASSET COUNT</th>
-							<th>PERCENTAGE</th>
-							<th>DISTRIBUTION</th>
-						</tr>
-					</thead>
-					<tbody>
-						{#each sortedRegions as [region, count]}
-							{@const status = getRegionStatus(count)}
-							<tr on:click={() => drillDownRegion(region, count)}>
-								<td class="status-cell">
-									<span class="status-icon" style="color: {status.color}">{status.icon}</span>
-								</td>
-								<td class="region-cell">
-									<span class="region-name">{region.toUpperCase()}</span>
-								</td>
-								<td class="center">{getRegionCode(region)}</td>
-								<td class="center">{count.toLocaleString()}</td>
-								<td class="center">{getPercentage(count)}%</td>
-								<td>
-									<div class="coverage-cell">
-										<div class="coverage-bar">
-											<div class="coverage-fill" style="width: {(count/maxCount)*100}%; background: {status.color}"></div>
-										</div>
-									</div>
-								</td>
-							</tr>
-						{/each}
-					</tbody>
-				</table>
-			</div>
-		{:else if viewMode === 'radar'}
-			<!-- Radar View -->
-			<div class="radar-view">
-				<div class="radar-container">
-					<svg viewBox="0 0 400 400" class="radar-chart">
-						<!-- Radar Grid -->
-						<g class="radar-grid">
-							{#each [150, 120, 90, 60, 30] as radius}
-								<circle cx="200" cy="200" r={radius} fill="none" stroke="#0a4f3c" stroke-width="0.5" opacity="0.3"/>
-							{/each}
-							
-							{#each Array(8) as _, i}
-								{@const angle = (i / 8) * Math.PI * 2}
-								{@const x2 = 200 + Math.cos(angle) * 150}
-								{@const y2 = 200 + Math.sin(angle) * 150}
-								<line x1="200" y1="200" x2={x2} y2={y2} stroke="#0a4f3c" stroke-width="0.5" opacity="0.3"/>
-							{/each}
-						</g>
-						
-						<!-- Data Polygon -->
-						<polygon 
-							points={radarData.map(d => `${d.x},${d.y}`).join(' ')}
-							fill="#00ff88" 
-							fill-opacity="0.2" 
-							stroke="#00ff88" 
-							stroke-width="2"
-						/>
-						
-						<!-- Data Points -->
-						{#each radarData as point}
-							{@const status = getRegionStatus(point.count)}
-							<circle cx={point.x} cy={point.y} r="6" fill={status.color} stroke="#000" stroke-width="1">
-								<animate attributeName="r" values="6;8;6" dur="2s" repeatCount="indefinite"/>
-							</circle>
-							<text x={point.x} y={point.y - 15} text-anchor="middle" fill={status.color} font-size="10" font-weight="600">
-								{point.region.substring(0, 6)}
-							</text>
-						{/each}
-						
-						<!-- Center Point -->
-						<circle cx="200" cy="200" r="3" fill="#00ffff"/>
-						
-						<!-- Scanning Line -->
-						<line x1="200" y1="200" x2="200" y2="50" stroke="#00ffff" stroke-width="1" opacity="0.5" class="radar-sweep">
-							<animateTransform
-								attributeName="transform"
-								attributeType="XML"
-								type="rotate"
-								from="0 200 200"
-								to="360 200 200"
-								dur="4s"
-								repeatCount="indefinite"/>
-						</line>
-					</svg>
+
+			<!-- Threat Matrix -->
+			<div class="viz-card">
+				<div class="card-header">
+					<h4>THREAT ASSESSMENT</h4>
+					<div class="card-indicator active"></div>
+				</div>
+				<div class="threat-grid">
+					{#each sortedRegions.slice(0, 4) as [region, count]}
+						{@const percentage = getPercentage(count)}
+						{@const threat = getThreatStatus(percentage)}
+						<div class="threat-cell" style="border-color: {threat.color}">
+							<div class="threat-region">{region.substring(0, 8).toUpperCase()}</div>
+							<div class="threat-visual">
+								<svg viewBox="0 0 50 50" class="threat-svg">
+									<polygon points="25,5 45,25 25,45 5,25" 
+											fill="none" stroke={threat.color} stroke-width="1"/>
+									<polygon points="25,10 40,25 25,40 10,25" 
+											fill={threat.color} opacity="0.2"/>
+									<circle cx="25" cy="25" r="5" fill={threat.color} opacity="0.8"/>
+								</svg>
+							</div>
+							<div class="threat-level" style="color: {threat.color}">{threat.status}</div>
+						</div>
+					{/each}
 				</div>
 			</div>
-		{/if}
+		</div>
 	</div>
 </div>
 
 <style>
 	.dashboard-container {
-		height: calc(100vh - 130px);
+		height: calc(100vh - 180px);
 		display: flex;
-		flex-direction: column;
-		background: #0a0a0a;
+		background: #000000;
 		color: #e0e0e0;
 		font-family: 'JetBrains Mono', monospace;
-		overflow: hidden;
-	}
-
-	.module-header {
-		background: linear-gradient(180deg, #0f0f0f 0%, #0a0a0a 100%);
-		border-bottom: 1px solid #0a4f3c;
-		padding: 1rem 1.5rem;
-		flex-shrink: 0;
-	}
-
-	.header-content {
-		display: flex;
-		justify-content: space-between;
-		align-items: center;
-		margin-bottom: 1rem;
-	}
-
-	.module-title {
-		display: flex;
-		align-items: center;
-		gap: 1rem;
-	}
-
-	.module-icon {
-		width: 32px;
-		height: 32px;
-		color: #00ffff;
-		filter: drop-shadow(0 0 10px rgba(0, 255, 255, 0.5));
-	}
-
-	.module-title h1 {
-		margin: 0;
-		font-size: 1.5rem;
-		font-weight: 700;
-		background: linear-gradient(135deg, #00ffff, #00ff88);
-		-webkit-background-clip: text;
-		-webkit-text-fill-color: transparent;
-		letter-spacing: 0.1em;
-	}
-
-	.module-subtitle {
-		color: #666;
-		font-size: 0.75rem;
-		font-weight: 400;
-		letter-spacing: 0.2em;
-	}
-
-	.header-metrics {
-		display: flex;
-		gap: 2rem;
-	}
-
-	.metric-badge {
-		display: flex;
-		flex-direction: column;
-		align-items: center;
-		padding: 0.5rem 1rem;
-		background: rgba(0, 255, 255, 0.05);
-		border: 1px solid #0a4f3c;
-		border-radius: 4px;
-	}
-
-	.metric-icon {
-		font-size: 1rem;
-		margin-bottom: 0.25rem;
-	}
-
-	.metric-value {
-		font-size: 1.25rem;
-		font-weight: 600;
-		color: #00ffff;
-	}
-
-	.metric-label {
-		font-size: 0.6rem;
-		color: #666;
-		letter-spacing: 0.1em;
-	}
-
-	.controls-bar {
-		display: flex;
-		gap: 1rem;
-		align-items: center;
-	}
-
-	.search-input {
-		flex: 1;
-		max-width: 400px;
-		background: #000;
-		border: 1px solid #0a4f3c;
-		border-radius: 4px;
-		padding: 0.5rem 1rem;
-		color: #e0e0e0;
-		font-family: inherit;
-		font-size: 0.85rem;
-	}
-
-	.search-input:focus {
-		outline: none;
-		border-color: #00ffff;
-		box-shadow: 0 0 10px rgba(0, 255, 255, 0.2);
-	}
-
-	.view-toggles {
-		display: flex;
-		gap: 0.5rem;
-	}
-
-	.view-btn {
-		background: #000;
-		border: 1px solid #0a4f3c;
-		color: #666;
-		padding: 0.5rem 1rem;
-		border-radius: 4px;
-		cursor: pointer;
-		transition: all 0.2s ease;
-		display: flex;
-		align-items: center;
-		gap: 0.5rem;
-		font-family: inherit;
-		font-size: 0.75rem;
-		letter-spacing: 0.05em;
-	}
-
-	.view-btn:hover {
-		border-color: #00ffff;
-		color: #00ffff;
-		background: rgba(0, 255, 255, 0.05);
-	}
-
-	.view-btn.active {
-		background: rgba(0, 255, 255, 0.1);
-		border-color: #00ffff;
-		color: #00ffff;
-	}
-
-	.btn-icon {
-		font-size: 1rem;
-	}
-
-	.main-content {
-		flex: 1;
 		overflow: hidden;
 		padding: 1rem;
 	}
 
+	.main-content {
+		flex: 1;
+		display: flex;
+		gap: 1rem;
+		overflow: hidden;
+	}
+
+	.table-panel {
+		flex: 1.5;
+		background: linear-gradient(135deg, #0a0a0a 0%, #050505 100%);
+		border: 1px solid #0a4f3c;
+		border-radius: 4px;
+		display: flex;
+		flex-direction: column;
+		overflow: hidden;
+		position: relative;
+	}
+
+	.panel-header {
+		padding: 1.5rem;
+		border-bottom: 1px solid #0a4f3c;
+		background: rgba(10, 79, 60, 0.02);
+		flex-shrink: 0;
+	}
+
+	.header-grid {
+		display: flex;
+		justify-content: space-between;
+		align-items: start;
+		margin-bottom: 1rem;
+	}
+
+	.panel-title {
+		margin: 0;
+		color: #0a4f3c;
+		font-size: 1.2rem;
+		font-weight: 600;
+		letter-spacing: 0.1em;
+		text-shadow: 0 0 20px rgba(10, 79, 60, 0.5);
+	}
+
+	.subtitle {
+		font-size: 0.7rem;
+		color: #666;
+		letter-spacing: 0.2em;
+		margin-top: 0.25rem;
+	}
+
+	.radar-indicator {
+		width: 40px;
+		height: 40px;
+	}
+
+	.radar-svg {
+		width: 100%;
+		height: 100%;
+		animation: radarGlow 2s ease-in-out infinite;
+	}
+
+	@keyframes radarGlow {
+		0%, 100% { filter: drop-shadow(0 0 5px rgba(10, 79, 60, 0.5)); }
+		50% { filter: drop-shadow(0 0 15px rgba(10, 79, 60, 0.8)); }
+	}
+
+	.search-input {
+		width: 100%;
+		background: #000;
+		border: 1px solid #0a4f3c;
+		border-radius: 2px;
+		padding: 0.6rem 1rem;
+		color: #e0e0e0;
+		font-size: 0.8rem;
+		font-family: inherit;
+		letter-spacing: 0.05em;
+	}
+
+	.search-input:focus {
+		outline: none;
+		box-shadow: 0 0 20px rgba(10, 79, 60, 0.3);
+		background: rgba(10, 79, 60, 0.02);
+	}
+
 	.loading-state {
+		flex: 1;
 		display: flex;
 		flex-direction: column;
 		align-items: center;
 		justify-content: center;
-		height: 100%;
 		gap: 2rem;
 	}
 
@@ -575,154 +487,51 @@
 		position: absolute;
 		width: 100%;
 		height: 100%;
-		border: 2px solid transparent;
-		border-top-color: #00ffff;
+		border: 2px solid #0a4f3c;
 		border-radius: 50%;
-		animation: globeSpin 1.5s linear infinite;
+		opacity: 0.3;
+		animation: globeRotate 2s linear infinite;
 	}
 
 	.globe-ring:nth-child(2) {
-		width: 60px;
-		height: 60px;
-		top: 10px;
-		left: 10px;
-		border-top-color: #00ff88;
-		animation-duration: 2s;
-		animation-direction: reverse;
+		transform: rotateY(60deg);
+		animation-delay: 0.3s;
 	}
 
 	.globe-ring:nth-child(3) {
-		width: 40px;
-		height: 40px;
-		top: 20px;
-		left: 20px;
-		border-top-color: #ff00ff;
-		animation-duration: 2.5s;
+		transform: rotateY(120deg);
+		animation-delay: 0.6s;
 	}
 
-	@keyframes globeSpin {
-		to { transform: rotate(360deg); }
+	@keyframes globeRotate {
+		0% { transform: rotateY(0deg) rotateX(0deg); }
+		100% { transform: rotateY(360deg) rotateX(360deg); }
 	}
 
-	.globe-view {
-		height: 100%;
-		display: flex;
-		flex-direction: column;
-		gap: 1rem;
-		overflow: auto;
+	.loading-text {
+		color: #0a4f3c;
+		font-size: 0.8rem;
+		letter-spacing: 0.2em;
 	}
 
-	.globe-container {
-		background: #0f0f0f;
-		border: 1px solid #1a1a1a;
-		border-radius: 8px;
-		padding: 2rem;
-		overflow: hidden;
-	}
-
-	.world-map {
-		width: 100%;
-		height: auto;
-	}
-
-	.region-zone {
-		cursor: pointer;
-		transition: all 0.3s ease;
-	}
-
-	.region-zone:hover {
-		opacity: 0.8;
-		filter: brightness(1.2);
-	}
-
-	.region-cards {
-		display: grid;
-		grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-		gap: 1rem;
-	}
-
-	.region-card {
-		background: #0f0f0f;
-		border: 1px solid;
-		border-radius: 8px;
-		padding: 1rem;
-		transition: all 0.2s ease;
-	}
-
-	.region-card:hover {
-		transform: translateY(-2px);
-		box-shadow: 0 4px 20px rgba(0, 255, 255, 0.2);
-	}
-
-	.card-header {
-		display: flex;
-		align-items: center;
-		gap: 0.5rem;
-		margin-bottom: 0.75rem;
-	}
-
-	.card-icon {
-		font-size: 1.2rem;
-	}
-
-	.card-name {
-		font-size: 0.9rem;
-		color: #e0e0e0;
-		font-weight: 500;
-	}
-
-	.card-metrics {
-		display: flex;
-		justify-content: space-between;
-		margin-bottom: 0.75rem;
-	}
-
-	.card-stat {
-		display: flex;
-		flex-direction: column;
-		align-items: center;
-	}
-
-	.stat-value {
-		font-size: 1rem;
-		font-weight: 600;
-		color: #00ffff;
-	}
-
-	.stat-label {
-		font-size: 0.6rem;
-		color: #666;
-		letter-spacing: 0.1em;
-		margin-top: 0.25rem;
-	}
-
-	.card-status {
-		text-align: center;
-		font-size: 0.75rem;
-		font-weight: 600;
-		letter-spacing: 0.1em;
-	}
-
-	.table-view {
-		height: 100%;
-		overflow: auto;
-		background: #0f0f0f;
-		border: 1px solid #1a1a1a;
-		border-radius: 8px;
+	.table-scroll-container {
+		flex: 1;
+		overflow-y: auto;
+		overflow-x: hidden;
 	}
 
 	.data-table {
 		width: 100%;
 		border-collapse: collapse;
-		font-size: 0.85rem;
+		font-size: 0.8rem;
 	}
 
 	.data-table th {
-		background: #0f0f0f;
-		color: #00ffff;
-		padding: 0.75rem;
+		background: rgba(10, 79, 60, 0.05);
+		color: #0a4f3c;
+		padding: 1rem;
 		text-align: left;
-		font-weight: 500;
+		font-weight: 600;
 		letter-spacing: 0.1em;
 		position: sticky;
 		top: 0;
@@ -731,32 +540,37 @@
 	}
 
 	.data-table td {
-		padding: 0.75rem;
-		border-bottom: 1px solid #1a1a1a;
+		padding: 0.8rem 1rem;
+		border-bottom: 1px solid rgba(10, 79, 60, 0.1);
 		color: #b8a678;
 	}
 
 	.data-table tbody tr {
 		cursor: pointer;
-		transition: background 0.2s ease;
+		transition: all 0.2s ease;
+		position: relative;
 	}
 
 	.data-table tbody tr:hover {
-		background: rgba(0, 255, 255, 0.03);
-	}
-
-	.status-cell {
-		text-align: center;
-	}
-
-	.status-icon {
-		font-size: 1rem;
+		background: rgba(10, 79, 60, 0.05);
 	}
 
 	.region-cell {
 		display: flex;
 		align-items: center;
-		gap: 0.5rem;
+		gap: 0.75rem;
+	}
+
+	.region-marker {
+		width: 10px;
+		height: 10px;
+		border-radius: 2px;
+		animation: markerPulse 2s ease-in-out infinite;
+	}
+
+	@keyframes markerPulse {
+		0%, 100% { transform: scale(1); opacity: 1; }
+		50% { transform: scale(1.2); opacity: 0.6; }
 	}
 
 	.region-name {
@@ -768,101 +582,312 @@
 		text-align: center;
 	}
 
-	.coverage-cell {
-		display: flex;
-		align-items: center;
+	.asset-cell {
+		position: relative;
 	}
 
-	.coverage-bar {
-		flex: 1;
-		height: 6px;
-		background: #1a1a1a;
-		border-radius: 3px;
-		overflow: hidden;
+	.asset-count {
+		position: relative;
+		z-index: 2;
+		font-weight: 600;
 	}
 
-	.coverage-fill {
-		height: 100%;
-		transition: width 0.3s ease;
-		box-shadow: 0 0 10px currentColor;
+	.asset-bar {
+		position: absolute;
+		bottom: 0;
+		left: 0;
+		height: 2px;
+		background: linear-gradient(90deg, #0a4f3c, #0d6b4f);
+		opacity: 0.6;
 	}
 
-	.radar-view {
-		height: 100%;
+	.status-badge {
+		padding: 0.3rem 0.6rem;
+		border: 1px solid;
+		border-radius: 2px;
+		font-size: 0.65rem;
+		font-weight: 600;
+		letter-spacing: 0.1em;
+	}
+
+	.grid-visualization {
 		display: flex;
 		align-items: center;
 		justify-content: center;
-		background: #0f0f0f;
-		border: 1px solid #1a1a1a;
-		border-radius: 8px;
 	}
 
-	.radar-container {
+	.grid-svg {
 		width: 100%;
-		max-width: 600px;
-		aspect-ratio: 1;
+		height: 20px;
 	}
 
-	.radar-chart {
+	.viz-panel {
+		flex: 1;
+		display: flex;
+		flex-direction: column;
+		gap: 1rem;
+		overflow-y: auto;
+		padding-right: 0.5rem;
+	}
+
+	.metrics-row {
+		display: grid;
+		grid-template-columns: 1fr 1fr;
+		gap: 1rem;
+	}
+
+	.metric-card {
+		background: linear-gradient(135deg, #0a0a0a 0%, #050505 100%);
+		border: 1px solid #0a4f3c;
+		border-radius: 4px;
+		padding: 1.2rem;
+	}
+
+	.metric-header {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+		margin-bottom: 0.5rem;
+	}
+
+	.metric-icon {
+		color: #0a4f3c;
+		font-size: 1rem;
+	}
+
+	.metric-label {
+		font-size: 0.7rem;
+		color: #666;
+		letter-spacing: 0.1em;
+	}
+
+	.metric-value {
+		font-size: 2rem;
+		font-weight: 700;
+		color: #0a4f3c;
+		text-shadow: 0 0 20px rgba(10, 79, 60, 0.5);
+	}
+
+	.metric-subtext {
+		font-size: 0.65rem;
+		color: #b8a678;
+		letter-spacing: 0.05em;
+		margin-top: 0.25rem;
+	}
+
+	.viz-card {
+		background: linear-gradient(135deg, #0a0a0a 0%, #050505 100%);
+		border: 1px solid #0a4f3c;
+		border-radius: 4px;
+		padding: 1.5rem;
+	}
+
+	.card-header {
+		display: flex;
+		justify-content: space-between;
+		align-items: center;
+		margin-bottom: 1rem;
+	}
+
+	.viz-card h4 {
+		margin: 0;
+		font-size: 0.9rem;
+		color: #0a4f3c;
+		letter-spacing: 0.1em;
+		font-weight: 600;
+	}
+
+	.card-indicator {
+		width: 6px;
+		height: 6px;
+		background: #0a4f3c;
+		border-radius: 50%;
+		animation: indicatorBlink 2s ease-in-out infinite;
+	}
+
+	.card-indicator.active {
+		background: #ff0066;
+		animation-duration: 0.5s;
+	}
+
+	@keyframes indicatorBlink {
+		0%, 100% { opacity: 1; }
+		50% { opacity: 0.3; }
+	}
+
+	.world-map {
+		display: flex;
+		justify-content: center;
+		align-items: center;
+		min-height: 200px;
+	}
+
+	.map-svg {
+		width: 100%;
+		height: auto;
+	}
+
+	.region-node {
+		animation: nodePulse 3s ease-in-out infinite;
+	}
+
+	@keyframes nodePulse {
+		0%, 100% { opacity: 1; }
+		50% { opacity: 0.8; }
+	}
+
+	.distribution-chart {
+		display: flex;
+		flex-direction: column;
+		gap: 0.8rem;
+	}
+
+	.dist-item {
+		display: flex;
+		flex-direction: column;
+		gap: 0.4rem;
+	}
+
+	.dist-header {
+		display: flex;
+		justify-content: space-between;
+		align-items: center;
+	}
+
+	.dist-region {
+		font-size: 0.75rem;
+		color: #e0e0e0;
+		font-weight: 500;
+	}
+
+	.dist-count {
+		font-size: 0.75rem;
+		color: #b8a678;
+	}
+
+	.dist-visual {
+		position: relative;
+		height: 8px;
+	}
+
+	.dist-track {
+		position: absolute;
 		width: 100%;
 		height: 100%;
+		background: rgba(10, 79, 60, 0.1);
+		border-radius: 4px;
+	}
+
+	.dist-fill {
+		position: relative;
+		height: 100%;
+		border-radius: 4px;
+		overflow: hidden;
+	}
+
+	.dist-glow {
+		position: absolute;
+		right: 0;
+		top: 0;
+		width: 20px;
+		height: 100%;
+		background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.5));
+		animation: glowMove 2s linear infinite;
+	}
+
+	@keyframes glowMove {
+		0% { transform: translateX(-20px); }
+		100% { transform: translateX(0); }
+	}
+
+	.dist-stats {
+		display: flex;
+		justify-content: space-between;
+		align-items: center;
+	}
+
+	.dist-percentage {
+		font-size: 0.7rem;
+		color: #0a4f3c;
+		font-weight: 600;
+	}
+
+	.dist-status {
+		font-size: 0.65rem;
+		font-weight: 600;
+		letter-spacing: 0.05em;
+	}
+
+	.threat-grid {
+		display: grid;
+		grid-template-columns: repeat(2, 1fr);
+		gap: 1rem;
+	}
+
+	.threat-cell {
+		background: rgba(0, 0, 0, 0.5);
+		border: 1px solid;
+		border-radius: 4px;
+		padding: 1rem;
+		text-align: center;
+	}
+
+	.threat-region {
+		font-size: 0.7rem;
+		color: #b8a678;
+		margin-bottom: 0.5rem;
+		letter-spacing: 0.05em;
+	}
+
+	.threat-visual {
+		display: flex;
+		justify-content: center;
+		margin: 0.5rem 0;
+	}
+
+	.threat-svg {
+		width: 50px;
+		height: 50px;
+	}
+
+	.threat-level {
+		font-size: 0.65rem;
+		font-weight: 600;
+		letter-spacing: 0.1em;
 	}
 
 	.drill-view {
 		display: flex;
 		flex-direction: column;
 		height: 100%;
-		background: #0f0f0f;
-		border: 1px solid #0a4f3c;
-		border-radius: 8px;
-		overflow: hidden;
 	}
 
 	.drill-header {
 		display: flex;
 		justify-content: space-between;
 		align-items: center;
-		padding: 1rem 1.5rem;
-		background: rgba(0, 255, 255, 0.05);
+		padding: 1.5rem;
 		border-bottom: 2px solid #0a4f3c;
+		background: rgba(10, 79, 60, 0.05);
 	}
 
-	.drill-title {
-		display: flex;
-		align-items: center;
-		gap: 1rem;
-	}
-
-	.drill-icon {
-		font-size: 1.5rem;
-	}
-
-	.drill-title h3 {
+	.drill-header h4 {
 		margin: 0;
-		color: #00ffff;
-		font-size: 1.2rem;
+		color: #0a4f3c;
+		font-size: 1.1rem;
 		letter-spacing: 0.1em;
-	}
-
-	.drill-stats {
-		color: #666;
-		font-size: 0.75rem;
-		font-weight: 400;
 	}
 
 	.close-btn {
 		background: rgba(255, 0, 102, 0.1);
 		border: 1px solid #ff0066;
-		color: #ff0066;
-		width: 36px;
-		height: 36px;
-		border-radius: 4px;
+		width: 35px;
+		height: 35px;
+		border-radius: 2px;
 		cursor: pointer;
 		display: flex;
 		align-items: center;
 		justify-content: center;
-		font-size: 1.2rem;
-		font-weight: 600;
 		transition: all 0.2s ease;
 	}
 
@@ -878,30 +903,20 @@
 	}
 
 	.host-cell {
-		display: flex;
-		align-items: center;
-		gap: 0.5rem;
 		font-family: 'Courier New', monospace;
-		color: #00ffff;
-		font-weight: 500;
-	}
-
-	.host-icon {
 		color: #0a4f3c;
-	}
-
-	.status-badge {
-		font-size: 1rem;
-		transition: all 0.2s ease;
+		font-weight: 600;
 	}
 
 	.status-badge.active {
-		color: #00ff88;
-		filter: drop-shadow(0 0 5px currentColor);
+		background: rgba(10, 79, 60, 0.2);
+		color: #0a4f3c;
+		border: 1px solid #0a4f3c;
 	}
 
 	.status-badge.inactive {
+		background: rgba(255, 0, 102, 0.1);
 		color: #ff0066;
-		opacity: 0.5;
+		border: 1px solid #ff0066;
 	}
 </style>
