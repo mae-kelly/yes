@@ -75,6 +75,29 @@
 				</div>
 			</div>
 
+			<!-- Navigation Modules -->
+			<nav class="matrix-nav">
+				<div class="nav-container">
+					{#each modules as module}
+						<button 
+							class="nav-module {currentView === module.id ? 'active' : ''}"
+							style="--module-color: {module.color}"
+							on:click={() => switchView(module.id)}>
+							<span class="module-icon">{module.icon}</span>
+							<div class="module-info">
+								<span class="module-name">{module.name}</span>
+								<div class="module-load">
+									<div class="load-fill" style="width: {module.load}%; background: {module.color}"></div>
+								</div>
+							</div>
+							{#if currentView === module.id}
+								<div class="active-indicator"></div>
+							{/if}
+						</button>
+					{/each}
+				</div>
+			</nav>
+
 			<!-- Status Metrics -->
 			<div class="status-metrics">
 				<div class="metric-item">
@@ -93,10 +116,6 @@
 					<span class="metric-label">ALERTS</span>
 					<span class="metric-value {activeAlerts > 0 ? 'alert' : ''}">{activeAlerts}</span>
 				</div>
-				<div class="metric-item">
-					<span class="metric-label">FLOW</span>
-					<span class="metric-value">{dataFlowRate.toFixed(0)} TB/s</span>
-				</div>
 				<div class="metric-item time">
 					<span class="metric-label">SYSTEM TIME</span>
 					<span class="metric-value">{currentTime}</span>
@@ -104,29 +123,6 @@
 			</div>
 		</div>
 	</header>
-
-	<!-- Navigation Bar -->
-	<nav class="matrix-nav">
-		<div class="nav-container">
-			{#each modules as module}
-				<button 
-					class="nav-module {currentView === module.id ? 'active' : ''}"
-					style="--module-color: {module.color}"
-					on:click={() => switchView(module.id)}>
-					<span class="module-icon">{module.icon}</span>
-					<div class="module-info">
-						<span class="module-name">{module.name}</span>
-						<div class="module-load">
-							<div class="load-fill" style="width: {module.load}%; background: {module.color}"></div>
-						</div>
-					</div>
-					{#if currentView === module.id}
-						<div class="active-indicator"></div>
-					{/if}
-				</button>
-			{/each}
-		</div>
-	</nav>
 
 	<!-- Main Content -->
 	<section class="matrix-viewport">
@@ -173,7 +169,7 @@
 	.matrix-header {
 		background: rgba(0, 0, 0, 0.8);
 		border-bottom: 1px solid rgba(0, 255, 255, 0.3);
-		padding: 1rem 1.5rem;
+		padding: 1.2rem 1.5rem;
 		backdrop-filter: blur(10px);
 		position: relative;
 		flex-shrink: 0;
@@ -194,11 +190,13 @@
 	}
 
 	.header-container {
-		display: flex;
-		justify-content: space-between;
+		display: grid;
+		grid-template-columns: minmax(300px, auto) 1fr minmax(400px, auto);
+		gap: 2rem;
 		align-items: center;
 		position: relative;
 		z-index: 1;
+		max-width: 100%;
 	}
 
 	/* Brand Section */
@@ -215,10 +213,11 @@
 		display: flex;
 		align-items: center;
 		justify-content: center;
+		flex-shrink: 0;
 	}
 
 	.logo-icon {
-		font-size: 2rem;
+		font-size: 2.5rem;
 		color: #00ffff;
 		text-shadow: 0 0 20px rgba(0, 255, 255, 0.8);
 		animation: iconPulse 3s ease-in-out infinite;
@@ -259,6 +258,7 @@
 		text-shadow: 0 0 10px rgba(0, 255, 255, 0.5);
 		letter-spacing: 0.05em;
 		font-weight: 600;
+		white-space: nowrap;
 	}
 
 	.system-subtitle {
@@ -267,13 +267,127 @@
 		color: rgba(255, 255, 255, 0.6);
 		text-transform: uppercase;
 		letter-spacing: 0.1em;
+		white-space: nowrap;
+	}
+
+	/* Navigation in Header */
+	.matrix-nav {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+	}
+
+	.nav-container {
+		display: flex;
+		gap: 0.8rem;
+		background: rgba(0, 0, 0, 0.4);
+		padding: 0.5rem;
+		border-radius: 10px;
+		border: 1px solid rgba(255, 255, 255, 0.05);
+	}
+
+	.nav-module {
+		display: flex;
+		align-items: center;
+		gap: 0.6rem;
+		background: rgba(0, 0, 0, 0.6);
+		border: 1px solid rgba(255, 255, 255, 0.1);
+		border-radius: 8px;
+		padding: 0.6rem 1rem;
+		color: rgba(255, 255, 255, 0.6);
+		cursor: pointer;
+		transition: all 0.3s ease;
+		position: relative;
+		min-width: 150px;
+	}
+
+	.nav-module:hover {
+		background: rgba(0, 0, 0, 0.8);
+		border-color: var(--module-color);
+		color: var(--module-color);
+		transform: translateY(-2px);
+		box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
+	}
+
+	.nav-module.active {
+		background: linear-gradient(135deg, 
+			color-mix(in srgb, var(--module-color) 10%, transparent),
+			color-mix(in srgb, var(--module-color) 5%, transparent));
+		border-color: var(--module-color);
+		color: var(--module-color);
+		box-shadow: 
+			0 4px 12px rgba(0, 0, 0, 0.3),
+			inset 0 1px 0 rgba(255, 255, 255, 0.05);
+	}
+
+	.module-icon {
+		font-size: 1.2rem;
+		filter: drop-shadow(0 0 5px var(--module-color));
+	}
+
+	.module-info {
+		flex: 1;
+		display: flex;
+		flex-direction: column;
+		gap: 0.2rem;
+	}
+
+	.module-name {
+		font-size: 0.65rem;
+		font-weight: 600;
+		letter-spacing: 0.05em;
+		text-transform: uppercase;
+		line-height: 1;
+	}
+
+	.module-load {
+		width: 100%;
+		height: 2px;
+		background: rgba(0, 0, 0, 0.5);
+		border-radius: 1px;
+		overflow: hidden;
+	}
+
+	.load-fill {
+		height: 100%;
+		transition: width 0.5s ease;
+		box-shadow: 0 0 5px currentColor;
+		position: relative;
+	}
+
+	.load-fill::after {
+		content: '';
+		position: absolute;
+		top: 0;
+		left: -100%;
+		width: 100%;
+		height: 100%;
+		background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.3), transparent);
+		animation: shimmer 2s infinite;
+	}
+
+	@keyframes shimmer {
+		to { left: 100%; }
+	}
+
+	.active-indicator {
+		position: absolute;
+		bottom: -6px;
+		left: 50%;
+		transform: translateX(-50%);
+		width: 30px;
+		height: 2px;
+		background: var(--module-color);
+		box-shadow: 0 0 10px var(--module-color);
+		border-radius: 1px;
 	}
 
 	/* Status Metrics */
 	.status-metrics {
 		display: flex;
-		gap: 2rem;
+		gap: 1.5rem;
 		align-items: center;
+		justify-content: flex-end;
 	}
 
 	.metric-item {
@@ -312,115 +426,9 @@
 	}
 
 	.metric-item.time .metric-value {
-		font-size: 0.8rem;
+		font-size: 0.75rem;
 		color: #ff00ff;
 		font-family: 'JetBrains Mono', monospace;
-	}
-
-	/* Navigation Bar */
-	.matrix-nav {
-		background: rgba(0, 0, 0, 0.6);
-		border-bottom: 1px solid rgba(0, 255, 255, 0.2);
-		padding: 0.8rem 1.5rem;
-		flex-shrink: 0;
-	}
-
-	.nav-container {
-		display: flex;
-		gap: 1rem;
-		justify-content: center;
-	}
-
-	.nav-module {
-		display: flex;
-		align-items: center;
-		gap: 0.8rem;
-		background: rgba(0, 0, 0, 0.6);
-		border: 1px solid rgba(255, 255, 255, 0.1);
-		border-radius: 8px;
-		padding: 0.8rem 1.2rem;
-		color: rgba(255, 255, 255, 0.6);
-		cursor: pointer;
-		transition: all 0.3s ease;
-		position: relative;
-		min-width: 180px;
-	}
-
-	.nav-module:hover {
-		background: rgba(0, 0, 0, 0.8);
-		border-color: var(--module-color);
-		color: var(--module-color);
-		transform: translateY(-2px);
-		box-shadow: 0 5px 20px rgba(0, 0, 0, 0.4);
-	}
-
-	.nav-module.active {
-		background: rgba(0, 0, 0, 0.9);
-		border-color: var(--module-color);
-		color: var(--module-color);
-		box-shadow: 
-			0 5px 20px rgba(0, 0, 0, 0.4),
-			inset 0 1px 0 rgba(255, 255, 255, 0.05);
-	}
-
-	.module-icon {
-		font-size: 1.5rem;
-		filter: drop-shadow(0 0 10px var(--module-color));
-	}
-
-	.module-info {
-		flex: 1;
-		display: flex;
-		flex-direction: column;
-		gap: 0.3rem;
-	}
-
-	.module-name {
-		font-size: 0.7rem;
-		font-weight: 600;
-		letter-spacing: 0.05em;
-		text-transform: uppercase;
-	}
-
-	.module-load {
-		width: 100%;
-		height: 3px;
-		background: rgba(0, 0, 0, 0.5);
-		border-radius: 2px;
-		overflow: hidden;
-	}
-
-	.load-fill {
-		height: 100%;
-		transition: width 0.5s ease;
-		box-shadow: 0 0 5px currentColor;
-		position: relative;
-	}
-
-	.load-fill::after {
-		content: '';
-		position: absolute;
-		top: 0;
-		left: -100%;
-		width: 100%;
-		height: 100%;
-		background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.3), transparent);
-		animation: shimmer 2s infinite;
-	}
-
-	@keyframes shimmer {
-		to { left: 100%; }
-	}
-
-	.active-indicator {
-		position: absolute;
-		bottom: -8px;
-		left: 50%;
-		transform: translateX(-50%);
-		width: 30px;
-		height: 2px;
-		background: var(--module-color);
-		box-shadow: 0 0 10px var(--module-color);
 	}
 
 	/* Main Viewport */
@@ -439,43 +447,70 @@
 	}
 
 	/* Responsive Design */
-	@media (max-width: 1400px) {
-		.status-metrics {
+	@media (max-width: 1600px) {
+		.header-container {
+			grid-template-columns: minmax(280px, auto) 1fr minmax(350px, auto);
 			gap: 1.5rem;
 		}
 		
 		.nav-module {
-			min-width: 160px;
-			padding: 0.7rem 1rem;
-		}
-		
-		.module-icon {
-			font-size: 1.3rem;
+			min-width: 140px;
+			padding: 0.5rem 0.8rem;
 		}
 		
 		.module-name {
-			font-size: 0.65rem;
+			font-size: 0.6rem;
+		}
+	}
+
+	@media (max-width: 1400px) {
+		.header-container {
+			grid-template-columns: minmax(260px, auto) 1fr minmax(320px, auto);
+			gap: 1.2rem;
+		}
+		
+		.nav-module {
+			min-width: 130px;
+			padding: 0.5rem 0.7rem;
+		}
+		
+		.status-metrics {
+			gap: 1.2rem;
+		}
+		
+		.system-title {
+			font-size: 1.2rem;
 		}
 	}
 
 	@media (max-width: 1200px) {
 		.header-container {
-			flex-direction: column;
+			grid-template-columns: 1fr;
 			gap: 1rem;
-			align-items: flex-start;
 		}
 		
-		.status-metrics {
-			width: 100%;
-			justify-content: space-between;
+		.brand-section {
+			justify-content: center;
+		}
+		
+		.matrix-nav {
+			order: 2;
 		}
 		
 		.nav-container {
+			width: 100%;
+			justify-content: center;
 			flex-wrap: wrap;
 		}
 		
 		.nav-module {
-			min-width: calc(33.33% - 0.7rem);
+			min-width: calc(33.33% - 0.6rem);
+		}
+		
+		.status-metrics {
+			order: 3;
+			justify-content: space-around;
+			width: 100%;
 		}
 	}
 
@@ -488,17 +523,17 @@
 			font-size: 1.1rem;
 		}
 		
-		.status-metrics {
-			gap: 1rem;
-		}
-		
-		.metric-item {
-			min-width: auto;
-		}
-		
 		.nav-module {
-			min-width: calc(50% - 0.5rem);
-			padding: 0.6rem 0.8rem;
+			min-width: calc(50% - 0.4rem);
+			padding: 0.4rem 0.6rem;
+		}
+		
+		.module-icon {
+			font-size: 1rem;
+		}
+		
+		.module-name {
+			font-size: 0.55rem;
 		}
 	}
 </style>
