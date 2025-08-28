@@ -7,6 +7,7 @@
 	let selectedRegion = null;
 	let regionDetails = [];
 	let searchTerm = '';
+	let viewMode = 'globe'; // 'globe', 'table', 'radar'
 
 	onMount(async () => {
 		try {
@@ -32,6 +33,26 @@
 		return ((count / data.total_coverage) * 100).toFixed(2);
 	}
 
+	function getRegionStatus(count) {
+		const percentage = (count / maxCount) * 100;
+		if (percentage >= 80) return { status: 'DOMINANT', color: '#00ff88', icon: '◆' };
+		if (percentage >= 60) return { status: 'STRONG', color: '#00ffff', icon: '▲' };
+		if (percentage >= 40) return { status: 'MODERATE', color: '#ffcc00', icon: '●' };
+		if (percentage >= 20) return { status: 'EMERGING', color: '#ff9900', icon: '■' };
+		return { status: 'MINIMAL', color: '#ff0066', icon: '▼' };
+	}
+
+	function getRegionCode(region) {
+		const codes = {
+			'North America': 'NA',
+			'EMEA': 'EU',
+			'APAC': 'AP',
+			'LATAM': 'LA',
+			'Unknown': 'XX'
+		};
+		return codes[region] || region.substring(0, 2).toUpperCase();
+	}
+
 	async function drillDownRegion(region, count) {
 		selectedRegion = { region, count };
 		loading = true;
@@ -53,292 +74,641 @@
 		regionDetails = [];
 	}
 
-	// Calculate regional distribution percentages
-	$: regionalDistribution = sortedRegions.reduce((acc, [region, count]) => {
-		const percentage = getPercentage(count);
-		return { ...acc, [region]: percentage };
-	}, {});
+	// Calculate angles for radar chart
+	$: radarData = sortedRegions.slice(0, 8).map((item, i) => {
+		const angle = (i / 8) * Math.PI * 2 - Math.PI / 2;
+		const radius = (item[1] / maxCount) * 150;
+		return {
+			region: item[0],
+			count: item[1],
+			x: 200 + Math.cos(angle) * radius,
+			y: 200 + Math.sin(angle) * radius,
+			angle,
+			radius
+		};
+	});
 </script>
 
 <div class="dashboard-container">
-	<div class="main-content">
-		<!-- Left Panel: Table -->
-		<div class="table-panel">
-			<div class="panel-header">
-				<h3 class="panel-title">
-					<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-						<circle cx="12" cy="12" r="10" />
-						<path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
-					</svg>
-					Regional Asset Distribution
-				</h3>
-				<div class="controls">
-					<input 
-						type="text" 
-						bind:value={searchTerm}
-						placeholder="Search regions..."
-						class="search-input"
-					/>
-				</div>
+	<!-- Header Section -->
+	<div class="module-header">
+		<div class="header-content">
+			<div class="module-title">
+				<svg class="module-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+					<circle cx="12" cy="12" r="10" />
+					<path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
+				</svg>
+				<h1>REGIONS</h1>
+				<span class="module-subtitle">// GLOBAL SURVEILLANCE NETWORK</span>
 			</div>
 			
-			{#if loading && !selectedRegion}
-				<div class="loading-state">
-					<div class="spinner"></div>
-					<p>SCANNING REGIONAL DATA...</p>
+			<div class="header-metrics">
+				<div class="metric-badge">
+					<span class="metric-icon">🌍</span>
+					<span class="metric-value">{sortedRegions.length}</span>
+					<span class="metric-label">REGIONS</span>
 				</div>
-			{:else if selectedRegion}
-				<div class="drill-view">
-					<div class="drill-header">
-						<h4>{selectedRegion.region.toUpperCase()}</h4>
-						<button class="close-btn" on:click={closeDetails}>✕</button>
-					</div>
-					<div class="drill-table-container">
-						<table class="data-table">
-							<thead>
-								<tr>
-									<th>HOST</th>
-									<th>COUNTRY</th>
-									<th>INFRASTRUCTURE</th>
-									<th>CMDB</th>
-									<th>TANIUM</th>
-								</tr>
-							</thead>
-							<tbody>
-								{#each regionDetails as host}
-									<tr>
-										<td class="host-cell">{host.host}</td>
-										<td>{host.country || 'Unknown'}</td>
-										<td>{host.infrastructure_type || 'Unknown'}</td>
-										<td>
-											<span class="status-badge {host.present_in_cmdb?.toLowerCase().includes('yes') ? 'active' : 'inactive'}">
-												{host.present_in_cmdb?.toLowerCase().includes('yes') ? 'YES' : 'NO'}
-											</span>
-										</td>
-										<td>
-											<span class="status-badge {host.tanium_coverage?.toLowerCase().includes('tanium') ? 'active' : 'inactive'}">
-												{host.tanium_coverage?.toLowerCase().includes('tanium') ? 'YES' : 'NO'}
-											</span>
-										</td>
-									</tr>
-								{/each}
-							</tbody>
-						</table>
-					</div>
+				<div class="metric-badge">
+					<span class="metric-icon">◆</span>
+					<span class="metric-value">{(data.total_coverage || 0).toLocaleString()}</span>
+					<span class="metric-label">ASSETS</span>
 				</div>
-			{:else}
-				<div class="table-scroll-container">
+				<div class="metric-badge">
+					<span class="metric-icon">▲</span>
+					<span class="metric-value">{maxCount.toLocaleString()}</span>
+					<span class="metric-label">PEAK</span>
+				</div>
+			</div>
+		</div>
+		
+		<div class="controls-bar">
+			<input 
+				type="text" 
+				bind:value={searchTerm}
+				placeholder="Search regions..."
+				class="search-input"
+			/>
+			<div class="view-toggles">
+				<button class="view-btn {viewMode === 'globe' ? 'active' : ''}" on:click={() => viewMode = 'globe'}>
+					<span class="btn-icon">🌍</span> GLOBE
+				</button>
+				<button class="view-btn {viewMode === 'table' ? 'active' : ''}" on:click={() => viewMode = 'table'}>
+					<span class="btn-icon">▦</span> TABLE
+				</button>
+				<button class="view-btn {viewMode === 'radar' ? 'active' : ''}" on:click={() => viewMode = 'radar'}>
+					<span class="btn-icon">◈</span> RADAR
+				</button>
+			</div>
+		</div>
+	</div>
+
+	<!-- Main Content Area -->
+	<div class="main-content">
+		{#if loading && !selectedRegion}
+			<div class="loading-state">
+				<div class="globe-loader">
+					<div class="globe-ring"></div>
+					<div class="globe-ring"></div>
+					<div class="globe-ring"></div>
+				</div>
+				<p>ESTABLISHING SATELLITE UPLINK...</p>
+			</div>
+		{:else if selectedRegion}
+			<!-- Drill-down View -->
+			<div class="drill-view">
+				<div class="drill-header">
+					<div class="drill-title">
+						<span class="drill-icon">🌍</span>
+						<h3>{selectedRegion.region.toUpperCase()}</h3>
+						<span class="drill-stats">// {selectedRegion.count.toLocaleString()} ASSETS</span>
+					</div>
+					<button class="close-btn" on:click={closeDetails}>
+						<span>✕</span>
+					</button>
+				</div>
+				
+				<div class="drill-table-container">
 					<table class="data-table">
 						<thead>
 							<tr>
-								<th>REGION</th>
-								<th>ASSET COUNT</th>
-								<th>PERCENTAGE</th>
-								<th>DISTRIBUTION</th>
+								<th>HOST IDENTIFIER</th>
+								<th>COUNTRY</th>
+								<th>INFRASTRUCTURE</th>
+								<th>CMDB</th>
+								<th>TANIUM</th>
 							</tr>
 						</thead>
 						<tbody>
-							{#each sortedRegions as [region, count]}
-								<tr on:click={() => drillDownRegion(region, count)}>
-									<td class="region-cell">
-										<span class="region-name">{region.toUpperCase()}</span>
+							{#each regionDetails as host}
+								<tr>
+									<td class="host-cell">
+										<span class="host-icon">▸</span>
+										{host.host}
 									</td>
-									<td class="center">{count.toLocaleString()}</td>
-									<td class="center">{getPercentage(count)}%</td>
+									<td>{host.country || 'Unknown'}</td>
+									<td>{host.infrastructure_type || 'Unknown'}</td>
 									<td>
-										<div class="coverage-cell">
-											<div class="coverage-bar">
-												<div class="coverage-fill" style="width: {(count/maxCount)*100}%"></div>
-											</div>
-										</div>
+										<span class="status-badge {host.present_in_cmdb?.toLowerCase().includes('yes') ? 'active' : 'inactive'}">
+											{host.present_in_cmdb?.toLowerCase().includes('yes') ? '◉' : '○'}
+										</span>
+									</td>
+									<td>
+										<span class="status-badge {host.tanium_coverage?.toLowerCase().includes('tanium') ? 'active' : 'inactive'}">
+											{host.tanium_coverage?.toLowerCase().includes('tanium') ? '◉' : '○'}
+										</span>
 									</td>
 								</tr>
 							{/each}
 						</tbody>
 					</table>
 				</div>
-			{/if}
-		</div>
-
-		<!-- Right Panel: Visualizations -->
-		<div class="viz-panel">
-			<!-- Metrics -->
-			<div class="metrics-row">
-				<div class="metric-card">
-					<div class="metric-value">{sortedRegions.length}</div>
-					<div class="metric-label">REGIONS</div>
-				</div>
-				<div class="metric-card">
-					<div class="metric-value">{(data.total_coverage || 0).toLocaleString()}</div>
-					<div class="metric-label">TOTAL ASSETS</div>
-				</div>
 			</div>
-
-			<!-- Regional Breakdown -->
-			<div class="viz-card">
-				<h4>
-					<svg class="icon-small" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-						<path d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"/>
+		{:else if viewMode === 'globe'}
+			<!-- Globe View -->
+			<div class="globe-view">
+				<div class="globe-container">
+					<svg viewBox="0 0 800 600" class="world-map">
+						<defs>
+							<radialGradient id="globeGrad">
+								<stop offset="0%" style="stop-color:#00ffff;stop-opacity:0.3" />
+								<stop offset="100%" style="stop-color:#00ffff;stop-opacity:0" />
+							</radialGradient>
+						</defs>
+						
+						<!-- World Grid -->
+						<g class="grid-lines">
+							{#each Array(6) as _, i}
+								<line x1="0" y1={100 + i * 100} x2="800" y2={100 + i * 100} stroke="#0a4f3c" stroke-width="0.5" opacity="0.3"/>
+								<line x1={133 + i * 133} y1="0" x2={133 + i * 133} y2="600" stroke="#0a4f3c" stroke-width="0.5" opacity="0.3"/>
+							{/each}
+						</g>
+						
+						<!-- Region Zones -->
+						{#each sortedRegions as [region, count], i}
+							{@const status = getRegionStatus(count)}
+							{@const x = region.includes('America') ? 200 : 
+									   region.includes('EMEA') ? 400 : 
+									   region.includes('APAC') ? 600 : 
+									   region.includes('LATAM') ? 250 : 400}
+							{@const y = region.includes('America') ? 200 : 
+									   region.includes('EMEA') ? 250 : 
+									   region.includes('APAC') ? 300 : 
+									   region.includes('LATAM') ? 400 : 450}
+							{@const size = Math.sqrt(count / maxCount) * 120 + 40}
+							
+							<g class="region-zone" on:click={() => drillDownRegion(region, count)}>
+								<circle cx={x} cy={y} r={size} fill="url(#globeGrad)" stroke={status.color} stroke-width="2" opacity="0.8">
+									<animate attributeName="r" values="{size};{size + 5};{size}" dur="3s" repeatCount="indefinite"/>
+								</circle>
+								<circle cx={x} cy={y} r="5" fill={status.color}/>
+								<text x={x} y={y - size - 10} text-anchor="middle" fill={status.color} font-size="14" font-weight="600">
+									{getRegionCode(region)}
+								</text>
+								<text x={x} y={y + 20} text-anchor="middle" fill="#b8a678" font-size="10">
+									{count.toLocaleString()}
+								</text>
+								<text x={x} y={y + 35} text-anchor="middle" fill="#666" font-size="9">
+									{getPercentage(count)}%
+								</text>
+							</g>
+						{/each}
+						
+						<!-- Connection Lines -->
+						<g class="connections">
+							{#each sortedRegions as [region, count], i}
+								{#if i < sortedRegions.length - 1}
+									{@const x1 = region.includes('America') ? 200 : 
+											    region.includes('EMEA') ? 400 : 
+											    region.includes('APAC') ? 600 : 250}
+									{@const y1 = region.includes('America') ? 200 : 
+											    region.includes('EMEA') ? 250 : 
+											    region.includes('APAC') ? 300 : 400}
+									{@const nextRegion = sortedRegions[i + 1][0]}
+									{@const x2 = nextRegion.includes('America') ? 200 : 
+											    nextRegion.includes('EMEA') ? 400 : 
+											    nextRegion.includes('APAC') ? 600 : 250}
+									{@const y2 = nextRegion.includes('America') ? 200 : 
+											    nextRegion.includes('EMEA') ? 250 : 
+											    nextRegion.includes('APAC') ? 300 : 400}
+									
+									<line x1={x1} y1={y1} x2={x2} y2={y2} stroke="#0a4f3c" stroke-width="0.5" opacity="0.3" stroke-dasharray="5,5">
+										<animate attributeName="stroke-dashoffset" values="0;10" dur="1s" repeatCount="indefinite"/>
+									</line>
+								{/if}
+							{/each}
+						</g>
 					</svg>
-					REGIONAL DISTRIBUTION
-				</h4>
-				<div class="region-chart">
-					{#each sortedRegions.slice(0, 6) as [region, count]}
-						<div class="region-item">
-							<div class="region-header">
-								<span class="region-label">{region.toUpperCase()}</span>
-								<span class="region-count">{count.toLocaleString()}</span>
+				</div>
+				
+				<div class="region-cards">
+					{#each sortedRegions as [region, count]}
+						{@const status = getRegionStatus(count)}
+						<div class="region-card" style="border-color: {status.color}">
+							<div class="card-header">
+								<span class="card-icon" style="color: {status.color}">{status.icon}</span>
+								<span class="card-name">{region}</span>
 							</div>
-							<div class="region-bar">
-								<div class="region-fill" style="width: {(count/maxCount)*100}%"></div>
+							<div class="card-metrics">
+								<div class="card-stat">
+									<span class="stat-value">{count.toLocaleString()}</span>
+									<span class="stat-label">ASSETS</span>
+								</div>
+								<div class="card-stat">
+									<span class="stat-value">{getPercentage(count)}%</span>
+									<span class="stat-label">COVERAGE</span>
+								</div>
 							</div>
-							<div class="region-percentage">{getPercentage(count)}%</div>
+							<div class="card-status" style="color: {status.color}">{status.status}</div>
 						</div>
 					{/each}
 				</div>
 			</div>
-
-			<!-- Asset Concentration Map -->
-			<div class="viz-card">
-				<h4>
-					<svg class="icon-small" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-						<path d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7"/>
+		{:else if viewMode === 'table'}
+			<!-- Table View -->
+			<div class="table-view">
+				<table class="data-table">
+					<thead>
+						<tr>
+							<th>STATUS</th>
+							<th>REGION</th>
+							<th>CODE</th>
+							<th>ASSET COUNT</th>
+							<th>PERCENTAGE</th>
+							<th>DISTRIBUTION</th>
+						</tr>
+					</thead>
+					<tbody>
+						{#each sortedRegions as [region, count]}
+							{@const status = getRegionStatus(count)}
+							<tr on:click={() => drillDownRegion(region, count)}>
+								<td class="status-cell">
+									<span class="status-icon" style="color: {status.color}">{status.icon}</span>
+								</td>
+								<td class="region-cell">
+									<span class="region-name">{region.toUpperCase()}</span>
+								</td>
+								<td class="center">{getRegionCode(region)}</td>
+								<td class="center">{count.toLocaleString()}</td>
+								<td class="center">{getPercentage(count)}%</td>
+								<td>
+									<div class="coverage-cell">
+										<div class="coverage-bar">
+											<div class="coverage-fill" style="width: {(count/maxCount)*100}%; background: {status.color}"></div>
+										</div>
+									</div>
+								</td>
+							</tr>
+						{/each}
+					</tbody>
+				</table>
+			</div>
+		{:else if viewMode === 'radar'}
+			<!-- Radar View -->
+			<div class="radar-view">
+				<div class="radar-container">
+					<svg viewBox="0 0 400 400" class="radar-chart">
+						<!-- Radar Grid -->
+						<g class="radar-grid">
+							{#each [150, 120, 90, 60, 30] as radius}
+								<circle cx="200" cy="200" r={radius} fill="none" stroke="#0a4f3c" stroke-width="0.5" opacity="0.3"/>
+							{/each}
+							
+							{#each Array(8) as _, i}
+								{@const angle = (i / 8) * Math.PI * 2}
+								{@const x2 = 200 + Math.cos(angle) * 150}
+								{@const y2 = 200 + Math.sin(angle) * 150}
+								<line x1="200" y1="200" x2={x2} y2={y2} stroke="#0a4f3c" stroke-width="0.5" opacity="0.3"/>
+							{/each}
+						</g>
+						
+						<!-- Data Polygon -->
+						<polygon 
+							points={radarData.map(d => `${d.x},${d.y}`).join(' ')}
+							fill="#00ff88" 
+							fill-opacity="0.2" 
+							stroke="#00ff88" 
+							stroke-width="2"
+						/>
+						
+						<!-- Data Points -->
+						{#each radarData as point}
+							{@const status = getRegionStatus(point.count)}
+							<circle cx={point.x} cy={point.y} r="6" fill={status.color} stroke="#000" stroke-width="1">
+								<animate attributeName="r" values="6;8;6" dur="2s" repeatCount="indefinite"/>
+							</circle>
+							<text x={point.x} y={point.y - 15} text-anchor="middle" fill={status.color} font-size="10" font-weight="600">
+								{point.region.substring(0, 6)}
+							</text>
+						{/each}
+						
+						<!-- Center Point -->
+						<circle cx="200" cy="200" r="3" fill="#00ffff"/>
+						
+						<!-- Scanning Line -->
+						<line x1="200" y1="200" x2="200" y2="50" stroke="#00ffff" stroke-width="1" opacity="0.5" class="radar-sweep">
+							<animateTransform
+								attributeName="transform"
+								attributeType="XML"
+								type="rotate"
+								from="0 200 200"
+								to="360 200 200"
+								dur="4s"
+								repeatCount="indefinite"/>
+						</line>
 					</svg>
-					CONCENTRATION ANALYSIS
-				</h4>
-				<div class="concentration-grid">
-					{#each sortedRegions.slice(0, 4) as [region, count]}
-						{@const percentage = getPercentage(count)}
-						<div class="concentration-card">
-							<div class="conc-region">{region.substring(0, 8).toUpperCase()}</div>
-							<div class="conc-visual">
-								<svg viewBox="0 0 100 100">
-									<circle cx="50" cy="50" r="40" fill="none" stroke="#1a1a1a" stroke-width="8"/>
-									<circle 
-										cx="50" 
-										cy="50" 
-										r="40" 
-										fill="none" 
-										stroke="#0a4f3c" 
-										stroke-width="8"
-										stroke-dasharray={`${percentage * 2.5} ${250 - percentage * 2.5}`}
-										stroke-dashoffset="0"
-										transform="rotate(-90 50 50)"
-									/>
-									<text x="50" y="50" text-anchor="middle" dominant-baseline="middle" fill="#e0e0e0" font-size="16" font-weight="600">
-										{percentage}%
-									</text>
-								</svg>
-							</div>
-						</div>
-					{/each}
 				</div>
 			</div>
-		</div>
+		{/if}
 	</div>
 </div>
 
 <style>
 	.dashboard-container {
-		height: calc(100vh - 80px);
+		height: calc(100vh - 130px);
 		display: flex;
+		flex-direction: column;
 		background: #0a0a0a;
 		color: #e0e0e0;
 		font-family: 'JetBrains Mono', monospace;
 		overflow: hidden;
-		padding: 1rem;
 	}
 
-	.main-content {
-		flex: 1;
-		display: flex;
-		gap: 1rem;
-		overflow: hidden;
-	}
-
-	.table-panel {
-		flex: 1.5;
-		background: #0f0f0f;
-		border: 1px solid #1a1a1a;
-		border-radius: 8px;
-		display: flex;
-		flex-direction: column;
-		overflow: hidden;
-	}
-
-	.viz-panel {
-		flex: 1;
-		display: flex;
-		flex-direction: column;
-		gap: 1rem;
-		overflow-y: auto;
-		padding-right: 0.5rem;
-	}
-
-	.panel-header {
+	.module-header {
+		background: linear-gradient(180deg, #0f0f0f 0%, #0a0a0a 100%);
+		border-bottom: 1px solid #0a4f3c;
 		padding: 1rem 1.5rem;
-		border-bottom: 1px solid #1a1a1a;
-		background: #0f0f0f;
 		flex-shrink: 0;
 	}
 
-	.panel-title {
-		margin: 0 0 1rem 0;
-		color: #0a4f3c;
-		font-size: 1rem;
-		font-weight: 500;
+	.header-content {
+		display: flex;
+		justify-content: space-between;
+		align-items: center;
+		margin-bottom: 1rem;
+	}
+
+	.module-title {
 		display: flex;
 		align-items: center;
-		gap: 0.5rem;
+		gap: 1rem;
 	}
 
-	.icon {
-		width: 20px;
-		height: 20px;
-		color: #0a4f3c;
+	.module-icon {
+		width: 32px;
+		height: 32px;
+		color: #00ffff;
+		filter: drop-shadow(0 0 10px rgba(0, 255, 255, 0.5));
 	}
 
-	.icon-small {
-		width: 16px;
-		height: 16px;
-		color: #0a4f3c;
-		display: inline-block;
-		vertical-align: middle;
-		margin-right: 0.3rem;
+	.module-title h1 {
+		margin: 0;
+		font-size: 1.5rem;
+		font-weight: 700;
+		background: linear-gradient(135deg, #00ffff, #00ff88);
+		-webkit-background-clip: text;
+		-webkit-text-fill-color: transparent;
+		letter-spacing: 0.1em;
 	}
 
-	.controls {
+	.module-subtitle {
+		color: #666;
+		font-size: 0.75rem;
+		font-weight: 400;
+		letter-spacing: 0.2em;
+	}
+
+	.header-metrics {
 		display: flex;
-		gap: 0.5rem;
+		gap: 2rem;
+	}
+
+	.metric-badge {
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		padding: 0.5rem 1rem;
+		background: rgba(0, 255, 255, 0.05);
+		border: 1px solid #0a4f3c;
+		border-radius: 4px;
+	}
+
+	.metric-icon {
+		font-size: 1rem;
+		margin-bottom: 0.25rem;
+	}
+
+	.metric-value {
+		font-size: 1.25rem;
+		font-weight: 600;
+		color: #00ffff;
+	}
+
+	.metric-label {
+		font-size: 0.6rem;
+		color: #666;
+		letter-spacing: 0.1em;
+	}
+
+	.controls-bar {
+		display: flex;
+		gap: 1rem;
 		align-items: center;
 	}
 
 	.search-input {
 		flex: 1;
-		background: #0a0a0a;
-		border: 1px solid #1a1a1a;
+		max-width: 400px;
+		background: #000;
+		border: 1px solid #0a4f3c;
 		border-radius: 4px;
-		padding: 0.5rem 0.75rem;
+		padding: 0.5rem 1rem;
 		color: #e0e0e0;
-		font-size: 0.85rem;
 		font-family: inherit;
+		font-size: 0.85rem;
 	}
 
 	.search-input:focus {
 		outline: none;
-		border-color: #0a4f3c;
+		border-color: #00ffff;
+		box-shadow: 0 0 10px rgba(0, 255, 255, 0.2);
 	}
 
-	.table-scroll-container {
-		flex: 1;
-		overflow-y: auto;
-		overflow-x: hidden;
+	.view-toggles {
+		display: flex;
+		gap: 0.5rem;
 	}
 
-	.drill-table-container {
+	.view-btn {
+		background: #000;
+		border: 1px solid #0a4f3c;
+		color: #666;
+		padding: 0.5rem 1rem;
+		border-radius: 4px;
+		cursor: pointer;
+		transition: all 0.2s ease;
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+		font-family: inherit;
+		font-size: 0.75rem;
+		letter-spacing: 0.05em;
+	}
+
+	.view-btn:hover {
+		border-color: #00ffff;
+		color: #00ffff;
+		background: rgba(0, 255, 255, 0.05);
+	}
+
+	.view-btn.active {
+		background: rgba(0, 255, 255, 0.1);
+		border-color: #00ffff;
+		color: #00ffff;
+	}
+
+	.btn-icon {
+		font-size: 1rem;
+	}
+
+	.main-content {
 		flex: 1;
-		overflow: auto;
+		overflow: hidden;
 		padding: 1rem;
+	}
+
+	.loading-state {
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		justify-content: center;
+		height: 100%;
+		gap: 2rem;
+	}
+
+	.globe-loader {
+		width: 80px;
+		height: 80px;
+		position: relative;
+	}
+
+	.globe-ring {
+		position: absolute;
+		width: 100%;
+		height: 100%;
+		border: 2px solid transparent;
+		border-top-color: #00ffff;
+		border-radius: 50%;
+		animation: globeSpin 1.5s linear infinite;
+	}
+
+	.globe-ring:nth-child(2) {
+		width: 60px;
+		height: 60px;
+		top: 10px;
+		left: 10px;
+		border-top-color: #00ff88;
+		animation-duration: 2s;
+		animation-direction: reverse;
+	}
+
+	.globe-ring:nth-child(3) {
+		width: 40px;
+		height: 40px;
+		top: 20px;
+		left: 20px;
+		border-top-color: #ff00ff;
+		animation-duration: 2.5s;
+	}
+
+	@keyframes globeSpin {
+		to { transform: rotate(360deg); }
+	}
+
+	.globe-view {
+		height: 100%;
+		display: flex;
+		flex-direction: column;
+		gap: 1rem;
+		overflow: auto;
+	}
+
+	.globe-container {
+		background: #0f0f0f;
+		border: 1px solid #1a1a1a;
+		border-radius: 8px;
+		padding: 2rem;
+		overflow: hidden;
+	}
+
+	.world-map {
+		width: 100%;
+		height: auto;
+	}
+
+	.region-zone {
+		cursor: pointer;
+		transition: all 0.3s ease;
+	}
+
+	.region-zone:hover {
+		opacity: 0.8;
+		filter: brightness(1.2);
+	}
+
+	.region-cards {
+		display: grid;
+		grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+		gap: 1rem;
+	}
+
+	.region-card {
+		background: #0f0f0f;
+		border: 1px solid;
+		border-radius: 8px;
+		padding: 1rem;
+		transition: all 0.2s ease;
+	}
+
+	.region-card:hover {
+		transform: translateY(-2px);
+		box-shadow: 0 4px 20px rgba(0, 255, 255, 0.2);
+	}
+
+	.card-header {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+		margin-bottom: 0.75rem;
+	}
+
+	.card-icon {
+		font-size: 1.2rem;
+	}
+
+	.card-name {
+		font-size: 0.9rem;
+		color: #e0e0e0;
+		font-weight: 500;
+	}
+
+	.card-metrics {
+		display: flex;
+		justify-content: space-between;
+		margin-bottom: 0.75rem;
+	}
+
+	.card-stat {
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+	}
+
+	.stat-value {
+		font-size: 1rem;
+		font-weight: 600;
+		color: #00ffff;
+	}
+
+	.stat-label {
+		font-size: 0.6rem;
+		color: #666;
+		letter-spacing: 0.1em;
+		margin-top: 0.25rem;
+	}
+
+	.card-status {
+		text-align: center;
+		font-size: 0.75rem;
+		font-weight: 600;
+		letter-spacing: 0.1em;
+	}
+
+	.table-view {
+		height: 100%;
+		overflow: auto;
+		background: #0f0f0f;
+		border: 1px solid #1a1a1a;
+		border-radius: 8px;
 	}
 
 	.data-table {
@@ -349,11 +719,11 @@
 
 	.data-table th {
 		background: #0f0f0f;
-		color: #0a4f3c;
+		color: #00ffff;
 		padding: 0.75rem;
 		text-align: left;
 		font-weight: 500;
-		letter-spacing: 0.05em;
+		letter-spacing: 0.1em;
 		position: sticky;
 		top: 0;
 		z-index: 10;
@@ -372,7 +742,15 @@
 	}
 
 	.data-table tbody tr:hover {
-		background: rgba(10, 79, 60, 0.05);
+		background: rgba(0, 255, 255, 0.03);
+	}
+
+	.status-cell {
+		text-align: center;
+	}
+
+	.status-icon {
+		font-size: 1rem;
 	}
 
 	.region-cell {
@@ -405,151 +783,39 @@
 
 	.coverage-fill {
 		height: 100%;
-		background: linear-gradient(90deg, #0a4f3c, #0d6b4f);
 		transition: width 0.3s ease;
+		box-shadow: 0 0 10px currentColor;
 	}
 
-	.metrics-row {
-		display: flex;
-		gap: 1rem;
-	}
-
-	.metric-card {
-		flex: 1;
-		background: #0f0f0f;
-		border: 1px solid #1a1a1a;
-		border-radius: 8px;
-		padding: 1.5rem;
-		text-align: center;
-	}
-
-	.metric-value {
-		font-size: 2rem;
-		font-weight: 600;
-		color: #0a4f3c;
-		margin-bottom: 0.5rem;
-	}
-
-	.metric-label {
-		font-size: 0.7rem;
-		color: #b8a678;
-		letter-spacing: 0.1em;
-		font-weight: 500;
-	}
-
-	.viz-card {
-		background: #0f0f0f;
-		border: 1px solid #1a1a1a;
-		border-radius: 8px;
-		padding: 1.5rem;
-	}
-
-	.viz-card h4 {
-		margin: 0 0 1rem 0;
-		font-size: 0.85rem;
-		color: #0a4f3c;
-		letter-spacing: 0.05em;
-		font-weight: 500;
-	}
-
-	.region-chart {
-		display: flex;
-		flex-direction: column;
-		gap: 0.75rem;
-	}
-
-	.region-item {
-		display: flex;
-		flex-direction: column;
-		gap: 0.3rem;
-	}
-
-	.region-header {
-		display: flex;
-		justify-content: space-between;
-		align-items: center;
-	}
-
-	.region-label {
-		font-size: 0.75rem;
-		color: #e0e0e0;
-		font-weight: 500;
-	}
-
-	.region-count {
-		font-size: 0.75rem;
-		color: #b8a678;
-	}
-
-	.region-bar {
-		height: 8px;
-		background: #1a1a1a;
-		border-radius: 4px;
-		overflow: hidden;
-	}
-
-	.region-fill {
+	.radar-view {
 		height: 100%;
-		background: linear-gradient(90deg, #0a4f3c, #0d6b4f);
-		transition: width 0.3s ease;
-	}
-
-	.region-percentage {
-		font-size: 0.7rem;
-		color: #0a4f3c;
-		font-weight: 600;
-		text-align: right;
-	}
-
-	.concentration-grid {
-		display: grid;
-		grid-template-columns: repeat(2, 1fr);
-		gap: 1rem;
-	}
-
-	.concentration-card {
-		background: #0a0a0a;
-		border: 1px solid #1a1a1a;
-		border-radius: 6px;
-		padding: 1rem;
-		text-align: center;
-	}
-
-	.conc-region {
-		font-size: 0.75rem;
-		color: #b8a678;
-		margin-bottom: 0.5rem;
-		font-weight: 500;
-	}
-
-	.conc-visual {
-		width: 80px;
-		height: 80px;
-		margin: 0 auto;
-	}
-
-	.loading-state {
-		flex: 1;
 		display: flex;
-		flex-direction: column;
 		align-items: center;
 		justify-content: center;
-		gap: 1rem;
+		background: #0f0f0f;
+		border: 1px solid #1a1a1a;
+		border-radius: 8px;
 	}
 
-	.spinner {
-		width: 40px;
-		height: 40px;
-		border: 3px solid #1a1a1a;
-		border-top-color: #0a4f3c;
-		border-radius: 50%;
-		animation: spin 1s linear infinite;
+	.radar-container {
+		width: 100%;
+		max-width: 600px;
+		aspect-ratio: 1;
+	}
+
+	.radar-chart {
+		width: 100%;
+		height: 100%;
 	}
 
 	.drill-view {
 		display: flex;
 		flex-direction: column;
 		height: 100%;
+		background: #0f0f0f;
+		border: 1px solid #0a4f3c;
+		border-radius: 8px;
+		overflow: hidden;
 	}
 
 	.drill-header {
@@ -557,58 +823,85 @@
 		justify-content: space-between;
 		align-items: center;
 		padding: 1rem 1.5rem;
-		border-bottom: 1px solid #0a4f3c;
-		background: rgba(10, 79, 60, 0.05);
+		background: rgba(0, 255, 255, 0.05);
+		border-bottom: 2px solid #0a4f3c;
 	}
 
-	.drill-header h4 {
+	.drill-title {
+		display: flex;
+		align-items: center;
+		gap: 1rem;
+	}
+
+	.drill-icon {
+		font-size: 1.5rem;
+	}
+
+	.drill-title h3 {
 		margin: 0;
-		color: #0a4f3c;
-		font-size: 1rem;
+		color: #00ffff;
+		font-size: 1.2rem;
+		letter-spacing: 0.1em;
+	}
+
+	.drill-stats {
+		color: #666;
+		font-size: 0.75rem;
+		font-weight: 400;
 	}
 
 	.close-btn {
 		background: rgba(255, 0, 102, 0.1);
 		border: 1px solid #ff0066;
 		color: #ff0066;
-		width: 30px;
-		height: 30px;
+		width: 36px;
+		height: 36px;
 		border-radius: 4px;
 		cursor: pointer;
 		display: flex;
 		align-items: center;
 		justify-content: center;
-		font-size: 1rem;
+		font-size: 1.2rem;
 		font-weight: 600;
+		transition: all 0.2s ease;
+	}
+
+	.close-btn:hover {
+		background: rgba(255, 0, 102, 0.2);
+		transform: scale(1.1);
+	}
+
+	.drill-table-container {
+		flex: 1;
+		overflow: auto;
+		padding: 1rem;
 	}
 
 	.host-cell {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
 		font-family: 'Courier New', monospace;
-		color: #0a4f3c;
+		color: #00ffff;
 		font-weight: 500;
 	}
 
+	.host-icon {
+		color: #0a4f3c;
+	}
+
 	.status-badge {
-		padding: 0.2rem 0.4rem;
-		border-radius: 3px;
-		font-size: 0.7rem;
-		font-weight: 600;
-		text-transform: uppercase;
+		font-size: 1rem;
+		transition: all 0.2s ease;
 	}
 
 	.status-badge.active {
-		background: rgba(10, 79, 60, 0.2);
-		color: #0a4f3c;
-		border: 1px solid #0a4f3c;
+		color: #00ff88;
+		filter: drop-shadow(0 0 5px currentColor);
 	}
 
 	.status-badge.inactive {
-		background: rgba(255, 0, 102, 0.1);
 		color: #ff0066;
-		border: 1px solid #ff0066;
-	}
-
-	@keyframes spin {
-		to { transform: rotate(360deg); }
+		opacity: 0.5;
 	}
 </style>
