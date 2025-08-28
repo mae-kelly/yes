@@ -1,4 +1,4 @@
-</style><!-- CountryMetrics.svelte - Enhanced Country Analysis -->
+<!-- CountryMetrics.svelte - Enhanced Country Analysis -->
 <script>
 	import { onMount } from 'svelte';
 	
@@ -616,3 +616,4 @@
 	@keyframes spin {
 		to { transform: rotate(360deg); }
 	}
+</style>
