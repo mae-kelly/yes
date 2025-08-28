@@ -1,4 +1,4 @@
-<!-- RegionMetrics.svelte - Enhanced with Perfect Screen Fit -->
+<!-- RegionMetrics.svelte - Optimized -->
 <script>
 	import { onMount } from 'svelte';
 	
@@ -8,7 +8,7 @@
 	let regionDetails = [];
 	let searchTerm = '';
 	let currentPage = 1;
-	let itemsPerPage = 10;
+	let itemsPerPage = 8;
 	let viewMode = 'table';
 
 	onMount(async () => {
@@ -36,12 +36,12 @@
 	$: totalPages = Math.ceil(sortedRegions.length / itemsPerPage);
 
 	function getThreatLevel(count) {
-		if (!data.total_coverage) return { level: 'LOW', color: '#00ffff', intensity: 0.3 };
+		if (!data.total_coverage) return { level: 'LOW', color: '#0a4f3c', intensity: 0.3 };
 		let percentage = (count / data.total_coverage) * 100;
-		if (percentage >= 40) return { level: 'CRITICAL', color: '#ff00ff', intensity: 1.0 };
-		if (percentage >= 25) return { level: 'HIGH', color: '#ff0066', intensity: 0.8 };
-		if (percentage >= 15) return { level: 'MEDIUM', color: '#ffaa00', intensity: 0.6 };
-		return { level: 'LOW', color: '#00ffff', intensity: 0.4 };
+		if (percentage >= 40) return { level: 'CRITICAL', color: '#ff0066', intensity: 1.0 };
+		if (percentage >= 25) return { level: 'HIGH', color: '#ff9900', intensity: 0.8 };
+		if (percentage >= 15) return { level: 'MEDIUM', color: '#ffcc00', intensity: 0.6 };
+		return { level: 'LOW', color: '#0a4f3c', intensity: 0.4 };
 	}
 
 	function getPercentage(count) {
@@ -80,43 +80,10 @@
 </script>
 
 <div class="region-dashboard">
-	<!-- Header Section -->
-	<div class="header-section">
-		<div class="header-content">
-			<div class="title-block">
-				<div class="title-icon">◉</div>
-				<div class="title-text">
-					<h1>GLOBAL SURVEILLANCE</h1>
-					<p>Regional Distribution Analysis</p>
-				</div>
-			</div>
-			<div class="metrics-row">
-				<div class="metric-card">
-					<div class="metric-value">{sortedRegions.length}</div>
-					<div class="metric-label">REGIONS</div>
-				</div>
-				<div class="metric-card">
-					<div class="metric-value">{(data.total_coverage || 0).toLocaleString()}</div>
-					<div class="metric-label">TOTAL ASSETS</div>
-				</div>
-				<div class="metric-card primary">
-					<div class="metric-value">{sortedRegions[0] ? sortedRegions[0][0].toUpperCase() : 'N/A'}</div>
-					<div class="metric-label">PRIMARY</div>
-				</div>
-				<div class="metric-card critical">
-					<div class="metric-value">{threatDistribution['CRITICAL'] || 0}</div>
-					<div class="metric-label">CRITICAL</div>
-				</div>
-			</div>
-		</div>
-	</div>
-
-	<!-- Main Content Area -->
 	<div class="main-content">
 		<!-- Left Panel: Table -->
 		<div class="table-panel">
 			<div class="panel-header">
-				<h3>REGIONAL ANALYSIS</h3>
 				<div class="controls">
 					<input 
 						type="text" 
@@ -138,10 +105,9 @@
 			{#if loading && !selectedRegion}
 				<div class="loading-state">
 					<div class="spinner"></div>
-					<p>Scanning global regions...</p>
+					<p>Scanning regions...</p>
 				</div>
 			{:else if selectedRegion}
-				<!-- Drill-down View -->
 				<div class="drill-view">
 					<div class="drill-header">
 						<h4>{selectedRegion.region.toUpperCase()}</h4>
@@ -156,11 +122,10 @@
 									<th>INFRA</th>
 									<th>CMDB</th>
 									<th>TANIUM</th>
-									<th>STATUS</th>
 								</tr>
 							</thead>
 							<tbody>
-								{#each regionDetails as host}
+								{#each regionDetails.slice(0, 6) as host}
 									<tr>
 										<td class="host-cell">{host.host}</td>
 										<td>{host.country || 'Unknown'}</td>
@@ -175,9 +140,6 @@
 												{host.tanium_coverage?.toLowerCase().includes('tanium') ? '✓' : '✗'}
 											</span>
 										</td>
-										<td>
-											<span class="region-badge">MONITORED</span>
-										</td>
 									</tr>
 								{/each}
 							</tbody>
@@ -185,7 +147,6 @@
 					</div>
 				</div>
 			{:else if viewMode === 'table'}
-				<!-- Main Table -->
 				<div class="table-container">
 					<table class="data-table">
 						<thead>
@@ -202,10 +163,8 @@
 								{@const threat = getThreatLevel(count)}
 								<tr>
 									<td class="region-cell">
-										<div class="cell-content">
-											<span class="indicator" style="background: {threat.color}"></span>
-											<span>{region.toUpperCase()}</span>
-										</div>
+										<span class="indicator" style="background: {threat.color}"></span>
+										<span>{region.toUpperCase()}</span>
 									</td>
 									<td class="center">{count.toLocaleString()}</td>
 									<td>
@@ -220,9 +179,7 @@
 										<span class="threat-badge {threat.level.toLowerCase()}">{threat.level}</span>
 									</td>
 									<td class="center">
-										<button class="drill-btn" on:click={() => drillDownRegion(region, count)}>
-											ANALYZE →
-										</button>
+										<button class="drill-btn" on:click={() => drillDownRegion(region, count)}>→</button>
 									</td>
 								</tr>
 							{/each}
@@ -230,30 +187,17 @@
 					</table>
 				</div>
 				
-				<!-- Pagination -->
 				<div class="pagination">
-					<button 
-						on:click={() => currentPage = Math.max(1, currentPage - 1)}
-						disabled={currentPage === 1}
-					>
-						←
-					</button>
-					<span>Page {currentPage} of {totalPages}</span>
-					<button 
-						on:click={() => currentPage = Math.min(totalPages, currentPage + 1)}
-						disabled={currentPage === totalPages}
-					>
-						→
-					</button>
+					<button on:click={() => currentPage = Math.max(1, currentPage - 1)} disabled={currentPage === 1}>←</button>
+					<span>{currentPage}/{totalPages}</span>
+					<button on:click={() => currentPage = Math.min(totalPages, currentPage + 1)} disabled={currentPage === totalPages}>→</button>
 				</div>
 			{:else}
-				<!-- Grid View -->
 				<div class="grid-container">
-					{#each paginatedRegions as [region, count]}
+					{#each paginatedRegions.slice(0, 6) as [region, count]}
 						{@const threat = getThreatLevel(count)}
 						<div class="grid-card" style="--card-color: {threat.color}" on:click={() => drillDownRegion(region, count)}>
 							<div class="card-header">
-								<span class="card-icon">🌍</span>
 								<span class="threat-indicator {threat.level.toLowerCase()}">{threat.level}</span>
 							</div>
 							<div class="card-body">
@@ -262,7 +206,6 @@
 								<div class="progress-bar">
 									<div class="progress-fill" style="width: {(count/maxCount)*100}%; background: {threat.color}"></div>
 								</div>
-								<div class="card-percentage">{getPercentage(count)}%</div>
 							</div>
 						</div>
 					{/each}
@@ -272,39 +215,50 @@
 
 		<!-- Right Panel: Visualizations -->
 		<div class="viz-panel">
-			<!-- World Map Visualization -->
+			<!-- Metrics Row -->
+			<div class="metrics-row">
+				<div class="metric-card">
+					<div class="metric-value">{sortedRegions.length}</div>
+					<div class="metric-label">REGIONS</div>
+				</div>
+				<div class="metric-card">
+					<div class="metric-value">{(data.total_coverage || 0).toLocaleString()}</div>
+					<div class="metric-label">ASSETS</div>
+				</div>
+			</div>
+
+			<!-- World Map -->
 			<div class="viz-card">
 				<h4>GLOBAL HEATMAP</h4>
 				<div class="world-map">
-					<svg viewBox="0 0 300 150">
+					<svg viewBox="0 0 300 100">
 						<defs>
 							<radialGradient id="heatGradient">
-								<stop offset="0%" style="stop-color:#ff00ff;stop-opacity:0.8" />
-								<stop offset="100%" style="stop-color:#ff00ff;stop-opacity:0" />
+								<stop offset="0%" style="stop-color:#0a4f3c;stop-opacity:0.8" />
+								<stop offset="100%" style="stop-color:#0a4f3c;stop-opacity:0" />
 							</radialGradient>
 						</defs>
-						<!-- Simplified world map representation -->
 						{#each sortedRegions.slice(0, 5) as [region, count], i}
-							{@const x = 50 + (i * 50)}
-							{@const y = 75}
-							{@const r = Math.sqrt(count / maxCount) * 30}
+							{@const x = 60 * (i + 0.5)}
+							{@const y = 50}
+							{@const r = Math.sqrt(count / maxCount) * 25}
 							<circle cx={x} cy={y} r={r} fill="url(#heatGradient)" opacity="0.6"/>
-							<text x={x} y={y + 40} text-anchor="middle" fill="#00ffff" font-size="8">
-								{region.substring(0, 8).toUpperCase()}
+							<text x={x} y={y + 35} text-anchor="middle" fill="#b8a678" font-size="7">
+								{region.substring(0, 6).toUpperCase()}
 							</text>
 						{/each}
 					</svg>
 				</div>
 			</div>
 
-			<!-- Threat Distribution -->
+			<!-- Threat Matrix -->
 			<div class="viz-card">
 				<h4>THREAT MATRIX</h4>
 				<div class="threat-chart">
 					{#each Object.entries(threatDistribution) as [level, count]}
-						{@const color = level === 'CRITICAL' ? '#ff00ff' : 
-							level === 'HIGH' ? '#ff0066' : 
-							level === 'MEDIUM' ? '#ffaa00' : '#00ffff'}
+						{@const color = level === 'CRITICAL' ? '#ff0066' : 
+							level === 'HIGH' ? '#ff9900' : 
+							level === 'MEDIUM' ? '#ffcc00' : '#0a4f3c'}
 						<div class="threat-row">
 							<div class="threat-label">{level}</div>
 							<div class="threat-bar-container">
@@ -318,30 +272,16 @@
 
 			<!-- Top Regions -->
 			<div class="viz-card">
-				<h4>TOP 5 REGIONS</h4>
+				<h4>TOP REGIONS</h4>
 				<div class="bar-chart">
-					{#each sortedRegions.slice(0, 5) as [region, count]}
+					{#each sortedRegions.slice(0, 4) as [region, count]}
 						{@const threat = getThreatLevel(count)}
 						<div class="bar-item">
 							<div class="bar-label">{region.toUpperCase()}</div>
 							<div class="bar-container">
-								<div class="bar-fill" style="width: {(count/maxCount)*100}%; background: linear-gradient(90deg, {threat.color}, {threat.color}80)"></div>
-								<span class="bar-value">{count.toLocaleString()}</span>
+								<div class="bar-fill" style="width: {(count/maxCount)*100}%; background: {threat.color}"></div>
+								<span class="bar-value">{count}</span>
 							</div>
-						</div>
-					{/each}
-				</div>
-			</div>
-
-			<!-- Regional Grid -->
-			<div class="viz-card">
-				<h4>COVERAGE GRID</h4>
-				<div class="matrix-grid">
-					{#each sortedRegions.slice(0, 9) as [region, count]}
-						{@const threat = getThreatLevel(count)}
-						<div class="matrix-cell" style="background: {threat.color}20; border-color: {threat.color}">
-							<div class="cell-value">{getPercentage(count)}%</div>
-							<div class="cell-label">{region.substring(0, 6)}</div>
 						</div>
 					{/each}
 				</div>
@@ -352,113 +292,27 @@
 
 <style>
 	.region-dashboard {
-		height: 100vh;
+		height: calc(100vh - 100px);
 		display: flex;
-		flex-direction: column;
-		background: linear-gradient(135deg, #0a0a0a 0%, #1a1a2e 100%);
+		background: #000;
 		color: #fff;
 		font-family: 'JetBrains Mono', monospace;
 		overflow: hidden;
 	}
 
-	.header-section {
-		background: rgba(0, 0, 0, 0.6);
-		border-bottom: 1px solid rgba(0, 255, 255, 0.3);
-		padding: 0.8rem 1rem;
-		backdrop-filter: blur(10px);
-		flex-shrink: 0;
-	}
-
-	.header-content {
-		max-width: 100%;
-	}
-
-	.title-block {
-		display: flex;
-		align-items: center;
-		gap: 0.8rem;
-		margin-bottom: 0.8rem;
-	}
-
-	.title-icon {
-		font-size: 1.8rem;
-		color: #00ffff;
-		text-shadow: 0 0 15px #00ffff;
-		animation: iconPulse 3s ease-in-out infinite;
-	}
-
-	.title-text h1 {
-		margin: 0;
-		font-size: 1.3rem;
-		color: #00ffff;
-		text-shadow: 0 0 10px rgba(0, 255, 255, 0.5);
-		letter-spacing: 0.1em;
-	}
-
-	.title-text p {
-		margin: 0.2rem 0 0 0;
-		font-size: 0.75rem;
-		color: rgba(255, 255, 255, 0.6);
-	}
-
-	.metrics-row {
-		display: flex;
-		gap: 0.8rem;
-	}
-
-	.metric-card {
-		flex: 1;
-		background: rgba(0, 255, 255, 0.05);
-		border: 1px solid rgba(0, 255, 255, 0.3);
-		border-radius: 6px;
-		padding: 0.5rem;
-		text-align: center;
-		transition: all 0.3s ease;
-	}
-
-	.metric-card:hover {
-		transform: translateY(-2px);
-		box-shadow: 0 4px 12px rgba(0, 255, 255, 0.2);
-	}
-
-	.metric-card.primary {
-		background: rgba(0, 255, 133, 0.05);
-		border-color: rgba(0, 255, 133, 0.3);
-	}
-
-	.metric-card.critical {
-		background: rgba(255, 0, 255, 0.05);
-		border-color: rgba(255, 0, 255, 0.3);
-	}
-
-	.metric-value {
-		font-size: 1.2rem;
-		font-weight: 700;
-		color: #00ffff;
-		text-shadow: 0 0 10px currentColor;
-	}
-
-	.metric-label {
-		font-size: 0.6rem;
-		color: rgba(255, 255, 255, 0.6);
-		margin-top: 0.2rem;
-		letter-spacing: 0.05em;
-	}
-
 	.main-content {
 		flex: 1;
 		display: flex;
-		gap: 0.8rem;
-		padding: 0.8rem;
+		gap: 0.5rem;
+		padding: 0.5rem;
 		overflow: hidden;
-		min-height: 0;
 	}
 
 	.table-panel {
 		flex: 2;
-		background: rgba(0, 0, 0, 0.4);
-		border: 1px solid rgba(0, 255, 255, 0.2);
-		border-radius: 8px;
+		background: rgba(0, 0, 0, 0.6);
+		border: 1px solid #1e3a5f;
+		border-radius: 4px;
 		display: flex;
 		flex-direction: column;
 		overflow: hidden;
@@ -468,44 +322,37 @@
 		flex: 1;
 		display: flex;
 		flex-direction: column;
-		gap: 0.8rem;
-		overflow-y: auto;
-		min-width: 320px;
+		gap: 0.5rem;
+		min-width: 280px;
+		max-width: 350px;
 	}
 
 	.panel-header {
-		padding: 0.8rem;
-		border-bottom: 1px solid rgba(0, 255, 255, 0.2);
+		padding: 0.5rem;
+		border-bottom: 1px solid #1e3a5f;
 		background: rgba(0, 0, 0, 0.3);
-	}
-
-	.panel-header h3 {
-		margin: 0 0 0.5rem 0;
-		font-size: 0.85rem;
-		color: #00ffff;
-		letter-spacing: 0.05em;
 	}
 
 	.controls {
 		display: flex;
-		gap: 0.8rem;
+		gap: 0.5rem;
 		align-items: center;
 	}
 
 	.search-input {
 		flex: 1;
 		background: rgba(0, 0, 0, 0.6);
-		border: 1px solid rgba(0, 255, 255, 0.3);
-		border-radius: 4px;
-		padding: 0.4rem 0.8rem;
-		color: #fff;
-		font-size: 0.75rem;
+		border: 1px solid #1e3a5f;
+		border-radius: 3px;
+		padding: 0.25rem 0.5rem;
+		color: #b8a678;
+		font-size: 0.65rem;
 	}
 
 	.search-input:focus {
 		outline: none;
-		border-color: #00ffff;
-		box-shadow: 0 0 10px rgba(0, 255, 255, 0.3);
+		border-color: #0a4f3c;
+		box-shadow: 0 0 5px rgba(10, 79, 60, 0.3);
 	}
 
 	.view-toggle {
@@ -514,68 +361,68 @@
 	}
 
 	.toggle-btn {
-		background: rgba(0, 0, 0, 0.6);
-		border: 1px solid rgba(0, 255, 255, 0.3);
-		color: rgba(255, 255, 255, 0.7);
-		padding: 0.3rem 0.6rem;
-		border-radius: 4px;
+		background: rgba(0, 0, 0, 0.7);
+		border: 1px solid #1e3a5f;
+		color: #b8a678;
+		padding: 0.2rem 0.4rem;
+		border-radius: 3px;
 		cursor: pointer;
-		font-size: 0.65rem;
-		transition: all 0.3s ease;
+		font-size: 0.55rem;
+		transition: all 0.2s ease;
 	}
 
 	.toggle-btn.active {
-		background: rgba(0, 255, 255, 0.1);
-		border-color: #00ffff;
-		color: #00ffff;
+		background: linear-gradient(135deg, rgba(10, 79, 60, 0.2), rgba(30, 58, 95, 0.15));
+		border-color: #0a4f3c;
+		color: #fff;
 	}
 
 	.table-container {
 		flex: 1;
 		overflow: auto;
-		padding: 0.5rem;
+		padding: 0.3rem;
 	}
 
 	.data-table {
 		width: 100%;
 		border-collapse: collapse;
-		font-size: 0.75rem;
+		font-size: 0.65rem;
 	}
 
 	.data-table th {
-		background: rgba(0, 255, 255, 0.1);
-		color: #00ffff;
-		padding: 0.6rem;
+		background: rgba(10, 79, 60, 0.1);
+		color: #0a4f3c;
+		padding: 0.3rem;
 		text-align: left;
 		font-weight: 600;
 		letter-spacing: 0.05em;
 		position: sticky;
 		top: 0;
 		z-index: 10;
+		border-bottom: 1px solid #0a4f3c;
 	}
 
 	.data-table td {
-		padding: 0.5rem 0.6rem;
-		border-bottom: 1px solid rgba(255, 255, 255, 0.05);
-		color: rgba(255, 255, 255, 0.8);
+		padding: 0.25rem 0.3rem;
+		border-bottom: 1px solid rgba(30, 58, 95, 0.2);
+		color: #b8a678;
 	}
 
 	.data-table tr:hover {
-		background: rgba(0, 255, 255, 0.05);
+		background: rgba(10, 79, 60, 0.05);
 	}
 
-	.region-cell .cell-content {
+	.region-cell {
 		display: flex;
 		align-items: center;
-		gap: 0.5rem;
+		gap: 0.3rem;
 	}
 
 	.indicator {
-		width: 8px;
-		height: 8px;
+		width: 6px;
+		height: 6px;
 		border-radius: 50%;
 		flex-shrink: 0;
-		animation: pulse 2s infinite;
 	}
 
 	.center {
@@ -585,141 +432,110 @@
 	.coverage-cell {
 		display: flex;
 		align-items: center;
-		gap: 0.5rem;
+		gap: 0.3rem;
 	}
 
 	.coverage-bar {
 		flex: 1;
-		height: 6px;
-		background: rgba(0, 0, 0, 0.5);
-		border-radius: 3px;
+		height: 4px;
+		background: rgba(30, 58, 95, 0.3);
+		border-radius: 2px;
 		overflow: hidden;
-		min-width: 60px;
+		min-width: 40px;
 	}
 
 	.coverage-fill {
 		height: 100%;
 		transition: width 0.5s ease;
-		box-shadow: 0 0 10px currentColor;
 	}
 
 	.coverage-text {
-		font-size: 0.65rem;
-		min-width: 45px;
+		font-size: 0.55rem;
+		min-width: 35px;
 		text-align: right;
+		color: #b8a678;
 	}
 
 	.threat-badge {
-		padding: 0.2rem 0.5rem;
-		border-radius: 4px;
-		font-size: 0.65rem;
+		padding: 0.1rem 0.3rem;
+		border-radius: 2px;
+		font-size: 0.5rem;
 		font-weight: 600;
 	}
 
 	.threat-badge.critical {
-		background: rgba(255, 0, 255, 0.2);
-		color: #ff00ff;
-		border: 1px solid #ff00ff;
-	}
-
-	.threat-badge.high {
 		background: rgba(255, 0, 102, 0.2);
 		color: #ff0066;
 		border: 1px solid #ff0066;
 	}
 
+	.threat-badge.high {
+		background: rgba(255, 153, 0, 0.2);
+		color: #ff9900;
+		border: 1px solid #ff9900;
+	}
+
 	.threat-badge.medium {
-		background: rgba(255, 170, 0, 0.2);
-		color: #ffaa00;
-		border: 1px solid #ffaa00;
+		background: rgba(255, 204, 0, 0.2);
+		color: #ffcc00;
+		border: 1px solid #ffcc00;
 	}
 
 	.threat-badge.low {
-		background: rgba(0, 255, 255, 0.2);
-		color: #00ffff;
-		border: 1px solid #00ffff;
+		background: rgba(10, 79, 60, 0.2);
+		color: #0a4f3c;
+		border: 1px solid #0a4f3c;
 	}
 
 	.drill-btn {
-		background: rgba(0, 255, 255, 0.1);
-		border: 1px solid #00ffff;
-		color: #00ffff;
-		padding: 0.25rem 0.6rem;
-		border-radius: 4px;
+		background: rgba(10, 79, 60, 0.2);
+		border: 1px solid #0a4f3c;
+		color: #0a4f3c;
+		padding: 0.15rem 0.3rem;
+		border-radius: 2px;
 		cursor: pointer;
-		font-size: 0.65rem;
-		transition: all 0.3s ease;
+		font-size: 0.6rem;
+		transition: all 0.2s ease;
+		font-weight: 700;
 	}
 
 	.drill-btn:hover {
-		background: rgba(0, 255, 255, 0.2);
-		transform: translateX(2px);
-		box-shadow: 0 0 10px rgba(0, 255, 255, 0.3);
+		background: rgba(10, 79, 60, 0.3);
+		box-shadow: 0 0 5px rgba(10, 79, 60, 0.5);
 	}
 
 	.grid-container {
 		display: grid;
-		grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
-		gap: 0.8rem;
-		padding: 0.8rem;
-		overflow-y: auto;
-		flex: 1;
+		grid-template-columns: repeat(2, 1fr);
+		gap: 0.5rem;
+		padding: 0.5rem;
 	}
 
 	.grid-card {
-		background: rgba(0, 0, 0, 0.6);
+		background: rgba(0, 0, 0, 0.7);
 		border: 1px solid var(--card-color);
-		border-radius: 8px;
-		padding: 1rem;
+		border-radius: 4px;
+		padding: 0.5rem;
 		cursor: pointer;
-		transition: all 0.3s ease;
+		transition: all 0.2s ease;
 	}
 
 	.grid-card:hover {
-		transform: translateY(-3px);
-		box-shadow: 0 8px 20px rgba(0, 0, 0, 0.4), 0 0 20px var(--card-color);
+		transform: translateY(-2px);
+		box-shadow: 0 4px 10px rgba(0, 0, 0, 0.3);
 	}
 
 	.card-header {
 		display: flex;
-		justify-content: space-between;
-		align-items: center;
-		margin-bottom: 0.6rem;
-	}
-
-	.card-icon {
-		font-size: 1.2rem;
+		justify-content: flex-end;
+		margin-bottom: 0.3rem;
 	}
 
 	.threat-indicator {
-		font-size: 0.6rem;
-		padding: 0.15rem 0.4rem;
-		border-radius: 3px;
+		font-size: 0.45rem;
+		padding: 0.1rem 0.2rem;
+		border-radius: 2px;
 		font-weight: 600;
-	}
-
-	.threat-indicator.critical {
-		background: rgba(255, 0, 255, 0.2);
-		color: #ff00ff;
-		border: 1px solid #ff00ff;
-	}
-
-	.threat-indicator.high {
-		background: rgba(255, 0, 102, 0.2);
-		color: #ff0066;
-		border: 1px solid #ff0066;
-	}
-
-	.threat-indicator.medium {
-		background: rgba(255, 170, 0, 0.2);
-		color: #ffaa00;
-		border: 1px solid #ffaa00;
-	}
-
-	.threat-indicator.low {
-		background: rgba(0, 255, 255, 0.2);
-		color: #00ffff;
-		border: 1px solid #00ffff;
 	}
 
 	.card-body {
@@ -727,27 +543,25 @@
 	}
 
 	.region-name {
-		font-size: 0.75rem;
-		color: rgba(255, 255, 255, 0.9);
-		margin-bottom: 0.4rem;
+		font-size: 0.65rem;
+		color: #b8a678;
+		margin-bottom: 0.2rem;
 		font-weight: 600;
 	}
 
 	.region-count {
-		font-size: 1.3rem;
+		font-size: 0.9rem;
 		font-weight: 700;
 		color: var(--card-color);
-		text-shadow: 0 0 10px var(--card-color);
-		margin-bottom: 0.4rem;
+		margin-bottom: 0.2rem;
 	}
 
 	.progress-bar {
 		width: 100%;
-		height: 4px;
-		background: rgba(0, 0, 0, 0.5);
+		height: 3px;
+		background: rgba(30, 58, 95, 0.3);
 		border-radius: 2px;
 		overflow: hidden;
-		margin-bottom: 0.3rem;
 	}
 
 	.progress-fill {
@@ -755,35 +569,25 @@
 		transition: width 0.5s ease;
 	}
 
-	.card-percentage {
-		font-size: 0.65rem;
-		color: rgba(255, 255, 255, 0.6);
-	}
-
 	.pagination {
 		display: flex;
 		justify-content: center;
 		align-items: center;
-		gap: 1rem;
-		padding: 0.6rem;
-		border-top: 1px solid rgba(0, 255, 255, 0.2);
+		gap: 0.5rem;
+		padding: 0.3rem;
+		border-top: 1px solid #1e3a5f;
 		background: rgba(0, 0, 0, 0.3);
 	}
 
 	.pagination button {
-		background: rgba(0, 255, 255, 0.1);
-		border: 1px solid #00ffff;
-		color: #00ffff;
-		padding: 0.3rem 0.6rem;
-		border-radius: 4px;
+		background: rgba(10, 79, 60, 0.1);
+		border: 1px solid #0a4f3c;
+		color: #0a4f3c;
+		padding: 0.2rem 0.4rem;
+		border-radius: 3px;
 		cursor: pointer;
-		transition: all 0.3s ease;
-		font-size: 0.65rem;
-	}
-
-	.pagination button:hover:not(:disabled) {
-		background: rgba(0, 255, 255, 0.2);
-		transform: scale(1.05);
+		font-size: 0.55rem;
+		font-weight: 600;
 	}
 
 	.pagination button:disabled {
@@ -792,23 +596,52 @@
 	}
 
 	.pagination span {
-		font-size: 0.7rem;
-		color: rgba(255, 255, 255, 0.8);
+		font-size: 0.6rem;
+		color: #b8a678;
+	}
+
+	.metrics-row {
+		display: flex;
+		gap: 0.4rem;
+	}
+
+	.metric-card {
+		flex: 1;
+		background: rgba(0, 0, 0, 0.5);
+		border: 1px solid #1e3a5f;
+		border-radius: 4px;
+		padding: 0.4rem;
+		text-align: center;
+	}
+
+	.metric-value {
+		font-size: 1rem;
+		font-weight: 700;
+		color: #0a4f3c;
+		text-shadow: 0 0 8px rgba(10, 79, 60, 0.3);
+	}
+
+	.metric-label {
+		font-size: 0.5rem;
+		color: #b8a678;
+		margin-top: 0.1rem;
+		letter-spacing: 0.05em;
 	}
 
 	.viz-card {
-		background: rgba(0, 0, 0, 0.4);
-		border: 1px solid rgba(0, 255, 255, 0.2);
-		border-radius: 8px;
-		padding: 0.8rem;
+		background: rgba(0, 0, 0, 0.5);
+		border: 1px solid #1e3a5f;
+		border-radius: 4px;
+		padding: 0.5rem;
 	}
 
 	.viz-card h4 {
-		margin: 0 0 0.6rem 0;
-		font-size: 0.7rem;
-		color: #00ffff;
+		margin: 0 0 0.4rem 0;
+		font-size: 0.6rem;
+		color: #0a4f3c;
 		letter-spacing: 0.05em;
 		text-align: center;
+		font-weight: 600;
 	}
 
 	.world-map {
@@ -820,25 +653,26 @@
 	.threat-chart {
 		display: flex;
 		flex-direction: column;
-		gap: 0.5rem;
+		gap: 0.3rem;
 	}
 
 	.threat-row {
 		display: flex;
 		align-items: center;
-		gap: 0.5rem;
+		gap: 0.3rem;
 	}
 
 	.threat-label {
-		font-size: 0.65rem;
-		color: rgba(255, 255, 255, 0.8);
-		min-width: 60px;
+		font-size: 0.5rem;
+		color: #b8a678;
+		min-width: 45px;
+		font-weight: 600;
 	}
 
 	.threat-bar-container {
 		flex: 1;
 		height: 6px;
-		background: rgba(0, 0, 0, 0.5);
+		background: rgba(30, 58, 95, 0.3);
 		border-radius: 3px;
 		overflow: hidden;
 	}
@@ -846,97 +680,55 @@
 	.threat-bar {
 		height: 100%;
 		transition: width 0.5s ease;
-		box-shadow: 0 0 8px currentColor;
 	}
 
 	.threat-count {
-		font-size: 0.65rem;
-		color: rgba(255, 255, 255, 0.6);
-		min-width: 20px;
+		font-size: 0.5rem;
+		color: #b8a678;
+		min-width: 15px;
 		text-align: right;
 	}
 
 	.bar-chart {
 		display: flex;
 		flex-direction: column;
-		gap: 0.5rem;
+		gap: 0.25rem;
 	}
 
 	.bar-item {
 		display: flex;
 		flex-direction: column;
-		gap: 0.2rem;
+		gap: 0.1rem;
 	}
 
 	.bar-label {
-		font-size: 0.65rem;
-		color: rgba(255, 255, 255, 0.8);
+		font-size: 0.5rem;
+		color: #b8a678;
+		font-weight: 600;
 	}
 
 	.bar-container {
 		position: relative;
-		height: 18px;
-		background: rgba(0, 0, 0, 0.5);
-		border-radius: 4px;
+		height: 10px;
+		background: rgba(30, 58, 95, 0.3);
+		border-radius: 2px;
 		overflow: hidden;
 	}
 
 	.bar-fill {
 		height: 100%;
 		transition: width 0.5s ease;
-		position: relative;
-		overflow: hidden;
-	}
-
-	.bar-fill::after {
-		content: '';
-		position: absolute;
-		top: 0;
-		left: -100%;
-		width: 100%;
-		height: 100%;
-		background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.3), transparent);
-		animation: shimmer 2s infinite;
 	}
 
 	.bar-value {
 		position: absolute;
-		right: 0.3rem;
+		right: 0.2rem;
 		top: 50%;
 		transform: translateY(-50%);
-		font-size: 0.6rem;
+		font-size: 0.45rem;
 		font-weight: 600;
 		color: #fff;
-		text-shadow: 0 0 4px rgba(0, 0, 0, 0.8);
-	}
-
-	.matrix-grid {
-		display: grid;
-		grid-template-columns: repeat(3, 1fr);
-		gap: 0.4rem;
-	}
-
-	.matrix-cell {
-		aspect-ratio: 1;
-		display: flex;
-		flex-direction: column;
-		align-items: center;
-		justify-content: center;
-		border: 1px solid;
-		border-radius: 4px;
-		padding: 0.3rem;
-	}
-
-	.cell-value {
-		font-size: 0.65rem;
-		font-weight: 600;
-		color: #fff;
-	}
-
-	.cell-label {
-		font-size: 0.5rem;
-		color: rgba(255, 255, 255, 0.6);
-		margin-top: 0.1rem;
+		text-shadow: 0 0 3px #000;
 	}
 
 	.loading-state {
@@ -945,14 +737,14 @@
 		flex-direction: column;
 		align-items: center;
 		justify-content: center;
-		gap: 1rem;
+		gap: 0.5rem;
 	}
 
 	.spinner {
-		width: 40px;
-		height: 40px;
-		border: 3px solid rgba(0, 255, 255, 0.2);
-		border-top-color: #00ffff;
+		width: 30px;
+		height: 30px;
+		border: 2px solid #1e3a5f;
+		border-top-color: #0a4f3c;
 		border-radius: 50%;
 		animation: spin 1s linear infinite;
 	}
@@ -967,121 +759,57 @@
 		display: flex;
 		justify-content: space-between;
 		align-items: center;
-		padding: 0.8rem;
-		border-bottom: 1px solid rgba(0, 255, 255, 0.3);
-		background: rgba(0, 255, 255, 0.05);
+		padding: 0.5rem;
+		border-bottom: 1px solid #0a4f3c;
+		background: rgba(10, 79, 60, 0.05);
 	}
 
 	.drill-header h4 {
 		margin: 0;
-		color: #00ffff;
-		font-size: 0.9rem;
+		color: #0a4f3c;
+		font-size: 0.7rem;
 	}
 
 	.close-btn {
-		background: transparent;
+		background: rgba(255, 0, 102, 0.1);
 		border: 1px solid #ff0066;
 		color: #ff0066;
-		width: 24px;
-		height: 24px;
-		border-radius: 50%;
+		width: 20px;
+		height: 20px;
+		border-radius: 3px;
 		cursor: pointer;
 		display: flex;
 		align-items: center;
 		justify-content: center;
-		transition: all 0.3s ease;
-		font-size: 0.7rem;
-	}
-
-	.close-btn:hover {
-		background: rgba(255, 0, 102, 0.2);
-		transform: rotate(90deg);
+		font-size: 0.6rem;
 	}
 
 	.host-cell {
 		font-family: monospace;
-		color: #00ffff;
-		font-size: 0.7rem;
+		color: #0a4f3c;
+		font-size: 0.6rem;
 	}
 
 	.status-badge {
-		padding: 0.15rem 0.3rem;
-		border-radius: 3px;
-		font-size: 0.6rem;
+		padding: 0.1rem 0.2rem;
+		border-radius: 2px;
+		font-size: 0.5rem;
 		font-weight: 600;
 	}
 
 	.status-badge.active {
-		background: rgba(0, 255, 133, 0.2);
-		color: #00ff85;
-		border: 1px solid #00ff85;
+		background: rgba(10, 79, 60, 0.2);
+		color: #0a4f3c;
+		border: 1px solid #0a4f3c;
 	}
 
 	.status-badge.inactive {
-		background: rgba(255, 0, 102, 0.2);
+		background: rgba(255, 0, 102, 0.1);
 		color: #ff0066;
 		border: 1px solid #ff0066;
 	}
 
-	.region-badge {
-		padding: 0.15rem 0.3rem;
-		background: rgba(0, 255, 255, 0.2);
-		color: #00ffff;
-		border: 1px solid #00ffff;
-		border-radius: 3px;
-		font-size: 0.6rem;
-		font-weight: 600;
-	}
-
 	@keyframes spin {
 		to { transform: rotate(360deg); }
-	}
-
-	@keyframes pulse {
-		0%, 100% { opacity: 1; }
-		50% { opacity: 0.5; }
-	}
-
-	@keyframes shimmer {
-		to { left: 100%; }
-	}
-
-	@keyframes iconPulse {
-		0%, 100% { transform: scale(1); opacity: 0.9; }
-		50% { transform: scale(1.1); opacity: 1; }
-	}
-
-	@media (max-width: 1200px) {
-		.main-content {
-			flex-direction: column;
-		}
-		
-		.viz-panel {
-			flex-direction: row;
-			overflow-x: auto;
-			min-width: auto;
-		}
-		
-		.viz-card {
-			min-width: 280px;
-		}
-	}
-
-	@media (max-width: 768px) {
-		.metrics-row {
-			flex-wrap: wrap;
-		}
-		
-		.metric-card {
-			min-width: calc(50% - 0.4rem);
-		}
-		
-		.controls {
-			flex-direction: column;
-		}
-		
-		.grid-container {
-			grid-template-columns: 1fr;
-		}
 	}
 </style>
