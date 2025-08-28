@@ -1,4 +1,4 @@
-<!-- CIOMetrics.svelte - Optimized -->
+<!-- CIOMetrics.svelte - Enhanced Executive Analysis -->
 <script>
 	import { onMount } from 'svelte';
 	
@@ -7,9 +7,6 @@
 	let selectedCio = null;
 	let cioDetails = [];
 	let searchTerm = '';
-	let currentPage = 1;
-	let itemsPerPage = 8;
-	let hoveredCio = null;
 
 	onMount(async () => {
 		try {
@@ -27,21 +24,15 @@
 			.filter(([cio]) => cio.toLowerCase().includes(searchTerm.toLowerCase()))
 			.sort((a, b) => b[1] - a[1]) : [];
 	
-	$: paginatedCios = sortedCios.slice(
-		(currentPage - 1) * itemsPerPage,
-		currentPage * itemsPerPage
-	);
-	
-	$: totalPages = Math.ceil(sortedCios.length / itemsPerPage);
 	$: maxAssets = sortedCios.length > 0 ? Math.max(...sortedCios.map(([,count]) => count)) : 1;
 
 	function getExecutiveLevel(count) {
-		if (!maxAssets) return { level: 'ANALYST', color: '#0a4f3c', icon: '📊' };
+		if (!maxAssets) return { level: 'ANALYST', color: '#b8a678', icon: '▪' };
 		let percentage = (count / maxAssets) * 100;
-		if (percentage >= 70) return { level: 'C-SUITE', color: '#ff0066', icon: '👔' };
-		if (percentage >= 40) return { level: 'VP', color: '#ff9900', icon: '💼' };
-		if (percentage >= 20) return { level: 'DIRECTOR', color: '#ffcc00', icon: '📋' };
-		return { level: 'ANALYST', color: '#0a4f3c', icon: '📊' };
+		if (percentage >= 70) return { level: 'C-SUITE', color: '#ff0066', icon: '◆' };
+		if (percentage >= 40) return { level: 'VP', color: '#ff9900', icon: '▲' };
+		if (percentage >= 20) return { level: 'DIRECTOR', color: '#ffcc00', icon: '●' };
+		return { level: 'ANALYST', color: '#0a4f3c', icon: '▪' };
 	}
 
 	function getPercentage(count) {
@@ -76,15 +67,19 @@
 		acc[level] = (acc[level] || 0) + 1;
 		return acc;
 	}, {});
-
-	$: topExecutives = sortedCios.slice(0, 5);
 </script>
 
-<div class="cio-dashboard">
+<div class="dashboard-container">
 	<div class="main-content">
 		<!-- Left Panel: Table -->
 		<div class="table-panel">
 			<div class="panel-header">
+				<h3 class="panel-title">
+					<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+						<path d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"/>
+					</svg>
+					Executive Leadership Analysis
+				</h3>
 				<div class="controls">
 					<input 
 						type="text" 
@@ -98,14 +93,15 @@
 			{#if loading && !selectedCio}
 				<div class="loading-state">
 					<div class="spinner"></div>
-					<p>Scanning executives...</p>
+					<p>SCANNING EXECUTIVE DATA...</p>
 				</div>
 			{:else if selectedCio}
-				<!-- Drill-down View -->
 				<div class="drill-view">
 					<div class="drill-header">
 						<div class="exec-profile">
-							<span class="profile-icon">{getExecutiveLevel(selectedCio.count).icon}</span>
+							<span class="profile-icon" style="color: {getExecutiveLevel(selectedCio.count).color}">
+								{getExecutiveLevel(selectedCio.count).icon}
+							</span>
 							<h4>{selectedCio.cio.toUpperCase()}</h4>
 						</div>
 						<button class="close-btn" on:click={closeDetails}>✕</button>
@@ -124,31 +120,31 @@
 							<span class="stat-label">Level</span>
 						</div>
 					</div>
-					<div class="table-container">
+					<div class="drill-table-container">
 						<table class="data-table">
 							<thead>
 								<tr>
 									<th>HOST</th>
 									<th>REGION</th>
-									<th>INFRA</th>
+									<th>INFRASTRUCTURE</th>
 									<th>CMDB</th>
 									<th>TANIUM</th>
 								</tr>
 							</thead>
 							<tbody>
-								{#each cioDetails.slice(0, 6) as host}
+								{#each cioDetails as host}
 									<tr>
 										<td class="host-cell">{host.host}</td>
 										<td>{host.region || 'Unknown'}</td>
 										<td>{host.infrastructure_type || 'Unknown'}</td>
 										<td>
 											<span class="status-badge {host.present_in_cmdb?.toLowerCase().includes('yes') ? 'active' : 'inactive'}">
-												{host.present_in_cmdb?.toLowerCase().includes('yes') ? '✓' : '✗'}
+												{host.present_in_cmdb?.toLowerCase().includes('yes') ? 'YES' : 'NO'}
 											</span>
 										</td>
 										<td>
 											<span class="status-badge {host.tanium_coverage?.toLowerCase().includes('tanium') ? 'active' : 'inactive'}">
-												{host.tanium_coverage?.toLowerCase().includes('tanium') ? '✓' : '✗'}
+												{host.tanium_coverage?.toLowerCase().includes('tanium') ? 'YES' : 'NO'}
 											</span>
 										</td>
 									</tr>
@@ -159,7 +155,7 @@
 				</div>
 			{:else}
 				<!-- Main Table View -->
-				<div class="table-container">
+				<div class="table-scroll-container">
 					<table class="data-table">
 						<thead>
 							<tr>
@@ -167,20 +163,18 @@
 								<th>LEVEL</th>
 								<th>ASSETS</th>
 								<th>COVERAGE</th>
-								<th>RISK</th>
-								<th>ACTION</th>
 							</tr>
 						</thead>
 						<tbody>
-							{#each paginatedCios as [cio, count]}
+							{#each sortedCios as [cio, count]}
 								{@const exec = getExecutiveLevel(count)}
-								<tr on:mouseenter={() => hoveredCio = cio} on:mouseleave={() => hoveredCio = null}>
+								<tr on:click={() => drillDownCio(cio, count)}>
 									<td class="exec-cell">
-										<span class="exec-icon">{exec.icon}</span>
-										<span>{cio.substring(0, 20).toUpperCase()}</span>
+										<span class="exec-icon" style="color: {exec.color}">{exec.icon}</span>
+										<span class="exec-name">{cio.substring(0, 30).toUpperCase()}</span>
 									</td>
 									<td class="center">
-										<span class="level-badge {exec.level.toLowerCase()}">{exec.level}</span>
+										<span class="level-badge" style="color: {exec.color}; border-color: {exec.color}">{exec.level}</span>
 									</td>
 									<td class="center">{count.toLocaleString()}</td>
 									<td>
@@ -191,27 +185,10 @@
 											<span class="coverage-text">{getPercentage(count)}%</span>
 										</div>
 									</td>
-									<td class="center">
-										<span class="risk-badge {exec.level === 'C-SUITE' ? 'low' : exec.level === 'VP' ? 'medium' : 'high'}">
-											{exec.level === 'C-SUITE' ? 'LOW' : exec.level === 'VP' ? 'MED' : 'HIGH'}
-										</span>
-									</td>
-									<td class="center">
-										<button class="drill-btn" on:click={() => drillDownCio(cio, count)}>→</button>
-									</td>
 								</tr>
 							{/each}
 						</tbody>
 					</table>
-				</div>
-			{/if}
-			
-			<!-- Pagination -->
-			{#if !selectedCio}
-				<div class="pagination">
-					<button on:click={() => currentPage = Math.max(1, currentPage - 1)} disabled={currentPage === 1}>←</button>
-					<span>{currentPage}/{totalPages}</span>
-					<button on:click={() => currentPage = Math.min(totalPages, currentPage + 1)} disabled={currentPage === totalPages}>→</button>
 				</div>
 			{/if}
 		</div>
@@ -226,22 +203,27 @@
 				</div>
 				<div class="metric-card">
 					<div class="metric-value">{Object.values(data.operative_intelligence || {}).reduce((a, b) => a + b, 0).toLocaleString()}</div>
-					<div class="metric-label">ASSETS</div>
+					<div class="metric-label">TOTAL ASSETS</div>
 				</div>
 			</div>
 
 			<!-- Executive Hierarchy -->
 			<div class="viz-card">
-				<h4>HIERARCHY</h4>
+				<h4>
+					<svg class="icon-small" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+						<path d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/>
+					</svg>
+					ORGANIZATIONAL HIERARCHY
+				</h4>
 				<div class="hierarchy-chart">
 					{#each Object.entries(executiveDistribution) as [level, count]}
-						{@const levelData = level === 'C-SUITE' ? {color: '#ff0066', icon: '👔'} :
-							level === 'VP' ? {color: '#ff9900', icon: '💼'} :
-							level === 'DIRECTOR' ? {color: '#ffcc00', icon: '📋'} :
-							{color: '#0a4f3c', icon: '📊'}}
+						{@const levelData = level === 'C-SUITE' ? {color: '#ff0066', icon: '◆'} :
+							level === 'VP' ? {color: '#ff9900', icon: '▲'} :
+							level === 'DIRECTOR' ? {color: '#ffcc00', icon: '●'} :
+							{color: '#0a4f3c', icon: '▪'}}
 						<div class="hierarchy-level">
 							<div class="level-header">
-								<span class="level-icon">{levelData.icon}</span>
+								<span class="level-icon" style="color: {levelData.color}">{levelData.icon}</span>
 								<span class="level-name">{level}</span>
 							</div>
 							<div class="level-bar-container">
@@ -255,18 +237,29 @@
 
 			<!-- Top Executives -->
 			<div class="viz-card">
-				<h4>TOP EXECUTIVES</h4>
-				<div class="bar-chart">
-					{#each topExecutives.slice(0, 4) as [cio, count]}
+				<h4>
+					<svg class="icon-small" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+						<path d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z"/>
+					</svg>
+					TOP EXECUTIVES
+				</h4>
+				<div class="exec-list">
+					{#each sortedCios.slice(0, 6) as [cio, count]}
 						{@const exec = getExecutiveLevel(count)}
-						<div class="bar-item">
-							<div class="bar-label">
-								<span class="bar-icon">{exec.icon}</span>
-								<span>{cio.substring(0, 12)}</span>
+						<div class="exec-item">
+							<div class="exec-rank">
+								<span style="color: {exec.color}">{exec.icon}</span>
 							</div>
-							<div class="bar-container">
-								<div class="bar-fill" style="width: {(count/maxAssets)*100}%; background: {exec.color}"></div>
-								<span class="bar-value">{count}</span>
+							<div class="exec-details">
+								<div class="exec-item-name">{cio.substring(0, 20).toUpperCase()}</div>
+								<div class="exec-bar-container">
+									<div class="exec-bar" style="width: {(count/maxAssets)*100}%; background: {exec.color}"></div>
+								</div>
+								<div class="exec-stats">
+									<span>{count.toLocaleString()} assets</span>
+									<span class="separator">•</span>
+									<span>{getPercentage(count)}%</span>
+								</div>
 							</div>
 						</div>
 					{/each}
@@ -275,12 +268,17 @@
 
 			<!-- Portfolio Distribution -->
 			<div class="viz-card">
-				<h4>PORTFOLIO</h4>
-				<div class="donut-chart">
-					<svg viewBox="0 0 150 150">
+				<h4>
+					<svg class="icon-small" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+						<path d="M16 8v8m-4-5v5m-4-2v2m-2 4h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/>
+					</svg>
+					ASSET DISTRIBUTION
+				</h4>
+				<div class="distribution-chart">
+					<svg viewBox="0 0 200 200">
 						{#if sortedCios.length > 0}
 							{@const total = Object.values(data.operative_intelligence || {}).reduce((a, b) => a + b, 0)}
-							{@const radius = 45}
+							{@const radius = 70}
 							{@const circumference = 2 * Math.PI * radius}
 							{#each sortedCios.slice(0, 5) as [cio, count], i}
 								{@const percentage = (count / total) * 100}
@@ -289,23 +287,23 @@
 									.reduce((acc, [_, c]) => acc + (c / total) * 360, -90)}
 								{@const exec = getExecutiveLevel(count)}
 								<circle
-									cx="75"
-									cy="75"
+									cx="100"
+									cy="100"
 									r={radius}
 									fill="none"
 									stroke={exec.color}
-									stroke-width="20"
+									stroke-width="30"
 									stroke-dasharray="{strokeDasharray} {circumference}"
-									transform="rotate({rotation} 75 75)"
+									transform="rotate({rotation} 100 100)"
 									opacity="0.8"
 								/>
 							{/each}
 						{/if}
-						<text x="75" y="72" text-anchor="middle" fill="#b8a678" font-size="18" font-weight="bold">
+						<text x="100" y="95" text-anchor="middle" fill="#e0e0e0" font-size="24" font-weight="bold">
 							{sortedCios.length}
 						</text>
-						<text x="75" y="85" text-anchor="middle" fill="#b8a678" font-size="8">
-							EXECS
+						<text x="100" y="115" text-anchor="middle" fill="#b8a678" font-size="12">
+							EXECUTIVES
 						</text>
 					</svg>
 				</div>
@@ -315,28 +313,28 @@
 </div>
 
 <style>
-	.cio-dashboard {
-		height: calc(100vh - 100px);
+	.dashboard-container {
+		height: calc(100vh - 80px);
 		display: flex;
-		background: #000;
-		color: #fff;
+		background: #0a0a0a;
+		color: #e0e0e0;
 		font-family: 'JetBrains Mono', monospace;
 		overflow: hidden;
+		padding: 1rem;
 	}
 
 	.main-content {
 		flex: 1;
 		display: flex;
-		gap: 0.5rem;
-		padding: 0.5rem;
+		gap: 1rem;
 		overflow: hidden;
 	}
 
 	.table-panel {
-		flex: 2;
-		background: rgba(0, 0, 0, 0.6);
-		border: 1px solid #1e3a5f;
-		border-radius: 4px;
+		flex: 1.5;
+		background: #0f0f0f;
+		border: 1px solid #1a1a1a;
+		border-radius: 8px;
 		display: flex;
 		flex-direction: column;
 		overflow: hidden;
@@ -346,15 +344,41 @@
 		flex: 1;
 		display: flex;
 		flex-direction: column;
-		gap: 0.5rem;
-		min-width: 280px;
-		max-width: 350px;
+		gap: 1rem;
+		overflow-y: auto;
+		padding-right: 0.5rem;
 	}
 
 	.panel-header {
-		padding: 0.5rem;
-		border-bottom: 1px solid #1e3a5f;
-		background: rgba(0, 0, 0, 0.3);
+		padding: 1rem 1.5rem;
+		border-bottom: 1px solid #1a1a1a;
+		background: #0f0f0f;
+		flex-shrink: 0;
+	}
+
+	.panel-title {
+		margin: 0 0 1rem 0;
+		color: #0a4f3c;
+		font-size: 1rem;
+		font-weight: 500;
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+	}
+
+	.icon {
+		width: 20px;
+		height: 20px;
+		color: #0a4f3c;
+	}
+
+	.icon-small {
+		width: 16px;
+		height: 16px;
+		color: #0a4f3c;
+		display: inline-block;
+		vertical-align: middle;
+		margin-right: 0.3rem;
 	}
 
 	.controls {
@@ -365,18 +389,18 @@
 
 	.search-input {
 		flex: 1;
-		background: rgba(0, 0, 0, 0.6);
-		border: 1px solid #1e3a5f;
-		border-radius: 3px;
-		padding: 0.25rem 0.5rem;
-		color: #b8a678;
-		font-size: 0.65rem;
+		background: #0a0a0a;
+		border: 1px solid #1a1a1a;
+		border-radius: 4px;
+		padding: 0.5rem 0.75rem;
+		color: #e0e0e0;
+		font-size: 0.85rem;
+		font-family: inherit;
 	}
 
 	.search-input:focus {
 		outline: none;
 		border-color: #0a4f3c;
-		box-shadow: 0 0 5px rgba(10, 79, 60, 0.3);
 	}
 
 	.loading-state {
@@ -385,61 +409,77 @@
 		flex-direction: column;
 		align-items: center;
 		justify-content: center;
-		gap: 0.5rem;
+		gap: 1rem;
 	}
 
 	.spinner {
-		width: 30px;
-		height: 30px;
-		border: 2px solid #1e3a5f;
+		width: 40px;
+		height: 40px;
+		border: 3px solid #1a1a1a;
 		border-top-color: #0a4f3c;
 		border-radius: 50%;
 		animation: spin 1s linear infinite;
 	}
 
-	.table-container {
+	.table-scroll-container {
+		flex: 1;
+		overflow-y: auto;
+		overflow-x: hidden;
+	}
+
+	.drill-table-container {
 		flex: 1;
 		overflow: auto;
-		padding: 0.3rem;
+		padding: 1rem;
 	}
 
 	.data-table {
 		width: 100%;
 		border-collapse: collapse;
-		font-size: 0.65rem;
+		font-size: 0.85rem;
 	}
 
 	.data-table th {
-		background: rgba(10, 79, 60, 0.1);
+		background: #0f0f0f;
 		color: #0a4f3c;
-		padding: 0.3rem;
+		padding: 0.75rem;
 		text-align: left;
-		font-weight: 600;
+		font-weight: 500;
 		letter-spacing: 0.05em;
 		position: sticky;
 		top: 0;
 		z-index: 10;
-		border-bottom: 1px solid #0a4f3c;
+		border-bottom: 2px solid #0a4f3c;
 	}
 
 	.data-table td {
-		padding: 0.25rem 0.3rem;
-		border-bottom: 1px solid rgba(30, 58, 95, 0.2);
+		padding: 0.75rem;
+		border-bottom: 1px solid #1a1a1a;
 		color: #b8a678;
 	}
 
-	.data-table tr:hover {
+	.data-table tbody tr {
+		cursor: pointer;
+		transition: background 0.2s ease;
+	}
+
+	.data-table tbody tr:hover {
 		background: rgba(10, 79, 60, 0.05);
 	}
 
 	.exec-cell {
 		display: flex;
 		align-items: center;
-		gap: 0.3rem;
+		gap: 0.5rem;
 	}
 
 	.exec-icon {
-		font-size: 0.8rem;
+		font-size: 1rem;
+	}
+
+	.exec-name {
+		font-weight: 500;
+		color: #e0e0e0;
 	}
 
 	.center {
@@ -447,103 +487,38 @@
 	}
 
 	.level-badge {
-		padding: 0.1rem 0.3rem;
-		border-radius: 2px;
-		font-size: 0.5rem;
+		padding: 0.25rem 0.5rem;
+		border: 1px solid;
+		border-radius: 4px;
+		font-size: 0.7rem;
 		font-weight: 600;
-	}
-
-	.level-badge.c-suite {
-		background: rgba(255, 0, 102, 0.2);
-		color: #ff0066;
-		border: 1px solid #ff0066;
-	}
-
-	.level-badge.vp {
-		background: rgba(255, 153, 0, 0.2);
-		color: #ff9900;
-		border: 1px solid #ff9900;
-	}
-
-	.level-badge.director {
-		background: rgba(255, 204, 0, 0.2);
-		color: #ffcc00;
-		border: 1px solid #ffcc00;
-	}
-
-	.level-badge.analyst {
-		background: rgba(10, 79, 60, 0.2);
-		color: #0a4f3c;
-		border: 1px solid #0a4f3c;
 	}
 
 	.coverage-cell {
 		display: flex;
 		align-items: center;
-		gap: 0.3rem;
+		gap: 0.5rem;
 	}
 
 	.coverage-bar {
 		flex: 1;
-		height: 4px;
-		background: rgba(30, 58, 95, 0.3);
-		border-radius: 2px;
+		height: 6px;
+		background: #1a1a1a;
+		border-radius: 3px;
 		overflow: hidden;
-		min-width: 40px;
+		min-width: 60px;
 	}
 
 	.coverage-fill {
 		height: 100%;
-		transition: width 0.5s ease;
+		transition: width 0.3s ease;
 	}
 
 	.coverage-text {
-		font-size: 0.55rem;
-		min-width: 35px;
+		font-size: 0.7rem;
+		min-width: 45px;
 		text-align: right;
 		color: #b8a678;
-	}
-
-	.risk-badge {
-		padding: 0.1rem 0.3rem;
-		border-radius: 2px;
-		font-size: 0.5rem;
-		font-weight: 600;
-	}
-
-	.risk-badge.low {
-		background: rgba(10, 79, 60, 0.2);
-		color: #0a4f3c;
-		border: 1px solid #0a4f3c;
-	}
-
-	.risk-badge.medium {
-		background: rgba(255, 204, 0, 0.2);
-		color: #ffcc00;
-		border: 1px solid #ffcc00;
-	}
-
-	.risk-badge.high {
-		background: rgba(255, 0, 102, 0.2);
-		color: #ff0066;
-		border: 1px solid #ff0066;
-	}
-
-	.drill-btn {
-		background: rgba(10, 79, 60, 0.2);
-		border: 1px solid #0a4f3c;
-		color: #0a4f3c;
-		padding: 0.15rem 0.3rem;
-		border-radius: 2px;
-		cursor: pointer;
-		font-size: 0.6rem;
-		transition: all 0.2s ease;
-		font-weight: 700;
-	}
-
-	.drill-btn:hover {
-		background: rgba(10, 79, 60, 0.3);
-		box-shadow: 0 0 5px rgba(10, 79, 60, 0.5);
 	}
 
 	.drill-view {
@@ -556,7 +531,7 @@
 		display: flex;
 		justify-content: space-between;
 		align-items: center;
-		padding: 0.5rem;
+		padding: 1rem 1.5rem;
 		border-bottom: 1px solid #0a4f3c;
 		background: rgba(10, 79, 60, 0.05);
 	}
@@ -564,71 +539,73 @@
 	.exec-profile {
 		display: flex;
 		align-items: center;
-		gap: 0.3rem;
+		gap: 0.5rem;
 	}
 
 	.profile-icon {
-		font-size: 1rem;
+		font-size: 1.5rem;
 	}
 
 	.drill-header h4 {
 		margin: 0;
 		color: #0a4f3c;
-		font-size: 0.7rem;
+		font-size: 1rem;
 	}
 
 	.close-btn {
 		background: rgba(255, 0, 102, 0.1);
 		border: 1px solid #ff0066;
 		color: #ff0066;
-		width: 20px;
-		height: 20px;
-		border-radius: 3px;
+		width: 30px;
+		height: 30px;
+		border-radius: 4px;
 		cursor: pointer;
 		display: flex;
 		align-items: center;
 		justify-content: center;
-		font-size: 0.6rem;
+		font-size: 1rem;
+		font-weight: 600;
 	}
 
 	.drill-stats {
 		display: flex;
-		gap: 0.8rem;
-		padding: 0.5rem;
+		gap: 2rem;
+		padding: 1rem 1.5rem;
 		background: rgba(0, 0, 0, 0.3);
-		border-bottom: 1px solid rgba(30, 58, 95, 0.2);
+		border-bottom: 1px solid #1a1a1a;
 	}
 
 	.stat-item {
 		display: flex;
 		flex-direction: column;
-		gap: 0.1rem;
+		gap: 0.25rem;
 		align-items: center;
 	}
 
 	.stat-value {
-		font-size: 0.8rem;
+		font-size: 1.2rem;
 		font-weight: 600;
 		color: #0a4f3c;
-		text-shadow: 0 0 5px rgba(10, 79, 60, 0.3);
 	}
 
 	.stat-label {
-		font-size: 0.5rem;
+		font-size: 0.65rem;
 		color: #b8a678;
+		text-transform: uppercase;
 	}
 
 	.host-cell {
-		font-family: monospace;
+		font-family: 'Courier New', monospace;
 		color: #0a4f3c;
-		font-size: 0.6rem;
+		font-weight: 500;
 	}
 
 	.status-badge {
-		padding: 0.1rem 0.2rem;
-		border-radius: 2px;
-		font-size: 0.5rem;
+		padding: 0.2rem 0.4rem;
+		border-radius: 3px;
+		font-size: 0.7rem;
 		font-weight: 600;
+		text-transform: uppercase;
 	}
 
 	.status-badge.active {
@@ -643,190 +620,165 @@
 		border: 1px solid #ff0066;
 	}
 
-	.pagination {
-		display: flex;
-		justify-content: center;
-		align-items: center;
-		gap: 0.5rem;
-		padding: 0.3rem;
-		border-top: 1px solid #1e3a5f;
-		background: rgba(0, 0, 0, 0.3);
-	}
-
-	.pagination button {
-		background: rgba(10, 79, 60, 0.1);
-		border: 1px solid #0a4f3c;
-		color: #0a4f3c;
-		padding: 0.2rem 0.4rem;
-		border-radius: 3px;
-		cursor: pointer;
-		font-size: 0.55rem;
-		font-weight: 600;
-	}
-
-	.pagination button:disabled {
-		opacity: 0.5;
-		cursor: not-allowed;
-	}
-
-	.pagination span {
-		font-size: 0.6rem;
-		color: #b8a678;
-	}
-
 	.metrics-row {
 		display: flex;
-		gap: 0.4rem;
+		gap: 1rem;
 	}
 
 	.metric-card {
 		flex: 1;
-		background: rgba(0, 0, 0, 0.5);
-		border: 1px solid #1e3a5f;
-		border-radius: 4px;
-		padding: 0.4rem;
+		background: #0f0f0f;
+		border: 1px solid #1a1a1a;
+		border-radius: 8px;
+		padding: 1.5rem;
 		text-align: center;
 	}
 
 	.metric-value {
-		font-size: 1rem;
-		font-weight: 700;
+		font-size: 2rem;
+		font-weight: 600;
 		color: #0a4f3c;
-		text-shadow: 0 0 8px rgba(10, 79, 60, 0.3);
+		margin-bottom: 0.5rem;
 	}
 
 	.metric-label {
-		font-size: 0.5rem;
+		font-size: 0.7rem;
 		color: #b8a678;
-		margin-top: 0.1rem;
-		letter-spacing: 0.05em;
+		letter-spacing: 0.1em;
+		font-weight: 500;
 	}
 
 	.viz-card {
-		background: rgba(0, 0, 0, 0.5);
-		border: 1px solid #1e3a5f;
-		border-radius: 4px;
-		padding: 0.5rem;
+		background: #0f0f0f;
+		border: 1px solid #1a1a1a;
+		border-radius: 8px;
+		padding: 1.5rem;
 	}
 
 	.viz-card h4 {
-		margin: 0 0 0.4rem 0;
-		font-size: 0.6rem;
+		margin: 0 0 1rem 0;
+		font-size: 0.85rem;
 		color: #0a4f3c;
 		letter-spacing: 0.05em;
-		text-align: center;
-		font-weight: 600;
+		font-weight: 500;
 	}
 
 	.hierarchy-chart {
 		display: flex;
 		flex-direction: column;
-		gap: 0.3rem;
+		gap: 0.5rem;
 	}
 
 	.hierarchy-level {
 		display: flex;
 		align-items: center;
-		gap: 0.3rem;
+		gap: 0.5rem;
 	}
 
 	.level-header {
 		display: flex;
 		align-items: center;
-		gap: 0.2rem;
-		min-width: 70px;
+		gap: 0.3rem;
+		min-width: 90px;
 	}
 
 	.level-icon {
-		font-size: 0.7rem;
+		font-size: 1rem;
 	}
 
 	.level-name {
-		font-size: 0.5rem;
+		font-size: 0.65rem;
 		color: #b8a678;
+		font-weight: 500;
 	}
 
 	.level-bar-container {
 		flex: 1;
-		height: 5px;
-		background: rgba(30, 58, 95, 0.3);
-		border-radius: 2px;
+		height: 6px;
+		background: #1a1a1a;
+		border-radius: 3px;
 		overflow: hidden;
 	}
 
 	.level-bar {
 		height: 100%;
-		transition: width 0.5s ease;
+		transition: width 0.3s ease;
 	}
 
 	.level-count {
-		font-size: 0.5rem;
+		font-size: 0.65rem;
 		color: #b8a678;
-		min-width: 15px;
+		min-width: 20px;
 		text-align: right;
 	}
 
-	.bar-chart {
+	.exec-list {
 		display: flex;
 		flex-direction: column;
-		gap: 0.25rem;
+		gap: 0.5rem;
 	}
 
-	.bar-item {
-		display: flex;
-		flex-direction: column;
-		gap: 0.1rem;
-	}
-
-	.bar-label {
+	.exec-item {
 		display: flex;
 		align-items: center;
-		gap: 0.2rem;
-		font-size: 0.5rem;
+		gap: 0.75rem;
+		padding: 0.5rem;
+		background: #0a0a0a;
+		border-radius: 4px;
+		transition: all 0.2s ease;
+	}
+
+	.exec-item:hover {
+		background: rgba(10, 79, 60, 0.05);
+	}
+
+	.exec-rank {
+		font-size: 1.2rem;
+		width: 24px;
+		text-align: center;
+	}
+
+	.exec-details {
+		flex: 1;
+	}
+
+	.exec-item-name {
+		font-size: 0.75rem;
+		color: #e0e0e0;
+		font-weight: 500;
+		margin-bottom: 0.3rem;
+	}
+
+	.exec-bar-container {
+		height: 4px;
+		background: #1a1a1a;
+		border-radius: 2px;
+		overflow: hidden;
+		margin-bottom: 0.3rem;
+	}
+
+	.exec-bar {
+		height: 100%;
+		transition: width 0.3s ease;
+	}
+
+	.exec-stats {
+		font-size: 0.65rem;
 		color: #b8a678;
 	}
 
-	.bar-icon {
-		font-size: 0.6rem;
+	.separator {
+		margin: 0 0.3rem;
+		color: #1a1a1a;
 	}
 
-	.bar-container {
-		position: relative;
-		height: 10px;
-		background: rgba(30, 58, 95, 0.3);
-		border-radius: 2px;
-		overflow: hidden;
-	}
-
-	.bar-fill {
-		height: 100%;
-		transition: width 0.5s ease;
-	}
-
-	.bar-value {
-		position: absolute;
-		right: 0.2rem;
-		top: 50%;
-		transform: translateY(-50%);
-		font-size: 0.45rem;
-		font-weight: 600;
-		color: #fff;
-		text-shadow: 0 0 3px #000;
-	}
-
-	.donut-chart {
+	.distribution-chart {
 		width: 100%;
-		max-width: 150px;
+		max-width: 200px;
 		margin: 0 auto;
 	}
 
 	@keyframes spin {
 		to { transform: rotate(360deg); }
-	}
-
-	@media (max-width: 1200px) {
-		.viz-panel {
-			min-width: 240px;
-		}
 	}
 </style>
