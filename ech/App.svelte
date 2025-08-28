@@ -1,4 +1,4 @@
-<!-- Advanced App.svelte with Cinematic UI -->
+<!-- Enhanced App.svelte with Ultra-Modern Header -->
 <script>
 	import { onMount, onDestroy } from 'svelte';
 	import SourceTables from './SourceTables.svelte';
@@ -21,13 +21,12 @@
 	let scanlinePosition = 0;
 	
 	let modules = [
-		{ id: 'source_tables', name: 'SOURCE', color: '#00ffff', icon: '◈', status: 'ACTIVE', load: 87 },
-		{ id: 'region_metrics', name: 'REGIONS', color: '#00ff85', icon: '◉', status: 'ACTIVE', load: 78 },
-		{ id: 'country_metrics', name: 'COUNTRIES', color: '#ffaa00', icon: '⬟', status: 'ACTIVE', load: 85 },
-		{ id: 'data_center', name: 'CENTERS', color: '#ff0066', icon: '⬡', status: 'MONITORING', load: 73 },
-		{ id: 'business_units', name: 'BUSINESS', color: '#00ff85', icon: '◒', status: 'ACTIVE', load: 81 },
-		{ id: 'cio_metrics', name: 'CIO', color: '#ffaa00', icon: '◓', status: 'ACTIVE', load: 89 },
-		{ id: 'advanced_analytics', name: 'AI CORE', color: '#ff00ff', icon: '◎', status: 'QUANTUM', load: 95 }
+		{ id: 'source_tables', name: 'SOURCE INTELLIGENCE', color: '#00ffff', icon: '◈', status: 'ACTIVE', load: 87 },
+		{ id: 'region_metrics', name: 'REGIONAL MATRIX', color: '#00ff85', icon: '◉', status: 'ACTIVE', load: 78 },
+		{ id: 'country_metrics', name: 'GLOBAL SURVEILLANCE', color: '#ffaa00', icon: '⬟', status: 'ACTIVE', load: 85 },
+		{ id: 'data_center', name: 'FACILITY INTELLIGENCE', color: '#ff0066', icon: '⬡', status: 'MONITORING', load: 73 },
+		{ id: 'business_units', name: 'BUSINESS MATRIX', color: '#00ff85', icon: '◒', status: 'ACTIVE', load: 81 },
+		{ id: 'cio_metrics', name: 'EXECUTIVE COMMAND', color: '#ff00ff', icon: '◓', status: 'ACTIVE', load: 89 }
 	];
 
 	let hologramLayers = [];
@@ -187,14 +186,15 @@
 	<!-- Scanline Effect -->
 	<div class="scanline" style="top: {scanlinePosition}%"></div>
 
-	<!-- Advanced Header -->
+	<!-- Ultra-Modern Header -->
 	<header class="system-header">
+		<div class="header-glow"></div>
 		<div class="header-content">
-			<!-- Left: Brand & Status -->
+			<!-- Enhanced Logo Section -->
 			<div class="brand-section">
-				<div class="ao1-logo-advanced">
+				<div class="ao1-logo-ultra">
 					<div class="logo-hologram">
-						{#each hologramLayers as layer, i}
+						{#each hologramLayers as layer}
 							<div class="hologram-layer" 
 								 style="transform: rotate({layer.rotation}deg) scale({layer.scale}); 
 										opacity: {layer.opacity};">
@@ -206,34 +206,40 @@
 						<span class="logo-text">AO1</span>
 						<div class="quantum-indicator" style="opacity: {quantumCoherence / 100}"></div>
 					</div>
+					<div class="logo-energy"></div>
 				</div>
 				<div class="brand-info">
 					<h1 class="title">NEURAL INTELLIGENCE MATRIX</h1>
 					<div class="subtitle">FISERV QUANTUM THREAT DETECTION SYSTEM</div>
 					<div class="status-row">
 						<span class="status-indicator {systemStatus === 'OPERATIONAL' ? 'active' : 'initializing'}">
-							● {systemStatus}
+							<span class="status-dot"></span>
+							{systemStatus}
 						</span>
-						<span class="threat-indicator" style="color: hsl({120 - threatLevel * 1.2}, 100%, 50%)">
+						<span class="threat-indicator" style="--threat-color: hsl({120 - threatLevel * 1.2}, 100%, 50%)">
+							<span class="threat-icon">⚡</span>
 							THREAT: {threatLevel.toFixed(1)}%
 						</span>
 						<span class="alert-counter {activeAlerts > 0 ? 'active' : ''}">
-							⚠ {activeAlerts} ALERTS
+							<span class="alert-icon">⚠</span>
+							{activeAlerts} ALERTS
 						</span>
 					</div>
 				</div>
 			</div>
 			
-			<!-- Center: Module Navigation -->
+			<!-- Ultra Navigation Modules -->
 			<nav class="quantum-navigation">
 				<div class="nav-container">
 					<div class="nav-background"></div>
+					<div class="nav-energy-field"></div>
 					{#each modules as module, i}
 						<button 
 							class="nav-module {currentView === module.id ? 'active' : ''} {getModuleStatus(module)}"
 							style="--module-color: {module.color}; --delay: {i * 0.05}s"
 							on:click={() => switchView(module.id)}>
 							<div class="module-background"></div>
+							<div class="module-glow"></div>
 							<div class="module-content">
 								<span class="module-icon">{module.icon}</span>
 								<span class="module-name">{module.name}</span>
@@ -242,83 +248,53 @@
 								</div>
 								<span class="module-status">{module.status}</span>
 							</div>
+							{#if currentView === module.id}
+								<div class="module-active-indicator"></div>
+							{/if}
 						</button>
 					{/each}
 				</div>
 			</nav>
 			
-			<!-- Right: Metrics Panel -->
+			<!-- Enhanced Metrics Panel -->
 			<div class="metrics-panel">
 				<div class="metric-display">
-					<div class="metric-label">QUANTUM COHERENCE</div>
-					<div class="metric-value">{quantumCoherence.toFixed(1)}%</div>
+					<div class="metric-icon">◈</div>
+					<div class="metric-info">
+						<div class="metric-label">QUANTUM COHERENCE</div>
+						<div class="metric-value">{quantumCoherence.toFixed(1)}%</div>
+					</div>
 					<div class="metric-bar">
-						<div class="bar-fill" style="width: {quantumCoherence}%; background: linear-gradient(90deg, #00ffff, #ff00ff)"></div>
+						<div class="bar-fill" style="width: {quantumCoherence}%"></div>
 					</div>
 				</div>
 				<div class="metric-display">
-					<div class="metric-label">DATA FLOW</div>
-					<div class="metric-value">{dataFlowRate.toFixed(0)} TB/s</div>
+					<div class="metric-icon">◉</div>
+					<div class="metric-info">
+						<div class="metric-label">DATA FLOW</div>
+						<div class="metric-value">{dataFlowRate.toFixed(0)} TB/s</div>
+					</div>
 					<div class="flow-indicator">
 						{#each Array(5) as _, i}
 							<div class="flow-dot" style="animation-delay: {i * 0.1}s"></div>
 						{/each}
 					</div>
 				</div>
-				<div class="time-display-advanced">
-					<div class="time-label">SYSTEM TIME</div>
-					<div class="time-value">{currentTime}</div>
-					<div class="time-zone">UTC GLOBAL</div>
+				<div class="time-display-ultra">
+					<div class="time-icon">⬡</div>
+					<div class="time-content">
+						<div class="time-label">SYSTEM TIME</div>
+						<div class="time-value">{currentTime}</div>
+					</div>
 				</div>
 			</div>
 		</div>
+		<div class="header-border"></div>
 	</header>
-
-	<!-- Neural Activity Display -->
-	<div class="neural-activity-bar">
-		<div class="activity-label">NEURAL PATHWAYS</div>
-		<div class="activity-graph">
-			{#each neuralActivity as activity, i}
-				<div class="activity-bar" 
-					 style="height: {activity}%; 
-							background: linear-gradient(180deg, 
-								rgba(0, 255, 255, 0.8), 
-								rgba(255, 0, 255, 0.4));
-							animation-delay: {i * 0.05}s">
-				</div>
-			{/each}
-		</div>
-	</div>
 
 	<!-- Main Viewport -->
 	<section class="data-viewport-advanced">
 		<div class="viewport-frame-advanced">
-			<!-- Holographic Corners -->
-			<div class="holo-corner tl">
-				<svg width="60" height="60">
-					<path d="M0,20 L0,0 L20,0" stroke="#00ffff" stroke-width="2" fill="none"/>
-					<path d="M5,20 L5,5 L20,5" stroke="rgba(0, 255, 255, 0.3)" stroke-width="1" fill="none"/>
-				</svg>
-			</div>
-			<div class="holo-corner tr">
-				<svg width="60" height="60">
-					<path d="M40,0 L60,0 L60,20" stroke="#00ffff" stroke-width="2" fill="none"/>
-					<path d="M40,5 L55,5 L55,20" stroke="rgba(0, 255, 255, 0.3)" stroke-width="1" fill="none"/>
-				</svg>
-			</div>
-			<div class="holo-corner bl">
-				<svg width="60" height="60">
-					<path d="M0,40 L0,60 L20,60" stroke="#00ffff" stroke-width="2" fill="none"/>
-					<path d="M5,40 L5,55 L20,55" stroke="rgba(0, 255, 255, 0.3)" stroke-width="1" fill="none"/>
-				</svg>
-			</div>
-			<div class="holo-corner br">
-				<svg width="60" height="60">
-					<path d="M40,60 L60,60 L60,40" stroke="#00ffff" stroke-width="2" fill="none"/>
-					<path d="M40,55 L55,55 L55,40" stroke="rgba(0, 255, 255, 0.3)" stroke-width="1" fill="none"/>
-				</svg>
-			</div>
-			
 			<!-- Content Stream -->
 			<div class="content-stream">
 				{#if currentView === 'source_tables'}
@@ -333,13 +309,6 @@
 					<BusinessUnitMetrics />
 				{:else if currentView === 'cio_metrics'}
 					<CIOMetrics />
-				{:else}
-					<div class="ai-core-view">
-						<h2>QUANTUM AI CORE ACTIVE</h2>
-						<div class="quantum-visualization">
-							<div class="quantum-sphere"></div>
-						</div>
-					</div>
 				{/if}
 			</div>
 		</div>
@@ -354,7 +323,7 @@
 		overflow: hidden;
 		margin: 0;
 		padding: 0;
-		font-size: clamp(12px, 1.2vw, 16px);
+		font-size: clamp(12px, 1.2vw, 14px);
 		line-height: 1.4;
 		cursor: crosshair;
 	}
@@ -449,41 +418,85 @@
 		filter: blur(1px);
 	}
 
+	/* Ultra-Modern Header Styles */
 	.system-header {
 		background: linear-gradient(180deg, 
-			rgba(0, 0, 0, 0.95) 0%, 
-			rgba(26, 13, 46, 0.85) 50%,
-			rgba(0, 0, 0, 0.95) 100%);
-		border-bottom: 1px solid rgba(0, 255, 255, 0.5);
+			rgba(0, 0, 0, 0.98) 0%, 
+			rgba(26, 13, 46, 0.95) 50%,
+			rgba(0, 0, 0, 0.98) 100%);
+		border-bottom: 2px solid transparent;
 		backdrop-filter: blur(20px);
 		z-index: 100;
 		position: relative;
-		box-shadow: 
-			0 4px 30px rgba(0, 255, 255, 0.3),
-			inset 0 1px 0 rgba(255, 255, 255, 0.1);
+		padding: 1rem 1.5rem;
 		flex-shrink: 0;
-		padding: clamp(0.5rem, 1.5vh, 1rem) clamp(1rem, 2vw, 2rem);
+		overflow: visible;
+	}
+
+	.header-glow {
+		position: absolute;
+		top: 0;
+		left: 0;
+		right: 0;
+		height: 100%;
+		background: linear-gradient(90deg,
+			transparent 0%,
+			rgba(0, 255, 255, 0.1) 20%,
+			rgba(255, 0, 255, 0.1) 50%,
+			rgba(0, 255, 255, 0.1) 80%,
+			transparent 100%);
+		opacity: 0.5;
+		animation: glowSlide 8s linear infinite;
+	}
+
+	@keyframes glowSlide {
+		0% { transform: translateX(-100%); }
+		100% { transform: translateX(100%); }
+	}
+
+	.header-border {
+		position: absolute;
+		bottom: 0;
+		left: 0;
+		right: 0;
+		height: 2px;
+		background: linear-gradient(90deg,
+			transparent 0%,
+			#00ffff 10%,
+			#ff00ff 30%,
+			#00ff85 50%,
+			#ff00ff 70%,
+			#00ffff 90%,
+			transparent 100%);
+		animation: borderFlow 4s linear infinite;
+	}
+
+	@keyframes borderFlow {
+		0% { transform: translateX(-100%); }
+		100% { transform: translateX(100%); }
 	}
 
 	.header-content {
 		display: grid;
-		grid-template-columns: minmax(300px, 1fr) minmax(500px, 2fr) minmax(250px, 1fr);
+		grid-template-columns: minmax(320px, auto) minmax(600px, 1fr) minmax(280px, auto);
 		align-items: center;
-		gap: clamp(1rem, 2vw, 2rem);
+		gap: 2rem;
 		max-width: 100%;
-		height: 100%;
+		position: relative;
+		z-index: 1;
 	}
 
+	/* Enhanced Brand Section */
 	.brand-section {
 		display: flex;
 		align-items: center;
-		gap: clamp(0.8rem, 1.5vw, 1.5rem);
+		gap: 1.2rem;
 	}
 
-	.ao1-logo-advanced {
+	.ao1-logo-ultra {
 		position: relative;
-		width: clamp(60px, 5vw, 80px);
-		height: clamp(60px, 5vw, 80px);
+		width: 80px;
+		height: 80px;
 		display: flex;
 		align-items: center;
 		justify-content: center;
@@ -508,6 +521,7 @@
 		border: 2px solid;
 		border-image: linear-gradient(45deg, #00ffff, #ff00ff, #00ffff) 1;
 		border-radius: 50%;
+		box-shadow: 0 0 20px currentColor;
 	}
 
 	@keyframes hologramRotate {
@@ -531,8 +545,24 @@
 		animation: corePulse 2s ease-in-out infinite;
 	}
 
+	.logo-energy {
+		position: absolute;
+		width: 120%;
+		height: 120%;
+		top: -10%;
+		left: -10%;
+		border-radius: 50%;
+		background: radial-gradient(circle, transparent 30%, rgba(0, 255, 255, 0.2) 70%, transparent);
+		animation: energyPulse 3s ease-in-out infinite;
+	}
+
+	@keyframes energyPulse {
+		0%, 100% { transform: scale(1); opacity: 0; }
+		50% { transform: scale(1.3); opacity: 1; }
+	}
+
 	.logo-text {
-		font-size: clamp(0.8rem, 1.2vw, 1.2rem);
+		font-size: 1.3rem;
 		font-weight: 900;
 		color: #ffffff;
 		text-shadow: 
@@ -572,7 +602,7 @@
 
 	.title {
 		margin: 0;
-		font-size: clamp(1rem, 1.5vw, 1.4rem);
+		font-size: 1.4rem;
 		font-weight: 800;
 		background: linear-gradient(90deg, #00ffff, #ffffff, #ff00ff);
 		-webkit-background-clip: text;
@@ -583,7 +613,7 @@
 	}
 
 	.subtitle {
-		font-size: clamp(0.5rem, 0.8vw, 0.7rem);
+		font-size: 0.7rem;
 		color: rgba(255, 255, 255, 0.7);
 		text-transform: uppercase;
 		letter-spacing: 0.15em;
@@ -594,37 +624,85 @@
 		display: flex;
 		gap: 1rem;
 		align-items: center;
-		margin-top: 0.2rem;
+		margin-top: 0.3rem;
 	}
 
 	.status-indicator {
-		font-size: clamp(0.6rem, 0.8vw, 0.7rem);
+		font-size: 0.65rem;
 		color: rgba(255, 255, 255, 0.6);
 		display: flex;
 		align-items: center;
-		gap: 0.3rem;
+		gap: 0.4rem;
+		padding: 0.2rem 0.5rem;
+		background: rgba(0, 255, 255, 0.05);
+		border: 1px solid rgba(0, 255, 255, 0.2);
+		border-radius: 4px;
+	}
+
+	.status-dot {
+		width: 6px;
+		height: 6px;
+		border-radius: 50%;
+		background: #00ff85;
+		animation: statusPulse 2s ease-in-out infinite;
+	}
+
+	@keyframes statusPulse {
+		0%, 100% { opacity: 0.4; }
+		50% { opacity: 1; box-shadow: 0 0 10px currentColor; }
 	}
 
 	.status-indicator.active {
 		color: #00ff85;
 		text-shadow: 0 0 10px currentColor;
+		border-color: rgba(0, 255, 133, 0.3);
 	}
 
 	.threat-indicator {
-		font-size: clamp(0.6rem, 0.8vw, 0.7rem);
+		font-size: 0.65rem;
 		font-weight: 600;
-		transition: color 0.3s ease;
+		display: flex;
+		align-items: center;
+		gap: 0.3rem;
+		padding: 0.2rem 0.5rem;
+		background: rgba(255, 0, 255, 0.05);
+		border: 1px solid rgba(255, 0, 255, 0.2);
+		border-radius: 4px;
+		color: var(--threat-color);
+	}
+
+	.threat-icon {
+		font-size: 0.8rem;
+		animation: threatPulse 1s ease-in-out infinite;
+	}
+
+	@keyframes threatPulse {
+		0%, 100% { transform: scale(1); }
+		50% { transform: scale(1.2); }
 	}
 
 	.alert-counter {
-		font-size: clamp(0.6rem, 0.8vw, 0.7rem);
+		font-size: 0.65rem;
+		display: flex;
+		align-items: center;
+		gap: 0.3rem;
+		padding: 0.2rem 0.5rem;
+		background: rgba(255, 102, 0, 0.05);
+		border: 1px solid rgba(255, 102, 0, 0.2);
+		border-radius: 4px;
 		color: rgba(255, 255, 255, 0.4);
 		transition: all 0.3s ease;
+	}
+
+	.alert-icon {
+		font-size: 0.8rem;
 	}
 
 	.alert-counter.active {
 		color: #ff0066;
 		animation: alertPulse 1s ease-in-out infinite;
+		border-color: rgba(255, 0, 102, 0.3);
+		background: rgba(255, 0, 102, 0.1);
 	}
 
 	@keyframes alertPulse {
@@ -632,21 +710,24 @@
 		50% { opacity: 0.5; }
 	}
 
+	/* Ultra Navigation */
 	.quantum-navigation {
 		display: flex;
 		justify-content: center;
 		align-items: center;
 		position: relative;
+		flex: 1;
 	}
 
 	.nav-container {
 		display: flex;
-		gap: clamp(0.3rem, 0.8vw, 0.6rem);
+		gap: 0.8rem;
 		position: relative;
-		padding: 0.5rem;
-		background: rgba(0, 0, 0, 0.3);
-		border-radius: 10px;
+		padding: 0.6rem;
+		background: rgba(0, 0, 0, 0.4);
+		border-radius: 12px;
 		backdrop-filter: blur(10px);
+		border: 1px solid rgba(255, 255, 255, 0.05);
 	}
 
 	.nav-background {
@@ -656,27 +737,47 @@
 		width: 100%;
 		height: 100%;
 		background: linear-gradient(90deg, 
-			rgba(0, 255, 255, 0.05),
-			rgba(255, 0, 255, 0.05),
-			rgba(0, 255, 255, 0.05));
-		border-radius: 10px;
+			rgba(0, 255, 255, 0.03),
+			rgba(255, 0, 255, 0.03),
+			rgba(0, 255, 255, 0.03));
+		border-radius: 12px;
 		opacity: 0.5;
 		z-index: -1;
+	}
+
+	.nav-energy-field {
+		position: absolute;
+		top: -5px;
+		left: -5px;
+		right: -5px;
+		bottom: -5px;
+		border-radius: 14px;
+		background: linear-gradient(45deg,
+			transparent 30%,
+			rgba(0, 255, 255, 0.1) 50%,
+			transparent 70%);
+		animation: energyField 4s linear infinite;
+		z-index: -2;
+	}
+
+	@keyframes energyField {
+		0% { transform: rotate(0deg); }
+		100% { transform: rotate(360deg); }
 	}
 
 	.nav-module {
 		position: relative;
 		background: transparent;
 		border: 1px solid rgba(255, 255, 255, 0.1);
-		border-radius: 8px;
-		padding: clamp(0.4rem, 0.8vw, 0.6rem) clamp(0.6rem, 1vw, 0.8rem);
+		border-radius: 10px;
+		padding: 0.6rem 0.8rem;
 		color: rgba(255, 255, 255, 0.6);
 		cursor: pointer;
 		transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 		overflow: hidden;
 		animation: moduleEntry 0.6s ease-out backwards;
 		animation-delay: var(--delay);
-		min-width: clamp(80px, 10vw, 120px);
+		min-width: 110px;
 	}
 
 	@keyframes moduleEntry {
@@ -697,10 +798,28 @@
 		width: 100%;
 		height: 100%;
 		background: linear-gradient(135deg, 
-			rgba(0, 0, 0, 0.6),
+			rgba(0, 0, 0, 0.8),
 			rgba(255, 255, 255, 0.02));
 		z-index: -1;
 		transition: all 0.3s ease;
+	}
+
+	.module-glow {
+		position: absolute;
+		top: 50%;
+		left: 50%;
+		width: 80%;
+		height: 80%;
+		transform: translate(-50%, -50%);
+		background: radial-gradient(circle, var(--module-color), transparent);
+		opacity: 0;
+		transition: all 0.3s ease;
+		filter: blur(20px);
+	}
+
+	.nav-module:hover .module-glow,
+	.nav-module.active .module-glow {
+		opacity: 0.3;
 	}
 
 	.nav-module:hover .module-background,
@@ -716,8 +835,9 @@
 		color: var(--module-color);
 		transform: translateY(-2px) scale(1.02);
 		box-shadow: 
-			0 8px 20px color-mix(in srgb, var(--module-color) 30%, transparent),
-			inset 0 1px 0 color-mix(in srgb, var(--module-color) 50%, transparent);
+			0 10px 25px color-mix(in srgb, var(--module-color) 30%, transparent),
+			inset 0 1px 0 color-mix(in srgb, var(--module-color) 50%, transparent),
+			0 0 30px color-mix(in srgb, var(--module-color) 20%, transparent);
 	}
 
 	.nav-module.alert {
@@ -734,8 +854,8 @@
 	}
 
 	@keyframes moduleAlert {
-		0%, 100% { box-shadow: 0 0 10px rgba(255, 0, 102, 0.5); }
-		50% { box-shadow: 0 0 20px rgba(255, 0, 102, 0.8); }
+		0%, 100% { box-shadow: 0 0 15px rgba(255, 0, 102, 0.5); }
+		50% { box-shadow: 0 0 30px rgba(255, 0, 102, 0.8); }
 	}
 
 	@keyframes quantumShimmer {
@@ -747,14 +867,14 @@
 		display: flex;
 		flex-direction: column;
 		align-items: center;
-		gap: 0.2rem;
+		gap: 0.3rem;
 		position: relative;
 		z-index: 1;
 	}
 
 	.module-icon {
-		font-size: clamp(1rem, 1.5vw, 1.3rem);
-		filter: drop-shadow(0 0 8px var(--module-color));
+		font-size: 1.4rem;
+		filter: drop-shadow(0 0 10px var(--module-color));
 		animation: iconFloat 3s ease-in-out infinite;
 		animation-delay: var(--delay);
 	}
@@ -765,7 +885,7 @@
 	}
 
 	.module-name {
-		font-size: clamp(0.55rem, 0.7vw, 0.65rem);
+		font-size: 0.6rem;
 		font-weight: 600;
 		letter-spacing: 0.08em;
 		text-transform: uppercase;
@@ -788,49 +908,84 @@
 	}
 
 	.module-status {
-		font-size: clamp(0.45rem, 0.6vw, 0.55rem);
+		font-size: 0.5rem;
 		opacity: 0.6;
 		letter-spacing: 0.05em;
 	}
 
+	.module-active-indicator {
+		position: absolute;
+		bottom: -8px;
+		left: 50%;
+		transform: translateX(-50%);
+		width: 30px;
+		height: 3px;
+		background: var(--module-color);
+		border-radius: 2px;
+		box-shadow: 0 0 10px var(--module-color);
+		animation: activeGlow 1s ease-in-out infinite;
+	}
+
+	@keyframes activeGlow {
+		0%, 100% { opacity: 0.8; }
+		50% { opacity: 1; box-shadow: 0 0 20px var(--module-color); }
+	}
+
+	/* Enhanced Metrics Panel */
 	.metrics-panel {
 		display: flex;
 		flex-direction: column;
-		gap: clamp(0.5rem, 1vh, 0.8rem);
+		gap: 0.8rem;
 		align-items: flex-end;
-		min-width: 200px;
 	}
 
 	.metric-display {
-		text-align: right;
+		display: flex;
+		align-items: center;
+		gap: 0.6rem;
+		padding: 0.4rem 0.6rem;
+		background: rgba(0, 0, 0, 0.3);
+		border: 1px solid rgba(0, 255, 255, 0.1);
+		border-radius: 6px;
+		min-width: 200px;
+	}
+
+	.metric-icon {
+		font-size: 1.2rem;
+		color: #00ffff;
+		filter: drop-shadow(0 0 5px currentColor);
+	}
+
+	.metric-info {
+		flex: 1;
 	}
 
 	.metric-label {
-		font-size: clamp(0.5rem, 0.7vw, 0.6rem);
+		font-size: 0.55rem;
 		color: rgba(255, 255, 255, 0.5);
 		text-transform: uppercase;
 		letter-spacing: 0.1em;
-		margin-bottom: 0.1rem;
 	}
 
 	.metric-value {
-		font-size: clamp(0.8rem, 1.2vw, 1.1rem);
+		font-size: 0.9rem;
 		font-weight: 700;
 		color: #00ffff;
 		text-shadow: 0 0 10px currentColor;
 	}
 
 	.metric-bar {
-		width: 100px;
+		width: 100%;
 		height: 3px;
 		background: rgba(0, 0, 0, 0.5);
 		border-radius: 2px;
 		overflow: hidden;
-		margin-top: 0.2rem;
+		margin-top: 0.3rem;
 	}
 
 	.bar-fill {
 		height: 100%;
+		background: linear-gradient(90deg, #00ffff, #ff00ff);
 		transition: width 0.3s ease;
 		box-shadow: 0 0 10px currentColor;
 	}
@@ -855,68 +1010,53 @@
 		50% { opacity: 1; transform: scale(1.2); }
 	}
 
-	.time-display-advanced {
-		margin-top: 0.5rem;
-		padding-top: 0.5rem;
-		border-top: 1px solid rgba(255, 255, 255, 0.1);
+	.time-display-ultra {
+		display: flex;
+		align-items: center;
+		gap: 0.6rem;
+		padding: 0.4rem 0.6rem;
+		background: rgba(255, 0, 255, 0.05);
+		border: 1px solid rgba(255, 0, 255, 0.2);
+		border-radius: 6px;
+	}
+
+	.time-icon {
+		font-size: 1.2rem;
+		color: #ff00ff;
+		filter: drop-shadow(0 0 5px currentColor);
+		animation: timeRotate 10s linear infinite;
+	}
+
+	@keyframes timeRotate {
+		from { transform: rotate(0deg); }
+		to { transform: rotate(360deg); }
+	}
+
+	.time-content {
+		display: flex;
+		flex-direction: column;
 	}
 
 	.time-value {
 		font-family: 'JetBrains Mono', monospace;
-		font-size: clamp(0.65rem, 0.9vw, 0.8rem);
-		color: #00ffff;
+		font-size: 0.7rem;
+		color: #ff00ff;
 		text-shadow: 0 0 8px currentColor;
 		letter-spacing: 0.05em;
 	}
 
-	.time-zone {
-		font-size: clamp(0.45rem, 0.6vw, 0.55rem);
-		color: rgba(255, 255, 255, 0.4);
-		margin-top: 0.1rem;
-	}
-
-	.neural-activity-bar {
-		background: rgba(0, 0, 0, 0.6);
-		border-bottom: 1px solid rgba(0, 255, 255, 0.2);
-		padding: clamp(0.3rem, 0.5vh, 0.5rem) clamp(1rem, 2vw, 2rem);
-		display: flex;
-		align-items: center;
-		gap: 1rem;
-	}
-
-	.activity-label {
-		font-size: clamp(0.6rem, 0.8vw, 0.7rem);
-		color: rgba(255, 255, 255, 0.6);
+	.time-label {
+		font-size: 0.55rem;
+		color: rgba(255, 255, 255, 0.5);
 		text-transform: uppercase;
 		letter-spacing: 0.1em;
-		min-width: 120px;
 	}
 
-	.activity-graph {
-		flex: 1;
-		height: 30px;
-		display: flex;
-		align-items: flex-end;
-		gap: 2px;
-		overflow: hidden;
-	}
-
-	.activity-bar {
-		flex: 1;
-		min-width: 3px;
-		animation: activityPulse 2s ease-in-out infinite;
-	}
-
-	@keyframes activityPulse {
-		0%, 100% { transform: scaleY(1); opacity: 0.8; }
-		50% { transform: scaleY(1.2); opacity: 1; }
-	}
-
+	/* Main Viewport */
 	.data-viewport-advanced {
 		flex: 1;
 		position: relative;
 		z-index: 10;
-		padding: clamp(0.8rem, 1.5vh, 1rem);
 		overflow: hidden;
 		display: flex;
 		align-items: stretch;
@@ -926,39 +1066,8 @@
 		position: relative;
 		width: 100%;
 		height: 100%;
-		background: 
-			linear-gradient(135deg, 
-				rgba(0, 0, 0, 0.4) 0%, 
-				rgba(0, 255, 255, 0.02) 30%,
-				rgba(255, 0, 255, 0.02) 70%,
-				rgba(0, 0, 0, 0.4) 100%);
-		border: 1px solid rgba(0, 255, 255, 0.3);
-		border-radius: 12px;
-		backdrop-filter: blur(15px);
-		box-shadow: 
-			0 10px 40px rgba(0, 0, 0, 0.5),
-			inset 0 2px 0 rgba(255, 255, 255, 0.1),
-			inset 0 -2px 0 rgba(0, 0, 0, 0.3);
-		overflow: hidden;
 		display: flex;
 		flex-direction: column;
-	}
-
-	.holo-corner {
-		position: absolute;
-		z-index: 20;
-		opacity: 0.8;
-		animation: cornerPulse 3s ease-in-out infinite;
-	}
-
-	.holo-corner.tl { top: 0; left: 0; }
-	.holo-corner.tr { top: 0; right: 0; }
-	.holo-corner.bl { bottom: 0; left: 0; }
-	.holo-corner.br { bottom: 0; right: 0; }
-
-	@keyframes cornerPulse {
-		0%, 100% { opacity: 0.8; }
-		50% { opacity: 1; }
 	}
 
 	.content-stream {
@@ -966,105 +1075,31 @@
 		z-index: 15;
 		width: 100%;
 		height: 100%;
-		padding: clamp(1rem, 2vh, 1.5rem);
-		overflow-y: auto;
-		overflow-x: hidden;
+		overflow: hidden;
 		transition: opacity 0.3s ease;
-	}
-
-	.content-stream::-webkit-scrollbar {
-		width: 8px;
-	}
-
-	.content-stream::-webkit-scrollbar-track {
-		background: rgba(0, 0, 0, 0.3);
-		border-radius: 4px;
-	}
-
-	.content-stream::-webkit-scrollbar-thumb {
-		background: linear-gradient(180deg, #00ffff, #ff00ff);
-		border-radius: 4px;
-	}
-
-	.ai-core-view {
-		display: flex;
-		flex-direction: column;
-		align-items: center;
-		justify-content: center;
-		height: 100%;
-		text-align: center;
-	}
-
-	.ai-core-view h2 {
-		font-size: clamp(1.5rem, 2.5vw, 2rem);
-		background: linear-gradient(90deg, #00ffff, #ff00ff, #00ffff);
-		-webkit-background-clip: text;
-		-webkit-text-fill-color: transparent;
-		background-clip: text;
-		margin-bottom: 2rem;
-		animation: aiTextGlow 2s ease-in-out infinite;
-	}
-
-	@keyframes aiTextGlow {
-		0%, 100% { filter: drop-shadow(0 0 20px rgba(0, 255, 255, 0.8)); }
-		50% { filter: drop-shadow(0 0 30px rgba(255, 0, 255, 0.8)); }
-	}
-
-	.quantum-visualization {
-		position: relative;
-		width: 300px;
-		height: 300px;
-	}
-
-	.quantum-sphere {
-		width: 100%;
-		height: 100%;
-		background: radial-gradient(circle at 30% 30%, 
-			rgba(0, 255, 255, 0.8),
-			rgba(255, 0, 255, 0.4),
-			rgba(0, 0, 0, 0.8));
-		border-radius: 50%;
-		box-shadow: 
-			0 0 60px rgba(0, 255, 255, 0.8),
-			inset 0 0 60px rgba(255, 0, 255, 0.5),
-			0 0 120px rgba(0, 255, 255, 0.4);
-		animation: quantumSphere 4s ease-in-out infinite;
-	}
-
-	@keyframes quantumSphere {
-		0%, 100% { 
-			transform: rotate(0deg) scale(1);
-			filter: hue-rotate(0deg);
-		}
-		25% { 
-			transform: rotate(90deg) scale(1.05);
-			filter: hue-rotate(45deg);
-		}
-		50% { 
-			transform: rotate(180deg) scale(1.1);
-			filter: hue-rotate(90deg);
-		}
-		75% { 
-			transform: rotate(270deg) scale(1.05);
-			filter: hue-rotate(45deg);
-		}
 	}
 
 	/* Responsive Design */
 	@media (max-width: 1400px) {
 		.header-content {
-			grid-template-columns: minmax(250px, 1fr) minmax(400px, 2fr) minmax(200px, 1fr);
+			grid-template-columns: minmax(280px, auto) minmax(500px, 1fr) minmax(240px, auto);
+			gap: 1.5rem;
 		}
 		
 		.nav-module {
-			min-width: clamp(70px, 9vw, 100px);
+			min-width: 95px;
+			padding: 0.5rem 0.6rem;
+		}
+		
+		.module-name {
+			font-size: 0.55rem;
 		}
 	}
 
-	@media (max-width: 1024px) {
+	@media (max-width: 1200px) {
 		.header-content {
 			grid-template-columns: 1fr;
-			gap: 0.8rem;
+			gap: 1rem;
 		}
 		
 		.quantum-navigation {
@@ -1081,10 +1116,6 @@
 		.brand-section {
 			order: 1;
 		}
-		
-		.neural-activity-bar {
-			display: none;
-		}
 	}
 
 	@media (max-width: 768px) {
@@ -1095,7 +1126,7 @@
 		}
 		
 		.nav-module {
-			min-width: calc(25% - 0.6rem);
+			min-width: calc(33.33% - 0.8rem);
 			flex: 0 1 auto;
 		}
 		
@@ -1104,38 +1135,12 @@
 		}
 		
 		.metrics-panel {
-			gap: 1rem;
+			gap: 0.5rem;
 		}
 		
 		.metric-display {
-			text-align: center;
-		}
-	}
-
-	@media (max-width: 480px) {
-		.nav-module {
-			min-width: calc(33.33% - 0.6rem);
-		}
-		
-		.module-name {
-			font-size: 0.5rem;
-		}
-		
-		.module-load {
-			display: none;
-		}
-		
-		.ao1-logo-advanced {
-			width: 50px;
-			height: 50px;
-		}
-		
-		.title {
-			font-size: 0.9rem;
-		}
-		
-		.subtitle {
-			display: none;
+			min-width: auto;
+			flex: 1;
 		}
 	}
 </style>
