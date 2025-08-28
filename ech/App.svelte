@@ -2,7 +2,6 @@
 <script>
 	import { onMount, onDestroy } from 'svelte';
 	import SourceTables from './SourceTables.svelte';
-	import InfrastructureType from './InfrastructureType.svelte';
 	import RegionMetrics from './RegionMetrics.svelte';
 	import CountryMetrics from './CountryMetrics.svelte';
 	import DataCenter from './DataCenter.svelte';
@@ -23,7 +22,6 @@
 	
 	let modules = [
 		{ id: 'source_tables', name: 'SOURCE', color: '#00ffff', icon: '◈', status: 'ACTIVE', load: 87 },
-		{ id: 'infrastructure_type', name: 'INFRA', color: '#0096ff', icon: '⬢', status: 'ACTIVE', load: 92 },
 		{ id: 'region_metrics', name: 'REGIONS', color: '#00ff85', icon: '◉', status: 'ACTIVE', load: 78 },
 		{ id: 'country_metrics', name: 'COUNTRIES', color: '#ffaa00', icon: '⬟', status: 'ACTIVE', load: 85 },
 		{ id: 'data_center', name: 'CENTERS', color: '#ff0066', icon: '⬡', status: 'MONITORING', load: 73 },
@@ -325,8 +323,6 @@
 			<div class="content-stream">
 				{#if currentView === 'source_tables'}
 					<SourceTables />
-				{:else if currentView === 'infrastructure_type'}
-					<InfrastructureType />
 				{:else if currentView === 'region_metrics'}
 					<RegionMetrics />
 				{:else if currentView === 'country_metrics'}
