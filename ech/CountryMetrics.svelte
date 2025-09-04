@@ -1,4 +1,4 @@
-<!-- CountryMetrics.svelte - Premium Global Intelligence Grid -->
+<!-- CountryMetrics.svelte - Premium Country Intelligence Dashboard -->
 <script>
 	import { onMount } from 'svelte';
 	
@@ -7,8 +7,7 @@
 	let selectedCountry = null;
 	let countryDetails = [];
 	let searchTerm = '';
-	let hoveredIndex = -1;
-	let pulseIntensity = 0;
+	let viewMode = 'grid'; // 'grid' or 'list'
 
 	onMount(async () => {
 		try {
@@ -20,13 +19,6 @@
 			console.error('Country metrics error:', err);
 			loading = false;
 		}
-		
-		// Pulse animation
-		const pulseInterval = setInterval(() => {
-			pulseIntensity = Math.sin(Date.now() * 0.001) * 0.5 + 0.5;
-		}, 50);
-		
-		return () => clearInterval(pulseInterval);
 	});
 
 	$: filteredCountries = data.global_intelligence ? 
@@ -44,10 +36,10 @@
 
 	function getThreatLevel(count) {
 		const percentage = (count / maxCount) * 100;
-		if (percentage >= 75) return { level: 'CRITICAL', color: '#FF1744', glow: 'rgba(255, 23, 68, 0.4)' };
-		if (percentage >= 50) return { level: 'HIGH', color: '#FFA726', glow: 'rgba(255, 167, 38, 0.4)' };
-		if (percentage >= 25) return { level: 'MEDIUM', color: '#FFD600', glow: 'rgba(255, 214, 0, 0.4)' };
-		return { level: 'LOW', color: '#00E5FF', glow: 'rgba(0, 229, 255, 0.4)' };
+		if (percentage >= 75) return { level: 'CRITICAL', color: '#FF1744' };
+		if (percentage >= 50) return { level: 'HIGH', color: '#FFA726' };
+		if (percentage >= 25) return { level: 'MEDIUM', color: '#FFD600' };
+		return { level: 'LOW', color: '#00E5FF' };
 	}
 
 	async function drillDownCountry(country, count) {
@@ -73,530 +65,282 @@
 </script>
 
 <div class="dashboard-container">
-	<!-- Premium Background Effects -->
-	<div class="background-effects">
-		<div class="gradient-orb orb-1"></div>
-		<div class="gradient-orb orb-2"></div>
-		<div class="gradient-orb orb-3"></div>
-		<div class="grid-overlay"></div>
-	</div>
-
-	<div class="main-content">
-		<!-- Left Panel: Premium Table -->
-		<div class="table-panel glass-panel">
-			<div class="panel-header">
-				<div class="header-content">
-					<div class="title-group">
-						<h3 class="panel-title">
-							<span class="title-icon">🌍</span>
-							COUNTRIES
-						</h3>
-						<div class="subtitle">GLOBAL INTELLIGENCE NETWORK</div>
-					</div>
-					<div class="header-stats">
-						<div class="stat-pill">
-							<span class="stat-label">NATIONS</span>
-							<span class="stat-value">{filteredCountries.length}</span>
-						</div>
-						<div class="stat-pill">
-							<span class="stat-label">ASSETS</span>
-							<span class="stat-value">{Object.values(data.global_intelligence || {}).reduce((a, b) => a + b, 0).toLocaleString()}</span>
-						</div>
-					</div>
-				</div>
+	<!-- Header Controls -->
+	<div class="header-section">
+		<div class="header-content">
+			<div class="title-section">
+				<h2 class="main-title">
+					<span class="title-icon">🗺️</span>
+					COUNTRY INTELLIGENCE MATRIX
+				</h2>
+				<div class="subtitle">Global Asset Distribution Analysis</div>
+			</div>
+			
+			<div class="controls-section">
 				<div class="search-wrapper">
+					<svg class="search-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+						<circle cx="11" cy="11" r="8"></circle>
+						<path d="m21 21-4.35-4.35"></path>
+					</svg>
 					<input 
 						type="text" 
 						bind:value={searchTerm}
 						placeholder="Search countries..."
-						class="search-input premium-input"
+						class="search-input"
 					/>
-					<div class="search-icon">
-						<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-							<circle cx="11" cy="11" r="8"></circle>
-							<path d="m21 21-4.35-4.35"></path>
+				</div>
+				
+				<div class="view-toggle">
+					<button 
+						class="toggle-btn {viewMode === 'grid' ? 'active' : ''}"
+						on:click={() => viewMode = 'grid'}>
+						<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+							<rect x="3" y="3" width="7" height="7"/>
+							<rect x="14" y="3" width="7" height="7"/>
+							<rect x="3" y="14" width="7" height="7"/>
+							<rect x="14" y="14" width="7" height="7"/>
 						</svg>
-					</div>
+					</button>
+					<button 
+						class="toggle-btn {viewMode === 'list' ? 'active' : ''}"
+						on:click={() => viewMode = 'list'}>
+						<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+							<line x1="8" y1="6" x2="21" y2="6"/>
+							<line x1="8" y1="12" x2="21" y2="12"/>
+							<line x1="8" y1="18" x2="21" y2="18"/>
+							<line x1="3" y1="6" x2="3.01" y2="6"/>
+							<line x1="3" y1="12" x2="3.01" y2="12"/>
+							<line x1="3" y1="18" x2="3.01" y2="18"/>
+						</svg>
+					</button>
 				</div>
 			</div>
 			
-			{#if loading && !selectedCountry}
-				<div class="loading-state">
-					<div class="premium-loader">
-						<div class="loader-ring"></div>
-						<div class="loader-ring"></div>
-						<div class="loader-ring"></div>
-						<div class="loader-core">
-							<span>🌍</span>
-						</div>
-					</div>
-					<p class="loading-text">SCANNING GLOBAL NETWORKS</p>
+			<div class="stats-section">
+				<div class="stat-card">
+					<div class="stat-value">{(data.total_countries || 0)}</div>
+					<div class="stat-label">COUNTRIES</div>
 				</div>
-			{:else if selectedCountry}
-				<div class="drill-view">
-					<div class="drill-header glass-header">
-						<div class="drill-title">
-							<span class="drill-icon">▸</span>
-							<h4>{selectedCountry.country.toUpperCase()}</h4>
-							<span class="drill-badge">{selectedCountry.count.toLocaleString()} assets</span>
-						</div>
-						<button class="close-btn premium-btn" on:click={closeDetails}>
-							<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-								<line x1="18" y1="6" x2="6" y2="18"></line>
-								<line x1="6" y1="6" x2="18" y2="18"></line>
-							</svg>
-						</button>
+				<div class="stat-card">
+					<div class="stat-value">
+						{Object.values(data.global_intelligence || {}).reduce((a, b) => a + b, 0).toLocaleString()}
 					</div>
-					<div class="drill-table-container">
-						<table class="data-table premium-table">
-							<thead>
-								<tr>
-									<th>HOST</th>
-									<th>REGION</th>
-									<th>INFRASTRUCTURE</th>
-									<th>DATA CENTER</th>
-									<th>CMDB</th>
-									<th>TANIUM</th>
-								</tr>
-							</thead>
-							<tbody>
-								{#each countryDetails as host, index}
-									<tr class="table-row {hoveredIndex === index ? 'hovered' : ''}"
-										on:mouseenter={() => hoveredIndex = index}
-										on:mouseleave={() => hoveredIndex = -1}>
-										<td class="host-cell">{host.host}</td>
-										<td>{host.region || 'UNKNOWN'}</td>
-										<td>{host.infrastructure_type || 'UNKNOWN'}</td>
-										<td>{host.data_center || 'UNKNOWN'}</td>
-										<td>
-											<span class="status-badge {host.present_in_cmdb?.toLowerCase().includes('yes') ? 'badge-success' : 'badge-danger'}">
-												{host.present_in_cmdb?.toLowerCase().includes('yes') ? 'ACTIVE' : 'INACTIVE'}
-											</span>
-										</td>
-										<td>
-											<span class="status-badge {host.tanium_coverage?.toLowerCase().includes('tanium') ? 'badge-success' : 'badge-warning'}">
-												{host.tanium_coverage?.toLowerCase().includes('tanium') ? 'DEPLOYED' : 'MISSING'}
-											</span>
-										</td>
-									</tr>
-								{/each}
-							</tbody>
-						</table>
-					</div>
+					<div class="stat-label">TOTAL ASSETS</div>
 				</div>
-			{:else}
-				<div class="table-scroll-container">
-					<table class="data-table premium-table">
+			</div>
+		</div>
+	</div>
+
+	<!-- Main Content -->
+	<div class="content-section">
+		{#if loading && !selectedCountry}
+			<div class="loading-state">
+				<div class="globe-loader">
+					<div class="globe"></div>
+					<div class="orbit"></div>
+				</div>
+				<p>Analyzing global networks...</p>
+			</div>
+		{:else if selectedCountry}
+			<div class="detail-view">
+				<div class="detail-header">
+					<div class="detail-title">
+						<h3>{selectedCountry.country.toUpperCase()}</h3>
+						<span class="detail-badge">{selectedCountry.count.toLocaleString()} assets</span>
+					</div>
+					<button class="close-btn" on:click={closeDetails}>
+						<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+							<line x1="18" y1="6" x2="6" y2="18"/>
+							<line x1="6" y1="6" x2="18" y2="18"/>
+						</svg>
+					</button>
+				</div>
+				<div class="detail-content">
+					<table class="detail-table">
 						<thead>
 							<tr>
-								<th>COUNTRY</th>
-								<th>ASSETS</th>
-								<th>COVERAGE</th>
-								<th>THREAT LEVEL</th>
-								<th>INTELLIGENCE MATRIX</th>
+								<th>HOST</th>
+								<th>REGION</th>
+								<th>INFRASTRUCTURE</th>
+								<th>DATA CENTER</th>
+								<th>CMDB</th>
+								<th>TANIUM</th>
 							</tr>
 						</thead>
 						<tbody>
-							{#each filteredCountries as [country, count], index}
-								{@const threat = getThreatLevel(count)}
-								<tr class="table-row {hoveredIndex === index ? 'hovered' : ''}"
-									on:click={() => drillDownCountry(country, count)}
-									on:mouseenter={() => hoveredIndex = index}
-									on:mouseleave={() => hoveredIndex = -1}>
-									<td class="country-cell">
-										<div class="country-indicator" style="background: {threat.color}; box-shadow: 0 0 12px {threat.glow}"></div>
-										<span class="country-name">{country.toUpperCase()}</span>
+							{#each countryDetails as host}
+								<tr>
+									<td class="host-cell">{host.host}</td>
+									<td>{host.region || 'Unknown'}</td>
+									<td>{host.infrastructure_type || 'Unknown'}</td>
+									<td>{host.data_center || 'Unknown'}</td>
+									<td>
+										<span class="status-dot {host.present_in_cmdb?.toLowerCase().includes('yes') ? 'active' : 'inactive'}"></span>
 									</td>
-									<td class="asset-cell">
-										<div class="asset-content">
-											<span class="asset-value">{count.toLocaleString()}</span>
-											<div class="asset-bar-bg">
-												<div class="asset-bar" style="width: {(count/maxCount)*100}%; background: linear-gradient(90deg, {threat.color}, {threat.glow})"></div>
-											</div>
-										</div>
-									</td>
-									<td class="coverage-cell">
-										<div class="coverage-content">
-											<span class="coverage-value">{getPercentage(count)}%</span>
-											<div class="coverage-ring">
-												<svg width="24" height="24" viewBox="0 0 36 36">
-													<circle cx="18" cy="18" r="15" fill="none" stroke="rgba(255,255,255,0.1)" stroke-width="2"/>
-													<circle cx="18" cy="18" r="15" fill="none" stroke={threat.color} stroke-width="2"
-														stroke-dasharray="{getPercentage(count)} 100"
-														transform="rotate(-90 18 18)"/>
-												</svg>
-											</div>
-										</div>
-									</td>
-									<td class="threat-cell">
-										<span class="threat-badge" style="background: linear-gradient(135deg, {threat.color}22, {threat.color}44); border-color: {threat.color}">
-											<span class="threat-icon">⚡</span>
-											{threat.level}
-										</span>
-									</td>
-									<td class="matrix-cell">
-										<div class="matrix-visualization">
-											{#each Array(10) as _, i}
-												<div class="matrix-bar" 
-													style="height: {(count/maxCount) * (10 - i) * 10}%; 
-														  background: {threat.color};
-														  opacity: {0.3 + (i * 0.07)};
-														  animation-delay: {i * 0.05}s">
-												</div>
-											{/each}
-										</div>
+									<td>
+										<span class="status-dot {host.tanium_coverage?.toLowerCase().includes('tanium') ? 'active' : 'warning'}"></span>
 									</td>
 								</tr>
 							{/each}
 						</tbody>
 					</table>
 				</div>
-			{/if}
-		</div>
-
-		<!-- Right Panel: Premium Visualizations -->
-		<div class="viz-panel">
-			<!-- Top Metrics Cards -->
-			<div class="metrics-row">
-				<div class="metric-card glass-card">
-					<div class="metric-icon-wrapper">
-						<div class="metric-icon">🌍</div>
-					</div>
-					<div class="metric-content">
-						<div class="metric-value">{(data.total_countries || 0)}</div>
-						<div class="metric-label">TOTAL COUNTRIES</div>
-					</div>
-					<div class="metric-sparkline">
-						<svg viewBox="0 0 100 30">
-							{#each Array(20) as _, i}
-								<rect x="{i * 5}" y="{30 - Math.random() * 25}" 
-									  width="3" height="{Math.random() * 25}"
-									  fill="url(#sparkGradient)" opacity="{0.4 + Math.random() * 0.6}"/>
-							{/each}
-							<defs>
-								<linearGradient id="sparkGradient" x1="0%" y1="0%" x2="0%" y2="100%">
-									<stop offset="0%" style="stop-color:#00E5FF;stop-opacity:1" />
-									<stop offset="100%" style="stop-color:#00E5FF;stop-opacity:0.3" />
-								</linearGradient>
-							</defs>
-						</svg>
-					</div>
-				</div>
-				
-				<div class="metric-card glass-card">
-					<div class="metric-icon-wrapper">
-						<div class="metric-icon">📡</div>
-					</div>
-					<div class="metric-content">
-						<div class="metric-value">{Object.values(data.global_intelligence || {}).reduce((a, b) => a + b, 0).toLocaleString()}</div>
-						<div class="metric-label">GLOBAL ASSETS</div>
-					</div>
-					<div class="metric-sparkline">
-						<svg viewBox="0 0 100 30">
-							<polyline points="0,25 10,20 20,22 30,15 40,18 50,10 60,15 70,12 80,20 90,18 100,25" 
-									  fill="none" stroke="url(#lineGradient)" stroke-width="2"/>
-							<defs>
-								<linearGradient id="lineGradient" x1="0%" y1="0%" x2="100%" y2="0%">
-									<stop offset="0%" style="stop-color:#00E5FF;stop-opacity:0.3" />
-									<stop offset="50%" style="stop-color:#00E5FF;stop-opacity:1" />
-									<stop offset="100%" style="stop-color:#00E5FF;stop-opacity:0.3" />
-								</linearGradient>
-							</defs>
-						</svg>
-					</div>
-				</div>
 			</div>
-
-			<!-- Global Coverage Map -->
-			<div class="viz-card glass-card">
-				<div class="card-header">
-					<h4>GLOBAL COVERAGE MAP</h4>
-					<div class="card-status-indicator"></div>
-				</div>
-				<div class="coverage-map">
-					{#each filteredCountries.slice(0, 8) as [country, count]}
-						{@const threat = getThreatLevel(count)}
-						{@const percentage = (count/maxCount)*100}
-						<div class="coverage-item">
-							<div class="coverage-label">{country.substring(0, 15).toUpperCase()}</div>
-							<div class="coverage-visual">
-								<div class="coverage-track"></div>
-								<div class="coverage-fill" 
-									 style="width: {percentage}%; 
-											background: linear-gradient(90deg, {threat.color}, {threat.glow})">
-									<div class="coverage-glow"></div>
+		{:else if viewMode === 'grid'}
+			<div class="countries-grid">
+				{#each filteredCountries as [country, count]}
+					{@const threat = getThreatLevel(count)}
+					{@const percentage = getPercentage(count)}
+					<div class="country-card" 
+						on:click={() => drillDownCountry(country, count)}
+						style="--threat-color: {threat.color}">
+						<div class="card-glow"></div>
+						<div class="card-content">
+							<div class="country-flag">🏴</div>
+							<h3 class="country-name">{country.toUpperCase()}</h3>
+							<div class="country-stats">
+								<div class="stat">
+									<span class="stat-number" style="color: {threat.color}">
+										{count.toLocaleString()}
+									</span>
+									<span class="stat-text">ASSETS</span>
 								</div>
-								<span class="coverage-value">{count.toLocaleString()}</span>
+								<div class="stat">
+									<span class="stat-number" style="color: {threat.color}">
+										{percentage}%
+									</span>
+									<span class="stat-text">COVERAGE</span>
+								</div>
+							</div>
+							<div class="threat-level" style="background: {threat.color}20; color: {threat.color}">
+								{threat.level}
+							</div>
+							<div class="progress-ring">
+								<svg width="60" height="60" viewBox="0 0 36 36">
+									<circle cx="18" cy="18" r="15" 
+											fill="none" 
+											stroke="rgba(255,255,255,0.1)" 
+											stroke-width="2"/>
+									<circle cx="18" cy="18" r="15" 
+											fill="none" 
+											stroke={threat.color} 
+											stroke-width="2"
+											stroke-dasharray="{percentage} 100"
+											transform="rotate(-90 18 18)"
+											stroke-linecap="round"/>
+								</svg>
 							</div>
 						</div>
-					{/each}
-				</div>
+					</div>
+				{/each}
 			</div>
-
-			<!-- Threat Assessment Grid -->
-			<div class="viz-card glass-card">
-				<div class="card-header">
-					<h4>THREAT ASSESSMENT</h4>
-					<div class="card-status-indicator active"></div>
-				</div>
-				<div class="threat-grid">
-					<svg viewBox="0 0 200 150" class="grid-svg">
-						<defs>
-							<radialGradient id="nodeGradient">
-								<stop offset="0%" style="stop-color:#00E5FF;stop-opacity:0.8" />
-								<stop offset="100%" style="stop-color:#00E5FF;stop-opacity:0" />
-							</radialGradient>
-							<filter id="glowFilter">
-								<feGaussianBlur stdDeviation="3" result="coloredBlur"/>
-								<feMerge>
-									<feMergeNode in="coloredBlur"/>
-									<feMergeNode in="SourceGraphic"/>
-								</feMerge>
-							</filter>
-						</defs>
-						
-						<!-- Background grid -->
-						{#each Array(10) as _, i}
-							<line x1="{i * 20}" y1="0" x2="{i * 20}" y2="150" 
-								  stroke="rgba(0,229,255,0.05)" stroke-width="0.5"/>
-							<line x1="0" y1="{i * 15}" x2="200" y2="{i * 15}" 
-								  stroke="rgba(0,229,255,0.05)" stroke-width="0.5"/>
-						{/each}
-						
-						<!-- Data nodes -->
-						{#each filteredCountries.slice(0, 8) as [country, count], i}
-							{@const x = (i % 4) * 50 + 25}
-							{@const y = Math.floor(i / 4) * 50 + 25}
-							{@const size = (count / maxCount) * 20 + 5}
+		{:else}
+			<div class="countries-list">
+				<table class="list-table">
+					<thead>
+						<tr>
+							<th>#</th>
+							<th>COUNTRY</th>
+							<th>ASSETS</th>
+							<th>COVERAGE</th>
+							<th>THREAT LEVEL</th>
+							<th>VISUALIZATION</th>
+						</tr>
+					</thead>
+					<tbody>
+						{#each filteredCountries as [country, count], index}
 							{@const threat = getThreatLevel(count)}
-							
-							<circle cx="{x}" cy="{y}" r="{size}" 
-									fill="url(#nodeGradient)" opacity="0.3" filter="url(#glowFilter)"/>
-							<circle cx="{x}" cy="{y}" r="{size/2}" 
-									fill={threat.color} opacity="0.8"/>
-							<circle cx="{x}" cy="{y}" r="2" 
-									fill="#ffffff"/>
-							
-							<!-- Pulse animation -->
-							<circle cx="{x}" cy="{y}" r="{size/2}" 
-									fill="none" stroke={threat.color} stroke-width="1" opacity="0">
-								<animate attributeName="r" values="{size/2};{size};{size/2}" dur="3s" repeatCount="indefinite"/>
-								<animate attributeName="opacity" values="0.8;0;0.8" dur="3s" repeatCount="indefinite"/>
-							</circle>
+							{@const percentage = getPercentage(count)}
+							<tr class="list-row" on:click={() => drillDownCountry(country, count)}>
+								<td class="rank">{index + 1}</td>
+								<td class="country-name-cell">
+									<span class="flag-icon">🏴</span>
+									{country.toUpperCase()}
+								</td>
+								<td class="numeric" style="color: {threat.color}">{count.toLocaleString()}</td>
+								<td class="numeric">{percentage}%</td>
+								<td>
+									<span class="threat-badge" style="background: {threat.color}20; color: {threat.color}">
+										{threat.level}
+									</span>
+								</td>
+								<td>
+									<div class="mini-bar">
+										<div class="mini-bar-fill" style="width: {(count/maxCount)*100}%; background: {threat.color}"></div>
+									</div>
+								</td>
+							</tr>
 						{/each}
-					</svg>
-				</div>
+					</tbody>
+				</table>
 			</div>
-		</div>
+		{/if}
 	</div>
 </div>
 
 <style>
 	.dashboard-container {
-		height: calc(100vh - 180px);
-		display: flex;
-		position: relative;
-		background: #000000;
-		color: #ffffff;
-		font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Inter', sans-serif;
-		overflow: hidden;
-		padding: 1.5rem;
-	}
-
-	.background-effects {
-		position: absolute;
-		top: 0;
-		left: 0;
+		height: calc(100vh - 80px);
 		width: 100%;
-		height: 100%;
-		pointer-events: none;
-		z-index: 0;
-	}
-
-	.gradient-orb {
-		position: absolute;
-		border-radius: 50%;
-		filter: blur(80px);
-		opacity: 0.3;
-		animation: orbFloat 20s infinite ease-in-out;
-	}
-
-	.orb-1 {
-		width: 600px;
-		height: 600px;
-		background: radial-gradient(circle, #00E5FF 0%, transparent 70%);
-		top: -200px;
-		left: -200px;
-		animation-duration: 25s;
-	}
-
-	.orb-2 {
-		width: 400px;
-		height: 400px;
-		background: radial-gradient(circle, #7C4DFF 0%, transparent 70%);
-		bottom: -100px;
-		right: -100px;
-		animation-duration: 20s;
-		animation-delay: -5s;
-	}
-
-	.orb-3 {
-		width: 300px;
-		height: 300px;
-		background: radial-gradient(circle, #FF1744 0%, transparent 70%);
-		top: 50%;
-		left: 50%;
-		animation-duration: 30s;
-		animation-delay: -10s;
-	}
-
-	@keyframes orbFloat {
-		0%, 100% { transform: translate(0, 0) scale(1); }
-		33% { transform: translate(50px, -50px) scale(1.1); }
-		66% { transform: translate(-50px, 50px) scale(0.9); }
-	}
-
-	.grid-overlay {
-		position: absolute;
-		top: 0;
-		left: 0;
-		width: 100%;
-		height: 100%;
-		background-image: 
-			linear-gradient(rgba(0,229,255,0.03) 1px, transparent 1px),
-			linear-gradient(90deg, rgba(0,229,255,0.03) 1px, transparent 1px);
-		background-size: 50px 50px;
-		animation: gridMove 10s linear infinite;
-	}
-
-	@keyframes gridMove {
-		0% { transform: translate(0, 0); }
-		100% { transform: translate(50px, 50px); }
-	}
-
-	.main-content {
-		flex: 1;
-		display: flex;
-		gap: 1.5rem;
-		overflow: hidden;
-		position: relative;
-		z-index: 1;
-	}
-
-	.glass-panel, .glass-card, .glass-header {
-		background: rgba(255, 255, 255, 0.03);
-		backdrop-filter: blur(20px);
-		-webkit-backdrop-filter: blur(20px);
-		border: 1px solid rgba(255, 255, 255, 0.1);
-	}
-
-	.table-panel {
-		flex: 1.5;
-		border-radius: 24px;
 		display: flex;
 		flex-direction: column;
+		background: #000000;
 		overflow: hidden;
-		box-shadow: 
-			0 20px 60px rgba(0, 0, 0, 0.5),
-			inset 0 1px 0 rgba(255, 255, 255, 0.1);
 	}
 
-	.panel-header {
-		padding: 2rem;
-		border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-		background: rgba(0, 0, 0, 0.3);
-		flex-shrink: 0;
+	/* Header Section */
+	.header-section {
+		background: linear-gradient(135deg, rgba(0, 229, 255, 0.05), transparent);
+		border-bottom: 1px solid rgba(0, 229, 255, 0.1);
+		padding: 1.5rem;
 	}
 
 	.header-content {
 		display: flex;
 		justify-content: space-between;
-		align-items: flex-start;
-		margin-bottom: 1.5rem;
+		align-items: center;
+		gap: 2rem;
 	}
 
-	.title-group {
-		flex: 1;
+	.title-section {
+		flex: 0 0 auto;
 	}
 
-	.panel-title {
+	.main-title {
 		margin: 0;
-		font-size: 1.5rem;
+		font-size: 1.25rem;
 		font-weight: 600;
-		background: linear-gradient(135deg, #ffffff 0%, #00E5FF 100%);
-		-webkit-background-clip: text;
-		-webkit-text-fill-color: transparent;
-		background-clip: text;
+		color: #00E5FF;
 		display: flex;
 		align-items: center;
-		gap: 0.75rem;
+		gap: 0.5rem;
+		text-shadow: 0 0 20px rgba(0, 229, 255, 0.5);
 	}
 
 	.title-icon {
-		font-size: 1.8rem;
+		font-size: 1.5rem;
 		filter: saturate(1.5);
 	}
 
 	.subtitle {
 		font-size: 0.75rem;
 		color: rgba(255, 255, 255, 0.5);
-		letter-spacing: 0.2em;
-		margin-top: 0.5rem;
-		font-weight: 500;
-	}
-
-	.header-stats {
-		display: flex;
-		gap: 1rem;
-	}
-
-	.stat-pill {
-		background: rgba(0, 229, 255, 0.1);
-		border: 1px solid rgba(0, 229, 255, 0.3);
-		border-radius: 100px;
-		padding: 0.5rem 1rem;
-		display: flex;
-		flex-direction: column;
-		align-items: center;
-		gap: 0.25rem;
-		min-width: 80px;
-	}
-
-	.stat-label {
-		font-size: 0.65rem;
-		color: rgba(255, 255, 255, 0.5);
+		margin-top: 0.25rem;
 		letter-spacing: 0.1em;
-		font-weight: 600;
 	}
 
-	.stat-value {
-		font-size: 1rem;
-		font-weight: 700;
-		color: #00E5FF;
+	.controls-section {
+		flex: 1;
+		display: flex;
+		align-items: center;
+		gap: 1rem;
+		justify-content: center;
 	}
 
 	.search-wrapper {
 		position: relative;
 		width: 100%;
-	}
-
-	.premium-input {
-		width: 100%;
-		background: rgba(0, 0, 0, 0.4);
-		border: 1px solid rgba(255, 255, 255, 0.1);
-		border-radius: 12px;
-		padding: 0.875rem 1rem 0.875rem 2.75rem;
-		color: #ffffff;
-		font-size: 0.9rem;
-		font-family: inherit;
-		transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-	}
-
-	.premium-input:focus {
-		outline: none;
-		border-color: #00E5FF;
-		background: rgba(0, 229, 255, 0.05);
-		box-shadow: 0 0 0 3px rgba(0, 229, 255, 0.1);
+		max-width: 400px;
 	}
 
 	.search-icon {
@@ -604,10 +348,289 @@
 		left: 1rem;
 		top: 50%;
 		transform: translateY(-50%);
+		color: rgba(255, 255, 255, 0.4);
+		stroke-width: 2;
+	}
+
+	.search-input {
+		width: 100%;
+		padding: 0.75rem 1rem 0.75rem 3rem;
+		background: rgba(0, 0, 0, 0.6);
+		border: 1px solid rgba(255, 255, 255, 0.1);
+		border-radius: 12px;
+		color: #ffffff;
+		font-size: 0.9rem;
+		transition: all 0.3s ease;
+	}
+
+	.search-input:focus {
+		outline: none;
+		border-color: #00E5FF;
+		background: rgba(0, 229, 255, 0.05);
+		box-shadow: 0 0 20px rgba(0, 229, 255, 0.2);
+	}
+
+	.view-toggle {
+		display: flex;
+		gap: 0.25rem;
+		background: rgba(0, 0, 0, 0.6);
+		padding: 0.25rem;
+		border-radius: 8px;
+		border: 1px solid rgba(255, 255, 255, 0.1);
+	}
+
+	.toggle-btn {
+		padding: 0.5rem;
+		background: transparent;
+		border: none;
+		color: rgba(255, 255, 255, 0.4);
+		cursor: pointer;
+		border-radius: 6px;
+		transition: all 0.2s ease;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+	}
+
+	.toggle-btn:hover {
+		background: rgba(255, 255, 255, 0.05);
+	}
+
+	.toggle-btn.active {
+		background: rgba(0, 229, 255, 0.2);
+		color: #00E5FF;
+	}
+
+	.stats-section {
+		display: flex;
+		gap: 1rem;
+	}
+
+	.stat-card {
+		background: rgba(0, 0, 0, 0.6);
+		border: 1px solid rgba(0, 229, 255, 0.2);
+		border-radius: 12px;
+		padding: 0.75rem 1.25rem;
+		text-align: center;
+	}
+
+	.stat-value {
+		font-size: 1.5rem;
+		font-weight: 700;
+		color: #00E5FF;
+		text-shadow: 0 0 20px rgba(0, 229, 255, 0.5);
+	}
+
+	.stat-label {
+		font-size: 0.65rem;
 		color: rgba(255, 255, 255, 0.5);
+		letter-spacing: 0.1em;
+		margin-top: 0.25rem;
+	}
+
+	/* Content Section */
+	.content-section {
+		flex: 1;
+		padding: 1.5rem;
+		overflow: hidden;
+		display: flex;
+		flex-direction: column;
+	}
+
+	/* Grid View */
+	.countries-grid {
+		display: grid;
+		grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+		gap: 1rem;
+		overflow-y: auto;
+		padding-right: 0.5rem;
+	}
+
+	.country-card {
+		position: relative;
+		background: linear-gradient(135deg, rgba(0, 0, 0, 0.9), rgba(0, 0, 0, 0.7));
+		border: 1px solid var(--threat-color, rgba(255, 255, 255, 0.1));
+		border-radius: 16px;
+		padding: 1.5rem;
+		cursor: pointer;
+		transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+		overflow: hidden;
+	}
+
+	.card-glow {
+		position: absolute;
+		top: -50%;
+		left: -50%;
+		width: 200%;
+		height: 200%;
+		background: radial-gradient(circle, var(--threat-color, #00E5FF) 0%, transparent 70%);
+		opacity: 0;
+		transition: opacity 0.3s ease;
 		pointer-events: none;
 	}
 
+	.country-card:hover {
+		transform: translateY(-8px) scale(1.02);
+		box-shadow: 0 20px 40px rgba(0, 0, 0, 0.8);
+	}
+
+	.country-card:hover .card-glow {
+		opacity: 0.1;
+	}
+
+	.card-content {
+		position: relative;
+		z-index: 1;
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		gap: 0.75rem;
+	}
+
+	.country-flag {
+		font-size: 2rem;
+		filter: grayscale(0.5);
+	}
+
+	.country-name {
+		margin: 0;
+		font-size: 0.85rem;
+		font-weight: 600;
+		color: #ffffff;
+		text-align: center;
+		letter-spacing: 0.05em;
+	}
+
+	.country-stats {
+		display: grid;
+		grid-template-columns: 1fr 1fr;
+		gap: 1rem;
+		width: 100%;
+		margin: 0.5rem 0;
+	}
+
+	.stat {
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		gap: 0.25rem;
+	}
+
+	.stat-number {
+		font-size: 1.1rem;
+		font-weight: 700;
+	}
+
+	.stat-text {
+		font-size: 0.6rem;
+		color: rgba(255, 255, 255, 0.5);
+		letter-spacing: 0.05em;
+	}
+
+	.threat-level {
+		padding: 0.25rem 0.5rem;
+		border-radius: 6px;
+		font-size: 0.65rem;
+		font-weight: 600;
+		letter-spacing: 0.05em;
+		width: 100%;
+		text-align: center;
+	}
+
+	.progress-ring {
+		margin-top: 0.5rem;
+	}
+
+	/* List View */
+	.countries-list {
+		flex: 1;
+		overflow: auto;
+		background: rgba(0, 0, 0, 0.6);
+		backdrop-filter: blur(20px);
+		border: 1px solid rgba(255, 255, 255, 0.1);
+		border-radius: 16px;
+	}
+
+	.list-table {
+		width: 100%;
+		border-collapse: collapse;
+	}
+
+	.list-table th {
+		background: rgba(0, 0, 0, 0.8);
+		color: rgba(255, 255, 255, 0.6);
+		padding: 1rem;
+		text-align: left;
+		font-size: 0.75rem;
+		font-weight: 600;
+		letter-spacing: 0.1em;
+		position: sticky;
+		top: 0;
+		z-index: 10;
+		border-bottom: 1px solid rgba(0, 229, 255, 0.2);
+	}
+
+	.list-table td {
+		padding: 0.75rem 1rem;
+		border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+		color: rgba(255, 255, 255, 0.8);
+		font-size: 0.85rem;
+	}
+
+	.list-row {
+		cursor: pointer;
+		transition: all 0.2s ease;
+	}
+
+	.list-row:hover {
+		background: rgba(0, 229, 255, 0.05);
+	}
+
+	.rank {
+		font-weight: 600;
+		color: #00E5FF;
+		width: 50px;
+	}
+
+	.country-name-cell {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+		font-weight: 500;
+	}
+
+	.flag-icon {
+		font-size: 1rem;
+	}
+
+	.numeric {
+		font-family: 'SF Mono', monospace;
+		text-align: right;
+	}
+
+	.threat-badge {
+		padding: 0.25rem 0.5rem;
+		border-radius: 6px;
+		font-size: 0.7rem;
+		font-weight: 600;
+		letter-spacing: 0.05em;
+		display: inline-block;
+	}
+
+	.mini-bar {
+		width: 100px;
+		height: 4px;
+		background: rgba(255, 255, 255, 0.1);
+		border-radius: 2px;
+		overflow: hidden;
+	}
+
+	.mini-bar-fill {
+		height: 100%;
+		transition: width 0.3s ease;
+	}
+
+	/* Loading State */
 	.loading-state {
 		flex: 1;
 		display: flex;
@@ -617,551 +640,226 @@
 		gap: 2rem;
 	}
 
-	.premium-loader {
-		width: 100px;
-		height: 100px;
+	.globe-loader {
 		position: relative;
-	}
-
-	.loader-ring {
-		position: absolute;
-		width: 100%;
-		height: 100%;
-		border: 2px solid transparent;
-		border-top-color: #00E5FF;
-		border-radius: 50%;
-		animation: loaderSpin 1.5s linear infinite;
-	}
-
-	.loader-ring:nth-child(2) {
-		width: 80%;
-		height: 80%;
-		top: 10%;
-		left: 10%;
-		animation-delay: 0.2s;
-		border-top-color: #7C4DFF;
-	}
-
-	.loader-ring:nth-child(3) {
-		width: 60%;
-		height: 60%;
-		top: 20%;
-		left: 20%;
-		animation-delay: 0.4s;
-		border-top-color: #FF1744;
-	}
-
-	.loader-core {
-		position: absolute;
-		top: 50%;
-		left: 50%;
-		transform: translate(-50%, -50%);
-		font-size: 2rem;
-		text-shadow: 0 0 20px rgba(0, 229, 255, 0.8);
-	}
-
-	@keyframes loaderSpin {
-		0% { transform: rotate(0deg); }
-		100% { transform: rotate(360deg); }
-	}
-
-	.loading-text {
-		color: rgba(255, 255, 255, 0.6);
-		font-size: 0.85rem;
-		letter-spacing: 0.2em;
-		font-weight: 500;
-	}
-
-	.table-scroll-container {
-		flex: 1;
-		overflow-y: auto;
-		overflow-x: hidden;
-		padding: 0 1rem;
-	}
-
-	.table-scroll-container::-webkit-scrollbar {
-		width: 6px;
-	}
-
-	.table-scroll-container::-webkit-scrollbar-track {
-		background: rgba(255, 255, 255, 0.02);
-	}
-
-	.table-scroll-container::-webkit-scrollbar-thumb {
-		background: rgba(255, 255, 255, 0.1);
-		border-radius: 3px;
-	}
-
-	.premium-table {
-		width: 100%;
-		border-collapse: separate;
-		border-spacing: 0;
-		font-size: 0.875rem;
-	}
-
-	.premium-table th {
-		background: rgba(0, 0, 0, 0.4);
-		color: rgba(255, 255, 255, 0.6);
-		padding: 1rem;
-		text-align: left;
-		font-weight: 600;
-		font-size: 0.75rem;
-		letter-spacing: 0.1em;
-		position: sticky;
-		top: 0;
-		z-index: 10;
-		border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-	}
-
-	.premium-table td {
-		padding: 1rem;
-		border-bottom: 1px solid rgba(255, 255, 255, 0.05);
-		color: rgba(255, 255, 255, 0.8);
-		transition: all 0.2s ease;
-	}
-
-	.table-row {
-		cursor: pointer;
-		transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-		position: relative;
-	}
-
-	.table-row:hover {
-		background: rgba(0, 229, 255, 0.05);
-	}
-
-	.table-row.hovered td {
-		color: #ffffff;
-	}
-
-	.country-cell {
-		display: flex;
-		align-items: center;
-		gap: 0.75rem;
-	}
-
-	.country-indicator {
-		width: 8px;
-		height: 8px;
-		border-radius: 50%;
-		flex-shrink: 0;
-		animation: indicatorPulse 2s ease-in-out infinite;
-	}
-
-	@keyframes indicatorPulse {
-		0%, 100% { transform: scale(1); }
-		50% { transform: scale(1.2); }
-	}
-
-	.country-name {
-		font-weight: 500;
-	}
-
-	.asset-cell, .coverage-cell {
-		min-width: 120px;
-	}
-
-	.asset-content {
-		display: flex;
-		flex-direction: column;
-		gap: 0.5rem;
-	}
-
-	.asset-value {
-		font-weight: 600;
-		font-size: 0.9rem;
-		color: #ffffff;
-	}
-
-	.asset-bar-bg {
-		height: 3px;
-		background: rgba(255, 255, 255, 0.1);
-		border-radius: 3px;
-		overflow: hidden;
 		width: 80px;
+		height: 80px;
 	}
 
-	.asset-bar {
+	.globe {
+		width: 100%;
 		height: 100%;
-		transition: width 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+		border: 2px solid #00E5FF;
+		border-radius: 50%;
+		position: relative;
+		animation: rotate 2s linear infinite;
 	}
 
-	.coverage-content {
-		display: flex;
-		align-items: center;
-		gap: 0.5rem;
+	.globe::before {
+		content: '';
+		position: absolute;
+		width: 100%;
+		height: 100%;
+		border: 2px solid rgba(0, 229, 255, 0.3);
+		border-radius: 50%;
+		transform: rotateX(60deg);
 	}
 
-	.coverage-value {
-		font-weight: 600;
+	.globe::after {
+		content: '';
+		position: absolute;
+		width: 100%;
+		height: 100%;
+		border: 2px solid rgba(0, 229, 255, 0.3);
+		border-radius: 50%;
+		transform: rotateY(60deg);
 	}
 
-	.coverage-ring {
-		flex-shrink: 0;
+	.orbit {
+		position: absolute;
+		width: 120%;
+		height: 120%;
+		border: 1px solid rgba(0, 229, 255, 0.2);
+		border-radius: 50%;
+		top: -10%;
+		left: -10%;
+		animation: rotate 3s linear infinite reverse;
 	}
 
-	.threat-cell {
-		min-width: 120px;
+	@keyframes rotate {
+		from { transform: rotate(0deg); }
+		to { transform: rotate(360deg); }
 	}
 
-	.threat-badge {
-		display: inline-flex;
-		align-items: center;
-		gap: 0.5rem;
-		padding: 0.375rem 0.75rem;
-		border: 1px solid;
-		border-radius: 8px;
-		font-size: 0.75rem;
-		font-weight: 600;
-		letter-spacing: 0.05em;
-	}
-
-	.threat-icon {
-		font-size: 1rem;
-	}
-
-	.matrix-cell {
-		min-width: 100px;
-	}
-
-	.matrix-visualization {
-		display: flex;
-		align-items: flex-end;
-		gap: 2px;
-		height: 30px;
-	}
-
-	.matrix-bar {
-		width: 3px;
-		background: #00E5FF;
-		animation: matrixPulse 2s ease-in-out infinite;
-	}
-
-	@keyframes matrixPulse {
-		0%, 100% { opacity: 1; }
-		50% { opacity: 0.6; }
-	}
-
-	.viz-panel {
+	/* Detail View */
+	.detail-view {
 		flex: 1;
 		display: flex;
 		flex-direction: column;
-		gap: 1.5rem;
-		overflow-y: auto;
-		padding-right: 0.5rem;
-	}
-
-	.viz-panel::-webkit-scrollbar {
-		width: 6px;
-	}
-
-	.viz-panel::-webkit-scrollbar-track {
-		background: rgba(255, 255, 255, 0.02);
-	}
-
-	.viz-panel::-webkit-scrollbar-thumb {
-		background: rgba(255, 255, 255, 0.1);
-		border-radius: 3px;
-	}
-
-	.metrics-row {
-		display: grid;
-		grid-template-columns: repeat(2, 1fr);
-		gap: 1.5rem;
-	}
-
-	.metric-card {
+		background: rgba(0, 0, 0, 0.6);
+		backdrop-filter: blur(20px);
+		border: 1px solid rgba(255, 255, 255, 0.1);
 		border-radius: 16px;
-		padding: 1.5rem;
-		position: relative;
-		overflow: hidden;
-		box-shadow: 
-			0 10px 40px rgba(0, 0, 0, 0.3),
-			inset 0 1px 0 rgba(255, 255, 255, 0.1);
-	}
-
-	.metric-icon-wrapper {
-		position: absolute;
-		top: 1.5rem;
-		right: 1.5rem;
-		width: 40px;
-		height: 40px;
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		background: rgba(0, 229, 255, 0.1);
-		border-radius: 12px;
-	}
-
-	.metric-icon {
-		font-size: 1.5rem;
-		filter: saturate(1.5);
-	}
-
-	.metric-content {
-		position: relative;
-		z-index: 1;
-	}
-
-	.metric-value {
-		font-size: 2rem;
-		font-weight: 700;
-		background: linear-gradient(135deg, #ffffff 0%, #00E5FF 100%);
-		-webkit-background-clip: text;
-		-webkit-text-fill-color: transparent;
-		background-clip: text;
-		margin-bottom: 0.25rem;
-	}
-
-	.metric-label {
-		font-size: 0.7rem;
-		color: rgba(255, 255, 255, 0.5);
-		letter-spacing: 0.15em;
-		font-weight: 600;
-	}
-
-	.metric-sparkline {
-		position: absolute;
-		bottom: 0;
-		left: 0;
-		right: 0;
-		height: 30px;
-		opacity: 0.5;
-	}
-
-	.metric-sparkline svg {
-		width: 100%;
-		height: 100%;
-	}
-
-	.viz-card {
-		border-radius: 16px;
-		padding: 1.5rem;
-		box-shadow: 
-			0 10px 40px rgba(0, 0, 0, 0.3),
-			inset 0 1px 0 rgba(255, 255, 255, 0.1);
-	}
-
-	.card-header {
-		display: flex;
-		justify-content: space-between;
-		align-items: center;
-		margin-bottom: 1.5rem;
-	}
-
-	.viz-card h4 {
-		margin: 0;
-		font-size: 0.875rem;
-		font-weight: 600;
-		color: rgba(255, 255, 255, 0.7);
-		letter-spacing: 0.1em;
-	}
-
-	.card-status-indicator {
-		width: 6px;
-		height: 6px;
-		background: rgba(0, 229, 255, 0.5);
-		border-radius: 50%;
-		animation: statusBlink 2s ease-in-out infinite;
-	}
-
-	.card-status-indicator.active {
-		background: #00E5FF;
-		animation: statusBlink 0.5s ease-in-out infinite;
-		box-shadow: 0 0 10px rgba(0, 229, 255, 0.5);
-	}
-
-	@keyframes statusBlink {
-		0%, 100% { opacity: 1; }
-		50% { opacity: 0.3; }
-	}
-
-	.coverage-map {
-		display: flex;
-		flex-direction: column;
-		gap: 0.875rem;
-	}
-
-	.coverage-item {
-		display: flex;
-		flex-direction: column;
-		gap: 0.5rem;
-	}
-
-	.coverage-label {
-		font-size: 0.75rem;
-		color: rgba(255, 255, 255, 0.6);
-		font-weight: 500;
-	}
-
-	.coverage-visual {
-		position: relative;
-		height: 24px;
-		display: flex;
-		align-items: center;
-	}
-
-	.coverage-track {
-		position: absolute;
-		width: 100%;
-		height: 6px;
-		background: rgba(255, 255, 255, 0.05);
-		border-radius: 6px;
-	}
-
-	.coverage-fill {
-		position: relative;
-		height: 6px;
-		border-radius: 6px;
-		transition: width 0.5s cubic-bezier(0.4, 0, 0.2, 1);
 		overflow: hidden;
 	}
 
-	.coverage-glow {
-		position: absolute;
-		right: 0;
-		top: 50%;
-		transform: translateY(-50%);
-		width: 20px;
-		height: 200%;
-		background: rgba(255, 255, 255, 0.5);
-		filter: blur(10px);
-		animation: glowMove 2s ease-in-out infinite;
-	}
-
-	@keyframes glowMove {
-		0%, 100% { opacity: 0; transform: translateY(-50%) translateX(-10px); }
-		50% { opacity: 1; transform: translateY(-50%) translateX(0); }
-	}
-
-	.coverage-value {
-		position: absolute;
-		right: 0;
-		font-size: 0.75rem;
-		color: rgba(255, 255, 255, 0.7);
-		font-weight: 600;
-	}
-
-	.threat-grid {
-		display: flex;
-		justify-content: center;
-		align-items: center;
-		min-height: 150px;
-		padding: 1rem;
-	}
-
-	.grid-svg {
-		width: 100%;
-		height: auto;
-	}
-
-	.drill-view {
-		display: flex;
-		flex-direction: column;
-		height: 100%;
-	}
-
-	.drill-header {
+	.detail-header {
 		display: flex;
 		justify-content: space-between;
 		align-items: center;
 		padding: 1.5rem;
-		border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-		background: rgba(0, 229, 255, 0.03);
+		background: linear-gradient(135deg, rgba(0, 229, 255, 0.1), transparent);
+		border-bottom: 1px solid rgba(0, 229, 255, 0.2);
 	}
 
-	.drill-title {
+	.detail-title {
 		display: flex;
 		align-items: center;
 		gap: 1rem;
 	}
 
-	.drill-icon {
-		font-size: 1.5rem;
-		color: #00E5FF;
-		animation: drillPulse 1s ease-in-out infinite;
-	}
-
-	@keyframes drillPulse {
-		0%, 100% { transform: translateX(0); }
-		50% { transform: translateX(5px); }
-	}
-
-	.drill-header h4 {
+	.detail-title h3 {
 		margin: 0;
-		font-size: 1.125rem;
+		font-size: 1.1rem;
+		color: #00E5FF;
 		font-weight: 600;
-		color: #ffffff;
 	}
 
-	.drill-badge {
-		background: rgba(0, 229, 255, 0.1);
-		border: 1px solid rgba(0, 229, 255, 0.3);
-		border-radius: 100px;
+	.detail-badge {
+		background: rgba(0, 229, 255, 0.2);
+		border: 1px solid #00E5FF;
 		padding: 0.25rem 0.75rem;
+		border-radius: 100px;
 		font-size: 0.75rem;
 		color: #00E5FF;
-		font-weight: 600;
+		font-weight: 500;
 	}
 
-	.premium-btn {
+	.close-btn {
 		background: rgba(255, 23, 68, 0.1);
-		border: 1px solid rgba(255, 23, 68, 0.3);
+		border: 1px solid #FF1744;
+		color: #FF1744;
 		width: 36px;
 		height: 36px;
-		border-radius: 12px;
+		border-radius: 8px;
 		cursor: pointer;
 		display: flex;
 		align-items: center;
 		justify-content: center;
-		color: #FF1744;
-		transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+		transition: all 0.2s ease;
 	}
 
-	.premium-btn:hover {
+	.close-btn:hover {
 		background: rgba(255, 23, 68, 0.2);
-		transform: scale(1.05);
-		box-shadow: 0 0 20px rgba(255, 23, 68, 0.3);
+		transform: scale(1.1);
 	}
 
-	.drill-table-container {
+	.detail-content {
 		flex: 1;
 		overflow: auto;
 		padding: 1rem;
 	}
 
-	.host-cell {
-		font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Fira Code', monospace;
-		color: #00E5FF;
-		font-weight: 500;
-		font-size: 0.875rem;
+	.detail-table {
+		width: 100%;
+		border-collapse: collapse;
 	}
 
-	.status-badge {
-		padding: 0.25rem 0.625rem;
-		border-radius: 6px;
+	.detail-table th {
+		background: rgba(0, 0, 0, 0.4);
+		color: rgba(255, 255, 255, 0.6);
+		padding: 0.75rem;
+		text-align: left;
 		font-size: 0.7rem;
 		font-weight: 600;
-		text-transform: uppercase;
 		letter-spacing: 0.05em;
-		display: inline-block;
+		position: sticky;
+		top: 0;
 	}
 
-	.badge-success {
-		background: rgba(0, 229, 255, 0.15);
+	.detail-table td {
+		padding: 0.75rem;
+		border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+		font-size: 0.8rem;
+		color: rgba(255, 255, 255, 0.8);
+	}
+
+	.host-cell {
+		font-family: 'SF Mono', monospace;
 		color: #00E5FF;
-		border: 1px solid rgba(0, 229, 255, 0.3);
+		font-weight: 500;
 	}
 
-	.badge-warning {
-		background: rgba(255, 214, 0, 0.15);
-		color: #FFD600;
-		border: 1px solid rgba(255, 214, 0, 0.3);
+	.status-dot {
+		display: inline-block;
+		width: 8px;
+		height: 8px;
+		border-radius: 50%;
+		margin: 0 auto;
 	}
 
-	.badge-danger {
-		background: rgba(255, 23, 68, 0.15);
-		color: #FF1744;
-		border: 1px solid rgba(255, 23, 68, 0.3);
+	.status-dot.active {
+		background: #00E5FF;
+		box-shadow: 0 0 10px rgba(0, 229, 255, 0.5);
+	}
+
+	.status-dot.inactive {
+		background: #FF1744;
+		box-shadow: 0 0 10px rgba(255, 23, 68, 0.5);
+	}
+
+	.status-dot.warning {
+		background: #FFD600;
+		box-shadow: 0 0 10px rgba(255, 214, 0, 0.5);
+	}
+
+	/* Scrollbar */
+	::-webkit-scrollbar {
+		width: 6px;
+		height: 6px;
+	}
+
+	::-webkit-scrollbar-track {
+		background: rgba(255, 255, 255, 0.02);
+	}
+
+	::-webkit-scrollbar-thumb {
+		background: rgba(0, 229, 255, 0.2);
+		border-radius: 3px;
+	}
+
+	::-webkit-scrollbar-thumb:hover {
+		background: rgba(0, 229, 255, 0.3);
+	}
+
+	/* Responsive */
+	@media (max-width: 1200px) {
+		.countries-grid {
+			grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+		}
+		
+		.header-content {
+			flex-direction: column;
+			align-items: stretch;
+			gap: 1rem;
+		}
+		
+		.controls-section {
+			justify-content: space-between;
+		}
+	}
+
+	@media (max-width: 768px) {
+		.countries-grid {
+			grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+		}
+		
+		.stats-section {
+			width: 100%;
+		}
+		
+		.stat-card {
+			flex: 1;
+		}
 	}
 </style>
