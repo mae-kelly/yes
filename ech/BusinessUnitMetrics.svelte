@@ -1,4 +1,4 @@
-<!-- BusinessUnitMetrics.svelte - Enhanced Business Division Analysis -->
+<!-- BusinessUnitMetrics.svelte - Premium Business Division Analytics -->
 <script>
 	import { onMount } from 'svelte';
 	
@@ -7,6 +7,7 @@
 	let selectedBU = null;
 	let buDetails = [];
 	let searchTerm = '';
+	let chartType = 'treemap'; // 'treemap' or 'hierarchy'
 
 	onMount(async () => {
 		try {
@@ -35,10 +36,10 @@
 
 	function getOperationalHealth(count) {
 		const percentage = (count / maxCount) * 100;
-		if (percentage >= 60) return { status: 'OPTIMAL', color: '#0a4f3c' };
-		if (percentage >= 40) return { status: 'GOOD', color: '#ffcc00' };
-		if (percentage >= 20) return { status: 'FAIR', color: '#ff9900' };
-		return { status: 'CRITICAL', color: '#ff0066' };
+		if (percentage >= 60) return { status: 'OPTIMAL', color: '#00E5FF', icon: '✓' };
+		if (percentage >= 40) return { status: 'GOOD', color: '#00C853', icon: '●' };
+		if (percentage >= 20) return { status: 'FAIR', color: '#FFA726', icon: '▲' };
+		return { status: 'CRITICAL', color: '#FF1744', icon: '⚠' };
 	}
 
 	async function drillDownBU(bu, count) {
@@ -64,39 +65,72 @@
 </script>
 
 <div class="dashboard-container">
-	<div class="main-content">
-		<!-- Left Panel: Table -->
-		<div class="table-panel">
-			<div class="panel-header">
-				<h3 class="panel-title">
-					<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-						<path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2M9 7a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/>
-					</svg>
-					Business Division Analysis
-				</h3>
-				<div class="controls">
-					<input 
-						type="text" 
-						bind:value={searchTerm}
-						placeholder="Search divisions..."
-						class="search-input"
-					/>
-				</div>
+	<!-- Header with Controls -->
+	<div class="header-section">
+		<div class="header-left">
+			<h2 class="main-title">
+				<span class="title-icon">👥</span>
+				BUSINESS DIVISION INTELLIGENCE
+			</h2>
+			<div class="subtitle">Organizational Asset Distribution</div>
+		</div>
+		
+		<div class="header-center">
+			<div class="search-wrapper">
+				<svg class="search-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+					<circle cx="11" cy="11" r="8"></circle>
+					<path d="m21 21-4.35-4.35"></path>
+				</svg>
+				<input 
+					type="text" 
+					bind:value={searchTerm}
+					placeholder="Search divisions..."
+					class="search-input"
+				/>
 			</div>
-			
+		</div>
+		
+		<div class="header-right">
+			<div class="view-selector">
+				<button class="view-btn {chartType === 'treemap' ? 'active' : ''}" 
+						on:click={() => chartType = 'treemap'}>
+					Treemap
+				</button>
+				<button class="view-btn {chartType === 'hierarchy' ? 'active' : ''}" 
+						on:click={() => chartType = 'hierarchy'}>
+					Hierarchy
+				</button>
+			</div>
+		</div>
+	</div>
+
+	<!-- Main Content Area -->
+	<div class="content-area">
+		<!-- Visualization Panel -->
+		<div class="visualization-panel">
 			{#if loading && !selectedBU}
 				<div class="loading-state">
-					<div class="spinner"></div>
-					<p>ANALYZING DIVISIONS...</p>
+					<div class="org-loader">
+						<div class="org-node"></div>
+						<div class="org-node"></div>
+						<div class="org-node"></div>
+					</div>
+					<p>Analyzing organizational structure...</p>
 				</div>
 			{:else if selectedBU}
-				<div class="drill-view">
-					<div class="drill-header">
-						<h4>{selectedBU.bu.toUpperCase()}</h4>
-						<button class="close-btn" on:click={closeDetails}>✕</button>
+				<div class="detail-view">
+					<div class="detail-header">
+						<div class="detail-info">
+							<h3>{selectedBU.bu.toUpperCase()}</h3>
+							<div class="detail-stats">
+								<span class="stat-badge">{selectedBU.count.toLocaleString()} assets</span>
+								<span class="stat-badge">{getPercentage(selectedBU.count)}% of total</span>
+							</div>
+						</div>
+						<button class="close-btn" on:click={closeDetails}>×</button>
 					</div>
-					<div class="drill-table-container">
-						<table class="data-table">
+					<div class="detail-table-wrapper">
+						<table class="detail-table">
 							<thead>
 								<tr>
 									<th>HOST</th>
@@ -113,13 +147,13 @@
 										<td>{host.region || 'Unknown'}</td>
 										<td>{host.infrastructure_type || 'Unknown'}</td>
 										<td>
-											<span class="status-badge {host.present_in_cmdb?.toLowerCase().includes('yes') ? 'active' : 'inactive'}">
-												{host.present_in_cmdb?.toLowerCase().includes('yes') ? 'YES' : 'NO'}
+											<span class="status-badge {host.present_in_cmdb?.toLowerCase().includes('yes') ? 'success' : 'danger'}">
+												{host.present_in_cmdb?.toLowerCase().includes('yes') ? '✓' : '✗'}
 											</span>
 										</td>
 										<td>
-											<span class="status-badge {host.tanium_coverage?.toLowerCase().includes('tanium') ? 'active' : 'inactive'}">
-												{host.tanium_coverage?.toLowerCase().includes('tanium') ? 'YES' : 'NO'}
+											<span class="status-badge {host.tanium_coverage?.toLowerCase().includes('tanium') ? 'success' : 'warning'}">
+												{host.tanium_coverage?.toLowerCase().includes('tanium') ? '✓' : '✗'}
 											</span>
 										</td>
 									</tr>
@@ -128,107 +162,115 @@
 						</table>
 					</div>
 				</div>
+			{:else if chartType === 'treemap'}
+				<div class="treemap-container">
+					{#each filteredBUs.slice(0, 12) as [bu, count]}
+						{@const health = getOperationalHealth(count)}
+						{@const percentage = getPercentage(count)}
+						{@const size = (count / maxCount) * 100}
+						<div class="treemap-item" 
+							 style="flex: {size}; background: linear-gradient(135deg, {health.color}20, {health.color}10)"
+							 on:click={() => drillDownBU(bu, count)}>
+							<div class="treemap-content">
+								<span class="treemap-icon" style="color: {health.color}">{health.icon}</span>
+								<div class="treemap-name">{bu.substring(0, 25).toUpperCase()}</div>
+								<div class="treemap-value" style="color: {health.color}">{count.toLocaleString()}</div>
+								<div class="treemap-percent">{percentage}%</div>
+							</div>
+						</div>
+					{/each}
+				</div>
 			{:else}
-				<div class="table-scroll-container">
-					<table class="data-table">
-						<thead>
-							<tr>
-								<th>DIVISION</th>
-								<th>ASSETS</th>
-								<th>COVERAGE</th>
-								<th>HEALTH STATUS</th>
-							</tr>
-						</thead>
-						<tbody>
-							{#each filteredBUs as [bu, count]}
-								{@const health = getOperationalHealth(count)}
-								<tr on:click={() => drillDownBU(bu, count)}>
-									<td class="bu-cell">
-										<svg class="status-icon" viewBox="0 0 12 12">
-											<rect x="2" y="2" width="8" height="8" fill={health.color} opacity="0.3"/>
-											<rect x="4" y="4" width="4" height="4" fill={health.color}/>
-										</svg>
-										<span class="bu-name">{bu.substring(0, 35).toUpperCase()}</span>
-									</td>
-									<td class="center">{count.toLocaleString()}</td>
-									<td>
-										<div class="coverage-cell">
-											<div class="coverage-bar">
-												<div class="coverage-fill" style="width: {(count/maxCount)*100}%; background: {health.color}"></div>
-											</div>
-											<span class="coverage-text">{getPercentage(count)}%</span>
-										</div>
-									</td>
-									<td class="center">
-										<span class="health-badge" style="color: {health.color}; border-color: {health.color}">{health.status}</span>
-									</td>
-								</tr>
-							{/each}
-						</tbody>
-					</table>
+				<div class="hierarchy-container">
+					<div class="hierarchy-root">
+						<div class="root-node">
+							<span class="node-title">ORGANIZATION</span>
+							<span class="node-count">{Object.values(data.business_intelligence || {}).reduce((a, b) => a + b, 0).toLocaleString()}</span>
+						</div>
+					</div>
+					<div class="hierarchy-branches">
+						{#each filteredBUs.slice(0, 8) as [bu, count]}
+							{@const health = getOperationalHealth(count)}
+							<div class="branch" on:click={() => drillDownBU(bu, count)}>
+								<div class="branch-line"></div>
+								<div class="branch-node" style="border-color: {health.color}; background: {health.color}10">
+									<span class="node-icon" style="color: {health.color}">{health.icon}</span>
+									<span class="node-name">{bu.substring(0, 20).toUpperCase()}</span>
+									<span class="node-value" style="color: {health.color}">{count.toLocaleString()}</span>
+								</div>
+							</div>
+						{/each}
+					</div>
 				</div>
 			{/if}
 		</div>
 
-		<!-- Right Panel: Visualizations -->
-		<div class="viz-panel">
-			<!-- Metrics Row -->
-			<div class="metrics-row">
-				<div class="metric-card">
-					<div class="metric-value">{filteredBUs.length}</div>
-					<div class="metric-label">DIVISIONS</div>
+		<!-- Metrics Panel -->
+		<div class="metrics-panel">
+			<!-- Summary Cards -->
+			<div class="summary-cards">
+				<div class="summary-card">
+					<div class="card-icon">👥</div>
+					<div class="card-content">
+						<div class="card-value">{filteredBUs.length}</div>
+						<div class="card-label">DIVISIONS</div>
+					</div>
 				</div>
-				<div class="metric-card">
-					<div class="metric-value">{Object.values(data.business_intelligence || {}).reduce((a, b) => a + b, 0).toLocaleString()}</div>
-					<div class="metric-label">TOTAL ASSETS</div>
+				<div class="summary-card">
+					<div class="card-icon">💻</div>
+					<div class="card-content">
+						<div class="card-value">
+							{Object.values(data.business_intelligence || {}).reduce((a, b) => a + b, 0).toLocaleString()}
+						</div>
+						<div class="card-label">TOTAL ASSETS</div>
+					</div>
 				</div>
 			</div>
 
-			<!-- Division Performance -->
-			<div class="viz-card">
-				<h4>
-					<svg class="icon-small" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-						<path d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
-					</svg>
-					TOP PERFORMING DIVISIONS
-				</h4>
-				<div class="performance-list">
-					{#each filteredBUs.slice(0, 8) as [bu, count]}
+			<!-- Top Divisions List -->
+			<div class="top-divisions">
+				<h3 class="section-title">TOP DIVISIONS</h3>
+				<div class="divisions-list">
+					{#each filteredBUs.slice(0, 10) as [bu, count], i}
 						{@const health = getOperationalHealth(count)}
-						<div class="perf-item">
-							<div class="perf-rank" style="border-color: {health.color}">
-								<svg viewBox="0 0 24 24" fill={health.color}>
-									<path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>
-								</svg>
-							</div>
-							<div class="perf-details">
-								<div class="perf-name">{bu.substring(0, 25).toUpperCase()}</div>
-								<div class="perf-stats">
-									<span>{count.toLocaleString()} assets</span>
-									<span class="separator">•</span>
-									<span>{getPercentage(count)}%</span>
+						<div class="division-item" on:click={() => drillDownBU(bu, count)}>
+							<span class="division-rank" style="color: {health.color}">#{i + 1}</span>
+							<div class="division-info">
+								<div class="division-name">{bu.substring(0, 30).toUpperCase()}</div>
+								<div class="division-bar">
+									<div class="bar-fill" style="width: {(count/maxCount)*100}%; background: {health.color}"></div>
 								</div>
+							</div>
+							<div class="division-stats">
+								<span class="asset-count" style="color: {health.color}">{count.toLocaleString()}</span>
+								<span class="asset-percent">{getPercentage(count)}%</span>
 							</div>
 						</div>
 					{/each}
 				</div>
 			</div>
 
-			<!-- Division Health Matrix -->
-			<div class="viz-card">
-				<h4>
-					<svg class="icon-small" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-						<path d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>
-					</svg>
-					OPERATIONAL METRICS
-				</h4>
-				<div class="health-grid">
-					{#each filteredBUs.slice(0, 6) as [bu, count]}
-						{@const health = getOperationalHealth(count)}
-						{@const percentage = getPercentage(count)}
-						<div class="health-card" style="border-color: {health.color}">
-							<div class="health-value" style="color: {health.color}">{percentage}%</div>
-							<div class="health-label">{bu.substring(0, 10).toUpperCase()}</div>
+			<!-- Health Distribution -->
+			<div class="health-distribution">
+				<h3 class="section-title">HEALTH DISTRIBUTION</h3>
+				<div class="health-chart">
+					{@const healthGroups = filteredBUs.reduce((acc, [bu, count]) => {
+						const health = getOperationalHealth(count).status;
+						acc[health] = (acc[health] || 0) + 1;
+						return acc;
+					}, {})}
+					{#each Object.entries(healthGroups) as [status, count]}
+						{@const color = status === 'OPTIMAL' ? '#00E5FF' : 
+										status === 'GOOD' ? '#00C853' : 
+										status === 'FAIR' ? '#FFA726' : '#FF1744'}
+						<div class="health-bar">
+							<span class="health-label">{status}</span>
+							<div class="health-progress">
+								<div class="progress-fill" 
+									 style="width: {(count/filteredBUs.length)*100}%; background: {color}">
+								</div>
+							</div>
+							<span class="health-count">{count}</span>
 						</div>
 					{/each}
 				</div>
@@ -240,401 +282,652 @@
 <style>
 	.dashboard-container {
 		height: calc(100vh - 80px);
-		display: flex;
-		background: #0a0a0a;
-		color: #e0e0e0;
-		font-family: 'JetBrains Mono', monospace;
-		overflow: hidden;
-		padding: 1rem;
-	}
-
-	.main-content {
-		flex: 1;
-		display: flex;
-		gap: 1rem;
-		overflow: hidden;
-	}
-
-	.table-panel {
-		flex: 1.5;
-		background: #0f0f0f;
-		border: 1px solid #1a1a1a;
-		border-radius: 8px;
+		width: 100%;
 		display: flex;
 		flex-direction: column;
+		background: #000000;
 		overflow: hidden;
 	}
 
-	.viz-panel {
-		flex: 1;
+	/* Header Section */
+	.header-section {
 		display: flex;
-		flex-direction: column;
-		gap: 1rem;
-		overflow-y: auto;
-		padding-right: 0.5rem;
+		justify-content: space-between;
+		align-items: center;
+		padding: 1.5rem;
+		background: linear-gradient(135deg, rgba(0, 229, 255, 0.05), transparent);
+		border-bottom: 1px solid rgba(0, 229, 255, 0.1);
 	}
 
-	.panel-header {
-		padding: 1rem 1.5rem;
-		border-bottom: 1px solid #1a1a1a;
-		background: #0f0f0f;
-		flex-shrink: 0;
+	.header-left {
+		flex: 0 0 auto;
 	}
 
-	.panel-title {
-		margin: 0 0 1rem 0;
-		color: #0a4f3c;
-		font-size: 1rem;
-		font-weight: 500;
+	.main-title {
+		margin: 0;
+		font-size: 1.25rem;
+		font-weight: 600;
+		color: #00E5FF;
 		display: flex;
 		align-items: center;
 		gap: 0.5rem;
 	}
 
-	.icon {
-		width: 20px;
-		height: 20px;
-		color: #0a4f3c;
+	.title-icon {
+		font-size: 1.5rem;
 	}
 
-	.icon-small {
-		width: 16px;
-		height: 16px;
-		color: #0a4f3c;
-		display: inline-block;
-		vertical-align: middle;
-		margin-right: 0.3rem;
+	.subtitle {
+		font-size: 0.75rem;
+		color: rgba(255, 255, 255, 0.5);
+		margin-top: 0.25rem;
+		letter-spacing: 0.1em;
 	}
 
-	.controls {
-		display: flex;
-		gap: 0.5rem;
-		align-items: center;
+	.header-center {
+		flex: 1;
+		max-width: 400px;
+		margin: 0 2rem;
+	}
+
+	.search-wrapper {
+		position: relative;
+		width: 100%;
+	}
+
+	.search-icon {
+		position: absolute;
+		left: 1rem;
+		top: 50%;
+		transform: translateY(-50%);
+		color: rgba(255, 255, 255, 0.4);
 	}
 
 	.search-input {
-		flex: 1;
-		background: #0a0a0a;
-		border: 1px solid #1a1a1a;
-		border-radius: 4px;
-		padding: 0.5rem 0.75rem;
-		color: #e0e0e0;
-		font-size: 0.85rem;
-		font-family: inherit;
+		width: 100%;
+		padding: 0.75rem 1rem 0.75rem 3rem;
+		background: rgba(0, 0, 0, 0.6);
+		border: 1px solid rgba(255, 255, 255, 0.1);
+		border-radius: 12px;
+		color: #ffffff;
+		font-size: 0.9rem;
+		transition: all 0.3s ease;
 	}
 
 	.search-input:focus {
 		outline: none;
-		border-color: #0a4f3c;
+		border-color: #00E5FF;
+		background: rgba(0, 229, 255, 0.05);
 	}
 
-	.table-scroll-container {
-		flex: 1;
-		overflow-y: auto;
-		overflow-x: hidden;
+	.header-right {
+		flex: 0 0 auto;
 	}
 
-	.drill-table-container {
-		flex: 1;
-		overflow: auto;
-		padding: 1rem;
-	}
-
-	.data-table {
-		width: 100%;
-		border-collapse: collapse;
-		font-size: 0.85rem;
-	}
-
-	.data-table th {
-		background: #0f0f0f;
-		color: #0a4f3c;
-		padding: 0.75rem;
-		text-align: left;
-		font-weight: 500;
-		letter-spacing: 0.05em;
-		position: sticky;
-		top: 0;
-		z-index: 10;
-		border-bottom: 2px solid #0a4f3c;
-	}
-
-	.data-table td {
-		padding: 0.75rem;
-		border-bottom: 1px solid #1a1a1a;
-		color: #b8a678;
-	}
-
-	.data-table tbody tr {
-		cursor: pointer;
-		transition: background 0.2s ease;
-	}
-
-	.data-table tbody tr:hover {
-		background: rgba(10, 79, 60, 0.05);
-	}
-
-	.bu-cell {
+	.view-selector {
 		display: flex;
-		align-items: center;
-		gap: 0.5rem;
-	}
-
-	.status-icon {
-		width: 12px;
-		height: 12px;
-		flex-shrink: 0;
-	}
-
-	.bu-name {
-		font-weight: 500;
-		color: #e0e0e0;
-	}
-
-	.center {
-		text-align: center;
-	}
-
-	.coverage-cell {
-		display: flex;
-		align-items: center;
-		gap: 0.5rem;
-	}
-
-	.coverage-bar {
-		flex: 1;
-		height: 6px;
-		background: #1a1a1a;
-		border-radius: 3px;
+		background: rgba(0, 0, 0, 0.6);
+		border: 1px solid rgba(255, 255, 255, 0.1);
+		border-radius: 8px;
 		overflow: hidden;
-		min-width: 60px;
 	}
 
-	.coverage-fill {
-		height: 100%;
-		transition: width 0.3s ease;
-	}
-
-	.coverage-text {
-		font-size: 0.7rem;
-		min-width: 45px;
-		text-align: right;
-		color: #b8a678;
-	}
-
-	.health-badge {
-		padding: 0.25rem 0.5rem;
-		border: 1px solid;
-		border-radius: 4px;
-		font-size: 0.7rem;
-		font-weight: 600;
-		text-transform: uppercase;
-	}
-
-	.metrics-row {
-		display: flex;
-		gap: 1rem;
-	}
-
-	.metric-card {
-		flex: 1;
-		background: #0f0f0f;
-		border: 1px solid #1a1a1a;
-		border-radius: 8px;
-		padding: 1.5rem;
-		text-align: center;
-	}
-
-	.metric-value {
-		font-size: 2rem;
-		font-weight: 600;
-		color: #0a4f3c;
-		margin-bottom: 0.5rem;
-	}
-
-	.metric-label {
-		font-size: 0.7rem;
-		color: #b8a678;
-		letter-spacing: 0.1em;
-		font-weight: 500;
-	}
-
-	.viz-card {
-		background: #0f0f0f;
-		border: 1px solid #1a1a1a;
-		border-radius: 8px;
-		padding: 1.5rem;
-	}
-
-	.viz-card h4 {
-		margin: 0 0 1rem 0;
+	.view-btn {
+		padding: 0.5rem 1rem;
+		background: transparent;
+		border: none;
+		color: rgba(255, 255, 255, 0.6);
+		cursor: pointer;
 		font-size: 0.85rem;
-		color: #0a4f3c;
-		letter-spacing: 0.05em;
-		font-weight: 500;
+		transition: all 0.2s ease;
 	}
 
-	.performance-list {
+	.view-btn:hover {
+		background: rgba(255, 255, 255, 0.05);
+	}
+
+	.view-btn.active {
+		background: rgba(0, 229, 255, 0.2);
+		color: #00E5FF;
+	}
+
+	/* Content Area */
+	.content-area {
+		flex: 1;
+		display: grid;
+		grid-template-columns: 1fr 400px;
+		gap: 1.5rem;
+		padding: 1.5rem;
+		overflow: hidden;
+	}
+
+	/* Visualization Panel */
+	.visualization-panel {
+		background: rgba(0, 0, 0, 0.6);
+		backdrop-filter: blur(20px);
+		border: 1px solid rgba(255, 255, 255, 0.1);
+		border-radius: 20px;
+		padding: 1.5rem;
+		overflow: auto;
+	}
+
+	/* Treemap View */
+	.treemap-container {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 0.5rem;
+		min-height: 100%;
+	}
+
+	.treemap-item {
+		min-width: 150px;
+		min-height: 120px;
+		border: 1px solid rgba(255, 255, 255, 0.1);
+		border-radius: 12px;
+		padding: 1rem;
+		cursor: pointer;
+		transition: all 0.3s ease;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+	}
+
+	.treemap-item:hover {
+		transform: scale(1.05);
+		z-index: 10;
+		box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+	}
+
+	.treemap-content {
+		text-align: center;
 		display: flex;
 		flex-direction: column;
 		gap: 0.5rem;
 	}
 
-	.perf-item {
+	.treemap-icon {
+		font-size: 1.5rem;
+	}
+
+	.treemap-name {
+		font-size: 0.75rem;
+		font-weight: 600;
+		color: #ffffff;
+		line-height: 1.2;
+	}
+
+	.treemap-value {
+		font-size: 1.1rem;
+		font-weight: 700;
+	}
+
+	.treemap-percent {
+		font-size: 0.7rem;
+		color: rgba(255, 255, 255, 0.6);
+	}
+
+	/* Hierarchy View */
+	.hierarchy-container {
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		padding: 2rem;
+		min-height: 100%;
+	}
+
+	.hierarchy-root {
+		margin-bottom: 3rem;
+	}
+
+	.root-node {
+		background: linear-gradient(135deg, #00E5FF, #7C4DFF);
+		padding: 1.5rem 3rem;
+		border-radius: 16px;
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		gap: 0.5rem;
+		box-shadow: 0 10px 40px rgba(0, 229, 255, 0.3);
+	}
+
+	.node-title {
+		font-size: 0.9rem;
+		font-weight: 600;
+		color: #ffffff;
+		letter-spacing: 0.1em;
+	}
+
+	.node-count {
+		font-size: 1.5rem;
+		font-weight: 700;
+		color: #ffffff;
+	}
+
+	.hierarchy-branches {
+		display: grid;
+		grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+		gap: 1.5rem;
+		width: 100%;
+		position: relative;
+	}
+
+	.branch {
+		position: relative;
+	}
+
+	.branch-line {
+		position: absolute;
+		top: -3rem;
+		left: 50%;
+		width: 1px;
+		height: 3rem;
+		background: rgba(255, 255, 255, 0.2);
+	}
+
+	.branch-node {
+		background: rgba(0, 0, 0, 0.8);
+		border: 2px solid;
+		border-radius: 12px;
+		padding: 1rem;
+		cursor: pointer;
+		transition: all 0.3s ease;
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		gap: 0.5rem;
+	}
+
+	.branch-node:hover {
+		transform: translateY(-4px);
+		box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+	}
+
+	.node-icon {
+		font-size: 1.2rem;
+	}
+
+	.node-name {
+		font-size: 0.75rem;
+		font-weight: 600;
+		color: #ffffff;
+		text-align: center;
+	}
+
+	.node-value {
+		font-size: 1rem;
+		font-weight: 700;
+	}
+
+	/* Metrics Panel */
+	.metrics-panel {
+		display: flex;
+		flex-direction: column;
+		gap: 1.5rem;
+		overflow-y: auto;
+	}
+
+	/* Summary Cards */
+	.summary-cards {
+		display: grid;
+		grid-template-columns: 1fr 1fr;
+		gap: 1rem;
+	}
+
+	.summary-card {
+		background: linear-gradient(135deg, rgba(0, 229, 255, 0.1), rgba(0, 229, 255, 0.05));
+		border: 1px solid rgba(0, 229, 255, 0.2);
+		border-radius: 16px;
+		padding: 1.5rem;
+		display: flex;
+		align-items: center;
+		gap: 1rem;
+	}
+
+	.card-icon {
+		font-size: 2rem;
+		filter: saturate(1.5);
+	}
+
+	.card-content {
+		flex: 1;
+		text-align: center;
+	}
+
+	.card-value {
+		font-size: 1.5rem;
+		font-weight: 700;
+		color: #00E5FF;
+		margin-bottom: 0.25rem;
+	}
+
+	.card-label {
+		font-size: 0.65rem;
+		color: rgba(255, 255, 255, 0.5);
+		letter-spacing: 0.1em;
+	}
+
+	/* Top Divisions */
+	.top-divisions {
+		background: rgba(0, 0, 0, 0.6);
+		backdrop-filter: blur(20px);
+		border: 1px solid rgba(255, 255, 255, 0.1);
+		border-radius: 16px;
+		padding: 1.5rem;
+	}
+
+	.section-title {
+		margin: 0 0 1rem 0;
+		font-size: 0.85rem;
+		color: rgba(255, 255, 255, 0.6);
+		font-weight: 600;
+		letter-spacing: 0.1em;
+	}
+
+	.divisions-list {
+		display: flex;
+		flex-direction: column;
+		gap: 0.75rem;
+	}
+
+	.division-item {
 		display: flex;
 		align-items: center;
 		gap: 0.75rem;
 		padding: 0.5rem;
-		background: #0a0a0a;
-		border-radius: 4px;
+		background: rgba(255, 255, 255, 0.03);
+		border-radius: 8px;
+		cursor: pointer;
 		transition: all 0.2s ease;
 	}
 
-	.perf-item:hover {
-		background: rgba(10, 79, 60, 0.05);
+	.division-item:hover {
+		background: rgba(0, 229, 255, 0.05);
+		transform: translateX(4px);
 	}
 
-	.perf-rank {
-		width: 24px;
-		height: 24px;
-		border: 1px solid;
-		border-radius: 4px;
-		padding: 4px;
+	.division-rank {
+		font-weight: 700;
+		min-width: 30px;
 	}
 
-	.perf-rank svg {
-		width: 100%;
-		height: 100%;
-	}
-
-	.perf-details {
+	.division-info {
 		flex: 1;
+		display: flex;
+		flex-direction: column;
+		gap: 0.25rem;
 	}
 
-	.perf-name {
+	.division-name {
 		font-size: 0.75rem;
-		color: #e0e0e0;
+		color: #ffffff;
 		font-weight: 500;
-		margin-bottom: 0.2rem;
 	}
 
-	.perf-stats {
+	.division-bar {
+		height: 3px;
+		background: rgba(255, 255, 255, 0.1);
+		border-radius: 2px;
+		overflow: hidden;
+	}
+
+	.bar-fill {
+		height: 100%;
+		transition: width 0.3s ease;
+	}
+
+	.division-stats {
+		display: flex;
+		flex-direction: column;
+		align-items: flex-end;
+		gap: 0.1rem;
+	}
+
+	.asset-count {
+		font-size: 0.85rem;
+		font-weight: 600;
+	}
+
+	.asset-percent {
 		font-size: 0.65rem;
-		color: #b8a678;
+		color: rgba(255, 255, 255, 0.5);
 	}
 
-	.separator {
-		margin: 0 0.3rem;
-		color: #1a1a1a;
+	/* Health Distribution */
+	.health-distribution {
+		background: rgba(0, 0, 0, 0.6);
+		backdrop-filter: blur(20px);
+		border: 1px solid rgba(255, 255, 255, 0.1);
+		border-radius: 16px;
+		padding: 1.5rem;
 	}
 
-	.health-grid {
-		display: grid;
-		grid-template-columns: repeat(3, 1fr);
+	.health-chart {
+		display: flex;
+		flex-direction: column;
 		gap: 0.75rem;
 	}
 
-	.health-card {
-		background: #0a0a0a;
-		border: 1px solid;
-		border-radius: 6px;
-		padding: 1rem;
-		text-align: center;
-	}
-
-	.health-value {
-		font-size: 1.2rem;
-		font-weight: 600;
-		margin-bottom: 0.25rem;
+	.health-bar {
+		display: grid;
+		grid-template-columns: 60px 1fr 40px;
+		align-items: center;
+		gap: 0.75rem;
 	}
 
 	.health-label {
-		font-size: 0.6rem;
-		color: #b8a678;
-		text-transform: uppercase;
+		font-size: 0.7rem;
+		color: rgba(255, 255, 255, 0.6);
+		font-weight: 500;
 	}
 
+	.health-progress {
+		height: 6px;
+		background: rgba(255, 255, 255, 0.1);
+		border-radius: 3px;
+		overflow: hidden;
+	}
+
+	.progress-fill {
+		height: 100%;
+		transition: width 0.5s ease;
+	}
+
+	.health-count {
+		font-size: 0.75rem;
+		color: rgba(255, 255, 255, 0.8);
+		text-align: right;
+	}
+
+	/* Loading State */
 	.loading-state {
-		flex: 1;
 		display: flex;
 		flex-direction: column;
 		align-items: center;
 		justify-content: center;
+		height: 100%;
+		gap: 2rem;
+	}
+
+	.org-loader {
+		display: flex;
 		gap: 1rem;
+		align-items: center;
 	}
 
-	.spinner {
-		width: 40px;
-		height: 40px;
-		border: 3px solid #1a1a1a;
-		border-top-color: #0a4f3c;
+	.org-node {
+		width: 20px;
+		height: 20px;
+		background: #00E5FF;
 		border-radius: 50%;
-		animation: spin 1s linear infinite;
+		animation: orgPulse 1.5s ease-in-out infinite;
 	}
 
-	.drill-view {
+	.org-node:nth-child(2) {
+		animation-delay: 0.3s;
+	}
+
+	.org-node:nth-child(3) {
+		animation-delay: 0.6s;
+	}
+
+	@keyframes orgPulse {
+		0%, 100% { transform: scale(1); opacity: 0.5; }
+		50% { transform: scale(1.5); opacity: 1; }
+	}
+
+	/* Detail View */
+	.detail-view {
 		display: flex;
 		flex-direction: column;
 		height: 100%;
 	}
 
-	.drill-header {
+	.detail-header {
 		display: flex;
 		justify-content: space-between;
 		align-items: center;
-		padding: 1rem 1.5rem;
-		border-bottom: 1px solid #0a4f3c;
-		background: rgba(10, 79, 60, 0.05);
+		padding: 1rem;
+		background: linear-gradient(135deg, rgba(0, 229, 255, 0.1), transparent);
+		border-radius: 12px;
+		margin-bottom: 1rem;
 	}
 
-	.drill-header h4 {
+	.detail-info h3 {
 		margin: 0;
-		color: #0a4f3c;
 		font-size: 1rem;
+		color: #00E5FF;
+		margin-bottom: 0.5rem;
+	}
+
+	.detail-stats {
+		display: flex;
+		gap: 0.75rem;
+	}
+
+	.stat-badge {
+		background: rgba(0, 229, 255, 0.2);
+		border: 1px solid #00E5FF;
+		padding: 0.25rem 0.5rem;
+		border-radius: 6px;
+		font-size: 0.7rem;
+		color: #00E5FF;
 	}
 
 	.close-btn {
-		background: rgba(255, 0, 102, 0.1);
-		border: 1px solid #ff0066;
-		color: #ff0066;
-		width: 30px;
-		height: 30px;
-		border-radius: 4px;
+		background: rgba(255, 23, 68, 0.1);
+		border: none;
+		color: #FF1744;
+		width: 32px;
+		height: 32px;
+		border-radius: 8px;
+		font-size: 1.5rem;
 		cursor: pointer;
 		display: flex;
 		align-items: center;
 		justify-content: center;
-		font-size: 1rem;
+		transition: all 0.2s ease;
+	}
+
+	.close-btn:hover {
+		background: rgba(255, 23, 68, 0.2);
+		transform: scale(1.1);
+	}
+
+	.detail-table-wrapper {
+		flex: 1;
+		overflow: auto;
+	}
+
+	.detail-table {
+		width: 100%;
+		border-collapse: collapse;
+	}
+
+	.detail-table th {
+		background: rgba(0, 0, 0, 0.4);
+		color: rgba(255, 255, 255, 0.6);
+		padding: 0.75rem;
+		text-align: left;
+		font-size: 0.7rem;
 		font-weight: 600;
+		letter-spacing: 0.05em;
+		position: sticky;
+		top: 0;
+	}
+
+	.detail-table td {
+		padding: 0.75rem;
+		border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+		font-size: 0.8rem;
+		color: rgba(255, 255, 255, 0.8);
 	}
 
 	.host-cell {
-		font-family: 'Courier New', monospace;
-		color: #0a4f3c;
-		font-weight: 500;
+		font-family: 'SF Mono', monospace;
+		color: #00E5FF;
 	}
 
 	.status-badge {
-		padding: 0.2rem 0.4rem;
-		border-radius: 3px;
-		font-size: 0.7rem;
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		width: 20px;
+		height: 20px;
+		border-radius: 4px;
 		font-weight: 600;
-		text-transform: uppercase;
+		font-size: 0.75rem;
 	}
 
-	.status-badge.active {
-		background: rgba(10, 79, 60, 0.2);
-		color: #0a4f3c;
-		border: 1px solid #0a4f3c;
+	.status-badge.success {
+		background: rgba(0, 229, 255, 0.2);
+		color: #00E5FF;
 	}
 
-	.status-badge.inactive {
-		background: rgba(255, 0, 102, 0.1);
-		color: #ff0066;
-		border: 1px solid #ff0066;
+	.status-badge.danger {
+		background: rgba(255, 23, 68, 0.2);
+		color: #FF1744;
 	}
 
-	@keyframes spin {
-		to { transform: rotate(360deg); }
+	.status-badge.warning {
+		background: rgba(255, 214, 0, 0.2);
+		color: #FFD600;
+	}
+
+	/* Responsive */
+	@media (max-width: 1200px) {
+		.content-area {
+			grid-template-columns: 1fr;
+		}
+		
+		.metrics-panel {
+			display: grid;
+			grid-template-columns: repeat(3, 1fr);
+			gap: 1rem;
+		}
+	}
+
+	@media (max-width: 768px) {
+		.header-section {
+			flex-direction: column;
+			gap: 1rem;
+		}
+		
+		.metrics-panel {
+			grid-template-columns: 1fr;
+		}
+	}
+
+	/* Scrollbar */
+	::-webkit-scrollbar {
+		width: 6px;
+	}
+
+	::-webkit-scrollbar-track {
+		background: rgba(255, 255, 255, 0.02);
+	}
+
+	::-webkit-scrollbar-thumb {
+		background: rgba(0, 229, 255, 0.2);
+		border-radius: 3px;
 	}
 </style>
