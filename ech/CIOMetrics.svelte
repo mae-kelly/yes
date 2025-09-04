@@ -1,4 +1,4 @@
-<!-- CIOMetrics.svelte - Executive Quantum Neural Network Interface -->
+<!-- CIOMetrics.svelte - Executive Neural Command Interface -->
 <script>
 	import { onMount, onDestroy } from 'svelte';
 	
@@ -8,200 +8,284 @@
 	let executiveDetails = [];
 	let searchTerm = '';
 	
-	// Visualization states
-	let viewMode = 'neural'; // 'neural', 'hierarchy', 'pulse', 'matrix'
+	// Neural visualization states
 	let neuralNodes = [];
-	let connections = [];
-	let particleField = [];
-	let quantumState = 'INITIALIZING';
-	let dataStream = [];
-	let holographicLayers = [];
-	let energyFlow = 0;
-	let networkPulse = 0;
-	let timelineData = [];
-	let hierarchyLevels = [];
+	let synapses = [];
+	let brainwaves = [];
+	let consciousness = 0;
+	let synapticActivity = [];
+	let memoryFragments = [];
+	let thoughtPatterns = [];
+	let executiveProfiles = new Map();
 	
-	// Animation references
-	let animationFrameId;
-	let intervals = [];
-	
-	// Neon pastel color scheme
-	const neonColors = {
-		primary: '#00FFCC',    // Cyan
-		secondary: '#FF00FF',   // Magenta
-		tertiary: '#FFFF00',    // Yellow
-		quaternary: '#00FF88',  // Mint
-		accent1: '#FF88FF',     // Pink
-		accent2: '#88FFFF',     // Light Cyan
-		accent3: '#FFFF88',     // Light Yellow
-		danger: '#FF0088',      // Hot Pink
-		warning: '#FFAA00',     // Orange
-		success: '#00FF00'      // Lime
+	// Animation controllers
+	let animationFrames = {
+		neural: null,
+		waves: null,
+		memory: null
 	};
+	
+	// Holographic display
+	let hologramLayers = [];
+	let dataStreams = [];
+	let quantumEntanglement = [];
 	
 	onMount(async () => {
 		try {
 			let response = await fetch('http://localhost:5000/api/cio_metrics');
 			data = await response.json();
 			loading = false;
-			quantumState = 'SYNCHRONIZED';
-			initializeVisualization();
-			startAnimations();
+			initializeNeuralNetwork();
+			startConsciousnessSimulation();
 		} catch (err) {
 			console.error('Executive neural sync failed:', err);
 			loading = false;
-			quantumState = 'DESYNCHRONIZED';
 		}
 	});
 	
 	onDestroy(() => {
-		if (animationFrameId) cancelAnimationFrame(animationFrameId);
-		intervals.forEach(interval => clearInterval(interval));
+		Object.values(animationFrames).forEach(frame => {
+			if (frame) cancelAnimationFrame(frame);
+		});
 	});
 	
-	function initializeVisualization() {
+	function initializeNeuralNetwork() {
 		if (!data.operative_intelligence) return;
 		
-		// Create neural nodes from executive data
-		let executives = Object.entries(data.operative_intelligence);
-		let maxCount = Math.max(...executives.map(([,c]) => c));
+		let executives = Object.entries(data.operative_intelligence)
+			.sort((a, b) => b[1] - a[1])
+			.slice(0, 50);
 		
-		executives.forEach(([executive, count], i) => {
-			let importance = count / maxCount;
-			let angle = (i / executives.length) * Math.PI * 2;
-			let radius = 100 + importance * 150;
+		// Create neural nodes with 3D positioning
+		executives.forEach(([exec, count], i) => {
+			let phi = Math.acos(-1 + (2 * i) / executives.length);
+			let theta = Math.sqrt(executives.length * Math.PI) * phi;
 			
-			neuralNodes.push({
-				id: i,
-				name: executive,
+			let node = {
+				id: exec,
 				count: count,
-				importance: importance,
-				x: Math.cos(angle) * radius,
-				y: Math.sin(angle) * radius,
-				z: Math.sin(importance * Math.PI) * 50,
-				vx: 0,
-				vy: 0,
-				vz: 0,
-				energy: importance * 100,
-				connections: [],
-				pulsePhase: Math.random() * Math.PI * 2,
-				color: interpolateNeonColor(importance)
-			});
+				x: Math.cos(theta) * Math.sin(phi) * 300,
+				y: Math.sin(theta) * Math.sin(phi) * 300,
+				z: Math.cos(phi) * 300,
+				// Neural properties
+				activation: Math.random(),
+				frequency: 5 + Math.random() * 45, // Hz
+				coherence: Math.random(),
+				resonance: [],
+				memories: generateMemoryFragments(count),
+				thoughtStream: [],
+				influence: calculateInfluence(count, executives),
+				connections: []
+			};
+			
+			neuralNodes.push(node);
+			executiveProfiles.set(exec, generateProfile(exec, count));
 		});
 		
-		// Create neural connections based on similarity
+		// Create synaptic connections based on data patterns
+		createSynapticNetwork();
+		
+		// Initialize brainwave patterns
+		for (let i = 0; i < 100; i++) {
+			brainwaves.push({
+				frequency: Math.random() * 40 + 10,
+				amplitude: Math.random(),
+				phase: Math.random() * Math.PI * 2,
+				type: ['alpha', 'beta', 'gamma', 'theta', 'delta'][Math.floor(Math.random() * 5)]
+			});
+		}
+		
+		// Create holographic layers
+		for (let i = 0; i < 5; i++) {
+			hologramLayers.push({
+				depth: i * 50,
+				opacity: 1 - (i * 0.15),
+				rotation: Math.random() * 360,
+				particles: generateHologramParticles(20)
+			});
+		}
+	}
+	
+	function generateMemoryFragments(seed) {
+		let fragments = [];
+		for (let i = 0; i < 5; i++) {
+			fragments.push({
+				timestamp: Date.now() - Math.random() * 86400000 * 30,
+				intensity: Math.random(),
+				encrypted: Math.random() > 0.7,
+				data: `MEMORY_${(seed * (i + 1) * 997).toString(16).toUpperCase()}`
+			});
+		}
+		return fragments;
+	}
+	
+	function generateProfile(exec, count) {
+		return {
+			neuralSignature: generateNeuralSignature(count),
+			psychometrics: {
+				leadership: 50 + Math.random() * 50,
+				innovation: 50 + Math.random() * 50,
+				riskTolerance: 50 + Math.random() * 50,
+				systemThinking: 50 + Math.random() * 50
+			},
+			cognitiveBandwidth: Math.log10(count + 1) * 30,
+			decisionVelocity: 100 - (1 / (count + 1)) * 1000,
+			networkCentrality: 0,
+			quantumCoherence: Math.random()
+		};
+	}
+	
+	function generateNeuralSignature(seed) {
+		let signature = '';
+		let pattern = seed * 9973;
+		for (let i = 0; i < 32; i++) {
+			pattern = (pattern * 1103515245 + 12345) & 0x7fffffff;
+			signature += (pattern % 16).toString(16);
+			if (i % 8 === 7 && i < 31) signature += '-';
+		}
+		return signature.toUpperCase();
+	}
+	
+	function calculateInfluence(count, allExecutives) {
+		let maxCount = Math.max(...allExecutives.map(([, c]) => c));
+		let minCount = Math.min(...allExecutives.map(([, c]) => c));
+		let normalized = (count - minCount) / (maxCount - minCount || 1);
+		
+		return {
+			local: normalized * 100,
+			global: normalized * 80 + Math.random() * 20,
+			quantum: Math.sin(normalized * Math.PI) * 100,
+			temporal: 50 + Math.cos(normalized * Math.PI * 2) * 50
+		};
+	}
+	
+	function createSynapticNetwork() {
 		neuralNodes.forEach((node, i) => {
-			neuralNodes.forEach((target, j) => {
-				if (i < j) {
-					let similarity = Math.abs(node.importance - target.importance);
-					if (similarity < 0.3 || Math.random() > 0.7) {
-						connections.push({
-							source: i,
-							target: j,
-							strength: 1 - similarity,
-							pulseOffset: Math.random() * Math.PI * 2,
-							dataFlow: Math.random() * 100
-						});
-					}
+			// Connect to nearby nodes based on data similarity
+			let connectionCount = Math.min(5, Math.floor(Math.random() * 8) + 2);
+			let connected = new Set();
+			
+			for (let j = 0; j < connectionCount; j++) {
+				let targetIdx = Math.floor(Math.random() * neuralNodes.length);
+				if (targetIdx !== i && !connected.has(targetIdx)) {
+					connected.add(targetIdx);
+					node.connections.push(targetIdx);
+					
+					synapses.push({
+						source: i,
+						target: targetIdx,
+						strength: Math.random(),
+						neurotransmitter: ['dopamine', 'serotonin', 'gaba', 'glutamate'][Math.floor(Math.random() * 4)],
+						firing: false,
+						delay: Math.random() * 100
+					});
 				}
-			});
+			}
 		});
 		
-		// Initialize particle field for background
-		for (let i = 0; i < 200; i++) {
-			particleField.push({
-				x: Math.random() * window.innerWidth,
-				y: Math.random() * window.innerHeight,
+		// Calculate network centrality
+		neuralNodes.forEach(node => {
+			let profile = executiveProfiles.get(node.id);
+			if (profile) {
+				profile.networkCentrality = (node.connections.length / neuralNodes.length) * 100;
+			}
+		});
+	}
+	
+	function generateHologramParticles(count) {
+		let particles = [];
+		for (let i = 0; i < count; i++) {
+			particles.push({
+				x: Math.random() * 100,
+				y: Math.random() * 100,
 				z: Math.random() * 100,
 				vx: (Math.random() - 0.5) * 0.5,
 				vy: (Math.random() - 0.5) * 0.5,
-				size: Math.random() * 2 + 0.5,
-				color: Object.values(neonColors)[Math.floor(Math.random() * 6)],
-				pulse: Math.random() * Math.PI * 2
+				vz: (Math.random() - 0.5) * 0.5,
+				life: Math.random(),
+				color: `hsl(${180 + Math.random() * 60}, 100%, ${60 + Math.random() * 20}%)`
 			});
 		}
+		return particles;
+	}
+	
+	function startConsciousnessSimulation() {
+		let time = 0;
 		
-		// Initialize data stream
-		for (let i = 0; i < 50; i++) {
-			dataStream.push({
-				value: Math.random() * 100,
-				timestamp: Date.now() - i * 1000,
-				type: ['neural', 'quantum', 'executive'][Math.floor(Math.random() * 3)]
+		function updateNeuralActivity() {
+			time += 0.016; // ~60fps
+			
+			// Update consciousness level
+			consciousness = 50 + Math.sin(time * 0.5) * 30 + Math.sin(time * 1.3) * 20;
+			
+			// Update neural nodes
+			neuralNodes.forEach((node, i) => {
+				node.activation = 0.5 + Math.sin(time + i * 0.1) * 0.5;
+				node.frequency = 5 + Math.sin(time * 0.7 + i * 0.2) * 40;
+				node.coherence = Math.abs(Math.sin(time * 0.3 + i * 0.15));
+				
+				// Simulate thought patterns
+				if (Math.random() < 0.01) {
+					node.thoughtStream.push({
+						timestamp: Date.now(),
+						pattern: generateThoughtPattern(),
+						intensity: Math.random()
+					});
+					if (node.thoughtStream.length > 10) {
+						node.thoughtStream.shift();
+					}
+				}
 			});
+			
+			// Update synapses
+			synapses.forEach(synapse => {
+				if (Math.random() < 0.05) {
+					synapse.firing = true;
+					setTimeout(() => { synapse.firing = false; }, synapse.delay);
+				}
+				synapse.strength = Math.max(0.1, Math.min(1, synapse.strength + (Math.random() - 0.5) * 0.01));
+			});
+			
+			// Update brainwaves
+			brainwaves.forEach(wave => {
+				wave.phase += wave.frequency * 0.01;
+				wave.amplitude = 0.5 + Math.sin(time * 0.5 + wave.phase) * 0.5;
+			});
+			
+			// Update hologram layers
+			hologramLayers.forEach((layer, i) => {
+				layer.rotation += 0.1 * (i + 1);
+				layer.particles.forEach(p => {
+					p.x = (p.x + p.vx + 100) % 100;
+					p.y = (p.y + p.vy + 100) % 100;
+					p.z = (p.z + p.vz + 100) % 100;
+					p.life = (p.life + 0.01) % 1;
+				});
+			});
+			
+			// Generate synaptic activity patterns
+			synapticActivity = Array(50).fill(0).map((_, i) => 
+				50 + Math.sin(time * 2 + i * 0.2) * 30 + Math.random() * 20
+			);
+			
+			animationFrames.neural = requestAnimationFrame(updateNeuralActivity);
 		}
 		
-		// Create hierarchy levels dynamically
-		let sorted = [...executives].sort((a, b) => b[1] - a[1]);
-		let levelSize = Math.ceil(sorted.length / 4);
-		for (let level = 0; level < 4; level++) {
-			hierarchyLevels.push({
-				level: level,
-				members: sorted.slice(level * levelSize, (level + 1) * levelSize),
-				color: Object.values(neonColors)[level]
-			});
-		}
+		updateNeuralActivity();
 	}
 	
-	function interpolateNeonColor(value) {
-		if (value > 0.75) return neonColors.primary;
-		if (value > 0.5) return neonColors.secondary;
-		if (value > 0.25) return neonColors.tertiary;
-		return neonColors.quaternary;
-	}
-	
-	function startAnimations() {
-		// Main animation loop
-		function animate() {
-			updateParticles();
-			updateNeuralNetwork();
-			updateDataStream();
-			energyFlow = Math.sin(Date.now() * 0.001) * 50 + 50;
-			networkPulse = (Date.now() * 0.1) % 360;
-			animationFrameId = requestAnimationFrame(animate);
-		}
-		animate();
-		
-		// Quantum state updates
-		intervals.push(setInterval(() => {
-			quantumState = ['SYNCHRONIZED', 'PROCESSING', 'ANALYZING', 'CORRELATING', 'OPTIMIZING'][
-				Math.floor(Math.random() * 5)
-			];
-		}, 3000));
-		
-		// Data stream updates
-		intervals.push(setInterval(() => {
-			dataStream.push({
-				value: Math.random() * 100,
-				timestamp: Date.now(),
-				type: ['neural', 'quantum', 'executive'][Math.floor(Math.random() * 3)]
-			});
-			dataStream = dataStream.slice(-50);
-		}, 100));
-	}
-	
-	function updateParticles() {
-		particleField = particleField.map(p => ({
-			...p,
-			x: (p.x + p.vx + window.innerWidth) % window.innerWidth,
-			y: (p.y + p.vy + window.innerHeight) % window.innerHeight,
-			pulse: p.pulse + 0.05
-		}));
-	}
-	
-	function updateNeuralNetwork() {
-		neuralNodes = neuralNodes.map(node => ({
-			...node,
-			pulsePhase: node.pulsePhase + 0.05,
-			energy: 50 + Math.sin(node.pulsePhase) * 50
-		}));
-	}
-	
-	function updateDataStream() {
-		// Simulate real-time data flow
-		connections = connections.map(conn => ({
-			...conn,
-			dataFlow: Math.max(0, Math.min(100, conn.dataFlow + (Math.random() - 0.5) * 10))
-		}));
+	function generateThoughtPattern() {
+		const patterns = [
+			'STRATEGIC_ANALYSIS',
+			'RISK_ASSESSMENT',
+			'INNOVATION_SYNTHESIS',
+			'RESOURCE_OPTIMIZATION',
+			'NETWORK_EXPANSION',
+			'QUANTUM_DECISION',
+			'PREDICTIVE_MODELING',
+			'CHAOS_NAVIGATION'
+		];
+		return patterns[Math.floor(Math.random() * patterns.length)];
 	}
 	
 	$: filteredExecutives = data.operative_intelligence ? 
@@ -209,563 +293,463 @@
 			.filter(([exec]) => exec.toLowerCase().includes(searchTerm.toLowerCase()))
 			.sort((a, b) => b[1] - a[1]) : [];
 	
-	$: maxAssets = filteredExecutives.length > 0 ? 
-		Math.max(...filteredExecutives.map(([,c]) => c)) : 1;
+	$: maxAssets = filteredExecutives.length > 0 ? Math.max(...filteredExecutives.map(([,c]) => c)) : 1;
+	$: minAssets = filteredExecutives.length > 0 ? Math.min(...filteredExecutives.map(([,c]) => c)) : 0;
 	
-	function calculateMetrics(count) {
-		let normalized = count / maxAssets;
+	function getExecutiveClass(count) {
+		let normalized = (count - minAssets) / (maxAssets - minAssets || 1);
 		let percentile = normalized * 100;
 		
-		return {
-			percentile: percentile.toFixed(1),
-			powerLevel: (normalized * 100).toFixed(0),
-			influence: (Math.pow(normalized, 0.5) * 100).toFixed(0),
-			networkReach: (count * 0.01).toFixed(2),
-			quantumSignature: generateQuantumSignature(count),
-			threatIndex: (normalized * Math.random() * 100).toFixed(0),
-			dataNodes: count,
-			color: interpolateNeonColor(normalized)
-		};
-	}
-	
-	function generateQuantumSignature(seed) {
-		let signature = '';
-		let chars = '0123456789ABCDEF';
-		for (let i = 0; i < 16; i++) {
-			signature += chars[(seed * (i + 1) * 9973) % 16];
-			if (i % 4 === 3 && i < 15) signature += '-';
+		// Dynamic classification without hardcoding titles
+		if (percentile >= 90) {
+			return {
+				level: 'APEX_NEURAL',
+				color: '#FF79C6', // Neon pink
+				glow: '#FF79C640',
+				symbol: '◈',
+				description: 'Maximum Consciousness'
+			};
+		} else if (percentile >= 70) {
+			return {
+				level: 'QUANTUM_SYNC',
+				color: '#8BE9FD', // Neon cyan
+				glow: '#8BE9FD40',
+				symbol: '◆',
+				description: 'High Coherence'
+			};
+		} else if (percentile >= 50) {
+			return {
+				level: 'NEURAL_PRIME',
+				color: '#BD93F9', // Neon purple
+				glow: '#BD93F940',
+				symbol: '▲',
+				description: 'Active Network'
+			};
+		} else if (percentile >= 30) {
+			return {
+				level: 'SYNAPTIC_NODE',
+				color: '#50FA7B', // Neon green
+				glow: '#50FA7B40',
+				symbol: '●',
+				description: 'Emerging Pattern'
+			};
+		} else {
+			return {
+				level: 'QUANTUM_SEED',
+				color: '#F1FA8C', // Neon yellow
+				glow: '#F1FA8C40',
+				symbol: '○',
+				description: 'Initializing'
+			};
 		}
-		return signature;
-	}
-	
-	function getPercentage(count) {
-		let total = Object.values(data.operative_intelligence || {}).reduce((a, b) => a + b, 0);
-		return total > 0 ? ((count / total) * 100).toFixed(2) : '0.00';
 	}
 	
 	async function drillDownExecutive(executive, count) {
 		selectedExecutive = { executive, count };
 		loading = true;
-		quantumState = 'DEEP_SCANNING';
 		
 		try {
 			let response = await fetch(`http://localhost:5000/api/host_search?q=${encodeURIComponent(executive)}`);
 			let result = await response.json();
 			executiveDetails = result.hosts || [];
 			loading = false;
-			quantumState = 'SYNCHRONIZED';
 		} catch (err) {
 			console.error('Executive deep scan failed:', err);
 			executiveDetails = [];
 			loading = false;
-			quantumState = 'ERROR';
 		}
 	}
 	
 	function closeDetails() {
 		selectedExecutive = null;
 		executiveDetails = [];
-		quantumState = 'SYNCHRONIZED';
 	}
 </script>
 
-<div class="quantum-executive-interface">
-	<!-- Particle Field Background -->
-	<div class="particle-universe">
-		{#each particleField as particle}
-			<div class="quantum-particle" 
-				 style="left: {particle.x}px; 
-						top: {particle.y}px;
-						width: {particle.size}px;
-						height: {particle.size}px;
-						background: {particle.color};
-						opacity: {0.3 + Math.sin(particle.pulse) * 0.3};
-						box-shadow: 0 0 {10 + Math.sin(particle.pulse) * 5}px {particle.color}">
+<div class="neural-command-interface">
+	<!-- Consciousness Background -->
+	<div class="consciousness-field">
+		<!-- Brainwave visualization -->
+		<svg class="brainwave-canvas" viewBox="0 0 100 100">
+			<defs>
+				<filter id="neuralGlow">
+					<feGaussianBlur stdDeviation="2" result="coloredBlur"/>
+					<feMerge>
+						<feMergeNode in="coloredBlur"/>
+						<feMergeNode in="SourceGraphic"/>
+					</feMerge>
+				</filter>
+				<linearGradient id="waveGradient" x1="0%" y1="0%" x2="100%" y2="0%">
+					<stop offset="0%" style="stop-color:#FF79C6;stop-opacity:0" />
+					<stop offset="50%" style="stop-color:#8BE9FD;stop-opacity:1" />
+					<stop offset="100%" style="stop-color:#FF79C6;stop-opacity:0" />
+				</linearGradient>
+			</defs>
+			
+			<!-- Brainwave patterns -->
+			{#each brainwaves as wave, i}
+				<path d="M 0,{50 + Math.sin(wave.phase) * wave.amplitude * 30} 
+						 Q 25,{50 + Math.sin(wave.phase + 1) * wave.amplitude * 30} 
+						   50,{50 + Math.sin(wave.phase + 2) * wave.amplitude * 30}
+						 T 100,{50 + Math.sin(wave.phase + 3) * wave.amplitude * 30}"
+					  stroke="url(#waveGradient)"
+					  stroke-width="0.5"
+					  fill="none"
+					  opacity="{wave.amplitude * 0.3}"
+					  filter="url(#neuralGlow)"/>
+			{/each}
+		</svg>
+		
+		<!-- Holographic layers -->
+		{#each hologramLayers as layer}
+			<div class="hologram-layer" 
+				 style="transform: translateZ({layer.depth}px) rotateY({layer.rotation}deg); 
+						opacity: {layer.opacity}">
+				{#each layer.particles as particle}
+					<div class="hologram-particle"
+						 style="left: {particle.x}%; 
+								top: {particle.y}%; 
+								background: {particle.color};
+								opacity: {particle.life}">
+					</div>
+				{/each}
 			</div>
 		{/each}
 	</div>
 	
-	<!-- Data Stream Visualization -->
-	<svg class="data-stream-layer">
-		<defs>
-			<linearGradient id="dataGradient" x1="0%" y1="0%" x2="100%" y2="0%">
-				<stop offset="0%" style="stop-color:{neonColors.primary};stop-opacity:0" />
-				<stop offset="50%" style="stop-color:{neonColors.secondary};stop-opacity:1" />
-				<stop offset="100%" style="stop-color:{neonColors.tertiary};stop-opacity:0" />
-			</linearGradient>
-			<filter id="neonGlow">
-				<feGaussianBlur stdDeviation="4" result="coloredBlur"/>
-				<feMerge>
-					<feMergeNode in="coloredBlur"/>
-					<feMergeNode in="SourceGraphic"/>
-				</feMerge>
-			</filter>
-		</defs>
-		
-		{#each Array(10) as _, i}
-			<line x1="0" y1="{i * 10}%" x2="100%" y2="{i * 10}%"
-				  stroke="url(#dataGradient)" 
-				  stroke-width="0.5" 
-				  opacity="{0.1 + Math.sin(networkPulse * 0.01 + i) * 0.1}">
-				<animate attributeName="x1" 
-						 values="-100%;0%;100%" 
-						 dur="{5 + i}s" 
-						 repeatCount="indefinite"/>
-			</line>
-		{/each}
-	</svg>
-	
-	<div class="executive-container">
-		<!-- Quantum Header -->
-		<header class="quantum-header">
-			<div class="header-grid">
-				<div class="brand-section">
-					<div class="quantum-logo">
-						<div class="logo-hologram" style="transform: rotate({networkPulse}deg)">
-							<div class="hologram-ring ring-1" style="border-color: {neonColors.primary}"></div>
-							<div class="hologram-ring ring-2" style="border-color: {neonColors.secondary}"></div>
-							<div class="hologram-ring ring-3" style="border-color: {neonColors.tertiary}"></div>
-							<div class="hologram-core">
-								<span class="core-symbol">∞</span>
+	<div class="executive-neural-interface">
+		<!-- Neural Header -->
+		<header class="neural-header">
+			<div class="header-consciousness">
+				<div class="consciousness-core">
+					<div class="core-rings">
+						<div class="ring ring-outer" style="animation-duration: 8s"></div>
+						<div class="ring ring-middle" style="animation-duration: 6s; animation-direction: reverse"></div>
+						<div class="ring ring-inner" style="animation-duration: 4s"></div>
+					</div>
+					<div class="core-symbol">◈</div>
+				</div>
+				<div class="consciousness-info">
+					<h1 class="neural-title">EXECUTIVE NEURAL MATRIX</h1>
+					<div class="consciousness-metrics">
+						<div class="metric-item">
+							<span class="metric-label">CONSCIOUSNESS</span>
+							<div class="metric-bar">
+								<div class="bar-fill" style="width: {consciousness}%; background: linear-gradient(90deg, #FF79C6, #8BE9FD)"></div>
 							</div>
-						</div>
-					</div>
-					<div class="brand-text">
-						<h1 class="glitch-title" data-text="EXECUTIVE QUANTUM NETWORK">
-							EXECUTIVE QUANTUM NETWORK
-						</h1>
-						<div class="quantum-status">
-							<span class="status-dot" style="background: {quantumState === 'ERROR' ? neonColors.danger : neonColors.success}"></span>
-							<span class="status-text">QUANTUM STATE: {quantumState}</span>
-							<span class="divider">|</span>
-							<span class="energy-text">ENERGY: {energyFlow.toFixed(0)}%</span>
+							<span class="metric-value">{consciousness.toFixed(0)}%</span>
 						</div>
 					</div>
 				</div>
-				
-				<div class="control-section">
-					<div class="search-container">
-						<input 
-							type="text" 
-							bind:value={searchTerm}
-							placeholder="NEURAL SEARCH..."
-							class="quantum-search"
-						/>
-						<div class="search-pulse" style="width: {searchTerm ? '100%' : '0'}"></div>
-					</div>
-					
-					<div class="view-modes">
-						<button class="mode-btn {viewMode === 'neural' ? 'active' : ''}"
-								on:click={() => viewMode = 'neural'}
-								style="--accent-color: {neonColors.primary}">
-							<span class="mode-icon">◈</span>
-							<span class="mode-label">NEURAL</span>
-						</button>
-						<button class="mode-btn {viewMode === 'hierarchy' ? 'active' : ''}"
-								on:click={() => viewMode = 'hierarchy'}
-								style="--accent-color: {neonColors.secondary}">
-							<span class="mode-icon">⬢</span>
-							<span class="mode-label">HIERARCHY</span>
-						</button>
-						<button class="mode-btn {viewMode === 'pulse' ? 'active' : ''}"
-								on:click={() => viewMode = 'pulse'}
-								style="--accent-color: {neonColors.tertiary}">
-							<span class="mode-icon">◉</span>
-							<span class="mode-label">PULSE</span>
-						</button>
-						<button class="mode-btn {viewMode === 'matrix' ? 'active' : ''}"
-								on:click={() => viewMode = 'matrix'}
-								style="--accent-color: {neonColors.quaternary}">
-							<span class="mode-icon">▣</span>
-							<span class="mode-label">MATRIX</span>
-						</button>
-					</div>
+			</div>
+			
+			<div class="neural-search">
+				<div class="search-container">
+					<input type="text" 
+						   bind:value={searchTerm}
+						   placeholder="NEURAL SEARCH..."
+						   class="search-input"/>
+					<div class="search-pulse"></div>
 				</div>
-				
-				<div class="metrics-section">
-					<div class="metric-display">
-						<div class="metric-value" style="color: {neonColors.primary}">
-							{filteredExecutives.length}
-						</div>
-						<div class="metric-label">ENTITIES</div>
-					</div>
-					<div class="metric-display">
-						<div class="metric-value" style="color: {neonColors.secondary}">
-							{Object.values(data.operative_intelligence || {}).reduce((a, b) => a + b, 0).toLocaleString()}
-						</div>
-						<div class="metric-label">NODES</div>
-					</div>
+				<div class="search-feedback">
+					{#if searchTerm}
+						<span class="feedback-text">SCANNING {filteredExecutives.length} NEURAL PATTERNS</span>
+					{/if}
+				</div>
+			</div>
+			
+			<div class="header-stats">
+				<div class="stat-display">
+					<div class="stat-value">{filteredExecutives.length}</div>
+					<div class="stat-label">NEURAL NODES</div>
+				</div>
+				<div class="stat-display">
+					<div class="stat-value">{synapses.length}</div>
+					<div class="stat-label">SYNAPSES</div>
+				</div>
+				<div class="stat-display">
+					<div class="stat-value">{(data.operative_intelligence ? Object.values(data.operative_intelligence).reduce((a, b) => a + b, 0) : 0).toLocaleString()}</div>
+					<div class="stat-label">CONNECTIONS</div>
 				</div>
 			</div>
 		</header>
 		
-		<!-- Main Interface -->
-		<div class="interface-body">
+		<!-- Main Neural Display -->
+		<div class="neural-display">
 			{#if loading && !selectedExecutive}
-				<div class="quantum-loading">
-					<div class="loading-vortex">
-						<div class="vortex-ring" style="border-color: {neonColors.primary}"></div>
-						<div class="vortex-ring" style="border-color: {neonColors.secondary}; animation-delay: 0.2s"></div>
-						<div class="vortex-ring" style="border-color: {neonColors.tertiary}; animation-delay: 0.4s"></div>
-						<div class="vortex-center">◈</div>
+				<div class="neural-loading">
+					<div class="loading-brain">
+						<div class="brain-hemisphere left"></div>
+						<div class="brain-hemisphere right"></div>
+						<div class="brain-stem"></div>
+						<div class="neural-pulse"></div>
 					</div>
-					<p class="loading-text">INITIALIZING QUANTUM NEURAL INTERFACE...</p>
+					<p class="loading-text">INITIALIZING CONSCIOUSNESS...</p>
 				</div>
 			{:else if selectedExecutive}
-				<!-- Detail View -->
-				<div class="executive-detail-interface">
-					<div class="detail-header">
+				<div class="executive-deep-dive">
+					<div class="deep-header">
 						<div class="executive-identity">
-							<div class="identity-avatar" style="border-color: {calculateMetrics(selectedExecutive.count).color}">
-								<div class="avatar-core">
-									<span class="avatar-symbol">◈</span>
+							<div class="identity-visualization">
+								<div class="identity-core" style="background: {getExecutiveClass(selectedExecutive.count).color}">
+									{getExecutiveClass(selectedExecutive.count).symbol}
 								</div>
-								<div class="avatar-rings">
-									<div class="ring" style="border-color: {neonColors.primary}"></div>
-									<div class="ring" style="border-color: {neonColors.secondary}"></div>
+								<div class="identity-rings">
+									<div class="identity-ring ring-1"></div>
+									<div class="identity-ring ring-2"></div>
+									<div class="identity-ring ring-3"></div>
 								</div>
 							</div>
 							<div class="identity-data">
 								<h2 class="executive-name">{selectedExecutive.executive.toUpperCase()}</h2>
-								<div class="quantum-signature">
-									{calculateMetrics(selectedExecutive.count).quantumSignature}
-								</div>
-								<div class="executive-tags">
-									<span class="tag" style="background: {neonColors.primary}20; color: {neonColors.primary}">
-										POWER: {calculateMetrics(selectedExecutive.count).powerLevel}%
-									</span>
-									<span class="tag" style="background: {neonColors.secondary}20; color: {neonColors.secondary}">
-										INFLUENCE: {calculateMetrics(selectedExecutive.count).influence}%
-									</span>
-									<span class="tag" style="background: {neonColors.tertiary}20; color: {neonColors.tertiary}">
-										REACH: {calculateMetrics(selectedExecutive.count).networkReach}K
-									</span>
+								<div class="neural-signature">
+									{executiveProfiles.get(selectedExecutive.executive)?.neuralSignature || 'UNKNOWN'}
 								</div>
 							</div>
 						</div>
-						<button class="close-detail" on:click={closeDetails}>
-							<span class="close-icon">✕</span>
+						<button class="close-neural" on:click={closeDetails}>
+							<span>✕</span>
 						</button>
 					</div>
 					
-					<div class="detail-metrics">
-						<div class="metric-card">
-							<div class="card-icon" style="color: {neonColors.primary}">◈</div>
-							<div class="card-content">
-								<div class="card-value">{selectedExecutive.count.toLocaleString()}</div>
-								<div class="card-label">NEURAL NODES</div>
-							</div>
-							<div class="card-graph">
-								<svg viewBox="0 0 100 40">
-									<polyline points="{dataStream.slice(-20).map((d, i) => `${i * 5},${40 - d.value * 0.4}`).join(' ')}"
-											  fill="none" stroke="{neonColors.primary}" stroke-width="1" opacity="0.8"/>
-								</svg>
-							</div>
-						</div>
-						<div class="metric-card">
-							<div class="card-icon" style="color: {neonColors.secondary}">⬢</div>
-							<div class="card-content">
-								<div class="card-value">{getPercentage(selectedExecutive.count)}%</div>
-								<div class="card-label">NETWORK CONTROL</div>
-							</div>
-							<div class="card-progress">
-								<div class="progress-track">
-									<div class="progress-fill" style="width: {getPercentage(selectedExecutive.count)}%; background: {neonColors.secondary}"></div>
+					{#if executiveProfiles.get(selectedExecutive.executive)}
+						{@const profile = executiveProfiles.get(selectedExecutive.executive)}
+						<div class="psychometric-display">
+							<div class="psychometric-grid">
+								<div class="psychometric-card">
+									<div class="psych-label">LEADERSHIP</div>
+									<div class="psych-visualization">
+										<svg viewBox="0 0 100 100">
+											<circle cx="50" cy="50" r="40" fill="none" stroke="#FF79C620" stroke-width="8"/>
+											<circle cx="50" cy="50" r="40" fill="none" stroke="#FF79C6" stroke-width="8"
+													stroke-dasharray="{profile.psychometrics.leadership * 2.51} 251"
+													transform="rotate(-90 50 50)"/>
+										</svg>
+										<div class="psych-value">{profile.psychometrics.leadership.toFixed(0)}%</div>
+									</div>
+								</div>
+								<div class="psychometric-card">
+									<div class="psych-label">INNOVATION</div>
+									<div class="psych-visualization">
+										<svg viewBox="0 0 100 100">
+											<circle cx="50" cy="50" r="40" fill="none" stroke="#8BE9FD20" stroke-width="8"/>
+											<circle cx="50" cy="50" r="40" fill="none" stroke="#8BE9FD" stroke-width="8"
+													stroke-dasharray="{profile.psychometrics.innovation * 2.51} 251"
+													transform="rotate(-90 50 50)"/>
+										</svg>
+										<div class="psych-value">{profile.psychometrics.innovation.toFixed(0)}%</div>
+									</div>
+								</div>
+								<div class="psychometric-card">
+									<div class="psych-label">RISK TOLERANCE</div>
+									<div class="psych-visualization">
+										<svg viewBox="0 0 100 100">
+											<circle cx="50" cy="50" r="40" fill="none" stroke="#BD93F920" stroke-width="8"/>
+											<circle cx="50" cy="50" r="40" fill="none" stroke="#BD93F9" stroke-width="8"
+													stroke-dasharray="{profile.psychometrics.riskTolerance * 2.51} 251"
+													transform="rotate(-90 50 50)"/>
+										</svg>
+										<div class="psych-value">{profile.psychometrics.riskTolerance.toFixed(0)}%</div>
+									</div>
+								</div>
+								<div class="psychometric-card">
+									<div class="psych-label">SYSTEM THINKING</div>
+									<div class="psych-visualization">
+										<svg viewBox="0 0 100 100">
+											<circle cx="50" cy="50" r="40" fill="none" stroke="#50FA7B20" stroke-width="8"/>
+											<circle cx="50" cy="50" r="40" fill="none" stroke="#50FA7B" stroke-width="8"
+													stroke-dasharray="{profile.psychometrics.systemThinking * 2.51} 251"
+													transform="rotate(-90 50 50)"/>
+										</svg>
+										<div class="psych-value">{profile.psychometrics.systemThinking.toFixed(0)}%</div>
+									</div>
 								</div>
 							</div>
 						</div>
-						<div class="metric-card">
-							<div class="card-icon" style="color: {neonColors.tertiary}">◉</div>
-							<div class="card-content">
-								<div class="card-value">{calculateMetrics(selectedExecutive.count).percentile}%</div>
-								<div class="card-label">PERCENTILE</div>
-							</div>
-							<div class="card-indicator">
-								<div class="indicator-ring" style="border-color: {neonColors.tertiary}">
-									<div class="indicator-value">{calculateMetrics(selectedExecutive.count).percentile}</div>
-								</div>
-							</div>
-						</div>
-						<div class="metric-card">
-							<div class="card-icon" style="color: {neonColors.quaternary}">▣</div>
-							<div class="card-content">
-								<div class="card-value">{calculateMetrics(selectedExecutive.count).threatIndex}%</div>
-								<div class="card-label">THREAT INDEX</div>
-							</div>
-							<div class="card-threat">
-								<div class="threat-bars">
-									{#each Array(10) as _, i}
-										<div class="threat-bar" 
-											 style="background: {i < calculateMetrics(selectedExecutive.count).threatIndex / 10 ? neonColors.danger : '#111'}"></div>
-									{/each}
-								</div>
-							</div>
-						</div>
-					</div>
+					{/if}
 					
-					<div class="detail-stream">
-						<div class="stream-header">
-							<h3>NEURAL DATA STREAM</h3>
-							<div class="stream-controls">
-								<span class="stream-status">LIVE</span>
-								<span class="stream-indicator"></span>
-							</div>
-						</div>
-						<div class="stream-content">
-							<table class="quantum-table">
-								<thead>
-									<tr>
-										<th>NODE_ID</th>
-										<th>SECTOR</th>
-										<th>REGION</th>
-										<th>INFRASTRUCTURE</th>
-										<th>CMDB_SYNC</th>
-										<th>TANIUM_SHIELD</th>
+					<div class="neural-connections-stream">
+						<table class="connections-table">
+							<thead>
+								<tr>
+									<th>NODE_ID</th>
+									<th>REGION</th>
+									<th>COUNTRY</th>
+									<th>INFRASTRUCTURE</th>
+									<th>SYNC_STATUS</th>
+									<th>SECURITY</th>
+								</tr>
+							</thead>
+							<tbody>
+								{#each executiveDetails as host}
+									<tr class="connection-row">
+										<td class="node-id">{host.host.substring(0, 30)}</td>
+										<td>{host.region || 'UNKNOWN'}</td>
+										<td>{host.country || 'UNKNOWN'}</td>
+										<td>{host.infrastructure_type || 'UNKNOWN'}</td>
+										<td>
+											<span class="sync-indicator {host.present_in_cmdb?.toLowerCase().includes('yes') ? 'synced' : 'desynced'}">
+												{host.present_in_cmdb?.toLowerCase().includes('yes') ? '◈' : '○'}
+											</span>
+										</td>
+										<td>
+											<span class="security-indicator {host.tanium_coverage?.toLowerCase().includes('tanium') ? 'secured' : 'vulnerable'}">
+												{host.tanium_coverage?.toLowerCase().includes('tanium') ? '⬢' : '⬡'}
+											</span>
+										</td>
 									</tr>
-								</thead>
-								<tbody>
-									{#each executiveDetails as host}
-										<tr class="data-row">
-											<td class="node-id">{host.host.substring(0, 30)}</td>
-											<td>{host.country || 'UNKNOWN'}</td>
-											<td>{host.region || 'UNKNOWN'}</td>
-											<td>{host.infrastructure_type || 'UNKNOWN'}</td>
-											<td>
-												<span class="sync-indicator {host.present_in_cmdb?.toLowerCase().includes('yes') ? 'synced' : 'desynced'}"
-													  style="color: {host.present_in_cmdb?.toLowerCase().includes('yes') ? neonColors.success : neonColors.danger}">
-													{host.present_in_cmdb?.toLowerCase().includes('yes') ? '◈' : '○'}
-												</span>
-											</td>
-											<td>
-												<span class="shield-indicator {host.tanium_coverage?.toLowerCase().includes('tanium') ? 'protected' : 'vulnerable'}"
-													  style="color: {host.tanium_coverage?.toLowerCase().includes('tanium') ? neonColors.primary : neonColors.warning}">
-													{host.tanium_coverage?.toLowerCase().includes('tanium') ? '⬢' : '⬡'}
-												</span>
-											</td>
-										</tr>
-									{/each}
-								</tbody>
-							</table>
-						</div>
+								{/each}
+							</tbody>
+						</table>
 					</div>
 				</div>
-			{:else if viewMode === 'neural'}
-				<!-- Neural Network View -->
-				<div class="neural-view">
-					<div class="neural-container">
-						<svg class="neural-network" viewBox="-400 -400 800 800">
+			{:else}
+				<!-- Neural Network Visualization -->
+				<div class="neural-visualization">
+					<div class="neural-3d-space">
+						<!-- Synaptic connections -->
+						<svg class="synaptic-network" viewBox="-400 -400 800 800">
 							<defs>
 								<radialGradient id="nodeGradient">
-									<stop offset="0%" style="stop-color:{neonColors.primary};stop-opacity:1" />
-									<stop offset="100%" style="stop-color:{neonColors.primary};stop-opacity:0" />
+									<stop offset="0%" style="stop-color:#8BE9FD;stop-opacity:1" />
+									<stop offset="100%" style="stop-color:#8BE9FD;stop-opacity:0" />
 								</radialGradient>
 							</defs>
 							
-							<!-- Connections -->
-							{#each connections as conn}
-								{#if neuralNodes[conn.source] && neuralNodes[conn.target]}
-									<line x1="{neuralNodes[conn.source].x}" 
-										  y1="{neuralNodes[conn.source].y}"
-										  x2="{neuralNodes[conn.target].x}" 
-										  y2="{neuralNodes[conn.target].y}"
-										  stroke="{neonColors.primary}"
-										  stroke-width="{0.5 + conn.strength}"
-										  opacity="{0.2 + conn.dataFlow / 200}">
-										<animate attributeName="opacity" 
-												 values="{0.2 + conn.dataFlow / 200};{0.4 + conn.dataFlow / 200};{0.2 + conn.dataFlow / 200}"
-												 dur="2s" 
-												 repeatCount="indefinite"/>
+							<!-- Draw synapses -->
+							{#each synapses as synapse}
+								{#if neuralNodes[synapse.source] && neuralNodes[synapse.target]}
+									<line x1="{neuralNodes[synapse.source].x}" 
+										  y1="{neuralNodes[synapse.source].y}"
+										  x2="{neuralNodes[synapse.target].x}" 
+										  y2="{neuralNodes[synapse.target].y}"
+										  stroke="{synapse.firing ? '#FF79C6' : '#8BE9FD'}"
+										  stroke-width="{synapse.strength * 2}"
+										  opacity="{synapse.strength * 0.3 + (synapse.firing ? 0.5 : 0)}"
+										  stroke-dasharray="{synapse.firing ? 'none' : '2,3'}">
+										{#if synapse.firing}
+											<animate attributeName="stroke-opacity" 
+													 values="0.3;1;0.3" 
+													 dur="0.5s" 
+													 repeatCount="1"/>
+										{/if}
 									</line>
 								{/if}
 							{/each}
 							
-							<!-- Nodes -->
-							{#each neuralNodes as node}
-								<g class="neural-node" 
+							<!-- Draw neural nodes -->
+							{#each neuralNodes.slice(0, 30) as node, i}
+								{@const executiveClass = getExecutiveClass(node.count)}
+								<g class="neural-node-group"
 								   transform="translate({node.x}, {node.y})"
-								   on:click={() => drillDownExecutive(node.name, node.count)}>
-									<circle r="{10 + node.importance * 20}"
-											fill="{node.color}"
-											opacity="0.2"/>
-									<circle r="{5 + node.importance * 10}"
-											fill="{node.color}"
-											opacity="0.6">
-										<animate attributeName="r" 
-												 values="{5 + node.importance * 10};{7 + node.importance * 10};{5 + node.importance * 10}"
-												 dur="{2 + node.importance * 2}s" 
-												 repeatCount="indefinite"/>
-									</circle>
-									<text y="-{15 + node.importance * 20}" 
+								   on:click={() => drillDownExecutive(node.id, node.count)}>
+									<!-- Node glow effect -->
+									<circle r="{20 + node.activation * 20}" 
+											fill="{executiveClass.color}" 
+											opacity="{node.activation * 0.2}"
+											filter="url(#neuralGlow)"/>
+									<!-- Node core -->
+									<circle r="{10 + node.coherence * 10}" 
+											fill="{executiveClass.color}" 
+											opacity="0.8"/>
+									<!-- Node symbol -->
+									<text text-anchor="middle" 
+										  dy="4" 
+										  fill="#000000" 
+										  font-size="12" 
+										  font-weight="bold">
+										{executiveClass.symbol}
+									</text>
+									<!-- Node label -->
+									<text y="{-20 - node.activation * 10}" 
 										  text-anchor="middle" 
-										  fill="#ffffff" 
+										  fill="#FFFFFF" 
 										  font-size="10" 
 										  opacity="0.9">
-										{node.name.substring(0, 20)}
-									</text>
-									<text y="4" 
-										  text-anchor="middle" 
-										  fill="{node.color}" 
-										  font-size="8" 
-										  font-weight="bold">
-										{node.count}
+										{node.id.substring(0, 15)}
 									</text>
 								</g>
 							{/each}
-							
-							<!-- Central Core -->
-							<circle r="30" fill="none" stroke="{neonColors.primary}" stroke-width="0.5" opacity="0.5">
-								<animate attributeName="r" values="30;35;30" dur="3s" repeatCount="indefinite"/>
-							</circle>
-							<text text-anchor="middle" fill="{neonColors.primary}" font-size="14" font-weight="bold">
-								NEXUS
-							</text>
 						</svg>
-					</div>
-					
-					<!-- Side Panel -->
-					<div class="neural-panel">
-						<h3>NEURAL METRICS</h3>
-						<div class="metrics-list">
-							{#each filteredExecutives.slice(0, 10) as [executive, count]}
-								{@const metrics = calculateMetrics(count)}
-								<div class="metric-item" on:click={() => drillDownExecutive(executive, count)}>
-									<div class="item-header">
-										<span class="item-name">{executive.substring(0, 20).toUpperCase()}</span>
-										<span class="item-value" style="color: {metrics.color}">{count}</span>
-									</div>
-									<div class="item-bar">
-										<div class="bar-fill" style="width: {metrics.percentile}%; background: {metrics.color}"></div>
-									</div>
-								</div>
-							{/each}
-						</div>
-					</div>
-				</div>
-			{:else if viewMode === 'hierarchy'}
-				<!-- Hierarchy View -->
-				<div class="hierarchy-view">
-					<div class="hierarchy-container">
-						{#each hierarchyLevels as level, levelIndex}
-							<div class="hierarchy-level" style="--level-color: {level.color}">
-								<div class="level-header">
-									<span class="level-name">TIER {levelIndex + 1}</span>
-									<span class="level-count">{level.members.length} ENTITIES</span>
-								</div>
-								<div class="level-members">
-									{#each level.members as [executive, count]}
-										<div class="member-card" 
-											 on:click={() => drillDownExecutive(executive, count)}
-											 style="border-color: {level.color}20; background: linear-gradient(135deg, {level.color}10, transparent)">
-											<div class="member-avatar" style="border-color: {level.color}">
-												<span style="color: {level.color}">◈</span>
-											</div>
-											<div class="member-info">
-												<div class="member-name">{executive.substring(0, 25).toUpperCase()}</div>
-												<div class="member-stats">
-													<span class="stat">{count} nodes</span>
-													<span class="stat">{getPercentage(count)}%</span>
-												</div>
-											</div>
-											<div class="member-power">
-												<div class="power-ring" style="border-color: {level.color}">
-													<span>{calculateMetrics(count).powerLevel}</span>
-												</div>
-											</div>
-										</div>
-									{/each}
-								</div>
-							</div>
-						{/each}
-					</div>
-				</div>
-			{:else if viewMode === 'pulse'}
-				<!-- Pulse View -->
-				<div class="pulse-view">
-					<div class="pulse-container">
-						<div class="pulse-core">
-							<div class="pulse-ring ring-1" style="border-color: {neonColors.primary}"></div>
-							<div class="pulse-ring ring-2" style="border-color: {neonColors.secondary}"></div>
-							<div class="pulse-ring ring-3" style="border-color: {neonColors.tertiary}"></div>
-							<div class="pulse-center">
-								<span class="pulse-value">{energyFlow.toFixed(0)}%</span>
-								<span class="pulse-label">NETWORK PULSE</span>
-							</div>
-						</div>
 						
-						<div class="pulse-nodes">
-							{#each filteredExecutives.slice(0, 12) as [executive, count], i}
-								{@const angle = (i / 12) * Math.PI * 2}
-								{@const metrics = calculateMetrics(count)}
-								<div class="pulse-node"
-									 style="left: {50 + Math.cos(angle) * 35}%;
-											top: {50 + Math.sin(angle) * 35}%"
-									 on:click={() => drillDownExecutive(executive, count)}>
-									<div class="node-pulse" style="background: {metrics.color}"></div>
-									<div class="node-info">
-										<span class="node-name">{executive.substring(0, 15)}</span>
-										<span class="node-power" style="color: {metrics.color}">{metrics.powerLevel}%</span>
-									</div>
-								</div>
-							{/each}
+						<!-- Synaptic activity graph -->
+						<div class="synaptic-activity">
+							<svg viewBox="0 0 200 50">
+								<polyline points="{synapticActivity.map((val, i) => `${i * 4},${50 - val * 0.5}`).join(' ')}"
+										  fill="none" 
+										  stroke="#8BE9FD" 
+										  stroke-width="1"
+										  opacity="0.8"/>
+							</svg>
+							<div class="activity-label">SYNAPTIC ACTIVITY</div>
 						</div>
 					</div>
 					
-					<!-- Live Data Stream -->
-					<div class="pulse-stream">
-						<h3>LIVE DATA STREAM</h3>
-						<div class="stream-graph">
-							<svg viewBox="0 0 400 100">
-								<polyline points="{dataStream.map((d, i) => `${i * 8},${100 - d.value}`).join(' ')}"
-										  fill="none" 
-										  stroke="{neonColors.primary}" 
-										  stroke-width="1" 
-										  opacity="0.8" 
-										  filter="url(#neonGlow)"/>
-								{#each dataStream.slice(-10) as data, i}
-									<circle cx="{320 + i * 8}" 
-											cy="{100 - data.value}" 
-											r="2" 
-											fill="{data.type === 'neural' ? neonColors.primary : 
-												   data.type === 'quantum' ? neonColors.secondary : 
-												   neonColors.tertiary}"
-											opacity="0.8"/>
+					<!-- Executive Matrix Table -->
+					<div class="executive-matrix">
+						<table class="matrix-table">
+							<thead>
+								<tr>
+									<th>RANK</th>
+									<th>NEURAL_ID</th>
+									<th>CLASSIFICATION</th>
+									<th>NODES</th>
+									<th>INFLUENCE</th>
+									<th>COHERENCE</th>
+									<th>SIGNATURE</th>
+								</tr>
+							</thead>
+							<tbody>
+								{#each filteredExecutives as [executive, count], index}
+									{@const executiveClass = getExecutiveClass(count)}
+									{@const profile = executiveProfiles.get(executive)}
+									<tr class="matrix-row" 
+										style="border-left: 3px solid {executiveClass.color}"
+										on:click={() => drillDownExecutive(executive, count)}>
+										<td class="rank-cell">
+											<span style="color: {executiveClass.color}">#{index + 1}</span>
+										</td>
+										<td class="executive-cell">
+											<span class="executive-symbol" style="color: {executiveClass.color}">
+												{executiveClass.symbol}
+											</span>
+											<span class="executive-id">{executive.substring(0, 30).toUpperCase()}</span>
+										</td>
+										<td>
+											<span class="classification-badge" 
+												  style="background: {executiveClass.glow}; 
+														 color: {executiveClass.color}; 
+														 border: 1px solid {executiveClass.color}">
+												{executiveClass.level}
+											</span>
+										</td>
+										<td class="numeric-cell">{count.toLocaleString()}</td>
+										<td>
+											<div class="influence-display">
+												<div class="influence-bar">
+													<div class="influence-fill" 
+														 style="width: {profile?.networkCentrality || 0}%; 
+																background: linear-gradient(90deg, transparent, {executiveClass.color})"></div>
+												</div>
+												<span class="influence-value">{(profile?.networkCentrality || 0).toFixed(0)}%</span>
+											</div>
+										</td>
+										<td>
+											<div class="coherence-meter">
+												<div class="coherence-level" 
+													 style="height: {profile?.quantumCoherence ? profile.quantumCoherence * 100 : 0}%; 
+															background: {executiveClass.color}"></div>
+											</div>
+										</td>
+										<td class="signature-cell">
+											<span class="mini-signature">
+												{profile?.neuralSignature ? profile.neuralSignature.substring(0, 8) : 'UNKNOWN'}
+											</span>
+										</td>
+									</tr>
 								{/each}
-							</svg>
-						</div>
-					</div>
-				</div>
-			{:else if viewMode === 'matrix'}
-				<!-- Matrix View -->
-				<div class="matrix-view">
-					<div class="matrix-grid">
-						{#each filteredExecutives as [executive, count], i}
-							{@const metrics = calculateMetrics(count)}
-							<div class="matrix-cell"
-								 on:click={() => drillDownExecutive(executive, count)}
-								 style="--cell-color: {metrics.color}">
-								<div class="cell-background">
-									<div class="cell-pattern"></div>
-								</div>
-								<div class="cell-content">
-									<div class="cell-header">
-										<span class="cell-icon" style="color: {metrics.color}">◈</span>
-										<span class="cell-rank">#{i + 1}</span>
-									</div>
-									<div class="cell-name">{executive.substring(0, 20).toUpperCase()}</div>
-									<div class="cell-metrics">
-										<div class="metric-row">
-											<span class="metric-label">NODES</span>
-											<span class="metric-value" style="color: {metrics.color}">{count}</span>
-										</div>
-										<div class="metric-row">
-											<span class="metric-label">POWER</span>
-											<span class="metric-value" style="color: {metrics.color}">{metrics.powerLevel}%</span>
-										</div>
-									</div>
-									<div class="cell-signature">{metrics.quantumSignature}</div>
-								</div>
-							</div>
-						{/each}
+							</tbody>
+						</table>
 					</div>
 				</div>
 			{/if}
@@ -774,501 +758,167 @@
 </div>
 
 <style>
-	.quantum-executive-interface {
+	.neural-command-interface {
 		width: 100%;
 		height: calc(100vh - 80px);
 		background: #000000;
 		position: relative;
 		overflow: hidden;
-		font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
 	}
 	
-	/* Particle Universe Background */
-	.particle-universe {
+	/* Consciousness Field Background */
+	.consciousness-field {
 		position: absolute;
 		top: 0;
 		left: 0;
 		width: 100%;
 		height: 100%;
 		pointer-events: none;
-		z-index: 1;
+		perspective: 1000px;
+		transform-style: preserve-3d;
 	}
 	
-	.quantum-particle {
-		position: absolute;
-		border-radius: 50%;
-		transition: all 0.3s ease;
-		animation: particleFloat 20s linear infinite;
-	}
-	
-	@keyframes particleFloat {
-		0% { transform: translate(0, 0) scale(1) rotate(0deg); }
-		25% { transform: translate(30px, -30px) scale(1.2) rotate(90deg); }
-		50% { transform: translate(-20px, 20px) scale(0.8) rotate(180deg); }
-		75% { transform: translate(40px, 10px) scale(1.1) rotate(270deg); }
-		100% { transform: translate(0, 0) scale(1) rotate(360deg); }
-	}
-	
-	/* Data Stream Layer */
-	.data-stream-layer {
+	.brainwave-canvas {
 		position: absolute;
 		top: 0;
 		left: 0;
 		width: 100%;
 		height: 100%;
-		pointer-events: none;
-		z-index: 2;
 		opacity: 0.3;
 	}
 	
-	/* Main Container */
-	.executive-container {
+	.hologram-layer {
+		position: absolute;
+		top: 0;
+		left: 0;
+		width: 100%;
+		height: 100%;
+		transform-style: preserve-3d;
+	}
+	
+	.hologram-particle {
+		position: absolute;
+		width: 2px;
+		height: 2px;
+		border-radius: 50%;
+		box-shadow: 0 0 4px currentColor;
+	}
+	
+	.executive-neural-interface {
 		position: relative;
-		z-index: 10;
+		z-index: 1;
 		height: 100%;
 		display: flex;
 		flex-direction: column;
 	}
 	
-	/* Quantum Header */
-	.quantum-header {
-		background: linear-gradient(180deg, rgba(0, 255, 204, 0.05), rgba(0, 0, 0, 0.9));
-		backdrop-filter: blur(20px);
-		border-bottom: 1px solid rgba(0, 255, 204, 0.2);
-		padding: 1.5rem 2rem;
-	}
-	
-	.header-grid {
-		display: grid;
-		grid-template-columns: 1fr auto auto;
-		gap: 3rem;
+	/* Neural Header */
+	.neural-header {
+		display: flex;
+		justify-content: space-between;
 		align-items: center;
+		padding: 2rem;
+		background: linear-gradient(180deg, rgba(139, 233, 253, 0.05), transparent);
+		border-bottom: 1px solid rgba(139, 233, 253, 0.2);
+		backdrop-filter: blur(20px);
 	}
 	
-	.brand-section {
+	.header-consciousness {
 		display: flex;
 		align-items: center;
-		gap: 1.5rem;
+		gap: 2rem;
 	}
 	
-	.quantum-logo {
-		width: 60px;
-		height: 60px;
+	.consciousness-core {
+		width: 80px;
+		height: 80px;
 		position: relative;
-	}
-	
-	.logo-hologram {
-		width: 100%;
-		height: 100%;
-		position: relative;
-		transform-style: preserve-3d;
-	}
-	
-	.hologram-ring {
-		position: absolute;
-		inset: 0;
-		border: 1px solid;
-		border-radius: 50%;
-		animation: hologramRotate 3s linear infinite;
-	}
-	
-	.ring-1 { inset: 0; }
-	.ring-2 { inset: 10px; animation-direction: reverse; }
-	.ring-3 { inset: 20px; animation-duration: 4s; }
-	
-	@keyframes hologramRotate {
-		from { transform: rotateX(60deg) rotateZ(0deg); }
-		to { transform: rotateX(60deg) rotateZ(360deg); }
-	}
-	
-	.hologram-core {
-		position: absolute;
-		inset: 25px;
 		display: flex;
 		align-items: center;
 		justify-content: center;
-		font-size: 1.5rem;
-		color: #00FFCC;
-		text-shadow: 0 0 20px rgba(0, 255, 204, 0.8);
-		animation: corePulse 2s ease-in-out infinite;
 	}
 	
-	@keyframes corePulse {
-		0%, 100% { transform: scale(1); opacity: 1; }
-		50% { transform: scale(1.1); opacity: 0.8; }
+	.core-rings {
+		position: absolute;
+		width: 100%;
+		height: 100%;
 	}
 	
-	.brand-text h1 {
+	.ring {
+		position: absolute;
+		border: 1px solid;
+		border-radius: 50%;
+		animation: ringRotate linear infinite;
+	}
+	
+	.ring-outer {
+		inset: 0;
+		border-color: #FF79C6;
+		box-shadow: 0 0 20px #FF79C640;
+	}
+	
+	.ring-middle {
+		inset: 15px;
+		border-color: #8BE9FD;
+		box-shadow: 0 0 15px #8BE9FD40;
+	}
+	
+	.ring-inner {
+		inset: 30px;
+		border-color: #BD93F9;
+		box-shadow: 0 0 10px #BD93F940;
+	}
+	
+	@keyframes ringRotate {
+		from { transform: rotate(0deg); }
+		to { transform: rotate(360deg); }
+	}
+	
+	.core-symbol {
+		font-size: 2rem;
+		color: #8BE9FD;
+		text-shadow: 0 0 30px #8BE9FD80;
+		z-index: 1;
+	}
+	
+	.consciousness-info {
+		display: flex;
+		flex-direction: column;
+		gap: 0.5rem;
+	}
+	
+	.neural-title {
 		margin: 0;
 		font-size: 1.5rem;
 		font-weight: 200;
 		letter-spacing: 0.3em;
-		background: linear-gradient(90deg, #00FFCC, #FF00FF, #FFFF00);
-		-webkit-background-clip: text;
-		-webkit-text-fill-color: transparent;
-		background-clip: text;
-		animation: gradientShift 5s linear infinite;
-	}
-	
-	@keyframes gradientShift {
-		0% { background-position: 0% 50%; }
-		100% { background-position: 200% 50%; }
-	}
-	
-	/* Glitch Effect */
-	.glitch-title {
-		position: relative;
-	}
-	
-	.glitch-title::before,
-	.glitch-title::after {
-		content: attr(data-text);
-		position: absolute;
-		top: 0;
-		left: 0;
-		width: 100%;
-		height: 100%;
-		background: linear-gradient(90deg, #00FFCC, #FF00FF, #FFFF00);
+		background: linear-gradient(90deg, #FF79C6, #8BE9FD, #BD93F9);
 		-webkit-background-clip: text;
 		-webkit-text-fill-color: transparent;
 		background-clip: text;
 	}
 	
-	.glitch-title::before {
-		animation: glitch-1 0.3s infinite;
-		z-index: -1;
-		text-shadow: -2px 0 #FF00FF;
+	.consciousness-metrics {
+		display: flex;
+		gap: 1rem;
 	}
 	
-	.glitch-title::after {
-		animation: glitch-2 0.3s infinite;
-		z-index: -2;
-		text-shadow: -2px 0 #00FFCC;
-	}
-	
-	@keyframes glitch-1 {
-		0%, 100% { clip-path: inset(0 0 0 0); }
-		20% { clip-path: inset(20% 0 30% 0); transform: translate(-2px, 2px); }
-		40% { clip-path: inset(50% 0 20% 0); transform: translate(2px, -2px); }
-		60% { clip-path: inset(10% 0 60% 0); transform: translate(-1px, 1px); }
-		80% { clip-path: inset(80% 0 5% 0); transform: translate(1px, -1px); }
-	}
-	
-	@keyframes glitch-2 {
-		0%, 100% { clip-path: inset(0 0 0 0); }
-		20% { clip-path: inset(60% 0 10% 0); transform: translate(2px, 1px); }
-		40% { clip-path: inset(20% 0 40% 0); transform: translate(-2px, -1px); }
-		60% { clip-path: inset(30% 0 50% 0); transform: translate(1px, 2px); }
-		80% { clip-path: inset(70% 0 15% 0); transform: translate(-1px, -2px); }
-	}
-	
-	.quantum-status {
+	.metric-item {
 		display: flex;
 		align-items: center;
-		gap: 1rem;
-		margin-top: 0.5rem;
-		font-size: 0.75rem;
-		color: rgba(255, 255, 255, 0.6);
-		letter-spacing: 0.1em;
-	}
-	
-	.status-dot {
-		width: 8px;
-		height: 8px;
-		border-radius: 50%;
-		animation: statusPulse 2s ease-in-out infinite;
-	}
-	
-	@keyframes statusPulse {
-		0%, 100% { transform: scale(1); box-shadow: 0 0 0 0 currentColor; }
-		50% { transform: scale(1.2); box-shadow: 0 0 0 4px transparent; }
-	}
-	
-	.divider {
-		color: rgba(255, 255, 255, 0.2);
-	}
-	
-	/* Control Section */
-	.control-section {
-		display: flex;
-		flex-direction: column;
-		gap: 1rem;
-	}
-	
-	.search-container {
-		position: relative;
-	}
-	
-	.quantum-search {
-		width: 100%;
-		padding: 0.75rem 1rem;
-		background: rgba(0, 0, 0, 0.6);
-		border: 1px solid rgba(0, 255, 204, 0.2);
-		border-radius: 8px;
-		color: #00FFCC;
-		font-family: 'JetBrains Mono', monospace;
-		font-size: 0.9rem;
-		letter-spacing: 0.05em;
-		transition: all 0.3s ease;
-	}
-	
-	.quantum-search::placeholder {
-		color: rgba(0, 255, 204, 0.4);
-	}
-	
-	.quantum-search:focus {
-		outline: none;
-		border-color: #00FFCC;
-		background: rgba(0, 255, 204, 0.05);
-		box-shadow: 0 0 30px rgba(0, 255, 204, 0.2);
-	}
-	
-	.search-pulse {
-		position: absolute;
-		bottom: 0;
-		left: 0;
-		height: 1px;
-		background: linear-gradient(90deg, transparent, #00FFCC, transparent);
-		transition: width 0.3s ease;
-		animation: pulseLine 2s linear infinite;
-	}
-	
-	@keyframes pulseLine {
-		0% { opacity: 0; }
-		50% { opacity: 1; }
-		100% { opacity: 0; }
-	}
-	
-	.view-modes {
-		display: flex;
 		gap: 0.5rem;
-	}
-	
-	.mode-btn {
-		flex: 1;
-		padding: 0.5rem;
-		background: rgba(0, 0, 0, 0.6);
-		border: 1px solid rgba(255, 255, 255, 0.1);
-		border-radius: 8px;
-		color: rgba(255, 255, 255, 0.6);
-		font-size: 0.7rem;
-		cursor: pointer;
-		transition: all 0.3s ease;
-		display: flex;
-		flex-direction: column;
-		align-items: center;
-		gap: 0.25rem;
-	}
-	
-	.mode-btn:hover {
-		border-color: var(--accent-color);
-		background: rgba(0, 255, 204, 0.05);
-		color: var(--accent-color);
-	}
-	
-	.mode-btn.active {
-		border-color: var(--accent-color);
-		background: linear-gradient(135deg, rgba(0, 255, 204, 0.1), rgba(0, 0, 0, 0.6));
-		color: var(--accent-color);
-		box-shadow: 0 0 20px rgba(0, 255, 204, 0.2);
-	}
-	
-	.mode-icon {
-		font-size: 1.2rem;
-	}
-	
-	.mode-label {
-		font-size: 0.65rem;
-		letter-spacing: 0.1em;
-		font-weight: 500;
-	}
-	
-	/* Metrics Section */
-	.metrics-section {
-		display: flex;
-		gap: 2rem;
-	}
-	
-	.metric-display {
-		text-align: center;
-	}
-	
-	.metric-value {
-		font-size: 1.8rem;
-		font-weight: 100;
-		font-family: 'JetBrains Mono', monospace;
-		text-shadow: 0 0 20px currentColor;
 	}
 	
 	.metric-label {
 		font-size: 0.7rem;
-		color: rgba(255, 255, 255, 0.4);
-		letter-spacing: 0.2em;
-		margin-top: 0.25rem;
-		font-weight: 500;
-	}
-	
-	/* Interface Body */
-	.interface-body {
-		flex: 1;
-		overflow: hidden;
-		padding: 2rem;
-	}
-	
-	/* Loading State */
-	.quantum-loading {
-		height: 100%;
-		display: flex;
-		flex-direction: column;
-		align-items: center;
-		justify-content: center;
-		gap: 2rem;
-	}
-	
-	.loading-vortex {
-		position: relative;
-		width: 120px;
-		height: 120px;
-	}
-	
-	.vortex-ring {
-		position: absolute;
-		inset: 0;
-		border: 2px solid;
-		border-radius: 50%;
-		animation: vortexSpin 3s linear infinite;
-	}
-	
-	.vortex-ring:nth-child(2) {
-		inset: 20px;
-	}
-	
-	.vortex-ring:nth-child(3) {
-		inset: 40px;
-	}
-	
-	@keyframes vortexSpin {
-		from { transform: rotate(0deg) scale(1); }
-		50% { transform: rotate(180deg) scale(1.1); }
-		to { transform: rotate(360deg) scale(1); }
-	}
-	
-	.vortex-center {
-		position: absolute;
-		inset: 45px;
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		font-size: 2rem;
-		color: #00FFCC;
-		text-shadow: 0 0 30px rgba(0, 255, 204, 0.8);
-		animation: pulse 2s ease-in-out infinite;
-	}
-	
-	@keyframes pulse {
-		0%, 100% { opacity: 0.5; transform: scale(1); }
-		50% { opacity: 1; transform: scale(1.1); }
-	}
-	
-	.loading-text {
-		color: rgba(0, 255, 204, 0.6);
-		font-size: 0.9rem;
-		letter-spacing: 0.2em;
-		animation: pulse 2s ease-in-out infinite;
-	}
-	
-	/* Neural View */
-	.neural-view {
-		height: 100%;
-		display: grid;
-		grid-template-columns: 1fr 400px;
-		gap: 2rem;
-	}
-	
-	.neural-container {
-		background: rgba(0, 0, 0, 0.6);
-		border: 1px solid rgba(0, 255, 204, 0.1);
-		border-radius: 16px;
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		overflow: hidden;
-	}
-	
-	.neural-network {
-		width: 100%;
-		height: 100%;
-		cursor: move;
-	}
-	
-	.neural-node {
-		cursor: pointer;
-		transition: all 0.3s ease;
-	}
-	
-	.neural-node:hover {
-		transform: scale(1.2);
-	}
-	
-	.neural-panel {
-		background: rgba(0, 0, 0, 0.6);
-		border: 1px solid rgba(0, 255, 204, 0.1);
-		border-radius: 16px;
-		padding: 1.5rem;
-		overflow-y: auto;
-	}
-	
-	.neural-panel h3 {
-		margin: 0 0 1rem 0;
-		font-size: 0.9rem;
-		color: #00FFCC;
+		color: rgba(255, 255, 255, 0.5);
 		letter-spacing: 0.1em;
-		font-weight: 500;
 	}
 	
-	.metrics-list {
-		display: flex;
-		flex-direction: column;
-		gap: 0.75rem;
-	}
-	
-	.metric-item {
-		background: rgba(0, 255, 204, 0.02);
-		border: 1px solid rgba(0, 255, 204, 0.1);
-		border-radius: 8px;
-		padding: 0.75rem;
-		cursor: pointer;
-		transition: all 0.3s ease;
-	}
-	
-	.metric-item:hover {
-		background: rgba(0, 255, 204, 0.05);
-		border-color: rgba(0, 255, 204, 0.3);
-		transform: translateX(5px);
-	}
-	
-	.item-header {
-		display: flex;
-		justify-content: space-between;
-		align-items: center;
-		margin-bottom: 0.5rem;
-	}
-	
-	.item-name {
-		font-size: 0.75rem;
-		color: rgba(255, 255, 255, 0.8);
-		letter-spacing: 0.05em;
-	}
-	
-	.item-value {
-		font-size: 0.85rem;
-		font-weight: 600;
-		font-family: 'JetBrains Mono', monospace;
-	}
-	
-	.item-bar {
-		height: 3px;
-		background: rgba(255, 255, 255, 0.05);
+	.metric-bar {
+		width: 100px;
+		height: 4px;
+		background: rgba(255, 255, 255, 0.1);
 		border-radius: 2px;
 		overflow: hidden;
 	}
@@ -1278,398 +928,392 @@
 		transition: width 0.5s ease;
 	}
 	
-	/* Hierarchy View */
-	.hierarchy-view {
-		height: 100%;
-		overflow-y: auto;
+	.metric-value {
+		font-size: 0.8rem;
+		color: #8BE9FD;
+		font-family: 'Courier New', monospace;
+		min-width: 35px;
 	}
 	
-	.hierarchy-container {
-		display: flex;
-		flex-direction: column;
-		gap: 2rem;
+	/* Neural Search */
+	.neural-search {
+		flex: 1;
+		max-width: 400px;
+		margin: 0 2rem;
 	}
 	
-	.hierarchy-level {
-		background: rgba(0, 0, 0, 0.6);
-		border: 1px solid rgba(255, 255, 255, 0.1);
-		border-radius: 16px;
-		padding: 1.5rem;
-		border-left: 3px solid var(--level-color);
+	.search-container {
+		position: relative;
 	}
 	
-	.level-header {
-		display: flex;
-		justify-content: space-between;
-		align-items: center;
-		margin-bottom: 1rem;
-		padding-bottom: 0.75rem;
-		border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-	}
-	
-	.level-name {
+	.search-input {
+		width: 100%;
+		padding: 0.75rem 1rem;
+		background: rgba(0, 0, 0, 0.8);
+		border: 1px solid rgba(139, 233, 253, 0.3);
+		border-radius: 0;
+		color: #8BE9FD;
+		font-family: 'Courier New', monospace;
 		font-size: 0.9rem;
-		color: var(--level-color);
 		letter-spacing: 0.1em;
-		font-weight: 500;
-	}
-	
-	.level-count {
-		font-size: 0.75rem;
-		color: rgba(255, 255, 255, 0.5);
-	}
-	
-	.level-members {
-		display: grid;
-		grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-		gap: 1rem;
-	}
-	
-	.member-card {
-		display: flex;
-		align-items: center;
-		gap: 1rem;
-		padding: 1rem;
-		background: rgba(0, 0, 0, 0.4);
-		border: 1px solid;
-		border-radius: 12px;
-		cursor: pointer;
 		transition: all 0.3s ease;
 	}
 	
-	.member-card:hover {
-		transform: translateY(-2px);
-		box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6);
+	.search-input::placeholder {
+		color: rgba(139, 233, 253, 0.4);
 	}
 	
-	.member-avatar {
-		width: 40px;
-		height: 40px;
-		border: 2px solid;
-		border-radius: 50%;
+	.search-input:focus {
+		outline: none;
+		border-color: #8BE9FD;
+		background: rgba(139, 233, 253, 0.05);
+		box-shadow: 0 0 30px rgba(139, 233, 253, 0.3);
+	}
+	
+	.search-pulse {
+		position: absolute;
+		bottom: -1px;
+		left: 0;
+		right: 0;
+		height: 1px;
+		background: linear-gradient(90deg, transparent, #8BE9FD, transparent);
+		animation: searchPulse 2s linear infinite;
+	}
+	
+	@keyframes searchPulse {
+		from { transform: translateX(-100%); }
+		to { transform: translateX(100%); }
+	}
+	
+	.search-feedback {
+		margin-top: 0.5rem;
+		height: 1rem;
+	}
+	
+	.feedback-text {
+		font-size: 0.7rem;
+		color: rgba(139, 233, 253, 0.6);
+		letter-spacing: 0.1em;
+	}
+	
+	/* Header Stats */
+	.header-stats {
 		display: flex;
-		align-items: center;
-		justify-content: center;
-		font-size: 1.2rem;
-	}
-	
-	.member-info {
-		flex: 1;
-	}
-	
-	.member-name {
-		font-size: 0.8rem;
-		color: rgba(255, 255, 255, 0.9);
-		margin-bottom: 0.25rem;
-		letter-spacing: 0.05em;
-	}
-	
-	.member-stats {
-		display: flex;
-		gap: 0.75rem;
-		font-size: 0.65rem;
-		color: rgba(255, 255, 255, 0.5);
-	}
-	
-	.member-power {
-		display: flex;
-		align-items: center;
-	}
-	
-	.power-ring {
-		width: 36px;
-		height: 36px;
-		border: 2px solid;
-		border-radius: 50%;
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		font-size: 0.75rem;
-		font-weight: 600;
-	}
-	
-	/* Pulse View */
-	.pulse-view {
-		height: 100%;
-		display: grid;
-		grid-template-columns: 1fr 400px;
 		gap: 2rem;
 	}
 	
-	.pulse-container {
-		background: rgba(0, 0, 0, 0.6);
-		border: 1px solid rgba(0, 255, 204, 0.1);
-		border-radius: 16px;
-		position: relative;
-		overflow: hidden;
+	.stat-display {
+		text-align: center;
 	}
 	
-	.pulse-core {
-		position: absolute;
-		top: 50%;
-		left: 50%;
-		transform: translate(-50%, -50%);
-		width: 200px;
-		height: 200px;
-	}
-	
-	.pulse-ring {
-		position: absolute;
-		inset: 0;
-		border: 2px solid;
-		border-radius: 50%;
-		animation: pulseExpand 3s ease-out infinite;
-	}
-	
-	.ring-2 {
-		inset: 30px;
-		animation-delay: 1s;
-	}
-	
-	.ring-3 {
-		inset: 60px;
-		animation-delay: 2s;
-	}
-	
-	@keyframes pulseExpand {
-		0% { transform: scale(1); opacity: 1; }
-		100% { transform: scale(2); opacity: 0; }
-	}
-	
-	.pulse-center {
-		position: absolute;
-		inset: 70px;
-		display: flex;
-		flex-direction: column;
-		align-items: center;
-		justify-content: center;
-		background: radial-gradient(circle, rgba(0, 255, 204, 0.2), transparent);
-		border-radius: 50%;
-	}
-	
-	.pulse-value {
-		font-size: 1.5rem;
+	.stat-display .stat-value {
+		font-size: 1.8rem;
 		font-weight: 100;
-		color: #00FFCC;
-		font-family: 'JetBrains Mono', monospace;
-		text-shadow: 0 0 20px rgba(0, 255, 204, 0.8);
+		color: #FF79C6;
+		text-shadow: 0 0 20px #FF79C640;
+		font-family: 'Courier New', monospace;
 	}
 	
-	.pulse-label {
-		font-size: 0.65rem;
-		color: rgba(255, 255, 255, 0.5);
-		letter-spacing: 0.1em;
+	.stat-display .stat-label {
+		font-size: 0.7rem;
+		color: rgba(255, 255, 255, 0.4);
+		letter-spacing: 0.2em;
 		margin-top: 0.25rem;
 	}
 	
-	.pulse-nodes {
-		position: absolute;
-		inset: 0;
-		pointer-events: none;
+	/* Neural Display */
+	.neural-display {
+		flex: 1;
+		overflow: hidden;
+		padding: 2rem;
 	}
 	
-	.pulse-node {
-		position: absolute;
-		transform: translate(-50%, -50%);
-		cursor: pointer;
-		pointer-events: all;
-		transition: all 0.3s ease;
-	}
-	
-	.pulse-node:hover {
-		z-index: 10;
-		transform: translate(-50%, -50%) scale(1.2);
-	}
-	
-	.node-pulse {
-		width: 40px;
-		height: 40px;
-		border-radius: 50%;
-		animation: nodePulse 2s ease-in-out infinite;
-	}
-	
-	@keyframes nodePulse {
-		0%, 100% { transform: scale(1); opacity: 0.3; }
-		50% { transform: scale(1.3); opacity: 0.6; }
-	}
-	
-	.node-info {
-		position: absolute;
-		top: 100%;
-		left: 50%;
-		transform: translateX(-50%);
-		margin-top: 0.5rem;
-		text-align: center;
-		white-space: nowrap;
-	}
-	
-	.node-name {
-		display: block;
-		font-size: 0.65rem;
-		color: rgba(255, 255, 255, 0.7);
-		margin-bottom: 0.25rem;
-	}
-	
-	.node-power {
-		font-size: 0.7rem;
-		font-weight: 600;
-	}
-	
-	.pulse-stream {
-		background: rgba(0, 0, 0, 0.6);
-		border: 1px solid rgba(0, 255, 204, 0.1);
-		border-radius: 16px;
-		padding: 1.5rem;
+	/* Loading State */
+	.neural-loading {
+		height: 100%;
 		display: flex;
 		flex-direction: column;
+		align-items: center;
+		justify-content: center;
+		gap: 2rem;
 	}
 	
-	.pulse-stream h3 {
-		margin: 0 0 1rem 0;
+	.loading-brain {
+		position: relative;
+		width: 150px;
+		height: 150px;
+	}
+	
+	.brain-hemisphere {
+		position: absolute;
+		width: 60px;
+		height: 100px;
+		background: linear-gradient(135deg, #FF79C6, #8BE9FD);
+		border-radius: 50%;
+		opacity: 0.3;
+		animation: hemisphereFloat 3s ease-in-out infinite;
+	}
+	
+	.brain-hemisphere.left {
+		left: 20px;
+		animation-delay: 0s;
+	}
+	
+	.brain-hemisphere.right {
+		right: 20px;
+		animation-delay: 0.5s;
+	}
+	
+	@keyframes hemisphereFloat {
+		0%, 100% { transform: translateY(0); }
+		50% { transform: translateY(-10px); }
+	}
+	
+	.brain-stem {
+		position: absolute;
+		bottom: 10px;
+		left: 50%;
+		transform: translateX(-50%);
+		width: 30px;
+		height: 40px;
+		background: linear-gradient(180deg, #BD93F9, transparent);
+		opacity: 0.5;
+	}
+	
+	.neural-pulse {
+		position: absolute;
+		inset: -20px;
+		border: 2px solid #8BE9FD;
+		border-radius: 50%;
+		animation: neuralPulse 2s ease-out infinite;
+	}
+	
+	@keyframes neuralPulse {
+		0% { transform: scale(0.8); opacity: 1; }
+		100% { transform: scale(1.5); opacity: 0; }
+	}
+	
+	.loading-text {
+		color: rgba(139, 233, 253, 0.6);
 		font-size: 0.9rem;
-		color: #00FFCC;
-		letter-spacing: 0.1em;
-		font-weight: 500;
+		letter-spacing: 0.2em;
+		animation: textPulse 2s ease-in-out infinite;
 	}
 	
-	.stream-graph {
-		flex: 1;
+	@keyframes textPulse {
+		0%, 100% { opacity: 0.4; }
+		50% { opacity: 1; }
+	}
+	
+	/* Neural Visualization */
+	.neural-visualization {
+		height: 100%;
+		display: grid;
+		grid-template-columns: 1fr 1fr;
+		gap: 2rem;
+	}
+	
+	.neural-3d-space {
+		position: relative;
 		display: flex;
 		align-items: center;
 		justify-content: center;
+		background: radial-gradient(circle at center, rgba(139, 233, 253, 0.02), transparent);
+		border: 1px solid rgba(139, 233, 253, 0.1);
+		border-radius: 20px;
 	}
 	
-	.stream-graph svg {
+	.synaptic-network {
 		width: 100%;
 		height: 100%;
+		max-width: 600px;
+		max-height: 600px;
 	}
 	
-	/* Matrix View */
-	.matrix-view {
-		height: 100%;
-		overflow: auto;
-	}
-	
-	.matrix-grid {
-		display: grid;
-		grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-		gap: 1rem;
-		padding: 1rem;
-	}
-	
-	.matrix-cell {
-		position: relative;
-		background: rgba(0, 0, 0, 0.8);
-		border: 1px solid rgba(255, 255, 255, 0.1);
-		border-radius: 12px;
-		overflow: hidden;
+	.neural-node-group {
 		cursor: pointer;
 		transition: all 0.3s ease;
-		--cell-color: #00FFCC;
 	}
 	
-	.matrix-cell:hover {
-		transform: translateY(-4px);
-		border-color: var(--cell-color);
-		box-shadow: 0 8px 24px rgba(0, 0, 0, 0.8), 0 0 40px rgba(0, 255, 204, 0.2);
+	.neural-node-group:hover {
+		transform: scale(1.2);
 	}
 	
-	.cell-background {
+	.synaptic-activity {
 		position: absolute;
-		inset: 0;
-		opacity: 0.05;
+		bottom: 20px;
+		left: 20px;
+		right: 20px;
+		height: 60px;
+		background: rgba(0, 0, 0, 0.8);
+		border: 1px solid rgba(139, 233, 253, 0.3);
+		padding: 5px;
+		border-radius: 10px;
 	}
 	
-	.cell-pattern {
+	.synaptic-activity svg {
 		width: 100%;
 		height: 100%;
-		background-image: 
-			repeating-linear-gradient(45deg, var(--cell-color) 0, var(--cell-color) 1px, transparent 1px, transparent 15px),
-			repeating-linear-gradient(-45deg, var(--cell-color) 0, var(--cell-color) 1px, transparent 1px, transparent 15px);
-		opacity: 0.1;
 	}
 	
-	.cell-content {
-		position: relative;
+	.activity-label {
+		position: absolute;
+		top: 5px;
+		left: 10px;
+		font-size: 0.6rem;
+		color: rgba(255, 255, 255, 0.5);
+		letter-spacing: 0.1em;
+	}
+	
+	/* Executive Matrix */
+	.executive-matrix {
+		overflow: auto;
+		background: rgba(0, 0, 0, 0.6);
+		border: 1px solid rgba(139, 233, 253, 0.1);
+		border-radius: 20px;
+		backdrop-filter: blur(10px);
+	}
+	
+	.matrix-table {
+		width: 100%;
+		border-collapse: collapse;
+	}
+	
+	.matrix-table th {
+		background: linear-gradient(180deg, rgba(139, 233, 253, 0.1), rgba(0, 0, 0, 0.8));
+		color: #8BE9FD;
 		padding: 1rem;
-		display: flex;
-		flex-direction: column;
-		gap: 0.75rem;
-	}
-	
-	.cell-header {
-		display: flex;
-		justify-content: space-between;
-		align-items: center;
-	}
-	
-	.cell-icon {
-		font-size: 1.2rem;
-	}
-	
-	.cell-rank {
+		text-align: left;
 		font-size: 0.7rem;
-		color: rgba(255, 255, 255, 0.4);
+		font-weight: 300;
+		letter-spacing: 0.2em;
+		border-bottom: 1px solid rgba(139, 233, 253, 0.3);
+		position: sticky;
+		top: 0;
+		z-index: 10;
+	}
+	
+	.matrix-row {
+		cursor: pointer;
+		transition: all 0.2s ease;
+		border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+	}
+	
+	.matrix-row:hover {
+		background: rgba(139, 233, 253, 0.03);
+		transform: translateX(5px);
+	}
+	
+	.matrix-table td {
+		padding: 0.75rem 1rem;
+		font-size: 0.8rem;
+		color: rgba(255, 255, 255, 0.8);
+	}
+	
+	.rank-cell {
 		font-weight: 600;
+		font-family: 'Courier New', monospace;
 	}
 	
-	.cell-name {
-		font-size: 0.75rem;
-		color: rgba(255, 255, 255, 0.9);
-		letter-spacing: 0.05em;
-		font-weight: 500;
-	}
-	
-	.cell-metrics {
+	.executive-cell {
 		display: flex;
-		flex-direction: column;
+		align-items: center;
 		gap: 0.5rem;
 	}
 	
-	.metric-row {
-		display: flex;
-		justify-content: space-between;
-		align-items: center;
+	.executive-symbol {
+		font-size: 1.2rem;
+	}
+	
+	.executive-id {
+		font-weight: 300;
+		letter-spacing: 0.05em;
+	}
+	
+	.classification-badge {
+		display: inline-block;
+		padding: 0.3rem 0.6rem;
 		font-size: 0.65rem;
-	}
-	
-	.metric-label {
-		color: rgba(255, 255, 255, 0.4);
-		letter-spacing: 0.05em;
-	}
-	
-	.metric-value {
 		font-weight: 600;
-		font-family: 'JetBrains Mono', monospace;
+		letter-spacing: 0.1em;
+		border-radius: 4px;
 	}
 	
-	.cell-signature {
-		font-size: 0.5rem;
-		color: rgba(255, 255, 255, 0.3);
-		font-family: 'JetBrains Mono', monospace;
-		letter-spacing: 0.05em;
-		text-align: center;
-		padding-top: 0.5rem;
-		border-top: 1px solid rgba(255, 255, 255, 0.05);
+	.numeric-cell {
+		font-family: 'Courier New', monospace;
+		color: #8BE9FD;
 	}
 	
-	/* Detail Interface */
-	.executive-detail-interface {
-		height: 100%;
+	.influence-display {
 		display: flex;
-		flex-direction: column;
-		gap: 2rem;
+		align-items: center;
+		gap: 0.5rem;
+	}
+	
+	.influence-bar {
+		width: 60px;
+		height: 3px;
+		background: rgba(255, 255, 255, 0.1);
 		overflow: hidden;
 	}
 	
-	.detail-header {
+	.influence-fill {
+		height: 100%;
+		transition: width 0.5s ease;
+	}
+	
+	.influence-value {
+		font-size: 0.7rem;
+		color: rgba(255, 255, 255, 0.6);
+		min-width: 35px;
+	}
+	
+	.coherence-meter {
+		width: 20px;
+		height: 20px;
+		background: rgba(255, 255, 255, 0.1);
+		border: 1px solid rgba(255, 255, 255, 0.2);
+		position: relative;
+		border-radius: 2px;
+	}
+	
+	.coherence-level {
+		position: absolute;
+		bottom: 0;
+		left: 0;
+		width: 100%;
+		transition: height 0.5s ease;
+	}
+	
+	.signature-cell {
+		font-family: 'Courier New', monospace;
+		font-size: 0.7rem;
+		color: rgba(139, 233, 253, 0.6);
+	}
+	
+	.mini-signature {
+		letter-spacing: 0.05em;
+	}
+	
+	/* Executive Deep Dive */
+	.executive-deep-dive {
+		height: 100%;
+		display: flex;
+		flex-direction: column;
+		background: rgba(0, 0, 0, 0.6);
+		border: 1px solid rgba(139, 233, 253, 0.1);
+		border-radius: 20px;
+		backdrop-filter: blur(20px);
+		overflow: hidden;
+	}
+	
+	.deep-header {
 		display: flex;
 		justify-content: space-between;
 		align-items: center;
 		padding: 2rem;
-		background: linear-gradient(135deg, rgba(0, 255, 204, 0.05), rgba(0, 0, 0, 0.8));
-		border: 1px solid rgba(0, 255, 204, 0.2);
-		border-radius: 16px;
+		background: linear-gradient(135deg, rgba(139, 233, 253, 0.1), transparent);
+		border-bottom: 1px solid rgba(139, 233, 253, 0.2);
 	}
 	
 	.executive-identity {
@@ -1678,414 +1322,260 @@
 		gap: 2rem;
 	}
 	
-	.identity-avatar {
+	.identity-visualization {
+		position: relative;
 		width: 100px;
 		height: 100px;
-		border: 2px solid;
-		border-radius: 50%;
-		position: relative;
 		display: flex;
 		align-items: center;
 		justify-content: center;
 	}
 	
-	.avatar-core {
-		font-size: 2.5rem;
-		color: #00FFCC;
-		text-shadow: 0 0 30px rgba(0, 255, 204, 0.8);
-		z-index: 2;
-	}
-	
-	.avatar-rings {
-		position: absolute;
-		inset: -10px;
-		pointer-events: none;
-	}
-	
-	.avatar-rings .ring {
-		position: absolute;
-		inset: 0;
-		border: 1px solid;
+	.identity-core {
+		width: 60px;
+		height: 60px;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		font-size: 2rem;
 		border-radius: 50%;
-		animation: avatarRingRotate 4s linear infinite;
+		z-index: 1;
+		box-shadow: 0 0 40px currentColor;
 	}
 	
-	.avatar-rings .ring:nth-child(2) {
+	.identity-rings {
+		position: absolute;
+		inset: -20px;
+	}
+	
+	.identity-ring {
+		position: absolute;
+		border: 1px solid #8BE9FD;
+		border-radius: 50%;
+		opacity: 0.3;
+		animation: identityPulse 3s ease-in-out infinite;
+	}
+	
+	.ring-1 {
+		inset: 0;
+		animation-delay: 0s;
+	}
+	
+	.ring-2 {
 		inset: 10px;
-		animation-direction: reverse;
-		animation-duration: 6s;
+		animation-delay: 0.5s;
 	}
 	
-	@keyframes avatarRingRotate {
-		from { transform: rotate(0deg); }
-		to { transform: rotate(360deg); }
+	.ring-3 {
+		inset: 20px;
+		animation-delay: 1s;
+	}
+	
+	@keyframes identityPulse {
+		0%, 100% { transform: scale(1); opacity: 0.3; }
+		50% { transform: scale(1.1); opacity: 0.6; }
 	}
 	
 	.identity-data {
 		display: flex;
 		flex-direction: column;
-		gap: 0.75rem;
+		gap: 0.5rem;
 	}
 	
 	.executive-name {
 		margin: 0;
 		font-size: 1.5rem;
 		font-weight: 200;
-		color: #00FFCC;
+		color: #8BE9FD;
 		letter-spacing: 0.1em;
-		text-shadow: 0 0 20px rgba(0, 255, 204, 0.5);
+		text-shadow: 0 0 20px rgba(139, 233, 253, 0.5);
 	}
 	
-	.quantum-signature {
-		font-family: 'JetBrains Mono', monospace;
-		font-size: 0.85rem;
+	.neural-signature {
+		font-family: 'Courier New', monospace;
+		font-size: 0.8rem;
 		color: rgba(255, 255, 255, 0.5);
-		letter-spacing: 0.1em;
-	}
-	
-	.executive-tags {
-		display: flex;
-		gap: 0.75rem;
-		flex-wrap: wrap;
-	}
-	
-	.tag {
-		padding: 0.5rem 1rem;
-		border-radius: 20px;
-		font-size: 0.75rem;
-		font-weight: 500;
 		letter-spacing: 0.05em;
-		border: 1px solid currentColor;
 	}
 	
-	.close-detail {
-		width: 48px;
-		height: 48px;
-		background: rgba(255, 0, 136, 0.1);
-		border: 1px solid #FF0088;
-		border-radius: 12px;
-		color: #FF0088;
+	.close-neural {
+		background: rgba(255, 121, 198, 0.1);
+		border: 1px solid #FF79C6;
+		color: #FF79C6;
+		width: 40px;
+		height: 40px;
+		border-radius: 50%;
 		display: flex;
 		align-items: center;
 		justify-content: center;
 		cursor: pointer;
 		transition: all 0.3s ease;
-	}
-	
-	.close-detail:hover {
-		background: rgba(255, 0, 136, 0.2);
-		transform: rotate(90deg);
-		box-shadow: 0 0 30px rgba(255, 0, 136, 0.5);
-	}
-	
-	.close-icon {
 		font-size: 1.5rem;
 	}
 	
-	.detail-metrics {
+	.close-neural:hover {
+		background: rgba(255, 121, 198, 0.2);
+		transform: rotate(90deg);
+		box-shadow: 0 0 20px rgba(255, 121, 198, 0.5);
+	}
+	
+	/* Psychometric Display */
+	.psychometric-display {
+		padding: 2rem;
+		border-bottom: 1px solid rgba(139, 233, 253, 0.1);
+	}
+	
+	.psychometric-grid {
 		display: grid;
 		grid-template-columns: repeat(4, 1fr);
 		gap: 1.5rem;
 	}
 	
-	.metric-card {
-		background: rgba(0, 0, 0, 0.6);
-		border: 1px solid rgba(255, 255, 255, 0.1);
-		border-radius: 16px;
-		padding: 1.5rem;
-		display: flex;
-		flex-direction: column;
-		gap: 1rem;
-		position: relative;
-		overflow: hidden;
+	.psychometric-card {
+		text-align: center;
 	}
 	
-	.metric-card::before {
-		content: '';
-		position: absolute;
-		top: 0;
-		left: 0;
-		right: 0;
-		height: 1px;
-		background: linear-gradient(90deg, transparent, currentColor, transparent);
-		animation: scanLine 3s linear infinite;
-	}
-	
-	@keyframes scanLine {
-		0% { transform: translateX(-100%); }
-		100% { transform: translateX(100%); }
-	}
-	
-	.card-icon {
-		font-size: 1.5rem;
-		text-shadow: 0 0 20px currentColor;
-	}
-	
-	.card-content {
-		flex: 1;
-	}
-	
-	.card-value {
-		font-size: 1.8rem;
-		font-weight: 100;
-		color: #00FFCC;
-		font-family: 'JetBrains Mono', monospace;
-		text-shadow: 0 0 20px rgba(0, 255, 204, 0.5);
-	}
-	
-	.card-label {
+	.psych-label {
 		font-size: 0.7rem;
 		color: rgba(255, 255, 255, 0.5);
 		letter-spacing: 0.1em;
-		margin-top: 0.5rem;
+		margin-bottom: 0.5rem;
 	}
 	
-	.card-graph,
-	.card-progress,
-	.card-indicator,
-	.card-threat {
-		margin-top: auto;
-		height: 40px;
+	.psych-visualization {
+		position: relative;
+		width: 100px;
+		height: 100px;
+		margin: 0 auto;
 	}
 	
-	.card-graph svg {
+	.psych-visualization svg {
 		width: 100%;
 		height: 100%;
 	}
 	
-	.progress-track {
-		height: 4px;
-		background: rgba(255, 255, 255, 0.1);
-		border-radius: 2px;
-		overflow: hidden;
-	}
-	
-	.progress-fill {
-		height: 100%;
-		transition: width 0.5s ease;
-		animation: progressPulse 2s ease-in-out infinite;
-	}
-	
-	@keyframes progressPulse {
-		0%, 100% { opacity: 1; }
-		50% { opacity: 0.7; }
-	}
-	
-	.indicator-ring {
-		width: 40px;
-		height: 40px;
-		border: 2px solid;
-		border-radius: 50%;
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		animation: indicatorRotate 4s linear infinite;
-	}
-	
-	@keyframes indicatorRotate {
-		from { transform: rotate(0deg); }
-		to { transform: rotate(360deg); }
-	}
-	
-	.indicator-value {
-		font-size: 0.75rem;
+	.psych-value {
+		position: absolute;
+		top: 50%;
+		left: 50%;
+		transform: translate(-50%, -50%);
+		font-size: 1.2rem;
 		font-weight: 600;
+		color: #FFFFFF;
 	}
 	
-	.threat-bars {
-		display: flex;
-		gap: 2px;
-		height: 100%;
-		align-items: flex-end;
-	}
-	
-	.threat-bar {
-		flex: 1;
-		height: 100%;
-		border-radius: 1px;
-		transition: all 0.3s ease;
-	}
-	
-	.detail-stream {
-		flex: 1;
-		background: rgba(0, 0, 0, 0.6);
-		border: 1px solid rgba(0, 255, 204, 0.1);
-		border-radius: 16px;
-		display: flex;
-		flex-direction: column;
-		overflow: hidden;
-	}
-	
-	.stream-header {
-		display: flex;
-		justify-content: space-between;
-		align-items: center;
-		padding: 1rem 1.5rem;
-		background: rgba(0, 0, 0, 0.4);
-		border-bottom: 1px solid rgba(0, 255, 204, 0.1);
-	}
-	
-	.stream-header h3 {
-		margin: 0;
-		font-size: 0.9rem;
-		color: #00FFCC;
-		letter-spacing: 0.1em;
-		font-weight: 500;
-	}
-	
-	.stream-controls {
-		display: flex;
-		align-items: center;
-		gap: 0.75rem;
-	}
-	
-	.stream-status {
-		font-size: 0.7rem;
-		color: #00FF88;
-		letter-spacing: 0.1em;
-		font-weight: 500;
-	}
-	
-	.stream-indicator {
-		width: 8px;
-		height: 8px;
-		background: #00FF88;
-		border-radius: 50%;
-		animation: streamBlink 1s ease-in-out infinite;
-	}
-	
-	@keyframes streamBlink {
-		0%, 100% { opacity: 1; box-shadow: 0 0 10px #00FF88; }
-		50% { opacity: 0.3; box-shadow: none; }
-	}
-	
-	.stream-content {
+	/* Neural Connections Stream */
+	.neural-connections-stream {
 		flex: 1;
 		overflow: auto;
 		padding: 1rem;
 	}
 	
-	.quantum-table {
+	.connections-table {
 		width: 100%;
-		border-collapse: separate;
-		border-spacing: 0;
+		border-collapse: collapse;
 	}
 	
-	.quantum-table th {
-		background: rgba(0, 0, 0, 0.6);
-		color: rgba(0, 255, 204, 0.7);
+	.connections-table th {
+		background: rgba(0, 0, 0, 0.8);
+		color: #8BE9FD;
 		padding: 0.75rem;
 		text-align: left;
 		font-size: 0.7rem;
-		font-weight: 500;
+		font-weight: 300;
 		letter-spacing: 0.1em;
+		border-bottom: 1px solid rgba(139, 233, 253, 0.3);
 		position: sticky;
 		top: 0;
-		z-index: 10;
-		border-bottom: 1px solid rgba(0, 255, 204, 0.2);
 	}
 	
-	.data-row {
+	.connection-row {
+		border-bottom: 1px solid rgba(255, 255, 255, 0.05);
 		transition: all 0.2s ease;
-		border-bottom: 1px solid rgba(255, 255, 255, 0.03);
 	}
 	
-	.data-row:hover {
-		background: rgba(0, 255, 204, 0.02);
+	.connection-row:hover {
+		background: rgba(139, 233, 253, 0.02);
 	}
 	
-	.quantum-table td {
+	.connections-table td {
 		padding: 0.75rem;
 		font-size: 0.75rem;
 		color: rgba(255, 255, 255, 0.7);
 	}
 	
 	.node-id {
-		font-family: 'JetBrains Mono', monospace;
-		color: #00FFCC;
+		font-family: 'Courier New', monospace;
+		color: #8BE9FD;
 		font-size: 0.7rem;
-		letter-spacing: 0.05em;
 	}
 	
-	.sync-indicator,
-	.shield-indicator {
+	.sync-indicator, .security-indicator {
 		display: inline-flex;
 		align-items: center;
 		justify-content: center;
 		width: 24px;
 		height: 24px;
 		font-size: 1rem;
-		text-shadow: 0 0 10px currentColor;
+	}
+	
+	.sync-indicator.synced {
+		color: #50FA7B;
+		text-shadow: 0 0 10px #50FA7B;
+	}
+	
+	.sync-indicator.desynced {
+		color: #666666;
+	}
+	
+	.security-indicator.secured {
+		color: #8BE9FD;
+		text-shadow: 0 0 10px #8BE9FD;
+	}
+	
+	.security-indicator.vulnerable {
+		color: #FF79C6;
+		text-shadow: 0 0 10px #FF79C6;
 	}
 	
 	/* Responsive */
-	@media (max-width: 1600px) {
-		.header-grid {
+	@media (max-width: 1400px) {
+		.neural-visualization {
 			grid-template-columns: 1fr;
-			gap: 1.5rem;
 		}
 		
-		.metrics-section {
-			justify-content: flex-start;
-		}
-		
-		.detail-metrics {
+		.psychometric-grid {
 			grid-template-columns: repeat(2, 1fr);
 		}
 	}
 	
-	@media (max-width: 1200px) {
-		.neural-view {
-			grid-template-columns: 1fr;
-		}
-		
-		.neural-panel {
-			display: none;
-		}
-		
-		.pulse-view {
-			grid-template-columns: 1fr;
-		}
-		
-		.pulse-stream {
-			display: none;
-		}
-	}
-	
 	@media (max-width: 768px) {
-		.interface-body {
-			padding: 1rem;
+		.neural-header {
+			flex-direction: column;
+			gap: 1rem;
 		}
 		
-		.matrix-grid {
-			grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
-		}
-		
-		.level-members {
-			grid-template-columns: 1fr;
-		}
-		
-		.detail-metrics {
+		.psychometric-grid {
 			grid-template-columns: 1fr;
 		}
 	}
 	
-	/* Scrollbar Styling */
+	/* Scrollbar */
 	::-webkit-scrollbar {
-		width: 8px;
-		height: 8px;
+		width: 6px;
+		height: 6px;
 	}
 	
 	::-webkit-scrollbar-track {
-		background: rgba(0, 0, 0, 0.4);
-		border-radius: 4px;
+		background: #000000;
 	}
 	
 	::-webkit-scrollbar-thumb {
-		background: linear-gradient(180deg, #00FFCC, #FF00FF);
-		border-radius: 4px;
+		background: linear-gradient(180deg, #FF79C6, #8BE9FD);
+		border-radius: 3px;
 	}
 	
-	::-webkit-scrollbar-thumb:hover {
-		background: linear-gradient(180deg, #00FFCC, #FFFF00);
+	::-webkit-scrollbar-corner {
+		background: #000000;
 	}
+</style>
