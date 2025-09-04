@@ -1,784 +1,1262 @@
-<!-- CIOMetrics.svelte - Enhanced Executive Analysis -->
+<!-- CIOMetrics.svelte - Quantum Executive Neural Interface -->
 <script>
-	import { onMount } from 'svelte';
+	import { onMount, onDestroy } from 'svelte';
 	
 	let data = {};
 	let loading = true;
-	let selectedCio = null;
-	let cioDetails = [];
+	let selectedExecutive = null;
+	let executiveDetails = [];
 	let searchTerm = '';
-
+	let particleSystem = [];
+	let neuralConnections = [];
+	let quantumState = 'INITIALIZING';
+	let hologramRotation = 0;
+	let dataStreamActive = false;
+	let threatMatrix = [];
+	let executiveNodes = new Map();
+	let connectionStrength = new Map();
+	
+	// Animation intervals
+	let rotationInterval;
+	let particleInterval;
+	let quantumInterval;
+	
 	onMount(async () => {
 		try {
 			let response = await fetch('http://localhost:5000/api/cio_metrics');
 			data = await response.json();
 			loading = false;
+			quantumState = 'SYNCHRONIZED';
+			initializeNeuralNetwork();
+			startQuantumAnimation();
 		} catch (err) {
-			console.error('CIO metrics error:', err);
+			console.error('Executive neural sync failed:', err);
 			loading = false;
+			quantumState = 'DESYNCHRONIZED';
 		}
 	});
-
-	$: sortedCios = data.operative_intelligence ? 
+	
+	onDestroy(() => {
+		if (rotationInterval) clearInterval(rotationInterval);
+		if (particleInterval) clearInterval(particleInterval);
+		if (quantumInterval) clearInterval(quantumInterval);
+	});
+	
+	function initializeNeuralNetwork() {
+		// Generate particle system
+		for (let i = 0; i < 50; i++) {
+			particleSystem.push({
+				x: Math.random() * 100,
+				y: Math.random() * 100,
+				z: Math.random() * 100,
+				vx: (Math.random() - 0.5) * 0.5,
+				vy: (Math.random() - 0.5) * 0.5,
+				vz: (Math.random() - 0.5) * 0.5,
+				size: Math.random() * 3 + 1,
+				opacity: Math.random() * 0.5 + 0.3,
+				color: `hsl(${180 + Math.random() * 60}, 100%, 50%)`
+			});
+		}
+		
+		// Generate neural connections between executives
+		if (data.operative_intelligence) {
+			const executives = Object.entries(data.operative_intelligence).slice(0, 20);
+			executives.forEach(([exec, count], i) => {
+				executives.forEach(([exec2, count2], j) => {
+					if (i < j && Math.random() > 0.7) {
+						neuralConnections.push({
+							from: exec,
+							to: exec2,
+							strength: Math.min(count, count2) / Math.max(count, count2),
+							pulsePhase: Math.random() * Math.PI * 2
+						});
+					}
+				});
+			});
+		}
+	}
+	
+	function startQuantumAnimation() {
+		rotationInterval = setInterval(() => {
+			hologramRotation = (hologramRotation + 0.5) % 360;
+		}, 50);
+		
+		particleInterval = setInterval(() => {
+			particleSystem = particleSystem.map(p => ({
+				...p,
+				x: (p.x + p.vx + 100) % 100,
+				y: (p.y + p.vy + 100) % 100,
+				z: (p.z + p.vz + 100) % 100,
+				opacity: 0.3 + Math.sin(Date.now() * 0.001 + p.x) * 0.3
+			}));
+		}, 50);
+		
+		quantumInterval = setInterval(() => {
+			dataStreamActive = !dataStreamActive;
+			quantumState = ['SYNCHRONIZED', 'PROCESSING', 'ANALYZING', 'CORRELATING'][Math.floor(Math.random() * 4)];
+		}, 3000);
+	}
+	
+	$: sortedExecutives = data.operative_intelligence ? 
 		Object.entries(data.operative_intelligence)
-			.filter(([cio]) => cio.toLowerCase().includes(searchTerm.toLowerCase()))
+			.filter(([exec]) => exec.toLowerCase().includes(searchTerm.toLowerCase()))
 			.sort((a, b) => b[1] - a[1]) : [];
 	
-	$: maxAssets = sortedCios.length > 0 ? Math.max(...sortedCios.map(([,count]) => count)) : 1;
-
-	function getExecutiveLevel(count) {
-		if (!maxAssets) return { level: 'ANALYST', color: '#b8a678', icon: '▪' };
-		let percentage = (count / maxAssets) * 100;
-		if (percentage >= 70) return { level: 'C-SUITE', color: '#ff0066', icon: '◆' };
-		if (percentage >= 40) return { level: 'VP', color: '#ff9900', icon: '▲' };
-		if (percentage >= 20) return { level: 'DIRECTOR', color: '#ffcc00', icon: '●' };
-		return { level: 'ANALYST', color: '#0a4f3c', icon: '▪' };
+	$: maxAssets = sortedExecutives.length > 0 ? Math.max(...sortedExecutives.map(([,count]) => count)) : 1;
+	$: minAssets = sortedExecutives.length > 0 ? Math.min(...sortedExecutives.map(([,count]) => count)) : 0;
+	
+	function calculateExecutiveMetrics(count) {
+		const normalized = (count - minAssets) / (maxAssets - minAssets);
+		const percentile = normalized * 100;
+		
+		// Dynamic classification based on distribution
+		let classification = 'UNKNOWN';
+		let threatLevel = 0;
+		let color = '#00ffff';
+		let icon = '◯';
+		
+		if (percentile >= 90) {
+			classification = 'APEX';
+			threatLevel = 95;
+			color = '#ff00ff';
+			icon = '◈';
+		} else if (percentile >= 75) {
+			classification = 'PRIME';
+			threatLevel = 75;
+			color = '#ff6600';
+			icon = '◆';
+		} else if (percentile >= 50) {
+			classification = 'CORE';
+			threatLevel = 50;
+			color = '#00ff00';
+			icon = '▲';
+		} else if (percentile >= 25) {
+			classification = 'STANDARD';
+			threatLevel = 25;
+			color = '#00ffff';
+			icon = '●';
+		} else {
+			classification = 'EMERGING';
+			threatLevel = 10;
+			color = '#0099ff';
+			icon = '○';
+		}
+		
+		return {
+			classification,
+			threatLevel,
+			color,
+			icon,
+			percentile: percentile.toFixed(1),
+			quantumSignature: generateQuantumSignature(count),
+			neuralActivity: normalized * 100,
+			dataFlow: count * 0.001 // TB/s
+		};
 	}
-
+	
+	function generateQuantumSignature(seed) {
+		const sig = [];
+		for (let i = 0; i < 8; i++) {
+			sig.push(((seed * (i + 1) * 9973) % 256).toString(16).padStart(2, '0'));
+		}
+		return sig.join(':').toUpperCase();
+	}
+	
 	function getPercentage(count) {
 		let total = Object.values(data.operative_intelligence || {}).reduce((a, b) => a + b, 0);
 		if (!total) return 0;
 		return ((count / total) * 100).toFixed(2);
 	}
-
-	async function drillDownCio(cio, count) {
-		selectedCio = { cio, count };
+	
+	async function drillDownExecutive(executive, count) {
+		selectedExecutive = { executive, count };
 		loading = true;
+		quantumState = 'DEEP_SCANNING';
 		
 		try {
-			let response = await fetch(`http://localhost:5000/api/host_search?q=${encodeURIComponent(cio)}`);
+			let response = await fetch(`http://localhost:5000/api/host_search?q=${encodeURIComponent(executive)}`);
 			let result = await response.json();
-			cioDetails = result.hosts || [];
+			executiveDetails = result.hosts || [];
 			loading = false;
+			quantumState = 'SYNCHRONIZED';
 		} catch (err) {
-			console.error('CIO drill-down error:', err);
-			cioDetails = [];
+			console.error('Executive deep scan failed:', err);
+			executiveDetails = [];
 			loading = false;
+			quantumState = 'ERROR';
 		}
 	}
-
+	
 	function closeDetails() {
-		selectedCio = null;
-		cioDetails = [];
+		selectedExecutive = null;
+		executiveDetails = [];
+		quantumState = 'SYNCHRONIZED';
 	}
-
-	$: executiveDistribution = sortedCios.reduce((acc, [_, count]) => {
-		let level = getExecutiveLevel(count).level;
-		acc[level] = (acc[level] || 0) + 1;
-		return acc;
-	}, {});
 </script>
 
-<div class="dashboard-container">
-	<div class="main-content">
-		<!-- Left Panel: Table -->
-		<div class="table-panel">
-			<div class="panel-header">
-				<h3 class="panel-title">
-					<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-						<path d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"/>
-					</svg>
-					Executive Leadership Analysis
-				</h3>
-				<div class="controls">
-					<input 
-						type="text" 
-						bind:value={searchTerm}
-						placeholder="Search executives..."
-						class="search-input"
-					/>
+<div class="quantum-container">
+	<!-- Particle System Background -->
+	<div class="particle-field">
+		{#each particleSystem as particle}
+			<div class="quantum-particle" 
+				 style="left: {particle.x}%; 
+						top: {particle.y}%; 
+						opacity: {particle.opacity};
+						width: {particle.size}px;
+						height: {particle.size}px;
+						background: {particle.color};
+						box-shadow: 0 0 {particle.size * 3}px {particle.color};">
+			</div>
+		{/each}
+	</div>
+	
+	<!-- Neural Grid Overlay -->
+	<svg class="neural-grid" viewBox="0 0 100 100">
+		<defs>
+			<linearGradient id="neuralGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+				<stop offset="0%" style="stop-color:#00ffff;stop-opacity:0.3" />
+				<stop offset="100%" style="stop-color:#ff00ff;stop-opacity:0.3" />
+			</linearGradient>
+			<filter id="glow">
+				<feGaussianBlur stdDeviation="2" result="coloredBlur"/>
+				<feMerge>
+					<feMergeNode in="coloredBlur"/>
+					<feMergeNode in="SourceGraphic"/>
+				</feMerge>
+			</filter>
+		</defs>
+		{#each Array(10) as _, i}
+			<line x1="0" y1="{i * 10 + 5}" x2="100" y2="{i * 10 + 5}" 
+				  stroke="url(#neuralGradient)" stroke-width="0.1" opacity="0.3"/>
+			<line x1="{i * 10 + 5}" y1="0" x2="{i * 10 + 5}" y2="100" 
+				  stroke="url(#neuralGradient)" stroke-width="0.1" opacity="0.3"/>
+		{/each}
+	</svg>
+	
+	<div class="executive-interface">
+		<!-- Quantum Header -->
+		<div class="quantum-header">
+			<div class="header-matrix">
+				<div class="quantum-logo">
+					<div class="hologram-container" style="transform: rotateY({hologramRotation}deg)">
+						<div class="hologram-face front">◈</div>
+						<div class="hologram-face back">◈</div>
+						<div class="hologram-face left">◈</div>
+						<div class="hologram-face right">◈</div>
+					</div>
+				</div>
+				<div class="header-text">
+					<h1 class="glitch-text" data-text="EXECUTIVE NEURAL MATRIX">
+						EXECUTIVE NEURAL MATRIX
+					</h1>
+					<div class="quantum-status">
+						<span class="status-indicator {quantumState.toLowerCase()}"></span>
+						<span class="status-text">QUANTUM STATE: {quantumState}</span>
+					</div>
 				</div>
 			</div>
 			
-			{#if loading && !selectedCio}
-				<div class="loading-state">
-					<div class="spinner"></div>
-					<p>SCANNING EXECUTIVE DATA...</p>
+			<div class="search-matrix">
+				<input 
+					type="text" 
+					bind:value={searchTerm}
+					placeholder="NEURAL SEARCH..."
+					class="quantum-search"
+				/>
+				<div class="search-scanner {searchTerm ? 'active' : ''}"></div>
+			</div>
+			
+			<div class="metrics-display">
+				<div class="metric-cell">
+					<div class="metric-value">{sortedExecutives.length}</div>
+					<div class="metric-label">ENTITIES</div>
 				</div>
-			{:else if selectedCio}
-				<div class="drill-view">
-					<div class="drill-header">
-						<div class="exec-profile">
-							<span class="profile-icon" style="color: {getExecutiveLevel(selectedCio.count).color}">
-								{getExecutiveLevel(selectedCio.count).icon}
-							</span>
-							<h4>{selectedCio.cio.toUpperCase()}</h4>
+				<div class="metric-cell">
+					<div class="metric-value">{(data.operative_intelligence ? Object.values(data.operative_intelligence).reduce((a, b) => a + b, 0) : 0).toLocaleString()}</div>
+					<div class="metric-label">NODES</div>
+				</div>
+			</div>
+		</div>
+		
+		<!-- Main Interface -->
+		{#if loading && !selectedExecutive}
+			<div class="quantum-loading">
+				<div class="loading-core">
+					<div class="core-ring ring-1"></div>
+					<div class="core-ring ring-2"></div>
+					<div class="core-ring ring-3"></div>
+					<div class="core-center">◈</div>
+				</div>
+				<p class="loading-text">INITIALIZING QUANTUM NEURAL INTERFACE...</p>
+			</div>
+		{:else if selectedExecutive}
+			<div class="executive-detail-view">
+				<div class="detail-header">
+					<div class="executive-hologram">
+						<div class="hologram-avatar">
+							{calculateExecutiveMetrics(selectedExecutive.count).icon}
 						</div>
-						<button class="close-btn" on:click={closeDetails}>✕</button>
+						<div class="executive-data">
+							<h2>{selectedExecutive.executive.toUpperCase()}</h2>
+							<div class="executive-signature">
+								{calculateExecutiveMetrics(selectedExecutive.count).quantumSignature}
+							</div>
+						</div>
 					</div>
-					<div class="drill-stats">
-						<div class="stat-item">
-							<span class="stat-value">{selectedCio.count.toLocaleString()}</span>
-							<span class="stat-label">Assets</span>
-						</div>
-						<div class="stat-item">
-							<span class="stat-value">{getPercentage(selectedCio.count)}%</span>
-							<span class="stat-label">Coverage</span>
-						</div>
-						<div class="stat-item">
-							<span class="stat-value">{getExecutiveLevel(selectedCio.count).level}</span>
-							<span class="stat-label">Level</span>
-						</div>
+					<button class="quantum-close" on:click={closeDetails}>
+						<span class="close-icon">✕</span>
+					</button>
+				</div>
+				
+				<div class="executive-metrics-grid">
+					<div class="metric-card">
+						<div class="card-value">{selectedExecutive.count.toLocaleString()}</div>
+						<div class="card-label">NEURAL NODES</div>
 					</div>
-					<div class="drill-table-container">
-						<table class="data-table">
-							<thead>
-								<tr>
-									<th>HOST</th>
-									<th>REGION</th>
-									<th>INFRASTRUCTURE</th>
-									<th>CMDB</th>
-									<th>TANIUM</th>
-								</tr>
-							</thead>
-							<tbody>
-								{#each cioDetails as host}
-									<tr>
-										<td class="host-cell">{host.host}</td>
-										<td>{host.region || 'Unknown'}</td>
-										<td>{host.infrastructure_type || 'Unknown'}</td>
-										<td>
-											<span class="status-badge {host.present_in_cmdb?.toLowerCase().includes('yes') ? 'active' : 'inactive'}">
-												{host.present_in_cmdb?.toLowerCase().includes('yes') ? 'YES' : 'NO'}
-											</span>
-										</td>
-										<td>
-											<span class="status-badge {host.tanium_coverage?.toLowerCase().includes('tanium') ? 'active' : 'inactive'}">
-												{host.tanium_coverage?.toLowerCase().includes('tanium') ? 'YES' : 'NO'}
-											</span>
-										</td>
-									</tr>
-								{/each}
-							</tbody>
-						</table>
+					<div class="metric-card">
+						<div class="card-value">{getPercentage(selectedExecutive.count)}%</div>
+						<div class="card-label">NETWORK CONTROL</div>
+					</div>
+					<div class="metric-card">
+						<div class="card-value">{calculateExecutiveMetrics(selectedExecutive.count).classification}</div>
+						<div class="card-label">CLASSIFICATION</div>
+					</div>
+					<div class="metric-card">
+						<div class="card-value">{calculateExecutiveMetrics(selectedExecutive.count).threatLevel}%</div>
+						<div class="card-label">THREAT LEVEL</div>
 					</div>
 				</div>
-			{:else}
-				<!-- Main Table View -->
-				<div class="table-scroll-container">
-					<table class="data-table">
+				
+				<div class="neural-data-stream">
+					<table class="quantum-table">
 						<thead>
 							<tr>
-								<th>EXECUTIVE</th>
-								<th>LEVEL</th>
-								<th>ASSETS</th>
-								<th>COVERAGE</th>
+								<th>NODE_ID</th>
+								<th>SECTOR</th>
+								<th>REGION</th>
+								<th>INFRASTRUCTURE</th>
+								<th>CMDB_SYNC</th>
+								<th>TANIUM_SHIELD</th>
 							</tr>
 						</thead>
 						<tbody>
-							{#each sortedCios as [cio, count]}
-								{@const exec = getExecutiveLevel(count)}
-								<tr on:click={() => drillDownCio(cio, count)}>
-									<td class="exec-cell">
-										<span class="exec-icon" style="color: {exec.color}">{exec.icon}</span>
-										<span class="exec-name">{cio.substring(0, 30).toUpperCase()}</span>
-									</td>
-									<td class="center">
-										<span class="level-badge" style="color: {exec.color}; border-color: {exec.color}">{exec.level}</span>
-									</td>
-									<td class="center">{count.toLocaleString()}</td>
+							{#each executiveDetails as host}
+								<tr class="data-row">
+									<td class="node-id">{host.host.substring(0, 20)}</td>
+									<td class="data-cell">{host.country || 'UNKNOWN'}</td>
+									<td class="data-cell">{host.region || 'UNKNOWN'}</td>
+									<td class="data-cell">{host.infrastructure_type || 'UNKNOWN'}</td>
 									<td>
-										<div class="coverage-cell">
-											<div class="coverage-bar">
-												<div class="coverage-fill" style="width: {getPercentage(count)}%; background: {exec.color}"></div>
-											</div>
-											<span class="coverage-text">{getPercentage(count)}%</span>
-										</div>
+										<span class="status-quantum {host.present_in_cmdb?.toLowerCase().includes('yes') ? 'active' : 'inactive'}">
+											{host.present_in_cmdb?.toLowerCase().includes('yes') ? '◈' : '○'}
+										</span>
+									</td>
+									<td>
+										<span class="status-quantum {host.tanium_coverage?.toLowerCase().includes('tanium') ? 'secured' : 'vulnerable'}">
+											{host.tanium_coverage?.toLowerCase().includes('tanium') ? '◆' : '◇'}
+										</span>
 									</td>
 								</tr>
 							{/each}
 						</tbody>
 					</table>
 				</div>
-			{/if}
-		</div>
-
-		<!-- Right Panel: Visualizations -->
-		<div class="viz-panel">
-			<!-- Metrics Row -->
-			<div class="metrics-row">
-				<div class="metric-card">
-					<div class="metric-value">{sortedCios.length}</div>
-					<div class="metric-label">EXECUTIVES</div>
-				</div>
-				<div class="metric-card">
-					<div class="metric-value">{Object.values(data.operative_intelligence || {}).reduce((a, b) => a + b, 0).toLocaleString()}</div>
-					<div class="metric-label">TOTAL ASSETS</div>
-				</div>
 			</div>
-
-			<!-- Executive Hierarchy -->
-			<div class="viz-card">
-				<h4>
-					<svg class="icon-small" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-						<path d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/>
-					</svg>
-					ORGANIZATIONAL HIERARCHY
-				</h4>
-				<div class="hierarchy-chart">
-					{#each Object.entries(executiveDistribution) as [level, count]}
-						{@const levelData = level === 'C-SUITE' ? {color: '#ff0066', icon: '◆'} :
-							level === 'VP' ? {color: '#ff9900', icon: '▲'} :
-							level === 'DIRECTOR' ? {color: '#ffcc00', icon: '●'} :
-							{color: '#0a4f3c', icon: '▪'}}
-						<div class="hierarchy-level">
-							<div class="level-header">
-								<span class="level-icon" style="color: {levelData.color}">{levelData.icon}</span>
-								<span class="level-name">{level}</span>
+		{:else}
+			<!-- Executive Neural Network Visualization -->
+			<div class="neural-network-container">
+				<div class="network-visualization">
+					{#each sortedExecutives.slice(0, 15) as [executive, count], i}
+						{@const metrics = calculateExecutiveMetrics(count)}
+						{@const angle = (i / 15) * Math.PI * 2}
+						{@const radius = 150 + (metrics.percentile * 0.5)}
+						{@const x = 250 + Math.cos(angle) * radius}
+						{@const y = 250 + Math.sin(angle) * radius}
+						
+						<div class="executive-node" 
+							 style="left: {x}px; 
+									top: {y}px; 
+									background: radial-gradient(circle, {metrics.color}, transparent);
+									box-shadow: 0 0 {20 + metrics.threatLevel * 0.5}px {metrics.color}"
+							 on:click={() => drillDownExecutive(executive, count)}>
+							<div class="node-core" style="color: {metrics.color}">
+								{metrics.icon}
 							</div>
-							<div class="level-bar-container">
-								<div class="level-bar" style="width: {(count/sortedCios.length)*100}%; background: {levelData.color}"></div>
-							</div>
-							<div class="level-count">{count}</div>
+							<div class="node-label">{executive.substring(0, 15).toUpperCase()}</div>
+							<div class="node-power">{metrics.percentile}%</div>
 						</div>
-					{/each}
-				</div>
-			</div>
-
-			<!-- Top Executives -->
-			<div class="viz-card">
-				<h4>
-					<svg class="icon-small" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-						<path d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z"/>
-					</svg>
-					TOP EXECUTIVES
-				</h4>
-				<div class="exec-list">
-					{#each sortedCios.slice(0, 6) as [cio, count]}
-						{@const exec = getExecutiveLevel(count)}
-						<div class="exec-item">
-							<div class="exec-rank">
-								<span style="color: {exec.color}">{exec.icon}</span>
-							</div>
-							<div class="exec-details">
-								<div class="exec-item-name">{cio.substring(0, 20).toUpperCase()}</div>
-								<div class="exec-bar-container">
-									<div class="exec-bar" style="width: {(count/maxAssets)*100}%; background: {exec.color}"></div>
-								</div>
-								<div class="exec-stats">
-									<span>{count.toLocaleString()} assets</span>
-									<span class="separator">•</span>
-									<span>{getPercentage(count)}%</span>
-								</div>
-							</div>
-						</div>
-					{/each}
-				</div>
-			</div>
-
-			<!-- Portfolio Distribution -->
-			<div class="viz-card">
-				<h4>
-					<svg class="icon-small" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-						<path d="M16 8v8m-4-5v5m-4-2v2m-2 4h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/>
-					</svg>
-					ASSET DISTRIBUTION
-				</h4>
-				<div class="distribution-chart">
-					<svg viewBox="0 0 200 200">
-						{#if sortedCios.length > 0}
-							{@const total = Object.values(data.operative_intelligence || {}).reduce((a, b) => a + b, 0)}
-							{@const radius = 70}
-							{@const circumference = 2 * Math.PI * radius}
-							{#each sortedCios.slice(0, 5) as [cio, count], i}
-								{@const percentage = (count / total) * 100}
-								{@const strokeDasharray = (percentage / 100) * circumference}
-								{@const rotation = sortedCios.slice(0, i)
-									.reduce((acc, [_, c]) => acc + (c / total) * 360, -90)}
-								{@const exec = getExecutiveLevel(count)}
-								<circle
-									cx="100"
-									cy="100"
-									r={radius}
-									fill="none"
-									stroke={exec.color}
-									stroke-width="30"
-									stroke-dasharray="{strokeDasharray} {circumference}"
-									transform="rotate({rotation} 100 100)"
-									opacity="0.8"
-								/>
+						
+						<!-- Neural Connections -->
+						<svg class="connection-lines" style="position: absolute; top: 0; left: 0; width: 500px; height: 500px; pointer-events: none;">
+							{#each sortedExecutives.slice(i + 1, Math.min(i + 3, 15)) as [exec2, count2], j}
+								{@const metrics2 = calculateExecutiveMetrics(count2)}
+								{@const angle2 = ((i + j + 1) / 15) * Math.PI * 2}
+								{@const radius2 = 150 + (metrics2.percentile * 0.5)}
+								{@const x2 = 250 + Math.cos(angle2) * radius2}
+								{@const y2 = 250 + Math.sin(angle2) * radius2}
+								<line x1="{x}" y1="{y}" x2="{x2}" y2="{y2}"
+									  stroke="{metrics.color}" 
+									  stroke-width="0.5"
+									  stroke-dasharray="2,3"
+									  opacity="{0.2 + (Math.min(metrics.percentile, metrics2.percentile) / 200)}">
+									<animate attributeName="stroke-dashoffset" 
+											 values="0;10" 
+											 dur="{2 + i * 0.1}s" 
+											 repeatCount="indefinite"/>
+								</line>
 							{/each}
-						{/if}
-						<text x="100" y="95" text-anchor="middle" fill="#e0e0e0" font-size="24" font-weight="bold">
-							{sortedCios.length}
-						</text>
-						<text x="100" y="115" text-anchor="middle" fill="#b8a678" font-size="12">
-							EXECUTIVES
-						</text>
-					</svg>
+						</svg>
+					{/each}
+					
+					<!-- Central Core -->
+					<div class="network-core">
+						<div class="core-pulse"></div>
+						<div class="core-icon">◈</div>
+						<div class="core-label">NEURAL CORE</div>
+					</div>
+				</div>
+				
+				<!-- Executive Data Table -->
+				<div class="executive-data-matrix">
+					<table class="matrix-table">
+						<thead>
+							<tr>
+								<th>RANK</th>
+								<th>ENTITY</th>
+								<th>CLASSIFICATION</th>
+								<th>NODES</th>
+								<th>CONTROL</th>
+								<th>THREAT</th>
+								<th>QUANTUM_SIG</th>
+							</tr>
+						</thead>
+						<tbody>
+							{#each sortedExecutives as [executive, count], index}
+								{@const metrics = calculateExecutiveMetrics(count)}
+								<tr class="matrix-row" 
+									style="border-left: 3px solid {metrics.color}"
+									on:click={() => drillDownExecutive(executive, count)}>
+									<td class="rank-cell">
+										<span style="color: {metrics.color}">{index + 1}</span>
+									</td>
+									<td class="entity-cell">
+										<span class="entity-icon" style="color: {metrics.color}">{metrics.icon}</span>
+										<span class="entity-name">{executive.substring(0, 25).toUpperCase()}</span>
+									</td>
+									<td class="classification-cell">
+										<span class="classification-badge" style="background: {metrics.color}20; color: {metrics.color}">
+											{metrics.classification}
+										</span>
+									</td>
+									<td class="numeric-cell">{count.toLocaleString()}</td>
+									<td class="control-cell">
+										<div class="control-bar">
+											<div class="control-fill" style="width: {getPercentage(count)}%; background: {metrics.color}"></div>
+										</div>
+										<span class="control-text">{getPercentage(count)}%</span>
+									</td>
+									<td class="threat-cell">
+										<div class="threat-meter">
+											<div class="threat-level" style="height: {metrics.threatLevel}%; background: {metrics.color}"></div>
+										</div>
+										<span class="threat-value">{metrics.threatLevel}</span>
+									</td>
+									<td class="signature-cell">{metrics.quantumSignature}</td>
+								</tr>
+							{/each}
+						</tbody>
+					</table>
 				</div>
 			</div>
-		</div>
+		{/if}
 	</div>
 </div>
 
 <style>
-	.dashboard-container {
-		height: calc(100vh - 80px);
-		display: flex;
-		background: #0a0a0a;
-		color: #e0e0e0;
-		font-family: 'JetBrains Mono', monospace;
-		overflow: hidden;
-		padding: 1rem;
-	}
-
-	.main-content {
-		flex: 1;
-		display: flex;
-		gap: 1rem;
-		overflow: hidden;
-	}
-
-	.table-panel {
-		flex: 1.5;
-		background: #0f0f0f;
-		border: 1px solid #1a1a1a;
-		border-radius: 8px;
-		display: flex;
-		flex-direction: column;
-		overflow: hidden;
-	}
-
-	.viz-panel {
-		flex: 1;
-		display: flex;
-		flex-direction: column;
-		gap: 1rem;
-		overflow-y: auto;
-		padding-right: 0.5rem;
-	}
-
-	.panel-header {
-		padding: 1rem 1.5rem;
-		border-bottom: 1px solid #1a1a1a;
-		background: #0f0f0f;
-		flex-shrink: 0;
-	}
-
-	.panel-title {
-		margin: 0 0 1rem 0;
-		color: #0a4f3c;
-		font-size: 1rem;
-		font-weight: 500;
-		display: flex;
-		align-items: center;
-		gap: 0.5rem;
-	}
-
-	.icon {
-		width: 20px;
-		height: 20px;
-		color: #0a4f3c;
-	}
-
-	.icon-small {
-		width: 16px;
-		height: 16px;
-		color: #0a4f3c;
-		display: inline-block;
-		vertical-align: middle;
-		margin-right: 0.3rem;
-	}
-
-	.controls {
-		display: flex;
-		gap: 0.5rem;
-		align-items: center;
-	}
-
-	.search-input {
-		flex: 1;
-		background: #0a0a0a;
-		border: 1px solid #1a1a1a;
-		border-radius: 4px;
-		padding: 0.5rem 0.75rem;
-		color: #e0e0e0;
-		font-size: 0.85rem;
-		font-family: inherit;
-	}
-
-	.search-input:focus {
-		outline: none;
-		border-color: #0a4f3c;
-	}
-
-	.loading-state {
-		flex: 1;
-		display: flex;
-		flex-direction: column;
-		align-items: center;
-		justify-content: center;
-		gap: 1rem;
-	}
-
-	.spinner {
-		width: 40px;
-		height: 40px;
-		border: 3px solid #1a1a1a;
-		border-top-color: #0a4f3c;
-		border-radius: 50%;
-		animation: spin 1s linear infinite;
-	}
-
-	.table-scroll-container {
-		flex: 1;
-		overflow-y: auto;
-		overflow-x: hidden;
-	}
-
-	.drill-table-container {
-		flex: 1;
-		overflow: auto;
-		padding: 1rem;
-	}
-
-	.data-table {
+	.quantum-container {
 		width: 100%;
-		border-collapse: collapse;
-		font-size: 0.85rem;
-	}
-
-	.data-table th {
-		background: #0f0f0f;
-		color: #0a4f3c;
-		padding: 0.75rem;
-		text-align: left;
-		font-weight: 500;
-		letter-spacing: 0.05em;
-		position: sticky;
-		top: 0;
-		z-index: 10;
-		border-bottom: 2px solid #0a4f3c;
-	}
-
-	.data-table td {
-		padding: 0.75rem;
-		border-bottom: 1px solid #1a1a1a;
-		color: #b8a678;
-	}
-
-	.data-table tbody tr {
-		cursor: pointer;
-		transition: background 0.2s ease;
-	}
-
-	.data-table tbody tr:hover {
-		background: rgba(10, 79, 60, 0.05);
-	}
-
-	.exec-cell {
-		display: flex;
-		align-items: center;
-		gap: 0.5rem;
-	}
-
-	.exec-icon {
-		font-size: 1rem;
-	}
-
-	.exec-name {
-		font-weight: 500;
-		color: #e0e0e0;
-	}
-
-	.center {
-		text-align: center;
-	}
-
-	.level-badge {
-		padding: 0.25rem 0.5rem;
-		border: 1px solid;
-		border-radius: 4px;
-		font-size: 0.7rem;
-		font-weight: 600;
-	}
-
-	.coverage-cell {
-		display: flex;
-		align-items: center;
-		gap: 0.5rem;
-	}
-
-	.coverage-bar {
-		flex: 1;
-		height: 6px;
-		background: #1a1a1a;
-		border-radius: 3px;
+		height: calc(100vh - 80px);
+		background: #000000;
+		position: relative;
 		overflow: hidden;
-		min-width: 60px;
 	}
-
-	.coverage-fill {
+	
+	/* Particle Field */
+	.particle-field {
+		position: absolute;
+		top: 0;
+		left: 0;
+		width: 100%;
 		height: 100%;
-		transition: width 0.3s ease;
+		pointer-events: none;
 	}
-
-	.coverage-text {
-		font-size: 0.7rem;
-		min-width: 45px;
-		text-align: right;
-		color: #b8a678;
+	
+	.quantum-particle {
+		position: absolute;
+		border-radius: 50%;
+		animation: quantumFloat 20s linear infinite;
 	}
-
-	.drill-view {
+	
+	@keyframes quantumFloat {
+		0% { transform: translate3d(0, 0, 0) scale(1); }
+		25% { transform: translate3d(50px, -50px, 100px) scale(1.2); }
+		50% { transform: translate3d(-50px, 50px, -100px) scale(0.8); }
+		75% { transform: translate3d(30px, 30px, 50px) scale(1.1); }
+		100% { transform: translate3d(0, 0, 0) scale(1); }
+	}
+	
+	/* Neural Grid */
+	.neural-grid {
+		position: absolute;
+		top: 0;
+		left: 0;
+		width: 100%;
+		height: 100%;
+		pointer-events: none;
+	}
+	
+	.executive-interface {
+		position: relative;
+		z-index: 1;
+		height: 100%;
 		display: flex;
 		flex-direction: column;
-		height: 100%;
 	}
-
-	.drill-header {
+	
+	/* Quantum Header */
+	.quantum-header {
 		display: flex;
 		justify-content: space-between;
 		align-items: center;
-		padding: 1rem 1.5rem;
-		border-bottom: 1px solid #0a4f3c;
-		background: rgba(10, 79, 60, 0.05);
+		padding: 1.5rem;
+		background: linear-gradient(180deg, rgba(0, 255, 255, 0.1), transparent);
+		border-bottom: 1px solid rgba(0, 255, 255, 0.2);
+		backdrop-filter: blur(10px);
 	}
-
-	.exec-profile {
+	
+	.header-matrix {
 		display: flex;
 		align-items: center;
-		gap: 0.5rem;
+		gap: 1.5rem;
 	}
-
-	.profile-icon {
-		font-size: 1.5rem;
+	
+	.quantum-logo {
+		width: 60px;
+		height: 60px;
+		perspective: 1000px;
 	}
-
-	.drill-header h4 {
-		margin: 0;
-		color: #0a4f3c;
-		font-size: 1rem;
+	
+	.hologram-container {
+		width: 100%;
+		height: 100%;
+		position: relative;
+		transform-style: preserve-3d;
+		transition: transform 0.6s;
 	}
-
-	.close-btn {
-		background: rgba(255, 0, 102, 0.1);
-		border: 1px solid #ff0066;
-		color: #ff0066;
-		width: 30px;
-		height: 30px;
-		border-radius: 4px;
-		cursor: pointer;
+	
+	.hologram-face {
+		position: absolute;
+		width: 60px;
+		height: 60px;
 		display: flex;
 		align-items: center;
 		justify-content: center;
-		font-size: 1rem;
-		font-weight: 600;
+		font-size: 2rem;
+		color: #00ffff;
+		text-shadow: 0 0 20px rgba(0, 255, 255, 0.8);
 	}
-
-	.drill-stats {
+	
+	.hologram-face.front { transform: translateZ(30px); }
+	.hologram-face.back { transform: rotateY(180deg) translateZ(30px); }
+	.hologram-face.left { transform: rotateY(-90deg) translateZ(30px); }
+	.hologram-face.right { transform: rotateY(90deg) translateZ(30px); }
+	
+	.header-text h1 {
+		margin: 0;
+		font-size: 1.5rem;
+		font-weight: 300;
+		letter-spacing: 0.3em;
+		color: #00ffff;
+		text-shadow: 0 0 20px rgba(0, 255, 255, 0.5);
+	}
+	
+	/* Glitch Effect */
+	.glitch-text {
+		position: relative;
+		animation: glitch 5s infinite;
+	}
+	
+	.glitch-text::before,
+	.glitch-text::after {
+		content: attr(data-text);
+		position: absolute;
+		top: 0;
+		left: 0;
+		width: 100%;
+		height: 100%;
+	}
+	
+	.glitch-text::before {
+		animation: glitch-1 0.5s infinite;
+		color: #ff00ff;
+		z-index: -1;
+	}
+	
+	.glitch-text::after {
+		animation: glitch-2 0.5s infinite;
+		color: #00ff00;
+		z-index: -2;
+	}
+	
+	@keyframes glitch {
+		0%, 100% { transform: translate(0); }
+		20% { transform: translate(-1px, 1px); }
+		40% { transform: translate(1px, -1px); }
+		60% { transform: translate(-1px, -1px); }
+		80% { transform: translate(1px, 1px); }
+	}
+	
+	@keyframes glitch-1 {
+		0%, 100% { clip-path: inset(0 0 0 0); transform: translate(0); }
+		25% { clip-path: inset(0 0 20% 0); transform: translate(-2px, 2px); }
+		50% { clip-path: inset(20% 0 30% 0); transform: translate(2px, -2px); }
+		75% { clip-path: inset(40% 0 0 0); transform: translate(-2px, -2px); }
+	}
+	
+	@keyframes glitch-2 {
+		0%, 100% { clip-path: inset(0 0 0 0); transform: translate(0); }
+		25% { clip-path: inset(30% 0 0 0); transform: translate(2px, -2px); }
+		50% { clip-path: inset(0 0 40% 0); transform: translate(-2px, 2px); }
+		75% { clip-path: inset(20% 0 20% 0); transform: translate(2px, 2px); }
+	}
+	
+	.quantum-status {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+		margin-top: 0.5rem;
+		font-size: 0.75rem;
+		color: rgba(255, 255, 255, 0.6);
+		letter-spacing: 0.1em;
+	}
+	
+	.status-indicator {
+		width: 8px;
+		height: 8px;
+		border-radius: 50%;
+		animation: statusPulse 2s ease-in-out infinite;
+	}
+	
+	.status-indicator.synchronized { background: #00ff00; box-shadow: 0 0 10px #00ff00; }
+	.status-indicator.processing { background: #ffff00; box-shadow: 0 0 10px #ffff00; }
+	.status-indicator.analyzing { background: #00ffff; box-shadow: 0 0 10px #00ffff; }
+	.status-indicator.correlating { background: #ff00ff; box-shadow: 0 0 10px #ff00ff; }
+	.status-indicator.desynchronized { background: #ff0000; box-shadow: 0 0 10px #ff0000; }
+	.status-indicator.deep_scanning { background: #ff6600; box-shadow: 0 0 10px #ff6600; animation: statusPulse 0.5s ease-in-out infinite; }
+	
+	@keyframes statusPulse {
+		0%, 100% { transform: scale(1); opacity: 1; }
+		50% { transform: scale(1.5); opacity: 0.5; }
+	}
+	
+	/* Search Matrix */
+	.search-matrix {
+		position: relative;
+		flex: 1;
+		max-width: 400px;
+		margin: 0 2rem;
+	}
+	
+	.quantum-search {
+		width: 100%;
+		padding: 0.75rem 1rem;
+		background: rgba(0, 0, 0, 0.8);
+		border: 1px solid rgba(0, 255, 255, 0.3);
+		border-radius: 0;
+		color: #00ffff;
+		font-family: inherit;
+		font-size: 0.9rem;
+		letter-spacing: 0.1em;
+		transition: all 0.3s ease;
+	}
+	
+	.quantum-search:focus {
+		outline: none;
+		border-color: #00ffff;
+		background: rgba(0, 255, 255, 0.05);
+		box-shadow: 0 0 20px rgba(0, 255, 255, 0.3);
+	}
+	
+	.search-scanner {
+		position: absolute;
+		bottom: 0;
+		left: 0;
+		width: 0;
+		height: 1px;
+		background: linear-gradient(90deg, transparent, #00ffff, transparent);
+		transition: width 0.3s ease;
+	}
+	
+	.search-scanner.active {
+		width: 100%;
+		animation: scan 2s linear infinite;
+	}
+	
+	@keyframes scan {
+		0% { transform: translateX(-100%); }
+		100% { transform: translateX(100%); }
+	}
+	
+	/* Metrics Display */
+	.metrics-display {
 		display: flex;
 		gap: 2rem;
-		padding: 1rem 1.5rem;
-		background: rgba(0, 0, 0, 0.3);
-		border-bottom: 1px solid #1a1a1a;
 	}
-
-	.stat-item {
-		display: flex;
-		flex-direction: column;
-		gap: 0.25rem;
-		align-items: center;
-	}
-
-	.stat-value {
-		font-size: 1.2rem;
-		font-weight: 600;
-		color: #0a4f3c;
-	}
-
-	.stat-label {
-		font-size: 0.65rem;
-		color: #b8a678;
-		text-transform: uppercase;
-	}
-
-	.host-cell {
-		font-family: 'Courier New', monospace;
-		color: #0a4f3c;
-		font-weight: 500;
-	}
-
-	.status-badge {
-		padding: 0.2rem 0.4rem;
-		border-radius: 3px;
-		font-size: 0.7rem;
-		font-weight: 600;
-		text-transform: uppercase;
-	}
-
-	.status-badge.active {
-		background: rgba(10, 79, 60, 0.2);
-		color: #0a4f3c;
-		border: 1px solid #0a4f3c;
-	}
-
-	.status-badge.inactive {
-		background: rgba(255, 0, 102, 0.1);
-		color: #ff0066;
-		border: 1px solid #ff0066;
-	}
-
-	.metrics-row {
-		display: flex;
-		gap: 1rem;
-	}
-
-	.metric-card {
-		flex: 1;
-		background: #0f0f0f;
-		border: 1px solid #1a1a1a;
-		border-radius: 8px;
-		padding: 1.5rem;
+	
+	.metric-cell {
 		text-align: center;
 	}
-
+	
 	.metric-value {
-		font-size: 2rem;
-		font-weight: 600;
-		color: #0a4f3c;
-		margin-bottom: 0.5rem;
+		font-size: 1.8rem;
+		font-weight: 100;
+		color: #00ffff;
+		text-shadow: 0 0 20px rgba(0, 255, 255, 0.5);
+		font-family: 'Courier New', monospace;
 	}
-
+	
 	.metric-label {
 		font-size: 0.7rem;
-		color: #b8a678;
-		letter-spacing: 0.1em;
-		font-weight: 500;
+		color: rgba(255, 255, 255, 0.4);
+		letter-spacing: 0.2em;
+		margin-top: 0.25rem;
 	}
-
-	.viz-card {
-		background: #0f0f0f;
-		border: 1px solid #1a1a1a;
-		border-radius: 8px;
-		padding: 1.5rem;
-	}
-
-	.viz-card h4 {
-		margin: 0 0 1rem 0;
-		font-size: 0.85rem;
-		color: #0a4f3c;
-		letter-spacing: 0.05em;
-		font-weight: 500;
-	}
-
-	.hierarchy-chart {
+	
+	/* Loading State */
+	.quantum-loading {
+		flex: 1;
 		display: flex;
 		flex-direction: column;
-		gap: 0.5rem;
+		align-items: center;
+		justify-content: center;
+		gap: 2rem;
 	}
-
-	.hierarchy-level {
+	
+	.loading-core {
+		position: relative;
+		width: 120px;
+		height: 120px;
+	}
+	
+	.core-ring {
+		position: absolute;
+		border: 1px solid;
+		border-radius: 50%;
+		animation: coreRotate 3s linear infinite;
+	}
+	
+	.ring-1 {
+		inset: 0;
+		border-color: #00ffff;
+		animation-direction: normal;
+	}
+	
+	.ring-2 {
+		inset: 15px;
+		border-color: #ff00ff;
+		animation-direction: reverse;
+		animation-duration: 4s;
+	}
+	
+	.ring-3 {
+		inset: 30px;
+		border-color: #00ff00;
+		animation-duration: 5s;
+	}
+	
+	.core-center {
+		position: absolute;
+		inset: 40px;
 		display: flex;
 		align-items: center;
-		gap: 0.5rem;
+		justify-content: center;
+		font-size: 2rem;
+		color: #00ffff;
+		text-shadow: 0 0 20px rgba(0, 255, 255, 0.8);
 	}
-
-	.level-header {
-		display: flex;
-		align-items: center;
-		gap: 0.3rem;
-		min-width: 90px;
+	
+	@keyframes coreRotate {
+		from { transform: rotate(0deg); }
+		to { transform: rotate(360deg); }
 	}
-
-	.level-icon {
-		font-size: 1rem;
+	
+	.loading-text {
+		color: rgba(0, 255, 255, 0.6);
+		font-size: 0.9rem;
+		letter-spacing: 0.2em;
+		animation: pulse 2s ease-in-out infinite;
 	}
-
-	.level-name {
-		font-size: 0.65rem;
-		color: #b8a678;
-		font-weight: 500;
+	
+	@keyframes pulse {
+		0%, 100% { opacity: 0.4; }
+		50% { opacity: 1; }
 	}
-
-	.level-bar-container {
+	
+	/* Neural Network Container */
+	.neural-network-container {
 		flex: 1;
-		height: 6px;
-		background: #1a1a1a;
-		border-radius: 3px;
+		display: grid;
+		grid-template-columns: 500px 1fr;
+		gap: 2rem;
+		padding: 2rem;
 		overflow: hidden;
 	}
-
-	.level-bar {
-		height: 100%;
-		transition: width 0.3s ease;
+	
+	.network-visualization {
+		position: relative;
+		width: 500px;
+		height: 500px;
+		background: radial-gradient(circle at center, rgba(0, 255, 255, 0.05), transparent);
+		border: 1px solid rgba(0, 255, 255, 0.1);
 	}
-
-	.level-count {
-		font-size: 0.65rem;
-		color: #b8a678;
-		min-width: 20px;
-		text-align: right;
-	}
-
-	.exec-list {
+	
+	.executive-node {
+		position: absolute;
+		width: 80px;
+		height: 80px;
+		cursor: pointer;
+		transition: all 0.3s ease;
 		display: flex;
 		flex-direction: column;
-		gap: 0.5rem;
+		align-items: center;
+		justify-content: center;
+		transform: translate(-50%, -50%);
 	}
-
-	.exec-item {
+	
+	.executive-node:hover {
+		z-index: 100;
+		transform: translate(-50%, -50%) scale(1.2);
+	}
+	
+	.node-core {
+		font-size: 1.5rem;
+		margin-bottom: 0.25rem;
+	}
+	
+	.node-label {
+		font-size: 0.6rem;
+		color: rgba(255, 255, 255, 0.8);
+		text-align: center;
+		letter-spacing: 0.05em;
+	}
+	
+	.node-power {
+		font-size: 0.7rem;
+		color: #00ffff;
+		font-weight: 600;
+	}
+	
+	.network-core {
+		position: absolute;
+		top: 50%;
+		left: 50%;
+		transform: translate(-50%, -50%);
+		width: 100px;
+		height: 100px;
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		justify-content: center;
+	}
+	
+	.core-pulse {
+		position: absolute;
+		inset: -20px;
+		border: 2px solid #00ffff;
+		border-radius: 50%;
+		animation: corePulse 3s ease-in-out infinite;
+	}
+	
+	@keyframes corePulse {
+		0%, 100% { transform: scale(1); opacity: 0; }
+		50% { transform: scale(1.5); opacity: 0.5; }
+	}
+	
+	.core-icon {
+		font-size: 2rem;
+		color: #00ffff;
+		text-shadow: 0 0 30px rgba(0, 255, 255, 0.8);
+		margin-bottom: 0.5rem;
+	}
+	
+	.core-label {
+		font-size: 0.7rem;
+		color: rgba(255, 255, 255, 0.6);
+		letter-spacing: 0.1em;
+	}
+	
+	/* Executive Data Matrix */
+	.executive-data-matrix {
+		overflow: auto;
+		background: rgba(0, 0, 0, 0.8);
+		border: 1px solid rgba(0, 255, 255, 0.1);
+		backdrop-filter: blur(10px);
+	}
+	
+	.matrix-table {
+		width: 100%;
+		border-collapse: collapse;
+	}
+	
+	.matrix-table th {
+		background: linear-gradient(180deg, rgba(0, 255, 255, 0.1), rgba(0, 0, 0, 0.5));
+		color: #00ffff;
+		padding: 1rem;
+		text-align: left;
+		font-size: 0.7rem;
+		font-weight: 300;
+		letter-spacing: 0.2em;
+		border-bottom: 1px solid rgba(0, 255, 255, 0.3);
+		position: sticky;
+		top: 0;
+		z-index: 10;
+	}
+	
+	.matrix-row {
+		cursor: pointer;
+		transition: all 0.2s ease;
+		border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+	}
+	
+	.matrix-row:hover {
+		background: rgba(0, 255, 255, 0.05);
+		transform: translateX(5px);
+	}
+	
+	.matrix-table td {
+		padding: 0.75rem 1rem;
+		font-size: 0.8rem;
+		color: rgba(255, 255, 255, 0.8);
+	}
+	
+	.rank-cell {
+		font-weight: 600;
+		font-family: 'Courier New', monospace;
+	}
+	
+	.entity-cell {
 		display: flex;
 		align-items: center;
-		gap: 0.75rem;
-		padding: 0.5rem;
-		background: #0a0a0a;
-		border-radius: 4px;
-		transition: all 0.2s ease;
+		gap: 0.5rem;
 	}
-
-	.exec-item:hover {
-		background: rgba(10, 79, 60, 0.05);
-	}
-
-	.exec-rank {
+	
+	.entity-icon {
 		font-size: 1.2rem;
-		width: 24px;
+	}
+	
+	.entity-name {
+		font-weight: 300;
+		letter-spacing: 0.05em;
+	}
+	
+	.classification-badge {
+		padding: 0.25rem 0.5rem;
+		border-radius: 0;
+		font-size: 0.65rem;
+		font-weight: 600;
+		letter-spacing: 0.1em;
+		border: 1px solid currentColor;
+	}
+	
+	.numeric-cell {
+		font-family: 'Courier New', monospace;
+		color: #00ffff;
+	}
+	
+	.control-cell {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+	}
+	
+	.control-bar {
+		flex: 1;
+		height: 3px;
+		background: rgba(255, 255, 255, 0.1);
+		position: relative;
+		overflow: hidden;
+	}
+	
+	.control-fill {
+		height: 100%;
+		transition: width 0.5s ease;
+	}
+	
+	.control-text {
+		font-size: 0.7rem;
+		min-width: 45px;
+		text-align: right;
+		color: rgba(255, 255, 255, 0.6);
+	}
+	
+	.threat-cell {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+	}
+	
+	.threat-meter {
+		width: 30px;
+		height: 20px;
+		background: rgba(255, 255, 255, 0.05);
+		border: 1px solid rgba(255, 255, 255, 0.2);
+		position: relative;
+		overflow: hidden;
+	}
+	
+	.threat-level {
+		position: absolute;
+		bottom: 0;
+		left: 0;
+		width: 100%;
+		transition: height 0.5s ease;
+	}
+	
+	.threat-value {
+		font-size: 0.7rem;
+		font-family: 'Courier New', monospace;
+	}
+	
+	.signature-cell {
+		font-family: 'Courier New', monospace;
+		font-size: 0.65rem;
+		color: rgba(0, 255, 255, 0.6);
+		letter-spacing: 0.05em;
+	}
+	
+	/* Detail View */
+	.executive-detail-view {
+		flex: 1;
+		display: flex;
+		flex-direction: column;
+		padding: 2rem;
+		overflow: hidden;
+	}
+	
+	.detail-header {
+		display: flex;
+		justify-content: space-between;
+		align-items: center;
+		margin-bottom: 2rem;
+	}
+	
+	.executive-hologram {
+		display: flex;
+		align-items: center;
+		gap: 1.5rem;
+	}
+	
+	.hologram-avatar {
+		width: 80px;
+		height: 80px;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		font-size: 3rem;
+		background: radial-gradient(circle, rgba(0, 255, 255, 0.2), transparent);
+		border: 2px solid #00ffff;
+		animation: avatarPulse 3s ease-in-out infinite;
+	}
+	
+	@keyframes avatarPulse {
+		0%, 100% { box-shadow: 0 0 20px rgba(0, 255, 255, 0.5); }
+		50% { box-shadow: 0 0 40px rgba(0, 255, 255, 0.8); }
+	}
+	
+	.executive-data h2 {
+		margin: 0;
+		font-size: 1.5rem;
+		font-weight: 300;
+		color: #00ffff;
+		letter-spacing: 0.1em;
+	}
+	
+	.executive-signature {
+		font-family: 'Courier New', monospace;
+		font-size: 0.8rem;
+		color: rgba(255, 255, 255, 0.5);
+		margin-top: 0.5rem;
+		letter-spacing: 0.05em;
+	}
+	
+	.quantum-close {
+		background: none;
+		border: 1px solid #ff0066;
+		color: #ff0066;
+		width: 40px;
+		height: 40px;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		cursor: pointer;
+		transition: all 0.3s ease;
+	}
+	
+	.quantum-close:hover {
+		background: rgba(255, 0, 102, 0.1);
+		box-shadow: 0 0 20px rgba(255, 0, 102, 0.5);
+		transform: rotate(90deg);
+	}
+	
+	.close-icon {
+		font-size: 1.5rem;
+	}
+	
+	.executive-metrics-grid {
+		display: grid;
+		grid-template-columns: repeat(4, 1fr);
+		gap: 1rem;
+		margin-bottom: 2rem;
+	}
+	
+	.metric-card {
+		background: linear-gradient(135deg, rgba(0, 255, 255, 0.05), rgba(0, 0, 0, 0.8));
+		border: 1px solid rgba(0, 255, 255, 0.2);
+		padding: 1.5rem;
 		text-align: center;
 	}
-
-	.exec-details {
+	
+	.card-value {
+		font-size: 1.5rem;
+		font-weight: 100;
+		color: #00ffff;
+		text-shadow: 0 0 20px rgba(0, 255, 255, 0.5);
+		margin-bottom: 0.5rem;
+	}
+	
+	.card-label {
+		font-size: 0.7rem;
+		color: rgba(255, 255, 255, 0.5);
+		letter-spacing: 0.1em;
+	}
+	
+	.neural-data-stream {
 		flex: 1;
+		overflow: auto;
+		background: rgba(0, 0, 0, 0.8);
+		border: 1px solid rgba(0, 255, 255, 0.1);
 	}
-
-	.exec-item-name {
-		font-size: 0.75rem;
-		color: #e0e0e0;
-		font-weight: 500;
-		margin-bottom: 0.3rem;
-	}
-
-	.exec-bar-container {
-		height: 4px;
-		background: #1a1a1a;
-		border-radius: 2px;
-		overflow: hidden;
-		margin-bottom: 0.3rem;
-	}
-
-	.exec-bar {
-		height: 100%;
-		transition: width 0.3s ease;
-	}
-
-	.exec-stats {
-		font-size: 0.65rem;
-		color: #b8a678;
-	}
-
-	.separator {
-		margin: 0 0.3rem;
-		color: #1a1a1a;
-	}
-
-	.distribution-chart {
+	
+	.quantum-table {
 		width: 100%;
-		max-width: 200px;
-		margin: 0 auto;
+		border-collapse: collapse;
 	}
-
-	@keyframes spin {
-		to { transform: rotate(360deg); }
+	
+	.quantum-table th {
+		background: linear-gradient(180deg, rgba(0, 255, 255, 0.1), rgba(0, 0, 0, 0.5));
+		color: #00ffff;
+		padding: 0.75rem;
+		text-align: left;
+		font-size: 0.7rem;
+		font-weight: 300;
+		letter-spacing: 0.1em;
+		border-bottom: 1px solid rgba(0, 255, 255, 0.3);
+		position: sticky;
+		top: 0;
+	}
+	
+	.data-row {
+		border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+		transition: all 0.2s ease;
+	}
+	
+	.data-row:hover {
+		background: rgba(0, 255, 255, 0.02);
+	}
+	
+	.quantum-table td {
+		padding: 0.75rem;
+		font-size: 0.75rem;
+		color: rgba(255, 255, 255, 0.7);
+	}
+	
+	.node-id {
+		font-family: 'Courier New', monospace;
+		color: #00ffff;
+		font-size: 0.7rem;
+	}
+	
+	.data-cell {
+		font-weight: 300;
+		letter-spacing: 0.05em;
+	}
+	
+	.status-quantum {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		width: 24px;
+		height: 24px;
+		font-size: 1rem;
+	}
+	
+	.status-quantum.active {
+		color: #00ff00;
+		text-shadow: 0 0 10px #00ff00;
+	}
+	
+	.status-quantum.inactive {
+		color: #666666;
+	}
+	
+	.status-quantum.secured {
+		color: #00ffff;
+		text-shadow: 0 0 10px #00ffff;
+	}
+	
+	.status-quantum.vulnerable {
+		color: #ff0066;
+		text-shadow: 0 0 10px #ff0066;
+	}
+	
+	/* Responsive */
+	@media (max-width: 1400px) {
+		.neural-network-container {
+			grid-template-columns: 1fr;
+		}
+		
+		.network-visualization {
+			margin: 0 auto;
+		}
+	}
+	
+	@media (max-width: 768px) {
+		.quantum-header {
+			flex-direction: column;
+			gap: 1rem;
+		}
+		
+		.executive-metrics-grid {
+			grid-template-columns: repeat(2, 1fr);
+		}
+	}
+	
+	/* Scrollbar */
+	::-webkit-scrollbar {
+		width: 6px;
+		height: 6px;
+	}
+	
+	::-webkit-scrollbar-track {
+		background: #000000;
+	}
+	
+	::-webkit-scrollbar-thumb {
+		background: linear-gradient(180deg, #00ffff, #ff00ff);
+		border-radius: 0;
+	}
+	
+	::-webkit-scrollbar-corner {
+		background: #000000;
 	}
 </style>
