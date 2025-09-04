@@ -60,7 +60,7 @@
 		
 		// Generate neural connections between executives
 		if (data.operative_intelligence) {
-			const executives = Object.entries(data.operative_intelligence).slice(0, 20);
+			let executives = Object.entries(data.operative_intelligence).slice(0, 20);
 			executives.forEach(([exec, count], i) => {
 				executives.forEach(([exec2, count2], j) => {
 					if (i < j && Math.random() > 0.7) {
@@ -106,8 +106,8 @@
 	$: minAssets = sortedExecutives.length > 0 ? Math.min(...sortedExecutives.map(([,count]) => count)) : 0;
 	
 	function calculateExecutiveMetrics(count) {
-		const normalized = (count - minAssets) / (maxAssets - minAssets);
-		const percentile = normalized * 100;
+		let normalized = (count - minAssets) / (maxAssets - minAssets);
+		let percentile = normalized * 100;
 		
 		// Dynamic classification based on distribution
 		let classification = 'UNKNOWN';
@@ -143,10 +143,10 @@
 		}
 		
 		return {
-			classification,
-			threatLevel,
-			color,
-			icon,
+			classification: classification,
+			threatLevel: threatLevel,
+			color: color,
+			icon: icon,
 			percentile: percentile.toFixed(1),
 			quantumSignature: generateQuantumSignature(count),
 			neuralActivity: normalized * 100,
@@ -155,7 +155,7 @@
 	}
 	
 	function generateQuantumSignature(seed) {
-		const sig = [];
+		let sig = [];
 		for (let i = 0; i < 8; i++) {
 			sig.push(((seed * (i + 1) * 9973) % 256).toString(16).padStart(2, '0'));
 		}
@@ -169,7 +169,7 @@
 	}
 	
 	async function drillDownExecutive(executive, count) {
-		selectedExecutive = { executive, count };
+		selectedExecutive = { executive: executive, count: count };
 		loading = true;
 		quantumState = 'DEEP_SCANNING';
 		
@@ -290,6 +290,7 @@
 				<p class="loading-text">INITIALIZING QUANTUM NEURAL INTERFACE...</p>
 			</div>
 		{:else if selectedExecutive}
+			{#key selectedExecutive}
 			<div class="executive-detail-view">
 				<div class="detail-header">
 					<div class="executive-hologram">
@@ -362,43 +363,38 @@
 					</table>
 				</div>
 			</div>
+			{/key}
 		{:else}
 			<!-- Executive Neural Network Visualization -->
 			<div class="neural-network-container">
 				<div class="network-visualization">
 					{#each sortedExecutives.slice(0, 15) as [executive, count], i}
-						{@const metrics = calculateExecutiveMetrics(count)}
-						{@const angle = (i / 15) * Math.PI * 2}
-						{@const radius = 150 + (metrics.percentile * 0.5)}
-						{@const x = 250 + Math.cos(angle) * radius}
-						{@const y = 250 + Math.sin(angle) * radius}
-						
+						{#key executive}
 						<div class="executive-node" 
-							 style="left: {x}px; 
-									top: {y}px; 
-									background: radial-gradient(circle, {metrics.color}, transparent);
-									box-shadow: 0 0 {20 + metrics.threatLevel * 0.5}px {metrics.color}"
+							 style="left: {250 + Math.cos((i / 15) * Math.PI * 2) * (150 + (calculateExecutiveMetrics(count).percentile * 0.5))}px; 
+									top: {250 + Math.sin((i / 15) * Math.PI * 2) * (150 + (calculateExecutiveMetrics(count).percentile * 0.5))}px; 
+									background: radial-gradient(circle, {calculateExecutiveMetrics(count).color}, transparent);
+									box-shadow: 0 0 {20 + calculateExecutiveMetrics(count).threatLevel * 0.5}px {calculateExecutiveMetrics(count).color}"
 							 on:click={() => drillDownExecutive(executive, count)}>
-							<div class="node-core" style="color: {metrics.color}">
-								{metrics.icon}
+							<div class="node-core" style="color: {calculateExecutiveMetrics(count).color}">
+								{calculateExecutiveMetrics(count).icon}
 							</div>
 							<div class="node-label">{executive.substring(0, 15).toUpperCase()}</div>
-							<div class="node-power">{metrics.percentile}%</div>
+							<div class="node-power">{calculateExecutiveMetrics(count).percentile}%</div>
 						</div>
+						{/key}
 						
 						<!-- Neural Connections -->
 						<svg class="connection-lines" style="position: absolute; top: 0; left: 0; width: 500px; height: 500px; pointer-events: none;">
 							{#each sortedExecutives.slice(i + 1, Math.min(i + 3, 15)) as [exec2, count2], j}
-								{@const metrics2 = calculateExecutiveMetrics(count2)}
-								{@const angle2 = ((i + j + 1) / 15) * Math.PI * 2}
-								{@const radius2 = 150 + (metrics2.percentile * 0.5)}
-								{@const x2 = 250 + Math.cos(angle2) * radius2}
-								{@const y2 = 250 + Math.sin(angle2) * radius2}
-								<line x1="{x}" y1="{y}" x2="{x2}" y2="{y2}"
-									  stroke="{metrics.color}" 
+								<line x1="{250 + Math.cos((i / 15) * Math.PI * 2) * (150 + (calculateExecutiveMetrics(count).percentile * 0.5))}" 
+									  y1="{250 + Math.sin((i / 15) * Math.PI * 2) * (150 + (calculateExecutiveMetrics(count).percentile * 0.5))}" 
+									  x2="{250 + Math.cos(((i + j + 1) / 15) * Math.PI * 2) * (150 + (calculateExecutiveMetrics(count2).percentile * 0.5))}" 
+									  y2="{250 + Math.sin(((i + j + 1) / 15) * Math.PI * 2) * (150 + (calculateExecutiveMetrics(count2).percentile * 0.5))}"
+									  stroke="{calculateExecutiveMetrics(count).color}" 
 									  stroke-width="0.5"
 									  stroke-dasharray="2,3"
-									  opacity="{0.2 + (Math.min(metrics.percentile, metrics2.percentile) / 200)}">
+									  opacity="{0.2 + (Math.min(calculateExecutiveMetrics(count).percentile, calculateExecutiveMetrics(count2).percentile) / 200)}">
 									<animate attributeName="stroke-dashoffset" 
 											 values="0;10" 
 											 dur="{2 + i * 0.1}s" 
@@ -432,37 +428,38 @@
 						</thead>
 						<tbody>
 							{#each sortedExecutives as [executive, count], index}
-								{@const metrics = calculateExecutiveMetrics(count)}
+								{#key executive}
 								<tr class="matrix-row" 
-									style="border-left: 3px solid {metrics.color}"
+									style="border-left: 3px solid {calculateExecutiveMetrics(count).color}"
 									on:click={() => drillDownExecutive(executive, count)}>
 									<td class="rank-cell">
-										<span style="color: {metrics.color}">{index + 1}</span>
+										<span style="color: {calculateExecutiveMetrics(count).color}">{index + 1}</span>
 									</td>
 									<td class="entity-cell">
-										<span class="entity-icon" style="color: {metrics.color}">{metrics.icon}</span>
+										<span class="entity-icon" style="color: {calculateExecutiveMetrics(count).color}">{calculateExecutiveMetrics(count).icon}</span>
 										<span class="entity-name">{executive.substring(0, 25).toUpperCase()}</span>
 									</td>
 									<td class="classification-cell">
-										<span class="classification-badge" style="background: {metrics.color}20; color: {metrics.color}">
-											{metrics.classification}
+										<span class="classification-badge" style="background: {calculateExecutiveMetrics(count).color}20; color: {calculateExecutiveMetrics(count).color}">
+											{calculateExecutiveMetrics(count).classification}
 										</span>
 									</td>
 									<td class="numeric-cell">{count.toLocaleString()}</td>
 									<td class="control-cell">
 										<div class="control-bar">
-											<div class="control-fill" style="width: {getPercentage(count)}%; background: {metrics.color}"></div>
+											<div class="control-fill" style="width: {getPercentage(count)}%; background: {calculateExecutiveMetrics(count).color}"></div>
 										</div>
 										<span class="control-text">{getPercentage(count)}%</span>
 									</td>
 									<td class="threat-cell">
 										<div class="threat-meter">
-											<div class="threat-level" style="height: {metrics.threatLevel}%; background: {metrics.color}"></div>
+											<div class="threat-level" style="height: {calculateExecutiveMetrics(count).threatLevel}%; background: {calculateExecutiveMetrics(count).color}"></div>
 										</div>
-										<span class="threat-value">{metrics.threatLevel}</span>
+										<span class="threat-value">{calculateExecutiveMetrics(count).threatLevel}</span>
 									</td>
-									<td class="signature-cell">{metrics.quantumSignature}</td>
+									<td class="signature-cell">{calculateExecutiveMetrics(count).quantumSignature}</td>
 								</tr>
+								{/key}
 							{/each}
 						</tbody>
 					</table>
