@@ -1,4 +1,4 @@
-<!-- SourceTables.svelte - Enhanced with fixes -->
+<!-- SourceTables.svelte - Enhanced with Quantum Data Flow -->
 <script>
 	import { onMount, onDestroy } from 'svelte';
 	
@@ -10,13 +10,21 @@
 	let searchTerm = '';
 	let hoveredSource = null;
 	
-	// Animation states
+	// Quantum data flow animation states
 	let animationFrame = null;
 	let synapticActivity = [];
+	let dataStreams = [];
+	let quantumNodes = [];
+	let energyFlow = [];
+	let matrixParticles = [];
+	let dimensionalPhase = 0;
+	let codeRain = [];
+	let networkPulse = 0;
+	let dataFlowLines = [];
 	
 	onMount(async () => {
 		await loadData();
-		initializeAnimations();
+		initializeQuantumVisualization();
 	});
 	
 	async function loadData() {
@@ -29,7 +37,6 @@
 		} catch (err) {
 			console.error('Failed to load source tables:', err);
 			error = 'Unable to load source data. Please try again.';
-			// Use mock data for demonstration
 			data = generateMockData();
 		} finally {
 			loading = false;
@@ -55,22 +62,179 @@
 		};
 	}
 	
-	function initializeAnimations() {
-		// Initialize with smoother curve
+	function initializeQuantumVisualization() {
+		// Initialize data streams
 		for (let i = 0; i < 50; i++) {
 			synapticActivity.push(50 + Math.sin(i * 0.2) * 20);
+			dataStreams.push({
+				x: Math.random() * 100,
+				y: Math.random() * 100,
+				velocity: Math.random() * 2 + 1,
+				intensity: Math.random(),
+				dataType: ['INT', 'STR', 'JSON', 'XML', 'BLOB'][Math.floor(Math.random() * 5)]
+			});
 		}
 		
-		const animate = () => {
-			// Update synaptic activity with smoother animation
+		// Initialize quantum nodes for data sources
+		if (data.source_intelligence) {
+			Object.entries(data.source_intelligence).forEach(([source, count], i) => {
+				quantumNodes.push({
+					id: source,
+					count: count,
+					x: (i % 6) * 120 + 60,
+					y: Math.floor(i / 6) * 100 + 60,
+					phase: Math.random() * Math.PI * 2,
+					energy: Math.random(),
+					connections: [],
+					dataOutput: count * 0.001,
+					pulsing: false
+				});
+			});
+		}
+		
+		// Create energy flow between nodes
+		for (let i = 0; i < 30; i++) {
+			energyFlow.push({
+				x: Math.random() * 100,
+				y: Math.random() * 100,
+				dx: (Math.random() - 0.5) * 2,
+				dy: (Math.random() - 0.5) * 2,
+				life: Math.random() * 100,
+				maxLife: 100 + Math.random() * 100,
+				color: `hsl(${180 + Math.random() * 60}, 100%, ${60 + Math.random() * 20}%)`
+			});
+		}
+		
+		// Initialize matrix code rain
+		for (let i = 0; i < 20; i++) {
+			codeRain.push({
+				x: Math.random() * 100,
+				y: -10,
+				speed: Math.random() * 3 + 1,
+				chars: generateDataChars(),
+				opacity: Math.random()
+			});
+		}
+		
+		// Create data flow lines between sources
+		quantumNodes.forEach((node, i) => {
+			let connectionCount = Math.min(3, Math.floor(Math.random() * 4) + 1);
+			for (let j = 0; j < connectionCount; j++) {
+				let targetIdx = Math.floor(Math.random() * quantumNodes.length);
+				if (targetIdx !== i) {
+					dataFlowLines.push({
+						source: i,
+						target: targetIdx,
+						particles: [],
+						strength: Math.random(),
+						dataType: ['SYNC', 'ASYNC', 'STREAM', 'BATCH'][Math.floor(Math.random() * 4)]
+					});
+				}
+			}
+		});
+		
+		// Initialize flow particles
+		dataFlowLines.forEach(line => {
+			for (let i = 0; i < 3; i++) {
+				line.particles.push({
+					position: Math.random(),
+					speed: 0.01 + Math.random() * 0.02,
+					size: 1 + Math.random() * 2
+				});
+			}
+		});
+		
+		startQuantumAnimation();
+	}
+	
+	function generateDataChars() {
+		const chars = ['SELECT', 'INSERT', 'UPDATE', 'DELETE', 'FROM', 'WHERE', 'JOIN', '1', '0', 'NULL', 'TRUE', 'FALSE'];
+		return Array(10).fill().map(() => chars[Math.floor(Math.random() * chars.length)]);
+	}
+	
+	function startQuantumAnimation() {
+		let time = 0;
+		
+		function updateQuantumFlow() {
+			time += 0.016;
+			dimensionalPhase += 0.02;
+			networkPulse = Math.sin(time * 2) * 0.5 + 0.5;
+			
+			// Update synaptic activity
 			synapticActivity = synapticActivity.map((val, i) => {
-				const newVal = 50 + Math.sin(Date.now() * 0.001 + i * 0.2) * 25 + Math.random() * 10;
-				return val * 0.9 + newVal * 0.1; // Smooth transition
+				const newVal = 50 + Math.sin(time + i * 0.2) * 25 + Math.random() * 10;
+				return val * 0.9 + newVal * 0.1;
 			});
 			
-			animationFrame = requestAnimationFrame(animate);
-		};
-		animate();
+			// Update data streams
+			dataStreams.forEach(stream => {
+				stream.y += stream.velocity;
+				if (stream.y > 100) {
+					stream.y = -10;
+					stream.x = Math.random() * 100;
+				}
+				stream.intensity = 0.5 + Math.sin(time * 3 + stream.x) * 0.5;
+			});
+			
+			// Update quantum nodes
+			quantumNodes.forEach((node, i) => {
+				node.phase += 0.05;
+				node.energy = 0.3 + Math.sin(time + i * 0.1) * 0.4 + Math.sin(time * 1.3 + i * 0.2) * 0.3;
+				node.pulsing = Math.random() < 0.01;
+				
+				// Random data bursts
+				if (Math.random() < 0.005) {
+					node.dataOutput = node.count * (0.001 + Math.random() * 0.002);
+				}
+			});
+			
+			// Update energy flow particles
+			energyFlow.forEach((particle, index) => {
+				particle.x += particle.dx;
+				particle.y += particle.dy;
+				particle.life++;
+				
+				// Bounce off edges
+				if (particle.x <= 0 || particle.x >= 100) particle.dx *= -1;
+				if (particle.y <= 0 || particle.y >= 100) particle.dy *= -1;
+				
+				// Reset if life expired
+				if (particle.life >= particle.maxLife) {
+					energyFlow[index] = {
+						x: Math.random() * 100,
+						y: Math.random() * 100,
+						dx: (Math.random() - 0.5) * 2,
+						dy: (Math.random() - 0.5) * 2,
+						life: 0,
+						maxLife: 100 + Math.random() * 100,
+						color: `hsl(${180 + Math.random() * 60}, 100%, ${60 + Math.random() * 20}%)`
+					};
+				}
+			});
+			
+			// Update code rain
+			codeRain.forEach(drop => {
+				drop.y += drop.speed;
+				if (drop.y > 110) {
+					drop.y = -10;
+					drop.x = Math.random() * 100;
+					drop.chars = generateDataChars();
+				}
+				drop.opacity = 0.3 + Math.sin(time + drop.x) * 0.3;
+			});
+			
+			// Update data flow particles
+			dataFlowLines.forEach(line => {
+				line.particles.forEach(particle => {
+					particle.position = (particle.position + particle.speed) % 1;
+				});
+				line.strength = 0.3 + Math.sin(time * 2 + line.source) * 0.4;
+			});
+			
+			animationFrame = requestAnimationFrame(updateQuantumFlow);
+		}
+		
+		updateQuantumFlow();
 	}
 	
 	onDestroy(() => {
@@ -86,12 +250,9 @@
 	$: maxHosts = sources.length > 0 ? Math.max(...sources.map(([,c]) => c)) : 1;
 	$: avgHostsPerSource = sources.length > 0 ? Math.round(totalHosts / sources.length) : 0;
 	
-	// Key metrics
 	$: sourceCount = sources.length;
 	$: topSource = sources[0] || ['N/A', 0];
 	$: concentration = topSource[1] > 0 ? ((topSource[1] / totalHosts) * 100).toFixed(1) : 0;
-	
-	// Top performers
 	$: topFive = sources.slice(0, 5);
 
 	async function drillDownSource(source, count) {
@@ -155,29 +316,46 @@
 		if (text.length <= maxLength) return text;
 		return text.substring(0, maxLength) + '...';
 	}
-	
-	// Calculate bubble positions to avoid overlap
-	function calculateBubblePosition(index, total) {
-		const cols = 5;
-		const rows = Math.ceil(total / cols);
-		const col = index % cols;
-		const row = Math.floor(index / cols);
-		const spacing = 85;
-		const offsetX = 50;
-		const offsetY = 50;
-		
-		// Add some randomness to avoid perfect grid
-		const jitterX = (Math.random() - 0.5) * 10;
-		const jitterY = (Math.random() - 0.5) * 10;
-		
-		return {
-			x: offsetX + col * spacing + jitterX,
-			y: offsetY + row * spacing + jitterY
-		};
-	}
 </script>
 
 <div class="source-interface">
+	<!-- Quantum Data Background -->
+	<div class="quantum-data-field">
+		<!-- Code Rain Effect -->
+		<div class="code-rain">
+			{#each codeRain as drop}
+				<div class="code-drop" 
+					 style="left: {drop.x}%; top: {drop.y}%; opacity: {drop.opacity}">
+					{#each drop.chars.slice(0, 5) as char, i}
+						<div class="code-char" style="opacity: {1 - i * 0.2}">{char}</div>
+					{/each}
+				</div>
+			{/each}
+		</div>
+		
+		<!-- Energy Flow Particles -->
+		<div class="energy-particles">
+			{#each energyFlow as particle}
+				<div class="energy-particle"
+					 style="left: {particle.x}%; top: {particle.y}%; 
+							background: {particle.color}; 
+							opacity: {1 - particle.life / particle.maxLife}">
+				</div>
+			{/each}
+		</div>
+		
+		<!-- Data Streams -->
+		<div class="data-streams">
+			{#each dataStreams as stream}
+				<div class="data-stream"
+					 style="left: {stream.x}%; top: {stream.y}%; 
+							opacity: {stream.intensity * 0.6}">
+					<span class="stream-data">{stream.dataType}</span>
+				</div>
+			{/each}
+		</div>
+	</div>
+
 	<!-- Top Metrics -->
 	<div class="metrics-header">
 		<div class="metric-card">
@@ -224,7 +402,7 @@
 		<!-- Left: Source Visualization -->
 		<div class="org-panel">
 			<div class="panel-header">
-				<h2>SOURCE TABLE STRUCTURE</h2>
+				<h2>QUANTUM SOURCE ARCHITECTURE</h2>
 				<input type="text"
 					   bind:value={searchTerm}
 					   placeholder="Search sources..."
@@ -233,10 +411,15 @@
 			
 			{#if loading && !selectedSource}
 				<div class="loading-state">
-					<div class="org-loader">
-						<div class="spinner"></div>
+					<div class="quantum-loader">
+						<div class="loader-core"></div>
+						<div class="loader-rings">
+							<div class="loader-ring ring-1"></div>
+							<div class="loader-ring ring-2"></div>
+							<div class="loader-ring ring-3"></div>
+						</div>
 					</div>
-					<p>ANALYZING SOURCE STRUCTURE...</p>
+					<p>SYNCHRONIZING QUANTUM DATA SOURCES...</p>
 				</div>
 			{:else if error && !selectedSource}
 				<div class="error-state">
@@ -298,84 +481,101 @@
 				</div>
 			{:else}
 				<div class="org-visualization">
-					<!-- Hierarchical Tree -->
-					<div class="tree-container">
-						<div class="tree-root">
-							<div class="root-node">
-								<div class="node-icon">📊</div>
-								<div class="node-label">SOURCE TABLES</div>
-								<div class="node-count">{formatNumber(totalHosts)} HOSTS</div>
-							</div>
-						</div>
-						<div class="tree-branches">
-							{#each topFive as [source, count], i}
-								{@const status = getSourceStatus(count)}
-								<div class="branch-container">
-									<div class="branch-line"></div>
-									<div class="source-node" 
-										 style="border-color: {status.color}; background: {status.bgColor}"
-										 on:click={() => drillDownSource(source, count)}
-										 title={source}>
-										<div class="node-header" style="background: {status.color}30">
-											<span class="node-rank">#{i + 1}</span>
-										</div>
-										<div class="node-body">
-											<div class="node-name">{truncateText(source, 15).toUpperCase()}</div>
-											<div class="node-metrics">
-												<span class="node-hosts" style="color: {status.color}">
-													{formatNumber(count)}
-												</span>
-												<span class="node-percent">{((count / totalHosts) * 100).toFixed(1)}%</span>
-											</div>
-											<div class="node-bar">
-												<div class="bar-fill" 
-													 style="width: {Math.min(100, (count / maxHosts) * 100)}%; 
-															background: {status.color}"></div>
-											</div>
-										</div>
-									</div>
-								</div>
+					<!-- Quantum Network Nodes -->
+					<div class="quantum-network">
+						<svg viewBox="0 0 600 400" class="network-canvas">
+							<defs>
+								<filter id="quantumGlow">
+									<feGaussianBlur stdDeviation="3" result="coloredBlur"/>
+									<feMerge>
+										<feMergeNode in="coloredBlur"/>
+										<feMergeNode in="SourceGraphic"/>
+									</feMerge>
+								</filter>
+								<radialGradient id="nodeGradient">
+									<stop offset="0%" style="stop-color:#4ECDC4;stop-opacity:1" />
+									<stop offset="100%" style="stop-color:#4ECDC4;stop-opacity:0" />
+								</radialGradient>
+							</defs>
+							
+							<!-- Data Flow Lines -->
+							{#each dataFlowLines as line}
+								{#if quantumNodes[line.source] && quantumNodes[line.target]}
+									<line x1="{quantumNodes[line.source].x}" 
+										  y1="{quantumNodes[line.source].y}"
+										  x2="{quantumNodes[line.target].x}" 
+										  y2="{quantumNodes[line.target].y}"
+										  stroke="rgba(78, 205, 196, {line.strength * 0.5})"
+										  stroke-width="2"
+										  stroke-dasharray="5,5"
+										  filter="url(#quantumGlow)">
+										<animate attributeName="stroke-dashoffset"
+												 values="0;-10" dur="2s" repeatCount="indefinite"/>
+									</line>
+									
+									<!-- Flow Particles -->
+									{#each line.particles as particle}
+										{@const x = quantumNodes[line.source].x + (quantumNodes[line.target].x - quantumNodes[line.source].x) * particle.position}
+										{@const y = quantumNodes[line.source].y + (quantumNodes[line.target].y - quantumNodes[line.source].y) * particle.position}
+										<circle cx="{x}" cy="{y}" r="{particle.size}"
+												fill="#00E5FF" opacity="0.8">
+											<animate attributeName="r" 
+													 values="{particle.size};{particle.size * 2};{particle.size}" 
+													 dur="1s" repeatCount="indefinite"/>
+										</circle>
+									{/each}
+								{/if}
 							{/each}
-						</div>
-					</div>
-					
-					<!-- Bubble Chart -->
-					<div class="bubble-chart">
-						<svg viewBox="0 0 450 250">
-							{#each sources.slice(0, Math.min(15, sources.length)) as [source, count], i}
-								{@const pos = calculateBubblePosition(i, Math.min(15, sources.length))}
-								{@const radius = Math.sqrt(count / maxHosts) * 30 + 10}
-								{@const status = getSourceStatus(count)}
-								<g class="bubble-group" 
-								   on:click={() => drillDownSource(source, count)}
-								   on:mouseenter={() => hoveredSource = source}
-								   on:mouseleave={() => hoveredSource = null}>
-									<circle cx="{pos.x}" cy="{pos.y}" 
-											r="{radius}" 
+							
+							<!-- Quantum Nodes -->
+							{#each quantumNodes.slice(0, 10) as node, i}
+								{@const status = getSourceStatus(node.count)}
+								{@const radius = Math.log10(node.count + 1) * 3 + 5}
+								<g class="quantum-node" on:click={() => drillDownSource(node.id, node.count)}>
+									<!-- Node Aura -->
+									<circle cx="{node.x}" cy="{node.y}" r="{radius + 15}"
+											fill="url(#nodeGradient)" 
+											opacity="{node.energy * 0.3}"/>
+									
+									<!-- Node Core -->
+									<circle cx="{node.x}" cy="{node.y}" r="{radius}"
 											fill="{status.color}" 
-											opacity="0.2"/>
-									<circle cx="{pos.x}" cy="{pos.y}" 
-											r="{radius * 0.7}" 
-											fill="{status.color}" 
-											opacity="0.4"/>
-									<text x="{pos.x}" y="{pos.y}" 
-										  text-anchor="middle" 
-										  fill="#FFFFFF" 
-										  font-size="10" 
-										  font-weight="700">
-										{formatNumber(count)}
+											opacity="0.8"
+											filter="url(#quantumGlow)">
+										{#if node.pulsing}
+											<animate attributeName="r" 
+													 values="{radius};{radius * 1.5};{radius}" 
+													 dur="0.5s" repeatCount="1"/>
+										{/if}
+									</circle>
+									
+									<!-- Data Output Indicator -->
+									<circle cx="{node.x}" cy="{node.y - radius - 10}" r="3"
+											fill="#00E5FF" opacity="{node.dataOutput * 100}">
+										<animate attributeName="opacity" 
+												 values="0.3;1;0.3" dur="2s" repeatCount="indefinite"/>
+									</circle>
+									
+									<!-- Node Label -->
+									<text x="{node.x}" y="{node.y + radius + 15}" 
+										  text-anchor="middle" fill="#FFFFFF" font-size="8" font-weight="600">
+										{truncateText(node.id, 10)}
 									</text>
-									{#if hoveredSource === source}
-										<text x="{pos.x}" y="{pos.y - radius - 5}" 
-											  text-anchor="middle" 
-											  fill="#FFFFFF" 
-											  font-size="8" 
-											  font-weight="400">
-											{truncateText(source, 20)}
-										</text>
-									{/if}
+									
+									<!-- Host Count -->
+									<text x="{node.x}" y="{node.y + 3}" 
+										  text-anchor="middle" fill="#000000" font-size="10" font-weight="700">
+										{node.count > 1000 ? `${(node.count/1000).toFixed(0)}K` : node.count}
+									</text>
 								</g>
 							{/each}
+							
+							<!-- Network Pulse Wave -->
+							<circle cx="300" cy="200" r="{networkPulse * 200}" 
+									fill="none" stroke="rgba(0, 229, 255, 0.2)" stroke-width="1">
+								<animate attributeName="r" values="0;300;0" dur="4s" repeatCount="indefinite"/>
+								<animate attributeName="stroke-opacity" values="0.5;0;0.5" dur="4s" repeatCount="indefinite"/>
+							</circle>
 						</svg>
 					</div>
 					
@@ -397,7 +597,7 @@
 									 fill="url(#activityGradient)" 
 									 opacity="0.3"/>
 						</svg>
-						<div class="activity-label">SOURCE ACTIVITY</div>
+						<div class="activity-label">QUANTUM DATA FLOW</div>
 					</div>
 				</div>
 			{/if}
@@ -428,50 +628,67 @@
 				</div>
 			</div>
 			
-			<!-- Size Distribution -->
+			<!-- Quantum Coherence Chart -->
 			<div class="chart-box">
-				<h3>SOURCE SIZE DISTRIBUTION</h3>
-				<div class="size-chart">
-					{#each ['ENTERPRISE', 'LARGE', 'MEDIUM', 'SMALL', 'MINIMAL'] as size, i}
-						{@const count = sources.filter(([_, c]) => getSourceSize(c) === size).length}
-						{@const colors = ['#FF6B9D', '#4ECDC4', '#95E77E', '#FFE66D', '#C77DFF']}
-						<div class="size-item">
-							<div class="size-label">{size}</div>
-							<div class="size-count" style="color: {colors[i]}">
-								{count}
-							</div>
-							<div class="size-bar">
-								<div class="size-fill" 
-									 style="height: {sourceCount > 0 ? (count / sourceCount) * 100 : 0}%; 
-											background: {colors[i]}">
-								</div>
+				<h3>QUANTUM DATA COHERENCE</h3>
+				<div class="coherence-display">
+					{#each sources.slice(0, 6) as [source, count], i}
+						{@const coherence = (count / maxHosts) * 100}
+						{@const status = getSourceStatus(count)}
+						<div class="coherence-item" on:click={() => drillDownSource(source, count)}>
+							<div class="coherence-label">{truncateText(source, 8)}</div>
+							<div class="coherence-visualization">
+								<svg viewBox="0 0 80 80">
+									<circle cx="40" cy="40" r="30" fill="none" 
+											stroke="rgba(78, 205, 196, 0.2)" stroke-width="4"/>
+									<circle cx="40" cy="40" r="30" fill="none"
+											stroke="{status.color}" stroke-width="4"
+											stroke-dasharray="{coherence * 1.88} 188"
+											transform="rotate(-90 40 40)"
+											stroke-linecap="round">
+										<animate attributeName="stroke-dasharray"
+												 values="0 188;{coherence * 1.88} 188" 
+												 dur="2s" fill="freeze"/>
+									</circle>
+									<text x="40" y="45" text-anchor="middle" 
+										  fill="{status.color}" font-size="12" font-weight="600">
+										{coherence.toFixed(0)}%
+									</text>
+								</svg>
 							</div>
 						</div>
 					{/each}
 				</div>
 			</div>
 			
-			<!-- Coverage Stats -->
+			<!-- Data Flux Monitor -->
 			<div class="chart-box">
-				<h3>COVERAGE STATISTICS</h3>
-				<div class="coverage-stats">
-					<div class="coverage-item">
-						<span class="coverage-label">Sources with >1K hosts</span>
-						<span class="coverage-value" style="color: #FF6B9D">
-							{sources.filter(([_, c]) => c > 1000).length}
-						</span>
+				<h3>REAL-TIME DATA FLUX</h3>
+				<div class="flux-monitor">
+					<div class="flux-waves">
+						<svg viewBox="0 0 300 100">
+							{#each Array(5) as _, i}
+								<path d="M 0,50 Q 75,{20 + i * 10} 150,50 T 300,50"
+									  fill="none" 
+									  stroke="rgba(78, 205, 196, {0.8 - i * 0.15})" 
+									  stroke-width="2"
+									  transform="translate(0, {Math.sin(dimensionalPhase + i) * 5})">
+									<animate attributeName="d"
+											 values="M 0,50 Q 75,{20 + i * 10} 150,50 T 300,50;M 0,50 Q 75,{80 - i * 10} 150,50 T 300,50;M 0,50 Q 75,{20 + i * 10} 150,50 T 300,50"
+											 dur="{2 + i * 0.3}s" repeatCount="indefinite"/>
+								</path>
+							{/each}
+						</svg>
 					</div>
-					<div class="coverage-item">
-						<span class="coverage-label">Sources with >10K hosts</span>
-						<span class="coverage-value" style="color: #4ECDC4">
-							{sources.filter(([_, c]) => c > 10000).length}
-						</span>
-					</div>
-					<div class="coverage-item">
-						<span class="coverage-label">Sources with >50K hosts</span>
-						<span class="coverage-value" style="color: #95E77E">
-							{sources.filter(([_, c]) => c > 50000).length}
-						</span>
+					<div class="flux-metrics">
+						<div class="flux-metric">
+							<span class="metric-label">THROUGHPUT</span>
+							<span class="metric-value">{(totalHosts * 0.001).toFixed(1)}K/s</span>
+						</div>
+						<div class="flux-metric">
+							<span class="metric-label">LATENCY</span>
+							<span class="metric-value">{Math.floor(Math.random() * 50 + 10)}ms</span>
+						</div>
 					</div>
 				</div>
 			</div>
@@ -480,8 +697,8 @@
 		<!-- Right: Source List -->
 		<div class="list-panel">
 			<div class="panel-header">
-				<h3>ALL SOURCES</h3>
-				<span class="source-count">{sources.length} TOTAL</span>
+				<h3>QUANTUM SOURCE REGISTRY</h3>
+				<span class="source-count">{sources.length} ACTIVE</span>
 			</div>
 			<div class="source-list">
 				<table class="sources-table">
@@ -490,7 +707,7 @@
 							<th>#</th>
 							<th>SOURCE</th>
 							<th>HOSTS</th>
-							<th>SIZE</th>
+							<th>FLUX</th>
 							<th>STATUS</th>
 						</tr>
 					</thead>
@@ -501,16 +718,18 @@
 							<tr on:click={() => drillDownSource(source, count)}>
 								<td class="rank">{i + 1}</td>
 								<td class="source-name" title={source}>
-									<span class="status-indicator" style="background: {status.color}"></span>
+									<span class="status-indicator pulsing" style="background: {status.color}"></span>
 									{truncateText(source, 20).toUpperCase()}
 								</td>
 								<td class="host-count" style="color: {status.color}">
 									{formatNumber(count)}
 								</td>
 								<td>
-									<span class="size-badge" style="color: {status.color}">
-										{size}
-									</span>
+									<div class="flux-indicator">
+										<div class="flux-bar">
+											<div class="flux-fill" style="width: {Math.random() * 100}%; background: {status.color}"></div>
+										</div>
+									</div>
 								</td>
 								<td>
 									<span class="status-badge" 
@@ -539,6 +758,75 @@
 		padding: 1rem;
 		gap: 1rem;
 		overflow: hidden;
+		position: relative;
+	}
+	
+	/* Quantum Data Background */
+	.quantum-data-field {
+		position: absolute;
+		top: 0;
+		left: 0;
+		width: 100%;
+		height: 100%;
+		pointer-events: none;
+		overflow: hidden;
+		z-index: 1;
+	}
+	
+	.code-rain {
+		position: absolute;
+		width: 100%;
+		height: 100%;
+		opacity: 0.15;
+	}
+	
+	.code-drop {
+		position: absolute;
+		display: flex;
+		flex-direction: column;
+		gap: 2px;
+		pointer-events: none;
+	}
+	
+	.code-char {
+		font-family: 'Courier New', monospace;
+		font-size: 10px;
+		color: #00E5FF;
+		text-shadow: 0 0 5px #00E5FF;
+	}
+	
+	.energy-particles {
+		position: absolute;
+		width: 100%;
+		height: 100%;
+		opacity: 0.6;
+	}
+	
+	.energy-particle {
+		position: absolute;
+		width: 3px;
+		height: 3px;
+		border-radius: 50%;
+		box-shadow: 0 0 6px currentColor;
+	}
+	
+	.data-streams {
+		position: absolute;
+		width: 100%;
+		height: 100%;
+		opacity: 0.4;
+	}
+	
+	.data-stream {
+		position: absolute;
+		font-size: 8px;
+		color: #4ECDC4;
+		font-family: 'Courier New', monospace;
+		transform: translateY(-50%);
+	}
+	
+	.stream-data {
+		text-shadow: 0 0 3px currentColor;
 	}
 	
 	/* Metrics Header */
@@ -546,12 +834,15 @@
 		display: flex;
 		gap: 1rem;
 		flex-shrink: 0;
+		position: relative;
+		z-index: 2;
 	}
 	
 	.metric-card {
 		flex: 1;
-		background: rgba(255, 255, 255, 0.03);
-		border: 1px solid rgba(139, 233, 253, 0.2);
+		background: rgba(0, 0, 0, 0.8);
+		backdrop-filter: blur(10px);
+		border: 1px solid rgba(139, 233, 253, 0.3);
 		border-radius: 12px;
 		padding: 1rem;
 		display: flex;
@@ -561,8 +852,9 @@
 	}
 	
 	.metric-card:hover {
-		background: rgba(255, 255, 255, 0.05);
+		background: rgba(0, 0, 0, 0.9);
 		transform: translateY(-2px);
+		box-shadow: 0 8px 32px rgba(0, 229, 255, 0.2);
 	}
 	
 	.metric-icon {
@@ -583,6 +875,7 @@
 		white-space: nowrap;
 		overflow: hidden;
 		text-overflow: ellipsis;
+		text-shadow: 0 0 10px currentColor;
 	}
 	
 	.metric-label {
@@ -599,12 +892,15 @@
 		grid-template-columns: 1fr 380px 320px;
 		gap: 1rem;
 		min-height: 0;
+		position: relative;
+		z-index: 2;
 	}
 	
 	/* Org Panel */
 	.org-panel {
-		background: rgba(255, 255, 255, 0.03);
-		border: 1px solid rgba(189, 147, 249, 0.2);
+		background: rgba(0, 0, 0, 0.8);
+		backdrop-filter: blur(20px);
+		border: 1px solid rgba(189, 147, 249, 0.3);
 		border-radius: 12px;
 		padding: 1rem;
 		display: flex;
@@ -628,12 +924,13 @@
 		font-weight: 400;
 		letter-spacing: 0.1em;
 		color: #FF6B9D;
+		text-shadow: 0 0 10px rgba(255, 107, 157, 0.5);
 	}
 	
 	.search-input {
 		padding: 0.5rem 1rem;
-		background: rgba(0, 0, 0, 0.6);
-		border: 1px solid rgba(139, 233, 253, 0.3);
+		background: rgba(0, 0, 0, 0.8);
+		border: 1px solid rgba(139, 233, 253, 0.5);
 		border-radius: 8px;
 		color: #FFFFFF;
 		font-size: 0.8rem;
@@ -644,7 +941,8 @@
 	.search-input:focus {
 		outline: none;
 		border-color: #4ECDC4;
-		background: rgba(0, 0, 0, 0.8);
+		background: rgba(0, 0, 0, 0.9);
+		box-shadow: 0 0 20px rgba(78, 205, 196, 0.3);
 	}
 	
 	.org-visualization {
@@ -653,173 +951,38 @@
 		flex-direction: column;
 		gap: 1rem;
 		position: relative;
-		overflow-y: auto;
-		padding-right: 0.5rem;
+		overflow: hidden;
 	}
 	
-	/* Tree Container */
-	.tree-container {
-		display: flex;
-		flex-direction: column;
-		gap: 1.5rem;
-	}
-	
-	.tree-root {
-		display: flex;
-		justify-content: center;
-	}
-	
-	.root-node {
-		background: linear-gradient(135deg, rgba(189, 147, 249, 0.1), rgba(189, 147, 249, 0.05));
-		border: 2px solid #FF6B9D;
-		border-radius: 12px;
-		padding: 1rem 2rem;
-		text-align: center;
-		transition: all 0.3s ease;
-	}
-	
-	.root-node:hover {
-		background: linear-gradient(135deg, rgba(189, 147, 249, 0.15), rgba(189, 147, 249, 0.08));
-	}
-	
-	.node-icon {
-		font-size: 2rem;
-		margin-bottom: 0.5rem;
-	}
-	
-	.node-label {
-		font-size: 0.8rem;
-		color: #FF6B9D;
-		font-weight: 600;
-		letter-spacing: 0.1em;
-	}
-	
-	.node-count {
-		font-size: 1rem;
-		color: #FFFFFF;
-		font-weight: 700;
-		margin-top: 0.25rem;
-	}
-	
-	.tree-branches {
-		display: flex;
-		justify-content: space-around;
-		gap: 0.5rem;
-		position: relative;
-		flex-wrap: wrap;
-	}
-	
-	.branch-container {
-		position: relative;
+	/* Quantum Network */
+	.quantum-network {
 		flex: 1;
-		min-width: 140px;
-		max-width: 160px;
-	}
-	
-	.branch-line {
-		position: absolute;
-		top: -1.5rem;
-		left: 50%;
-		width: 1px;
-		height: 1.5rem;
-		background: linear-gradient(to bottom, transparent, rgba(139, 233, 253, 0.5));
-	}
-	
-	.source-node {
-		border: 1px solid;
-		border-radius: 10px;
-		cursor: pointer;
-		transition: all 0.3s ease;
-		overflow: hidden;
-	}
-	
-	.source-node:hover {
-		transform: scale(1.05) translateY(-2px);
-		box-shadow: 0 8px 20px rgba(139, 233, 253, 0.3);
-	}
-	
-	.node-header {
-		padding: 0.4rem;
-		text-align: center;
-		font-size: 0.7rem;
-		font-weight: 600;
-	}
-	
-	.node-rank {
-		color: #FFFFFF;
-		font-weight: 700;
-	}
-	
-	.node-body {
-		padding: 0.6rem;
-	}
-	
-	.node-name {
-		font-size: 0.7rem;
-		color: rgba(255, 255, 255, 0.95);
-		margin-bottom: 0.4rem;
-		text-align: center;
-		font-weight: 600;
-	}
-	
-	.node-metrics {
-		display: flex;
-		justify-content: space-between;
-		margin-bottom: 0.4rem;
-		font-size: 0.75rem;
-	}
-	
-	.node-hosts {
-		font-weight: 700;
-		font-family: 'SF Mono', 'Monaco', monospace;
-	}
-	
-	.node-percent {
-		color: rgba(255, 255, 255, 0.7);
-		font-weight: 500;
-	}
-	
-	.node-bar {
-		height: 4px;
-		background: rgba(255, 255, 255, 0.1);
-		border-radius: 2px;
-		overflow: hidden;
-	}
-	
-	.bar-fill {
-		height: 100%;
-		transition: width 0.5s ease;
-		border-radius: 2px;
-	}
-	
-	/* Bubble Chart */
-	.bubble-chart {
-		background: rgba(0, 0, 0, 0.4);
+		background: radial-gradient(ellipse at center, rgba(0, 229, 255, 0.03), transparent);
 		border-radius: 10px;
 		padding: 1rem;
-		border: 1px solid rgba(139, 233, 253, 0.1);
+		border: 1px solid rgba(0, 229, 255, 0.1);
 	}
 	
-	.bubble-chart svg {
+	.network-canvas {
 		width: 100%;
 		height: 100%;
 	}
 	
-	.bubble-group {
+	.quantum-node {
 		cursor: pointer;
 		transition: all 0.3s ease;
 	}
 	
-	.bubble-group:hover {
-		transform: scale(1.15);
-		filter: brightness(1.2);
+	.quantum-node:hover {
+		transform: scale(1.1);
+		filter: brightness(1.3);
 	}
 	
 	/* Synaptic Activity */
 	.synaptic-activity {
 		position: relative;
 		height: 80px;
-		background: linear-gradient(to bottom, rgba(0, 0, 0, 0.8), rgba(0, 0, 0, 0.6));
+		background: linear-gradient(to bottom, rgba(0, 0, 0, 0.9), rgba(0, 0, 0, 0.7));
 		border: 1px solid rgba(139, 233, 253, 0.3);
 		padding: 8px;
 		border-radius: 10px;
@@ -850,8 +1013,9 @@
 	
 	.chart-box {
 		flex: 1;
-		background: rgba(255, 255, 255, 0.03);
-		border: 1px solid rgba(139, 233, 253, 0.2);
+		background: rgba(0, 0, 0, 0.8);
+		backdrop-filter: blur(10px);
+		border: 1px solid rgba(139, 233, 253, 0.3);
 		border-radius: 12px;
 		padding: 1rem;
 		display: flex;
@@ -864,6 +1028,7 @@
 		color: #4ECDC4;
 		font-weight: 400;
 		letter-spacing: 0.1em;
+		text-shadow: 0 0 10px rgba(78, 205, 196, 0.5);
 	}
 	
 	.distribution-bars {
@@ -885,7 +1050,7 @@
 	}
 	
 	.dist-item:hover {
-		background: rgba(139, 233, 253, 0.05);
+		background: rgba(139, 233, 253, 0.1);
 		transform: translateX(2px);
 	}
 	
@@ -909,6 +1074,7 @@
 		background: rgba(255, 255, 255, 0.05);
 		border-radius: 4px;
 		overflow: hidden;
+		border: 1px solid rgba(255, 255, 255, 0.1);
 	}
 	
 	.dist-fill {
@@ -935,94 +1101,95 @@
 		font-weight: 600;
 	}
 	
-	/* Size Chart */
-	.size-chart {
-		display: flex;
-		align-items: flex-end;
-		justify-content: space-around;
-		height: 120px;
-		padding: 0.5rem 0;
-	}
-	
-	.size-item {
+	/* Coherence Display */
+	.coherence-display {
+		display: grid;
+		grid-template-columns: repeat(3, 1fr);
+		gap: 1rem;
 		flex: 1;
-		display: flex;
-		flex-direction: column;
-		align-items: center;
-		gap: 0.4rem;
 	}
 	
-	.size-label {
-		font-size: 0.6rem;
-		color: rgba(255, 255, 255, 0.7);
-		writing-mode: vertical-lr;
+	.coherence-item {
 		text-align: center;
+		cursor: pointer;
+		transition: all 0.3s ease;
+	}
+	
+	.coherence-item:hover {
+		transform: scale(1.05);
+	}
+	
+	.coherence-label {
+		font-size: 0.7rem;
+		color: rgba(255, 255, 255, 0.7);
+		margin-bottom: 0.5rem;
 		font-weight: 600;
 	}
 	
-	.size-count {
-		font-size: 1rem;
-		font-weight: 700;
+	.coherence-visualization {
+		width: 80px;
+		height: 80px;
+		margin: 0 auto;
 	}
 	
-	.size-bar {
-		width: 35px;
-		height: 70px;
-		background: rgba(255, 255, 255, 0.05);
-		border-radius: 4px 4px 0 0;
-		display: flex;
-		align-items: flex-end;
-		overflow: hidden;
-	}
-	
-	.size-fill {
+	.coherence-visualization svg {
 		width: 100%;
-		border-radius: 4px 4px 0 0;
-		transition: height 0.5s ease;
+		height: 100%;
 	}
 	
-	/* Coverage Stats */
-	.coverage-stats {
+	/* Flux Monitor */
+	.flux-monitor {
+		flex: 1;
 		display: flex;
 		flex-direction: column;
-		gap: 0.8rem;
+		gap: 1rem;
 	}
 	
-	.coverage-item {
-		display: flex;
-		justify-content: space-between;
-		align-items: center;
-		padding: 0.6rem;
-		background: rgba(0, 0, 0, 0.4);
+	.flux-waves {
+		flex: 1;
+		background: rgba(0, 0, 0, 0.5);
 		border-radius: 8px;
-		transition: all 0.2s ease;
+		padding: 0.5rem;
 	}
 	
-	.coverage-item:hover {
-		background: rgba(0, 0, 0, 0.6);
-		transform: translateX(2px);
+	.flux-waves svg {
+		width: 100%;
+		height: 100%;
 	}
 	
-	.coverage-label {
-		font-size: 0.75rem;
-		color: rgba(255, 255, 255, 0.8);
-		font-weight: 500;
+	.flux-metrics {
+		display: flex;
+		justify-content: space-around;
 	}
 	
-	.coverage-value {
-		font-size: 1.1rem;
+	.flux-metric {
+		text-align: center;
+	}
+	
+	.flux-metric .metric-label {
+		font-size: 0.6rem;
+		color: rgba(255, 255, 255, 0.5);
+		display: block;
+		margin-bottom: 0.25rem;
+	}
+	
+	.flux-metric .metric-value {
+		font-size: 1rem;
+		color: #4ECDC4;
 		font-weight: 700;
-		font-family: 'SF Mono', 'Monaco', monospace;
+		text-shadow: 0 0 10px rgba(78, 205, 196, 0.5);
 	}
 	
 	/* List Panel */
 	.list-panel {
-		background: rgba(255, 255, 255, 0.03);
-		border: 1px solid rgba(189, 147, 249, 0.2);
+		background: rgba(0, 0, 0, 0.8);
+		backdrop-filter: blur(20px);
+		border: 1px solid rgba(189, 147, 249, 0.3);
 		border-radius: 12px;
 		display: flex;
 		flex-direction: column;
 		overflow: hidden;
+		padding: 1rem;
 	}
 	
 	.source-count {
@@ -1034,7 +1201,7 @@
 	.source-list {
 		flex: 1;
 		overflow-y: auto;
-		overflow-x: hidden;
+		margin-top: 1rem;
 	}
 	
 	.sources-table {
@@ -1098,15 +1265,41 @@
 		flex-shrink: 0;
 	}
 	
+	.status-indicator.pulsing {
+		animation: statusPulse 2s ease-in-out infinite;
+	}
+	
+	@keyframes statusPulse {
+		0%, 100% { opacity: 0.6; transform: scale(1); }
+		50% { opacity: 1; transform: scale(1.2); }
+	}
+	
 	.host-count {
 		font-family: 'SF Mono', 'Monaco', monospace;
 		font-weight: 700;
 	}
 	
-	.size-badge {
-		font-size: 0.65rem;
-		font-weight: 700;
-		letter-spacing: 0.05em;
+	.flux-indicator {
+		width: 100%;
+	}
+	
+	.flux-bar {
+		width: 40px;
+		height: 4px;
+		background: rgba(255, 255, 255, 0.1);
+		border-radius: 2px;
+		overflow: hidden;
+	}
+	
+	.flux-fill {
+		height: 100%;
+		transition: width 0.5s ease;
+		animation: fluxFlow 2s ease-in-out infinite;
+	}
+	
+	@keyframes fluxFlow {
+		0%, 100% { width: 30%; }
+		50% { width: 90%; }
 	}
 	
 	.status-badge {
@@ -1116,6 +1309,104 @@
 		border-radius: 6px;
 		font-weight: 700;
 		letter-spacing: 0.03em;
+	}
+	
+	/* Loading State */
+	.loading-state, .error-state {
+		flex: 1;
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		justify-content: center;
+		gap: 2rem;
+	}
+	
+	.quantum-loader {
+		position: relative;
+		width: 100px;
+		height: 100px;
+	}
+	
+	.loader-core {
+		position: absolute;
+		top: 50%;
+		left: 50%;
+		transform: translate(-50%, -50%);
+		width: 20px;
+		height: 20px;
+		background: #00E5FF;
+		border-radius: 50%;
+		animation: coreFlash 1s ease-in-out infinite;
+	}
+	
+	.loader-rings {
+		position: absolute;
+		inset: 0;
+	}
+	
+	.loader-ring {
+		position: absolute;
+		border: 2px solid;
+		border-radius: 50%;
+		animation: ringSpin 2s linear infinite;
+	}
+	
+	.ring-1 {
+		inset: 0;
+		border-color: #FF6B9D transparent transparent transparent;
+	}
+	
+	.ring-2 {
+		inset: 15px;
+		border-color: transparent #4ECDC4 transparent transparent;
+		animation-direction: reverse;
+		animation-duration: 1.5s;
+	}
+	
+	.ring-3 {
+		inset: 30px;
+		border-color: transparent transparent #95E77E transparent;
+		animation-duration: 1s;
+	}
+	
+	@keyframes coreFlash {
+		0%, 100% { opacity: 1; box-shadow: 0 0 20px #00E5FF; }
+		50% { opacity: 0.3; box-shadow: 0 0 5px #00E5FF; }
+	}
+	
+	@keyframes ringSpin {
+		from { transform: rotate(0deg); }
+		to { transform: rotate(360deg); }
+	}
+	
+	.loading-state p, .error-state p {
+		color: rgba(255, 255, 255, 0.6);
+		font-size: 0.9rem;
+		letter-spacing: 0.2em;
+		font-weight: 600;
+	}
+	
+	.error-icon {
+		font-size: 3rem;
+	}
+	
+	.retry-btn {
+		padding: 0.6rem 1.5rem;
+		background: linear-gradient(135deg, #FF6B9D, #FF6B9D80);
+		border: 1px solid #FF6B9D;
+		color: #FFFFFF;
+		border-radius: 8px;
+		font-size: 0.8rem;
+		font-weight: 600;
+		letter-spacing: 0.1em;
+		cursor: pointer;
+		transition: all 0.3s ease;
+	}
+	
+	.retry-btn:hover {
+		background: linear-gradient(135deg, #FF6B9D, #FF6B9DCC);
+		transform: translateY(-2px);
+		box-shadow: 0 4px 15px rgba(255, 107, 157, 0.4);
 	}
 	
 	/* Detail View */
@@ -1139,6 +1430,7 @@
 		font-size: 1.1rem;
 		color: #FF6B9D;
 		font-weight: 600;
+		text-shadow: 0 0 10px rgba(255, 107, 157, 0.5);
 	}
 	
 	.source-stats {
@@ -1173,9 +1465,10 @@
 	.hosts-container {
 		flex: 1;
 		overflow-y: auto;
-		background: rgba(0, 0, 0, 0.4);
+		background: rgba(0, 0, 0, 0.5);
 		border-radius: 10px;
 		padding: 1rem;
+		border: 1px solid rgba(0, 229, 255, 0.1);
 	}
 	
 	.hosts-table {
@@ -1230,67 +1523,6 @@
 		opacity: 0.6;
 	}
 	
-	/* Loading State */
-	.loading-state, .error-state {
-		flex: 1;
-		display: flex;
-		flex-direction: column;
-		align-items: center;
-		justify-content: center;
-		gap: 2rem;
-	}
-	
-	.org-loader {
-		position: relative;
-		width: 100px;
-		height: 100px;
-	}
-	
-	.spinner {
-		width: 60px;
-		height: 60px;
-		margin: 20px;
-		border: 4px solid rgba(78, 205, 196, 0.2);
-		border-top: 4px solid #4ECDC4;
-		border-radius: 50%;
-		animation: spin 1s linear infinite;
-	}
-	
-	@keyframes spin {
-		0% { transform: rotate(0deg); }
-		100% { transform: rotate(360deg); }
-	}
-	
-	.loading-state p, .error-state p {
-		color: rgba(255, 255, 255, 0.6);
-		font-size: 0.9rem;
-		letter-spacing: 0.2em;
-		font-weight: 600;
-	}
-	
-	.error-icon {
-		font-size: 3rem;
-	}
-	
-	.retry-btn {
-		padding: 0.6rem 1.5rem;
-		background: linear-gradient(135deg, #FF6B9D, #FF6B9D80);
-		border: 1px solid #FF6B9D;
-		color: #FFFFFF;
-		border-radius: 8px;
-		font-size: 0.8rem;
-		font-weight: 600;
-		letter-spacing: 0.1em;
-		cursor: pointer;
-		transition: all 0.3s ease;
-	}
-	
-	.retry-btn:hover {
-		background: linear-gradient(135deg, #FF6B9D, #FF6B9DCC);
-		transform: translateY(-2px);
-		box-shadow: 0 4px 15px rgba(255, 107, 157, 0.4);
-	}
-	
 	/* Scrollbar */
 	::-webkit-scrollbar {
 		width: 8px;
@@ -1317,8 +1549,8 @@
 			grid-template-columns: 1fr 300px 280px;
 		}
 		
-		.metric-value {
-			font-size: 1.2rem;
+		.coherence-display {
+			grid-template-columns: repeat(2, 1fr);
 		}
 	}
 	
@@ -1330,6 +1562,10 @@
 		
 		.analytics-panel {
 			display: grid;
+			grid-template-columns: repeat(3, 1fr);
+		}
+		
+		.coherence-display {
 			grid-template-columns: repeat(3, 1fr);
 		}
 	}
@@ -1345,6 +1581,10 @@
 		
 		.analytics-panel {
 			grid-template-columns: 1fr;
+		}
+		
+		.coherence-display {
+			grid-template-columns: repeat(2, 1fr);
 		}
 	}
 </style>
