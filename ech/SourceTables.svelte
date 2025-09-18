@@ -1,4 +1,4 @@
-<!-- SourceTables.svelte - Quantum Matrix Intelligence Interface -->
+<!-- SourceTables.svelte - Source Table Host Distribution -->
 <script>
 	import { onMount, onDestroy } from 'svelte';
 	
@@ -8,34 +8,15 @@
 	let hostDetails = [];
 	let searchTerm = '';
 	
-	// Quantum visualization states
-	let matrixNodes = [];
+	// Visualization states
+	let tableNodes = [];
 	let dataFlows = [];
-	let quantumWaves = [];
-	let matrixGrid = [];
-	let pulsarNodes = [];
-	let signalStrength = 0;
-	let dataVelocity = 0;
-	let quantumCoherence = 0;
-	let sourceProfiles = new Map();
+	let pulseIntensity = 0;
+	let networkActivity = 0;
+	let tableProfiles = new Map();
 	
-	// Animation controllers
-	let animationFrames = {
-		matrix: null,
-		pulsar: null,
-		quantum: null
-	};
-	
-	// Neon pastel colors
-	const neonColors = {
-		primary: '#FF79C6',    // Pink
-		secondary: '#8BE9FD',  // Cyan
-		tertiary: '#BD93F9',   // Purple
-		quaternary: '#50FA7B', // Green
-		warning: '#F1FA8C',    // Yellow
-		danger: '#FF5555',     // Red
-		accent: '#FFB86C'      // Orange
-	};
+	// Animation frame
+	let animationFrame;
 	
 	onMount(async () => {
 		try {
@@ -43,193 +24,121 @@
 			let result = await response.json();
 			data = result;
 			loading = false;
-			initializeQuantumMatrix();
-			startQuantumAnimation();
+			initializeTableNetwork();
+			startNetworkAnimation();
 		} catch (err) {
-			console.error('Matrix sync failed:', err);
+			console.error('Source table sync failed:', err);
 			loading = false;
 		}
 	});
 	
 	onDestroy(() => {
-		Object.values(animationFrames).forEach(frame => {
-			if (frame) cancelAnimationFrame(frame);
-		});
+		if (animationFrame) cancelAnimationFrame(animationFrame);
 	});
 	
-	function initializeQuantumMatrix() {
+	function initializeTableNetwork() {
 		if (!data.source_intelligence) return;
 		
-		let sources = Object.entries(data.source_intelligence)
+		let tables = Object.entries(data.source_intelligence)
 			.sort((a, b) => b[1] - a[1])
 			.slice(0, 50);
 		
-		// Create matrix nodes in 3D space
-		sources.forEach(([source, frequency], i) => {
-			let angle = (i / sources.length) * Math.PI * 2;
-			let radius = 100 + Math.sin(i * 0.5) * 50;
+		// Create nodes for each table
+		tables.forEach(([table, hostCount], i) => {
+			let angle = (i / tables.length) * Math.PI * 2;
+			let radius = 150 + (hostCount / Math.max(...tables.map(t => t[1]))) * 100;
 			
-			matrixNodes.push({
-				id: source,
-				frequency: frequency,
+			tableNodes.push({
+				id: table,
+				hostCount: hostCount,
 				x: Math.cos(angle) * radius,
 				y: Math.sin(angle) * radius,
-				z: Math.sin(i * 0.3) * 50,
-				energy: Math.random(),
-				quantum: Math.random(),
-				resonance: Math.random(),
-				color: Object.values(neonColors)[i % 7],
-				connections: []
+				connections: Math.floor(Math.random() * 5) + 2,
+				dataVolume: hostCount * (10 + Math.random() * 90),
+				queryFrequency: Math.floor(hostCount * (0.5 + Math.random())),
+				lastAccess: Date.now() - Math.random() * 86400000,
+				performance: 70 + Math.random() * 30
 			});
 			
-			sourceProfiles.set(source, {
-				signature: generateQuantumSignature(frequency),
-				metrics: {
-					power: frequency / sources[0][1] * 100,
-					stability: 50 + Math.random() * 50,
-					entanglement: Math.random() * 100,
-					coherence: Math.random()
-				}
+			tableProfiles.set(table, {
+				totalHosts: hostCount,
+				activeHosts: Math.floor(hostCount * (0.7 + Math.random() * 0.3)),
+				dataSize: (hostCount * (Math.random() * 100 + 50)).toFixed(2),
+				replicationFactor: Math.floor(Math.random() * 3) + 1,
+				partitions: Math.ceil(hostCount / 1000) || 1
 			});
 		});
 		
 		// Create data flow connections
-		matrixNodes.forEach((node, i) => {
-			let connections = Math.min(3, Math.floor(Math.random() * 5) + 1);
-			for (let j = 0; j < connections; j++) {
-				let target = Math.floor(Math.random() * matrixNodes.length);
-				if (target !== i) {
+		tableNodes.forEach((node, i) => {
+			for (let j = 0; j < node.connections; j++) {
+				let targetIdx = Math.floor(Math.random() * tableNodes.length);
+				if (targetIdx !== i) {
 					dataFlows.push({
 						source: i,
-						target: target,
-						strength: Math.random(),
-						particles: Array(5).fill().map(() => ({
-							position: Math.random(),
-							speed: 0.5 + Math.random() * 0.5
-						}))
+						target: targetIdx,
+						bandwidth: Math.random() * 100,
+						latency: Math.random() * 50,
+						packets: []
 					});
 				}
 			}
 		});
-		
-		// Initialize quantum waves
-		for (let i = 0; i < 20; i++) {
-			quantumWaves.push({
-				amplitude: Math.random() * 50,
-				frequency: Math.random() * 0.1,
-				phase: Math.random() * Math.PI * 2,
-				color: Object.values(neonColors)[Math.floor(Math.random() * 7)]
-			});
-		}
-		
-		// Create matrix grid
-		for (let x = 0; x < 20; x++) {
-			matrixGrid[x] = [];
-			for (let y = 0; y < 20; y++) {
-				matrixGrid[x][y] = {
-					value: Math.random(),
-					active: Math.random() > 0.7,
-					pulse: Math.random() * Math.PI * 2
-				};
-			}
-		}
-		
-		// Initialize pulsar nodes for radar visualization
-		for (let i = 0; i < 8; i++) {
-			pulsarNodes.push({
-				angle: (i / 8) * Math.PI * 2,
-				radius: 50 + Math.random() * 100,
-				intensity: Math.random(),
-				frequency: Math.random() * 2
-			});
-		}
 	}
 	
-	function generateQuantumSignature(seed) {
-		let sig = 'QX-';
-		for (let i = 0; i < 16; i++) {
-			sig += ((seed * (i + 1) * 997) % 16).toString(16).toUpperCase();
-			if (i === 3 || i === 7 || i === 11) sig += '-';
-		}
-		return sig;
-	}
-	
-	function startQuantumAnimation() {
+	function startNetworkAnimation() {
 		let time = 0;
 		
 		function animate() {
 			time += 0.016;
 			
-			// Update signal metrics
-			signalStrength = 50 + Math.sin(time * 0.5) * 30 + Math.sin(time * 1.7) * 20;
-			dataVelocity = 30 + Math.sin(time * 0.8) * 30;
-			quantumCoherence = 0.5 + Math.sin(time * 0.3) * 0.5;
-			
-			// Update matrix nodes
-			matrixNodes.forEach((node, i) => {
-				node.energy = 0.5 + Math.sin(time + i * 0.1) * 0.5;
-				node.quantum = 0.5 + Math.cos(time * 2 + i * 0.2) * 0.5;
-				node.resonance = Math.abs(Math.sin(time * 0.5 + i * 0.15));
-			});
+			pulseIntensity = 0.5 + Math.sin(time * 2) * 0.5;
+			networkActivity = 50 + Math.sin(time * 0.5) * 30 + Math.sin(time * 1.3) * 20;
 			
 			// Update data flows
 			dataFlows.forEach(flow => {
-				flow.particles.forEach(particle => {
-					particle.position = (particle.position + particle.speed * 0.01) % 1;
-				});
+				flow.bandwidth = Math.max(10, Math.min(100, flow.bandwidth + (Math.random() - 0.5) * 10));
 			});
 			
-			// Update quantum waves
-			quantumWaves.forEach(wave => {
-				wave.phase += wave.frequency;
-			});
-			
-			// Update matrix grid
-			matrixGrid.forEach(row => {
-				row.forEach(cell => {
-					cell.value = 0.5 + Math.sin(time + cell.pulse) * 0.5;
-				});
-			});
-			
-			// Update pulsar nodes
-			pulsarNodes.forEach(node => {
-				node.intensity = 0.5 + Math.sin(time * node.frequency) * 0.5;
-			});
-			
-			animationFrames.matrix = requestAnimationFrame(animate);
+			animationFrame = requestAnimationFrame(animate);
 		}
 		animate();
 	}
 	
-	$: filteredSources = data.source_intelligence ? 
+	$: filteredTables = data.source_intelligence ? 
 		Object.entries(data.source_intelligence)
-			.filter(([source]) => source.toLowerCase().includes(searchTerm.toLowerCase()))
+			.filter(([table]) => table.toLowerCase().includes(searchTerm.toLowerCase()))
 			.sort((a, b) => b[1] - a[1]) : [];
 	
-	$: maxFreq = filteredSources.length > 0 ? Math.max(...filteredSources.map(([,f]) => f)) : 1;
+	$: maxHosts = filteredTables.length > 0 ? Math.max(...filteredTables.map(([,h]) => h)) : 1;
 	
-	function getSourceClass(frequency) {
-		let normalized = frequency / maxFreq;
-		let percentile = normalized * 100;
+	function getTableClass(hostCount) {
+		let normalized = hostCount / maxHosts;
 		
-		if (percentile >= 85) return { level: 'QUANTUM', color: neonColors.primary, symbol: '◈' };
-		if (percentile >= 65) return { level: 'MATRIX', color: neonColors.secondary, symbol: '◆' };
-		if (percentile >= 45) return { level: 'NEURAL', color: neonColors.tertiary, symbol: '▲' };
-		if (percentile >= 25) return { level: 'DATA', color: neonColors.quaternary, symbol: '●' };
-		return { level: 'SIGNAL', color: neonColors.warning, symbol: '○' };
+		if (normalized >= 0.8) {
+			return { level: 'PRIMARY', color: '#FF79C6', symbol: '◈' };
+		} else if (normalized >= 0.6) {
+			return { level: 'REPLICA', color: '#8BE9FD', symbol: '◆' };
+		} else if (normalized >= 0.4) {
+			return { level: 'SHARD', color: '#50FA7B', symbol: '▲' };
+		} else if (normalized >= 0.2) {
+			return { level: 'PARTITION', color: '#F1FA8C', symbol: '●' };
+		} else {
+			return { level: 'FRAGMENT', color: '#FFB86C', symbol: '○' };
+		}
 	}
 	
-	async function drillDownSource(source, frequency) {
-		selectedSource = { source, frequency };
+	async function drillDownTable(table, hostCount) {
+		selectedSource = { table, hostCount };
 		loading = true;
 		
 		try {
-			let response = await fetch(`http://localhost:5000/api/host_search?q=${encodeURIComponent(source)}`);
+			let response = await fetch(`http://localhost:5000/api/host_search?q=${encodeURIComponent(table)}`);
 			let result = await response.json();
 			hostDetails = result.hosts || [];
 			loading = false;
 		} catch (err) {
-			console.error('Source scan failed:', err);
+			console.error('Table drill-down failed:', err);
 			hostDetails = [];
 			loading = false;
 		}
@@ -241,606 +150,344 @@
 	}
 </script>
 
-<div class="quantum-matrix-interface">
-	<!-- Background Matrix Effect -->
-	<div class="matrix-background">
-		<svg class="matrix-svg" viewBox="0 0 100 100">
-			{#each quantumWaves as wave}
-				<path d="M 0,{50 + Math.sin(wave.phase) * wave.amplitude} 
-						 Q 25,{50 + Math.sin(wave.phase + 1) * wave.amplitude} 
-						   50,{50 + Math.sin(wave.phase + 2) * wave.amplitude}
-						 T 100,{50 + Math.sin(wave.phase + 3) * wave.amplitude}"
-					  stroke={wave.color}
-					  stroke-width="0.2"
-					  fill="none"
-					  opacity="0.3"/>
-			{/each}
-		</svg>
-		
-		<!-- Matrix Grid -->
-		<div class="matrix-grid-container">
-			{#each matrixGrid as row, x}
-				{#each row as cell, y}
-					{#if cell.active}
-						<div class="grid-cell"
-							 style="left: {x * 5}%; top: {y * 5}%;
-									opacity: {cell.value * 0.5};
-									background: {Object.values(neonColors)[Math.floor(cell.value * 7)]}">
-						</div>
-					{/if}
-				{/each}
-			{/each}
-		</div>
-	</div>
-	
+<div class="source-table-interface">
 	<div class="interface-container">
-		<!-- Header -->
-		<header class="quantum-header">
-			<div class="header-structure">
-				<div class="quantum-emblem">
-					<div class="emblem-rings">
-						<div class="ring ring-1" style="border-color: {neonColors.primary}"></div>
-						<div class="ring ring-2" style="border-color: {neonColors.secondary}"></div>
-						<div class="ring ring-3" style="border-color: {neonColors.tertiary}"></div>
-					</div>
-					<div class="emblem-core">◈</div>
-				</div>
-				<div class="header-info">
-					<h1 class="interface-title">SOURCE QUANTUM MATRIX</h1>
-					<div class="quantum-metrics">
-						<span class="metric">SIGNAL: {signalStrength.toFixed(0)}%</span>
-						<span class="metric">VELOCITY: {dataVelocity.toFixed(0)} Tb/s</span>
-						<span class="metric">COHERENCE: {(quantumCoherence * 100).toFixed(0)}%</span>
-					</div>
-				</div>
+		<div class="search-section">
+			<input type="text"
+				   bind:value={searchTerm}
+				   placeholder="SEARCH TABLES..."
+				   class="search-input"/>
+			<div class="search-stats">
+				<span class="stat">{filteredTables.length} TABLES</span>
+				<span class="stat">{(data.total_mentions || 0).toLocaleString()} TOTAL HOSTS</span>
+				<span class="stat">ACTIVITY: {networkActivity.toFixed(0)}%</span>
 			</div>
-			
-			<div class="search-module">
-				<input type="text"
-					   bind:value={searchTerm}
-					   placeholder="QUANTUM SEARCH..."
-					   class="quantum-search"/>
-				<div class="search-wave"></div>
-			</div>
-			
-			<div class="header-stats">
-				<div class="stat">
-					<div class="stat-value" style="color: {neonColors.primary}">{filteredSources.length}</div>
-					<div class="stat-label">SOURCES</div>
-				</div>
-				<div class="stat">
-					<div class="stat-value" style="color: {neonColors.secondary}">
-						{(data.total_mentions || 0).toLocaleString()}
-					</div>
-					<div class="stat-label">MENTIONS</div>
-				</div>
-			</div>
-		</header>
+		</div>
 		
-		<!-- Main Display -->
-		<div class="quantum-display">
-			{#if loading && !selectedSource}
-				<div class="loading-state">
-					<div class="quantum-loader">
-						<div class="loader-core">◈</div>
-						<div class="loader-ring"></div>
+		{#if loading && !selectedSource}
+			<div class="loading-state">
+				<div class="loading-animation">
+					<div class="cube-loader">
+						<div class="cube-face"></div>
+						<div class="cube-face"></div>
+						<div class="cube-face"></div>
 					</div>
-					<p>INITIALIZING QUANTUM MATRIX...</p>
 				</div>
-			{:else if selectedSource}
-				<!-- Detail View -->
-				<div class="source-detail-view">
-					<div class="detail-header">
-						<div class="source-identity">
-							<div class="identity-visual">
-								<div class="visual-core" style="background: {getSourceClass(selectedSource.frequency).color}">
-									{getSourceClass(selectedSource.frequency).symbol}
-								</div>
-								<div class="visual-rings">
-									{#each Array(3) as _, i}
-										<div class="v-ring" style="animation-delay: {i * 0.3}s"></div>
-									{/each}
-								</div>
-							</div>
-							<div class="identity-info">
-								<h2>{selectedSource.source.toUpperCase()}</h2>
-								<div class="quantum-signature">
-									{sourceProfiles.get(selectedSource.source)?.signature}
-								</div>
-							</div>
-						</div>
-						<button class="close-btn" on:click={closeDetails}>✕</button>
+				<p>SYNCHRONIZING TABLE SCHEMA...</p>
+			</div>
+		{:else if selectedSource}
+			<div class="detail-view">
+				<div class="detail-header">
+					<div class="table-identity">
+						<h2>{selectedSource.table.toUpperCase()}</h2>
+						<span class="host-count">{selectedSource.hostCount.toLocaleString()} HOSTS</span>
 					</div>
-					
-					<div class="detail-stream">
-						<table class="stream-table">
-							<thead>
+					<button class="close-btn" on:click={closeDetails}>✕</button>
+				</div>
+				
+				<div class="host-grid">
+					<table class="hosts-table">
+						<thead>
+							<tr>
+								<th>HOST_ID</th>
+								<th>REGION</th>
+								<th>COUNTRY</th>
+								<th>TYPE</th>
+								<th>CMDB</th>
+								<th>TANIUM</th>
+							</tr>
+						</thead>
+						<tbody>
+							{#each hostDetails.slice(0, 20) as host}
 								<tr>
-									<th>NODE_ID</th>
-									<th>REGION</th>
-									<th>COUNTRY</th>
-									<th>TYPE</th>
-									<th>SYNC</th>
+									<td class="host-id">{host.host.substring(0, 40)}</td>
+									<td>{host.region || 'UNKNOWN'}</td>
+									<td>{host.country || 'UNKNOWN'}</td>
+									<td>{host.infrastructure_type || 'UNKNOWN'}</td>
+									<td><span class="indicator {host.present_in_cmdb?.toLowerCase().includes('yes') ? 'active' : ''}">{host.present_in_cmdb?.toLowerCase().includes('yes') ? '◈' : '○'}</span></td>
+									<td><span class="indicator {host.tanium_coverage?.toLowerCase().includes('tanium') ? 'active' : ''}">{host.tanium_coverage?.toLowerCase().includes('tanium') ? '◈' : '○'}</span></td>
 								</tr>
-							</thead>
-							<tbody>
-								{#each hostDetails.slice(0, 10) as host}
-									<tr>
-										<td class="node-id">{host.host.substring(0, 30)}</td>
-										<td>{host.region || 'UNKNOWN'}</td>
-										<td>{host.country || 'UNKNOWN'}</td>
-										<td>{host.infrastructure_type || 'QUANTUM'}</td>
-										<td>
-											<span class="sync-indicator {host.present_in_cmdb?.toLowerCase().includes('yes') ? 'active' : 'inactive'}">
-												{host.present_in_cmdb?.toLowerCase().includes('yes') ? '◈' : '○'}
-											</span>
-										</td>
-									</tr>
-								{/each}
-							</tbody>
-						</table>
+							{/each}
+						</tbody>
+					</table>
+				</div>
+			</div>
+		{:else}
+			<div class="main-display">
+				<div class="network-visualization">
+					<svg viewBox="-300 -300 600 600" class="network-svg">
+						<defs>
+							<radialGradient id="tableGlow">
+								<stop offset="0%" style="stop-color:#FF79C6;stop-opacity:0.8" />
+								<stop offset="100%" style="stop-color:#FF79C6;stop-opacity:0" />
+							</radialGradient>
+						</defs>
+						
+						{#each dataFlows as flow}
+							{#if tableNodes[flow.source] && tableNodes[flow.target]}
+								<line x1="{tableNodes[flow.source].x}" y1="{tableNodes[flow.source].y}"
+									  x2="{tableNodes[flow.target].x}" y2="{tableNodes[flow.target].y}"
+									  stroke="rgba(139, 233, 253, 0.2)"
+									  stroke-width="{flow.bandwidth / 50}"
+									  opacity="{flow.bandwidth / 200}"/>
+							{/if}
+						{/each}
+						
+						{#each tableNodes.slice(0, 20) as node}
+							{@const tableClass = getTableClass(node.hostCount)}
+							<g transform="translate({node.x}, {node.y})"
+							   on:click={() => drillDownTable(node.id, node.hostCount)}
+							   class="table-node">
+								<circle r="{10 + node.hostCount / maxHosts * 20}"
+										fill={tableClass.color}
+										opacity="0.2"/>
+								<circle r="{5 + node.hostCount / maxHosts * 10}"
+										fill={tableClass.color}
+										opacity="0.8"/>
+								<text text-anchor="middle" dy="4" fill="#000" font-size="12" font-weight="bold">
+									{tableClass.symbol}
+								</text>
+								<text y="-20" text-anchor="middle" fill="#fff" font-size="8" opacity="0.8">
+									{node.id.substring(0, 15)}
+								</text>
+							</g>
+						{/each}
+					</svg>
+					
+					<div class="activity-monitor">
+						<div class="monitor-bar" style="height: {networkActivity}%; background: linear-gradient(180deg, #FF79C6, #8BE9FD)"></div>
 					</div>
 				</div>
-			{:else}
-				<div class="visualization-container">
-					<!-- Left: 3D Node Network -->
-					<div class="network-visualization">
-						<div class="network-3d">
-							<svg viewBox="-200 -200 400 400">
-								<!-- Data flow connections -->
-								{#each dataFlows as flow}
-									{#if matrixNodes[flow.source] && matrixNodes[flow.target]}
-										<line x1="{matrixNodes[flow.source].x}"
-											  y1="{matrixNodes[flow.source].y}"
-											  x2="{matrixNodes[flow.target].x}"
-											  y2="{matrixNodes[flow.target].y}"
-											  stroke={neonColors.secondary}
-											  stroke-width="{flow.strength}"
-											  opacity="0.3">
-											<animate attributeName="stroke-opacity"
-													 values="0.2;0.5;0.2"
-													 dur="3s"
-													 repeatCount="indefinite"/>
-										</line>
-									{/if}
-								{/each}
-								
-								<!-- Matrix nodes -->
-								{#each matrixNodes.slice(0, 20) as node}
-									{@const sourceClass = getSourceClass(node.frequency)}
-									<g transform="translate({node.x}, {node.y})"
-									   on:click={() => drillDownSource(node.id, node.frequency)}>
-										<circle r="{8 + node.energy * 12}"
-												fill={sourceClass.color}
-												opacity="{node.energy * 0.3}"/>
-										<circle r="6"
-												fill={sourceClass.color}
-												opacity="0.8"/>
-										<text text-anchor="middle"
-											  dy="3"
-											  fill="#000000"
-											  font-size="8"
-											  font-weight="bold">
-											{sourceClass.symbol}
-										</text>
-									</g>
-								{/each}
-							</svg>
-						</div>
-						
-						<!-- Pulsar Radar -->
-						<div class="pulsar-radar">
-							<svg viewBox="-150 -150 300 300">
-								<defs>
-									<radialGradient id="radarGrad">
-										<stop offset="0%" style="stop-color:{neonColors.primary};stop-opacity:0.5"/>
-										<stop offset="100%" style="stop-color:{neonColors.primary};stop-opacity:0"/>
-									</radialGradient>
-								</defs>
-								
-								<!-- Radar rings -->
-								{#each [30, 60, 90, 120] as radius}
-									<circle cx="0" cy="0" r={radius}
-											fill="none"
-											stroke={neonColors.primary}
-											stroke-width="0.5"
-											opacity="0.2"/>
-								{/each}
-								
-								<!-- Radar sweep -->
-								<line x1="0" y1="0"
-									  x2="0" y2="-120"
-									  stroke={neonColors.quaternary}
-									  stroke-width="2"
-									  opacity="0.8"
-									  transform="rotate({Date.now() * 0.1 % 360})"/>
-								
-								<!-- Pulsar nodes -->
-								{#each pulsarNodes as node}
-									<circle cx="{Math.cos(node.angle) * node.radius}"
-											cy="{Math.sin(node.angle) * node.radius}"
-											r="{3 + node.intensity * 5}"
-											fill={neonColors.secondary}
-											opacity={node.intensity}>
-										<animate attributeName="r"
-												 values="{3 + node.intensity * 5};{5 + node.intensity * 8};{3 + node.intensity * 5}"
-												 dur="{2 / node.frequency}s"
-												 repeatCount="indefinite"/>
-									</circle>
-								{/each}
-							</svg>
-						</div>
+				
+				<div class="table-matrix">
+					<div class="matrix-header">
+						<h3>TABLE HOST DISTRIBUTION</h3>
 					</div>
-					
-					<!-- Right: Data Table -->
-					<div class="matrix-table-container">
-						<table class="quantum-table">
+					<div class="matrix-content">
+						<table class="data-table">
 							<thead>
 								<tr>
 									<th>RANK</th>
-									<th>SOURCE_ID</th>
-									<th>CLASS</th>
-									<th>FREQUENCY</th>
-									<th>POWER</th>
-									<th>SIGNATURE</th>
+									<th>TABLE_NAME</th>
+									<th>HOST_COUNT</th>
+									<th>DISTRIBUTION</th>
+									<th>STATUS</th>
 								</tr>
 							</thead>
 							<tbody>
-								{#each filteredSources.slice(0, 15) as [source, frequency], index}
-									{@const sourceClass = getSourceClass(frequency)}
-									{@const profile = sourceProfiles.get(source)}
-									<tr style="border-left: 2px solid {sourceClass.color}"
-										on:click={() => drillDownSource(source, frequency)}>
-										<td style="color: {sourceClass.color}">#{index + 1}</td>
+								{#each filteredTables.slice(0, 15) as [table, hostCount], index}
+									{@const tableClass = getTableClass(hostCount)}
+									{@const profile = tableProfiles.get(table)}
+									<tr on:click={() => drillDownTable(table, hostCount)}>
+										<td style="color: {tableClass.color}">#{index + 1}</td>
 										<td>
-											<span style="color: {sourceClass.color}">{sourceClass.symbol}</span>
-											<span>{source.substring(0, 20).toUpperCase()}</span>
+											<span style="color: {tableClass.color}">{tableClass.symbol}</span>
+											{table.substring(0, 30).toUpperCase()}
 										</td>
+										<td style="color: #8BE9FD">{hostCount.toLocaleString()}</td>
 										<td>
-											<span class="class-badge" style="background: {sourceClass.color}20; color: {sourceClass.color}">
-												{sourceClass.level}
-											</span>
-										</td>
-										<td style="color: {neonColors.secondary}">{frequency.toLocaleString()}</td>
-										<td>
-											<div class="power-bar">
-												<div class="power-fill" style="width: {profile?.metrics.power || 0}%; background: {sourceClass.color}"></div>
+											<div class="distribution-bar">
+												<div class="bar-fill" style="width: {(hostCount/maxHosts)*100}%; background: {tableClass.color}"></div>
 											</div>
 										</td>
-										<td class="signature">{profile?.signature.substring(0, 8)}...</td>
+										<td>
+											<span class="status-badge" style="background: {tableClass.color}20; color: {tableClass.color}">
+												{tableClass.level}
+											</span>
+										</td>
 									</tr>
 								{/each}
 							</tbody>
 						</table>
 					</div>
 				</div>
-			{/if}
-		</div>
+			</div>
+		{/if}
 	</div>
 </div>
 
 <style>
-	.quantum-matrix-interface {
+	.source-table-interface {
 		width: 100%;
 		height: calc(100vh - 80px);
-		background: #000000;
-		position: relative;
+		background: #000;
 		overflow: hidden;
 	}
 	
-	/* Background Effects */
-	.matrix-background {
-		position: absolute;
-		inset: 0;
-		pointer-events: none;
-	}
-	
-	.matrix-svg {
-		position: absolute;
-		width: 100%;
-		height: 100%;
-		opacity: 0.5;
-	}
-	
-	.matrix-grid-container {
-		position: absolute;
-		width: 100%;
-		height: 100%;
-	}
-	
-	.grid-cell {
-		position: absolute;
-		width: 2px;
-		height: 2px;
-		border-radius: 50%;
-	}
-	
 	.interface-container {
-		position: relative;
-		z-index: 1;
 		height: 100%;
 		display: flex;
 		flex-direction: column;
-		padding: 1.5rem;
-		gap: 1.5rem;
+		padding: 1rem;
 	}
 	
-	/* Header */
-	.quantum-header {
+	.search-section {
 		display: flex;
 		justify-content: space-between;
 		align-items: center;
-		padding: 1.5rem;
-		background: rgba(0, 0, 0, 0.8);
+		margin-bottom: 1rem;
+		padding: 0.5rem;
+		background: rgba(255, 255, 255, 0.02);
 		border: 1px solid rgba(255, 121, 198, 0.2);
-		border-radius: 15px;
-		backdrop-filter: blur(20px);
-	}
-	
-	.header-structure {
-		display: flex;
-		align-items: center;
-		gap: 1.5rem;
-	}
-	
-	.quantum-emblem {
-		position: relative;
-		width: 60px;
-		height: 60px;
-		display: flex;
-		align-items: center;
-		justify-content: center;
-	}
-	
-	.emblem-rings {
-		position: absolute;
-		inset: 0;
-	}
-	
-	.ring {
-		position: absolute;
-		border: 1px solid;
-		border-radius: 50%;
-		animation: ringRotate 4s linear infinite;
-	}
-	
-	.ring-1 { inset: 0; }
-	.ring-2 { inset: 8px; animation-direction: reverse; }
-	.ring-3 { inset: 16px; animation-duration: 6s; }
-	
-	@keyframes ringRotate {
-		from { transform: rotate(0deg); }
-		to { transform: rotate(360deg); }
-	}
-	
-	.emblem-core {
-		font-size: 1.5rem;
-		color: #FF79C6;
-		text-shadow: 0 0 20px #FF79C6;
-		z-index: 1;
-	}
-	
-	.interface-title {
-		margin: 0;
-		font-size: 1.2rem;
-		font-weight: 200;
-		letter-spacing: 0.2em;
-		background: linear-gradient(90deg, #FF79C6, #8BE9FD, #BD93F9);
-		-webkit-background-clip: text;
-		-webkit-text-fill-color: transparent;
-		background-clip: text;
-	}
-	
-	.quantum-metrics {
-		display: flex;
-		gap: 1.5rem;
-		margin-top: 0.5rem;
-	}
-	
-	.metric {
-		font-size: 0.7rem;
-		color: rgba(255, 255, 255, 0.6);
-		letter-spacing: 0.1em;
-	}
-	
-	.search-module {
-		position: relative;
-		flex: 1;
-		max-width: 300px;
-	}
-	
-	.quantum-search {
-		width: 100%;
-		padding: 0.6rem 1rem;
-		background: rgba(0, 0, 0, 0.6);
-		border: 1px solid rgba(139, 233, 253, 0.3);
 		border-radius: 8px;
-		color: #8BE9FD;
+	}
+	
+	.search-input {
+		background: transparent;
+		border: none;
+		color: #FF79C6;
 		font-family: monospace;
-		font-size: 0.85rem;
-		letter-spacing: 0.05em;
-	}
-	
-	.quantum-search:focus {
+		font-size: 0.9rem;
+		padding: 0.5rem;
 		outline: none;
-		border-color: #8BE9FD;
-		box-shadow: 0 0 20px rgba(139, 233, 253, 0.3);
+		letter-spacing: 0.1em;
+		flex: 1;
 	}
 	
-	.search-wave {
-		position: absolute;
-		bottom: 0;
-		left: 0;
-		right: 0;
-		height: 1px;
-		background: linear-gradient(90deg, transparent, #8BE9FD, transparent);
-		animation: waveFlow 2s linear infinite;
-	}
-	
-	@keyframes waveFlow {
-		from { transform: translateX(-100%); }
-		to { transform: translateX(100%); }
-	}
-	
-	.header-stats {
+	.search-stats {
 		display: flex;
 		gap: 2rem;
 	}
 	
 	.stat {
-		text-align: center;
-	}
-	
-	.stat-value {
-		font-size: 1.5rem;
-		font-weight: 100;
+		color: #8BE9FD;
+		font-size: 0.8rem;
 		font-family: monospace;
 	}
 	
-	.stat-label {
-		font-size: 0.65rem;
-		color: rgba(255, 255, 255, 0.4);
-		letter-spacing: 0.1em;
-	}
-	
-	/* Main Display */
-	.quantum-display {
+	.main-display {
 		flex: 1;
-		overflow: hidden;
-		background: rgba(0, 0, 0, 0.6);
-		border: 1px solid rgba(189, 147, 249, 0.1);
-		border-radius: 15px;
-		backdrop-filter: blur(10px);
-		padding: 1.5rem;
-	}
-	
-	.visualization-container {
-		height: 100%;
 		display: grid;
-		grid-template-columns: 1fr 1.2fr;
-		gap: 1.5rem;
+		grid-template-columns: 1fr 1fr;
+		gap: 1rem;
+		height: calc(100% - 60px);
 	}
 	
 	.network-visualization {
-		display: flex;
-		flex-direction: column;
-		gap: 1rem;
-	}
-	
-	.network-3d {
-		flex: 1;
-		background: radial-gradient(circle, rgba(255, 121, 198, 0.02), transparent);
+		position: relative;
+		background: radial-gradient(circle at center, rgba(255, 121, 198, 0.02), transparent);
 		border: 1px solid rgba(255, 121, 198, 0.1);
-		border-radius: 10px;
+		border-radius: 12px;
 		display: flex;
 		align-items: center;
 		justify-content: center;
 		overflow: hidden;
 	}
 	
-	.network-3d svg {
-		width: 100%;
-		height: 100%;
-		max-height: 300px;
+	.network-svg {
+		width: 90%;
+		height: 90%;
 	}
 	
-	.network-3d g {
+	.table-node {
 		cursor: pointer;
 		transition: transform 0.3s ease;
 	}
 	
-	.network-3d g:hover {
+	.table-node:hover {
 		transform: scale(1.2);
 	}
 	
-	.pulsar-radar {
-		height: 200px;
-		background: rgba(0, 0, 0, 0.4);
-		border: 1px solid rgba(139, 233, 253, 0.1);
-		border-radius: 10px;
-		display: flex;
-		align-items: center;
-		justify-content: center;
+	.activity-monitor {
+		position: absolute;
+		right: 20px;
+		top: 20px;
+		width: 4px;
+		height: 100px;
+		background: rgba(255, 255, 255, 0.1);
+		border-radius: 2px;
 	}
 	
-	.pulsar-radar svg {
+	.monitor-bar {
 		width: 100%;
-		height: 100%;
-		max-width: 200px;
+		position: absolute;
+		bottom: 0;
+		transition: height 0.5s ease;
+		border-radius: 2px;
 	}
 	
-	/* Table */
-	.matrix-table-container {
-		overflow: hidden;
+	.table-matrix {
 		display: flex;
 		flex-direction: column;
+		background: rgba(0, 0, 0, 0.5);
+		border: 1px solid rgba(139, 233, 253, 0.1);
+		border-radius: 12px;
+		overflow: hidden;
 	}
 	
-	.quantum-table {
+	.matrix-header {
+		padding: 1rem;
+		background: linear-gradient(90deg, rgba(255, 121, 198, 0.1), rgba(139, 233, 253, 0.1));
+		border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+	}
+	
+	.matrix-header h3 {
+		margin: 0;
+		color: #FF79C6;
+		font-size: 0.9rem;
+		letter-spacing: 0.1em;
+	}
+	
+	.matrix-content {
+		flex: 1;
+		overflow-y: auto;
+	}
+	
+	.data-table {
 		width: 100%;
 		border-collapse: collapse;
-		flex: 1;
 	}
 	
-	.quantum-table th {
+	.data-table th {
 		background: rgba(0, 0, 0, 0.8);
-		color: #BD93F9;
-		padding: 0.8rem;
+		color: #8BE9FD;
+		padding: 0.75rem;
 		text-align: left;
-		font-size: 0.65rem;
-		font-weight: 300;
+		font-size: 0.7rem;
 		letter-spacing: 0.1em;
-		border-bottom: 1px solid rgba(189, 147, 249, 0.3);
 		position: sticky;
 		top: 0;
+		border-bottom: 1px solid rgba(139, 233, 253, 0.2);
 	}
 	
-	.quantum-table tr {
+	.data-table tr {
 		cursor: pointer;
-		transition: all 0.2s ease;
-		border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+		transition: background 0.2s ease;
+		border-bottom: 1px solid rgba(255, 255, 255, 0.05);
 	}
 	
-	.quantum-table tr:hover {
-		background: rgba(255, 121, 198, 0.03);
-		transform: translateX(3px);
+	.data-table tr:hover {
+		background: rgba(255, 121, 198, 0.05);
 	}
 	
-	.quantum-table td {
-		padding: 0.6rem 0.8rem;
+	.data-table td {
+		padding: 0.6rem 0.75rem;
 		font-size: 0.75rem;
 		color: rgba(255, 255, 255, 0.8);
 	}
 	
-	.class-badge {
-		padding: 0.2rem 0.4rem;
-		font-size: 0.6rem;
-		font-weight: 600;
-		letter-spacing: 0.05em;
-		border-radius: 4px;
-	}
-	
-	.power-bar {
-		width: 60px;
+	.distribution-bar {
+		width: 100px;
 		height: 3px;
 		background: rgba(255, 255, 255, 0.1);
 		overflow: hidden;
 	}
 	
-	.power-fill {
+	.bar-fill {
 		height: 100%;
 		transition: width 0.5s ease;
 	}
 	
-	.signature {
-		font-family: monospace;
+	.status-badge {
+		padding: 0.2rem 0.4rem;
+		border-radius: 4px;
 		font-size: 0.65rem;
-		color: rgba(139, 233, 253, 0.6);
+		font-weight: 600;
+		letter-spacing: 0.05em;
 	}
 	
-	/* Loading State */
 	.loading-state {
-		height: 100%;
+		flex: 1;
 		display: flex;
 		flex-direction: column;
 		align-items: center;
@@ -848,192 +495,142 @@
 		gap: 1rem;
 	}
 	
-	.quantum-loader {
+	.cube-loader {
+		width: 60px;
+		height: 60px;
 		position: relative;
-		width: 80px;
-		height: 80px;
+		transform-style: preserve-3d;
+		animation: rotateCube 2s linear infinite;
 	}
 	
-	.loader-core {
+	.cube-face {
 		position: absolute;
-		top: 50%;
-		left: 50%;
-		transform: translate(-50%, -50%);
-		font-size: 2rem;
-		color: #FF79C6;
-		text-shadow: 0 0 30px #FF79C6;
-		animation: pulsate 2s ease-in-out infinite;
+		width: 60px;
+		height: 60px;
+		border: 2px solid #FF79C6;
+		background: rgba(255, 121, 198, 0.1);
 	}
 	
-	.loader-ring {
-		position: absolute;
-		inset: 0;
-		border: 2px solid #8BE9FD;
-		border-radius: 50%;
-		border-left-color: transparent;
-		animation: spin 1s linear infinite;
+	.cube-face:nth-child(1) { transform: translateZ(30px); }
+	.cube-face:nth-child(2) { transform: rotateY(90deg) translateZ(30px); }
+	.cube-face:nth-child(3) { transform: rotateX(90deg) translateZ(30px); }
+	
+	@keyframes rotateCube {
+		from { transform: rotateX(0) rotateY(0); }
+		to { transform: rotateX(360deg) rotateY(360deg); }
 	}
 	
-	@keyframes pulsate {
-		0%, 100% { opacity: 1; transform: translate(-50%, -50%) scale(1); }
-		50% { opacity: 0.5; transform: translate(-50%, -50%) scale(0.9); }
+	.loading-state p {
+		color: #8BE9FD;
+		font-size: 0.9rem;
+		letter-spacing: 0.1em;
 	}
 	
-	@keyframes spin {
-		from { transform: rotate(0deg); }
-		to { transform: rotate(360deg); }
-	}
-	
-	/* Detail View */
-	.source-detail-view {
-		height: 100%;
+	.detail-view {
+		flex: 1;
 		display: flex;
 		flex-direction: column;
-		gap: 1rem;
+		background: rgba(0, 0, 0, 0.6);
+		border: 1px solid rgba(255, 121, 198, 0.1);
+		border-radius: 12px;
+		overflow: hidden;
 	}
 	
 	.detail-header {
 		display: flex;
 		justify-content: space-between;
 		align-items: center;
-		padding: 1rem;
+		padding: 1rem 1.5rem;
 		background: linear-gradient(135deg, rgba(255, 121, 198, 0.1), transparent);
-		border-radius: 10px;
+		border-bottom: 1px solid rgba(255, 121, 198, 0.2);
 	}
 	
-	.source-identity {
-		display: flex;
-		align-items: center;
-		gap: 1.5rem;
-	}
-	
-	.identity-visual {
-		position: relative;
-		width: 60px;
-		height: 60px;
-		display: flex;
-		align-items: center;
-		justify-content: center;
-	}
-	
-	.visual-core {
-		width: 40px;
-		height: 40px;
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		border-radius: 50%;
-		font-size: 1.2rem;
-		z-index: 1;
-	}
-	
-	.visual-rings {
-		position: absolute;
-		inset: -10px;
-	}
-	
-	.v-ring {
-		position: absolute;
-		border: 1px solid #8BE9FD;
-		border-radius: 50%;
-		opacity: 0.3;
-		animation: expandRing 3s ease-in-out infinite;
-	}
-	
-	.v-ring:nth-child(1) { inset: 0; }
-	.v-ring:nth-child(2) { inset: 5px; }
-	.v-ring:nth-child(3) { inset: 10px; }
-	
-	@keyframes expandRing {
-		0%, 100% { transform: scale(1); opacity: 0.3; }
-		50% { transform: scale(1.1); opacity: 0.6; }
-	}
-	
-	.identity-info h2 {
+	.table-identity h2 {
 		margin: 0;
-		font-size: 1.1rem;
 		color: #FF79C6;
-		font-weight: 200;
-		letter-spacing: 0.1em;
+		font-size: 1.2rem;
+		letter-spacing: 0.05em;
 	}
 	
-	.quantum-signature {
+	.host-count {
+		color: #8BE9FD;
+		font-size: 0.9rem;
 		font-family: monospace;
-		font-size: 0.7rem;
-		color: rgba(255, 255, 255, 0.5);
 	}
 	
 	.close-btn {
-		background: rgba(255, 85, 85, 0.1);
-		border: 1px solid #FF5555;
-		color: #FF5555;
+		background: rgba(255, 121, 198, 0.1);
+		border: 1px solid #FF79C6;
+		color: #FF79C6;
 		width: 32px;
 		height: 32px;
 		border-radius: 50%;
 		cursor: pointer;
-		display: flex;
-		align-items: center;
-		justify-content: center;
 		font-size: 1.2rem;
 		transition: all 0.3s ease;
 	}
 	
 	.close-btn:hover {
-		background: rgba(255, 85, 85, 0.2);
+		background: rgba(255, 121, 198, 0.2);
 		transform: rotate(90deg);
 	}
 	
-	.detail-stream {
+	.host-grid {
 		flex: 1;
-		overflow: auto;
+		overflow-y: auto;
+		padding: 1rem;
 	}
 	
-	.stream-table {
+	.hosts-table {
 		width: 100%;
 		border-collapse: collapse;
 	}
 	
-	.stream-table th {
-		background: rgba(0, 0, 0, 0.6);
+	.hosts-table th {
+		background: rgba(0, 0, 0, 0.8);
 		color: #8BE9FD;
-		padding: 0.6rem;
+		padding: 0.75rem;
 		text-align: left;
-		font-size: 0.65rem;
+		font-size: 0.7rem;
 		letter-spacing: 0.1em;
 		position: sticky;
 		top: 0;
 	}
 	
-	.stream-table td {
-		padding: 0.5rem 0.6rem;
-		border-bottom: 1px solid rgba(255, 255, 255, 0.05);
-		font-size: 0.7rem;
+	.hosts-table td {
+		padding: 0.6rem 0.75rem;
+		font-size: 0.75rem;
 		color: rgba(255, 255, 255, 0.7);
+		border-bottom: 1px solid rgba(255, 255, 255, 0.05);
 	}
 	
-	.node-id {
+	.host-id {
 		font-family: monospace;
-		color: #BD93F9;
-		font-size: 0.65rem;
+		color: #FF79C6;
+		font-size: 0.7rem;
 	}
 	
-	.sync-indicator {
-		display: inline-block;
+	.indicator {
 		font-size: 0.9rem;
+		color: #666;
 	}
 	
-	.sync-indicator.active {
+	.indicator.active {
 		color: #50FA7B;
 		text-shadow: 0 0 10px #50FA7B;
 	}
 	
-	.sync-indicator.inactive {
-		color: #666;
+	::-webkit-scrollbar {
+		width: 4px;
+		height: 4px;
 	}
 	
-	/* Hide scrollbars but keep functionality */
-	*::-webkit-scrollbar {
-		width: 0px;
-		height: 0px;
+	::-webkit-scrollbar-track {
+		background: #000;
+	}
+	
+	::-webkit-scrollbar-thumb {
+		background: linear-gradient(180deg, #FF79C6, #8BE9FD);
+		border-radius: 2px;
 	}
 </style>
