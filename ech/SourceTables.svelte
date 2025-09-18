@@ -153,95 +153,49 @@
 </script>
 
 <div class="source-interface">
-	<!-- Cool Animated Background Graph -->
-	<div class="quantum-graph-bg">
-		<svg viewBox="0 0 800 400" class="graph-svg">
-			<!-- Grid lines -->
-			<defs>
-				<linearGradient id="waveGradient1" x1="0%" y1="0%" x2="100%" y2="0%">
-					<stop offset="0%" style="stop-color:#BD93F9;stop-opacity:0" />
-					<stop offset="50%" style="stop-color:#BD93F9;stop-opacity:0.8" />
-					<stop offset="100%" style="stop-color:#BD93F9;stop-opacity:0" />
-				</linearGradient>
-				<linearGradient id="waveGradient2" x1="0%" y1="0%" x2="100%" y2="0%">
-					<stop offset="0%" style="stop-color:#8BE9FD;stop-opacity:0" />
-					<stop offset="50%" style="stop-color:#8BE9FD;stop-opacity:0.8" />
-					<stop offset="100%" style="stop-color:#8BE9FD;stop-opacity:0" />
-				</linearGradient>
-				<linearGradient id="waveGradient3" x1="0%" y1="0%" x2="100%" y2="0%">
-					<stop offset="0%" style="stop-color:#50FA7B;stop-opacity:0" />
-					<stop offset="50%" style="stop-color:#50FA7B;stop-opacity:0.8" />
-					<stop offset="100%" style="stop-color:#50FA7B;stop-opacity:0" />
-				</linearGradient>
-			</defs>
-			
-			<!-- Animated grid -->
-			{#each Array(20) as _, i}
-				<line x1="{i * 40}" y1="0" x2="{i * 40}" y2="400"
-					  stroke="rgba(139, 233, 253, 0.05)" stroke-width="1"
-					  opacity="{0.3 + Math.sin(energyPulse + i * 0.3) * 0.2}"/>
-				<line x1="0" y1="{i * 20}" x2="800" y2="{i * 20}"
-					  stroke="rgba(189, 147, 249, 0.05)" stroke-width="1"
-					  opacity="{0.3 + Math.cos(energyPulse + i * 0.3) * 0.2}"/>
+	<!-- Cool Animated Moving Bars Graph -->
+	<div class="animated-graph-container">
+		<div class="graph-grid">
+			{#each Array(20) as _, col}
+				<div class="graph-column">
+					{#each Array(10) as _, row}
+						{@const intensity = Math.abs(Math.sin(energyPulse + col * 0.2 + row * 0.1))}
+						{@const height = 20 + intensity * 60}
+						{@const color = intensity > 0.7 ? '#BD93F9' : intensity > 0.4 ? '#8BE9FD' : '#50FA7B'}
+						<div class="graph-bar"
+							 style="height: {height}%;
+									background: linear-gradient(180deg, {color}, transparent);
+									opacity: {0.3 + intensity * 0.7};
+									animation-delay: {col * 0.05 + row * 0.02}s;
+									box-shadow: 0 0 {intensity * 20}px {color};">
+						</div>
+					{/each}
+				</div>
 			{/each}
 			
-			<!-- Multiple quantum waves -->
-			{#each quantumWaves.slice(0, 3) as wave, waveIndex}
-				<path d="M 0,200 {synapticActivity.map((val, i) => 
-						`Q ${i * 16 + 8},${200 + wave.amplitude * Math.sin(wave.phase + i * 0.3)} ${i * 16},${200 + val * Math.sin(wave.phase + i * 0.2) - 25}`
-					).join(' ')}"
-					  fill="none" 
-					  stroke={wave.color}
-					  stroke-width="2"
-					  opacity="{0.3 + Math.sin(energyPulse + waveIndex) * 0.2}"/>
-			{/each}
-			
-			<!-- Data flow lines -->
-			{#each synapticActivity as val, i}
-				{#if i < synapticActivity.length - 1}
-					<line x1="{i * 16}" y1="{200 - val * 0.8}"
-						  x2="{(i + 1) * 16}" y2="{200 - synapticActivity[i + 1] * 0.8}"
-						  stroke="url(#waveGradient{(i % 3) + 1})"
-						  stroke-width="{1 + Math.sin(energyPulse + i * 0.1) * 0.5}"
-						  opacity="{0.6 + Math.sin(energyPulse + i * 0.05) * 0.3}"/>
-				{/if}
-			{/each}
-			
-			<!-- 3D Data nodes -->
+			<!-- Floating data particles -->
 			{#each dataNodes as node}
-				<circle cx="{node.x * 8}" cy="{200 + node.y - 50}"
-						r="{node.size * (1 + node.z / 100)}"
-						fill={node.color}
-						opacity="{0.3 + Math.sin(node.pulse) * 0.3 + node.z / 100}">
-					<animate attributeName="r" 
-							 values="{node.size};{node.size * 1.5};{node.size}" 
-							 dur="3s" 
-							 repeatCount="indefinite"/>
-				</circle>
-				<!-- Connection lines between nearby nodes -->
-				{#each dataNodes as otherNode}
-					{#if Math.abs(node.x - otherNode.x) < 20 && Math.abs(node.y - otherNode.y) < 20 && node !== otherNode}
-						<line x1="{node.x * 8}" y1="{200 + node.y - 50}"
-							  x2="{otherNode.x * 8}" y2="{200 + otherNode.y - 50}"
-							  stroke={node.color}
-							  stroke-width="0.5"
-							  opacity="0.2"/>
-					{/if}
-				{/each}
+				<div class="data-particle"
+					 style="left: {node.x}%;
+							top: {node.y}%;
+							width: {node.size * 2}px;
+							height: {node.size * 2}px;
+							background: {node.color};
+							opacity: {0.6 + Math.sin(node.pulse) * 0.4};
+							box-shadow: 0 0 {10 + Math.sin(node.pulse) * 10}px {node.color};">
+				</div>
 			{/each}
 			
-			<!-- Energy pulses -->
-			{#each Array(5) as _, i}
-				<circle cx="{400 + Math.cos(energyPulse + i) * 200}" 
-						cy="{200 + Math.sin(energyPulse + i) * 100}"
-						r="2"
-						fill="#FFB86C"
-						opacity="{0.8 - i * 0.15}">
-					<animate attributeName="r" values="2;8;2" dur="2s" repeatCount="indefinite"/>
-					<animate attributeName="opacity" values="0.8;0;0.8" dur="2s" repeatCount="indefinite"/>
-				</circle>
-			{/each}
-		</svg>
+			<!-- Wave overlay -->
+			<svg class="wave-overlay" viewBox="0 0 100 100" preserveAspectRatio="none">
+				<path d="M 0,50 Q 25,{50 + Math.sin(energyPulse) * 20} 50,50 T 100,50"
+					  stroke="#BD93F9" stroke-width="0.5" fill="none" opacity="0.6"/>
+				<path d="M 0,60 Q 25,{60 + Math.cos(energyPulse) * 15} 50,60 T 100,60"
+					  stroke="#8BE9FD" stroke-width="0.5" fill="none" opacity="0.5"/>
+				<path d="M 0,40 Q 25,{40 + Math.sin(energyPulse * 1.5) * 10} 50,40 T 100,40"
+					  stroke="#50FA7B" stroke-width="0.5" fill="none" opacity="0.4"/>
+			</svg>
+		</div>
 	</div>
 	
 	<!-- Top Metrics -->
@@ -552,21 +506,70 @@
 		position: relative;
 	}
 	
-	/* Quantum Graph Background */
-	.quantum-graph-bg {
+	/* Animated Moving Bars Graph */
+	.animated-graph-container {
 		position: absolute;
 		top: 0;
 		left: 0;
 		width: 100%;
 		height: 100%;
 		pointer-events: none;
-		opacity: 0.15;
 		z-index: 0;
+		overflow: hidden;
 	}
 	
-	.graph-svg {
+	.graph-grid {
+		display: flex;
 		width: 100%;
 		height: 100%;
+		gap: 2px;
+		padding: 20px;
+		position: relative;
+	}
+	
+	.graph-column {
+		flex: 1;
+		display: flex;
+		flex-direction: column;
+		justify-content: flex-end;
+		gap: 2px;
+		align-items: center;
+	}
+	
+	.graph-bar {
+		width: 100%;
+		border-radius: 2px 2px 0 0;
+		transition: all 0.3s ease;
+		animation: barPulse 4s ease-in-out infinite;
+		position: relative;
+	}
+	
+	@keyframes barPulse {
+		0%, 100% { transform: scaleY(1); }
+		50% { transform: scaleY(1.1); }
+	}
+	
+	.data-particle {
+		position: absolute;
+		border-radius: 50%;
+		animation: particleFloat 6s ease-in-out infinite;
+		pointer-events: none;
+	}
+	
+	@keyframes particleFloat {
+		0%, 100% { transform: translate(0, 0) scale(1); }
+		25% { transform: translate(10px, -10px) scale(1.2); }
+		50% { transform: translate(-5px, 5px) scale(0.8); }
+		75% { transform: translate(-10px, -5px) scale(1.1); }
+	}
+	
+	.wave-overlay {
+		position: absolute;
+		top: 0;
+		left: 0;
+		width: 100%;
+		height: 100%;
+		pointer-events: none;
 	}
 	
 	/* Metrics Header */
