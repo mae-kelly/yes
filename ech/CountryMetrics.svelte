@@ -1,38 +1,23 @@
-<!-- CountryMetrics.svelte - Country Host Distribution -->
+<!-- CountryMetrics.svelte - Production Ready -->
 <script>
-	import { onMount, onDestroy } from 'svelte';
+	import { onMount } from 'svelte';
 	
 	let data = {};
 	let loading = true;
 	let selectedCountry = null;
 	let countryDetails = [];
 	let searchTerm = '';
-	
-	// Animation states
-	let animationFrame = null;
-	let waveOffset = 0;
+	let viewMode = 'map';
 	
 	onMount(async () => {
 		try {
 			let response = await fetch('http://localhost:5000/api/country_metrics');
-			let result = await response.json();
-			data = result;
+			data = await response.json();
 			loading = false;
 		} catch (err) {
-			console.error('Country metrics error:', err);
+			console.error('Failed to load country metrics:', err);
 			loading = false;
 		}
-		
-		// Start animations
-		const animate = () => {
-			waveOffset = (waveOffset + 1) % 100;
-			animationFrame = requestAnimationFrame(animate);
-		};
-		animate();
-	});
-	
-	onDestroy(() => {
-		if (animationFrame) cancelAnimationFrame(animationFrame);
 	});
 
 	$: countries = data.global_intelligence ? 
@@ -42,31 +27,19 @@
 	
 	$: totalHosts = countries.reduce((sum, [_, count]) => sum + count, 0);
 	$: maxHosts = countries.length > 0 ? Math.max(...countries.map(([,c]) => c)) : 1;
-	$: avgHostsPerCountry = countries.length > 0 ? Math.round(totalHosts / countries.length) : 0;
-	
-	// Key metrics
-	$: topCountry = countries[0] || ['N/A', 0];
-	$: countryCount = countries.length;
-	$: globalCoverage = ((countryCount / 195) * 100).toFixed(1); // ~195 countries in the world
-	$: concentration = topCountry[1] > 0 ? ((topCountry[1] / totalHosts) * 100).toFixed(1) : 0;
-	
-	// Top 10 for chart
-	$: topTen = countries.slice(0, 10);
 
-	async function drillDownCountry(country, count) {
+	async function selectCountry(country, count) {
 		selectedCountry = { country, count };
 		loading = true;
-		
 		try {
 			let response = await fetch(`http://localhost:5000/api/host_search?q=${encodeURIComponent(country)}`);
 			let result = await response.json();
 			countryDetails = result.hosts || [];
-			loading = false;
 		} catch (err) {
-			console.error('Country drill-down error:', err);
+			console.error('Failed to load country details:', err);
 			countryDetails = [];
-			loading = false;
 		}
+		loading = false;
 	}
 
 	function closeDetails() {
@@ -74,315 +47,180 @@
 		countryDetails = [];
 	}
 	
-	function getCountryStatus(count) {
-		const percentage = (count / maxHosts) * 100;
-		if (percentage >= 75) return { level: 'CRITICAL', color: '#BD93F9', icon: '⚡' };
-		if (percentage >= 50) return { level: 'HIGH', color: '#8BE9FD', icon: '◆' };
-		if (percentage >= 25) return { level: 'MODERATE', color: '#50FA7B', icon: '●' };
-		return { level: 'LOW', color: '#FFB86C', icon: '○' };
-	}
-	
-	function getRegionFromCountry(country) {
-		// Simple mapping - in production would use proper geo data
-		const regions = {
-			'united states': 'AMERICAS',
-			'canada': 'AMERICAS',
-			'brazil': 'AMERICAS',
-			'united kingdom': 'EUROPE',
-			'germany': 'EUROPE',
-			'france': 'EUROPE',
-			'china': 'ASIA',
-			'japan': 'ASIA',
-			'india': 'ASIA',
-			'australia': 'OCEANIA'
-		};
-		return regions[country.toLowerCase()] || 'OTHER';
+	function getCountryLevel(count) {
+		let percentage = (count / maxHosts) * 100;
+		if (percentage >= 75) return { level: 'CRITICAL', color: '#BD93F9' };
+		if (percentage >= 50) return { level: 'HIGH', color: '#8BE9FD' };
+		if (percentage >= 25) return { level: 'MODERATE', color: '#50FA7B' };
+		return { level: 'LOW', color: '#FFB86C' };
 	}
 </script>
 
-<div class="country-interface">
-	<div class="interface-layout">
-		<!-- Top Stats -->
-		<div class="stats-row">
-			<div class="stat-card">
-				<div class="stat-icon">🌍</div>
-				<div class="stat-content">
-					<div class="stat-value" style="color: #BD93F9">{countryCount}</div>
-					<div class="stat-label">COUNTRIES</div>
-				</div>
-			</div>
-			<div class="stat-card">
-				<div class="stat-icon">💻</div>
-				<div class="stat-content">
-					<div class="stat-value" style="color: #8BE9FD">{totalHosts.toLocaleString()}</div>
-					<div class="stat-label">TOTAL HOSTS</div>
-				</div>
-			</div>
-			<div class="stat-card">
-				<div class="stat-icon">📍</div>
-				<div class="stat-content">
-					<div class="stat-value" style="color: #50FA7B">{topCountry[0].toUpperCase()}</div>
-					<div class="stat-label">TOP COUNTRY</div>
-				</div>
-			</div>
-			<div class="stat-card">
-				<div class="stat-icon">🌐</div>
-				<div class="stat-content">
-					<div class="stat-value" style="color: #FFB86C">{globalCoverage}%</div>
-					<div class="stat-label">GLOBAL COVERAGE</div>
-				</div>
-			</div>
-			<div class="stat-card">
-				<div class="stat-icon">📊</div>
-				<div class="stat-content">
-					<div class="stat-value" style="color: #FF79C6">{concentration}%</div>
-					<div class="stat-label">TOP CONCENTRATION</div>
-				</div>
-			</div>
+<div class="container">
+	<!-- KPIs -->
+	<div class="kpis">
+		<div class="kpi">
+			<div class="kpi-value" style="color:#BD93F9">{countries.length}</div>
+			<div class="kpi-label">COUNTRIES</div>
 		</div>
-		
-		<!-- Main Content -->
-		<div class="content-area">
-			<!-- Left: Geo Visualization -->
-			<div class="geo-panel">
-				<div class="panel-header">
-					<h2>GLOBAL HOST INFRASTRUCTURE</h2>
-					<input type="text"
-						   bind:value={searchTerm}
-						   placeholder="Search countries..."
-						   class="search-input"/>
-				</div>
-				
-				{#if loading && !selectedCountry}
-					<div class="loading-state">
-						<div class="world-loader">
-							<div class="continent con-1"></div>
-							<div class="continent con-2"></div>
-							<div class="continent con-3"></div>
-						</div>
-						<p>MAPPING GLOBAL INFRASTRUCTURE...</p>
+		<div class="kpi">
+			<div class="kpi-value" style="color:#8BE9FD">{totalHosts.toLocaleString()}</div>
+			<div class="kpi-label">TOTAL HOSTS</div>
+		</div>
+		<div class="kpi">
+			<div class="kpi-value" style="color:#50FA7B">{countries[0]?.[0]?.toUpperCase() || 'N/A'}</div>
+			<div class="kpi-label">TOP COUNTRY</div>
+		</div>
+		<div class="kpi">
+			<div class="kpi-value" style="color:#FFB86C">{((countries.length/195)*100).toFixed(1)}%</div>
+			<div class="kpi-label">GLOBAL COVERAGE</div>
+		</div>
+		<div class="kpi">
+			<div class="kpi-value" style="color:#FF79C6">
+				{countries[0] ? ((countries[0][1]/totalHosts)*100).toFixed(1) : 0}%
+			</div>
+			<div class="kpi-label">TOP CONCENTRATION</div>
+		</div>
+	</div>
+	
+	<!-- Main Layout -->
+	<div class="layout">
+		<!-- Map View -->
+		<div class="main-view">
+			<div class="view-header">
+				<h2>GLOBAL INFRASTRUCTURE</h2>
+				<div class="controls">
+					<input type="text" bind:value={searchTerm} placeholder="Search..." class="search"/>
+					<div class="tabs">
+						<button class="tab {viewMode === 'map' ? 'active' : ''}" on:click={() => viewMode = 'map'}>MAP</button>
+						<button class="tab {viewMode === 'grid' ? 'active' : ''}" on:click={() => viewMode = 'grid'}>GRID</button>
+						<button class="tab {viewMode === 'list' ? 'active' : ''}" on:click={() => viewMode = 'list'}>LIST</button>
 					</div>
-				{:else if selectedCountry}
-					<div class="detail-view">
-						<div class="detail-header">
-							<div class="country-info">
-								<h3>{selectedCountry.country.toUpperCase()}</h3>
-								<div class="country-stats">
-									<span>{selectedCountry.count.toLocaleString()} HOSTS</span>
-									<span>•</span>
-									<span>{((selectedCountry.count / totalHosts) * 100).toFixed(2)}% OF TOTAL</span>
-								</div>
+				</div>
+			</div>
+			
+			{#if loading && !selectedCountry}
+				<div class="loading">
+					<div class="spinner"></div>
+					<p>SCANNING GLOBAL INFRASTRUCTURE...</p>
+				</div>
+			{:else if selectedCountry}
+				<div class="detail">
+					<div class="detail-header">
+						<div>
+							<h3>{selectedCountry.country.toUpperCase()}</h3>
+							<div class="stats">
+								<span>{selectedCountry.count.toLocaleString()} HOSTS</span>
+								<span>•</span>
+								<span>{((selectedCountry.count/totalHosts)*100).toFixed(2)}% OF GLOBAL</span>
 							</div>
-							<button class="close-btn" on:click={closeDetails}>✕</button>
 						</div>
-						<div class="hosts-container">
-							<table class="hosts-table">
-								<thead>
+						<button class="close" on:click={closeDetails}>×</button>
+					</div>
+					<div class="detail-table">
+						<table>
+							<thead>
+								<tr>
+									<th>HOSTNAME</th>
+									<th>REGION</th>
+									<th>DATA CENTER</th>
+									<th>DIVISION</th>
+									<th>TYPE</th>
+									<th>CMDB</th>
+									<th>TANIUM</th>
+								</tr>
+							</thead>
+							<tbody>
+								{#each countryDetails as host}
 									<tr>
-										<th>HOSTNAME</th>
-										<th>REGION</th>
-										<th>INFRASTRUCTURE</th>
-										<th>DIVISION</th>
-										<th>CMDB</th>
-										<th>TANIUM</th>
+										<td class="mono">{host.host}</td>
+										<td>{host.region || '-'}</td>
+										<td>{host.data_center || '-'}</td>
+										<td>{host.business_unit || '-'}</td>
+										<td>{host.infrastructure_type || '-'}</td>
+										<td><span class="dot {host.present_in_cmdb?.toLowerCase().includes('yes') ? 'ok' : ''}">●</span></td>
+										<td><span class="dot {host.tanium_coverage?.toLowerCase().includes('tanium') ? 'ok' : ''}">●</span></td>
 									</tr>
-								</thead>
-								<tbody>
-									{#each countryDetails as host}
-										<tr>
-											<td class="hostname">{host.host}</td>
-											<td>{host.region || 'UNKNOWN'}</td>
-											<td>{host.infrastructure_type || 'UNKNOWN'}</td>
-											<td>{host.business_unit || 'UNKNOWN'}</td>
-											<td>
-												<span class="status-dot {host.present_in_cmdb?.toLowerCase().includes('yes') ? 'active' : 'inactive'}">
-													●
-												</span>
-											</td>
-											<td>
-												<span class="status-dot {host.tanium_coverage?.toLowerCase().includes('tanium') ? 'active' : 'inactive'}">
-													●
-												</span>
-											</td>
-										</tr>
-									{/each}
-								</tbody>
-							</table>
-						</div>
+								{/each}
+							</tbody>
+						</table>
 					</div>
-				{:else}
-					<div class="geo-visualization">
-						<!-- World Bubble Map -->
-						<div class="bubble-map">
-							<svg viewBox="0 0 1200 600">
-								<defs>
-									<linearGradient id="bubbleGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-										<stop offset="0%" style="stop-color:#BD93F9;stop-opacity:1" />
-										<stop offset="100%" style="stop-color:#8BE9FD;stop-opacity:1" />
-									</linearGradient>
-								</defs>
-								
-								<!-- Grid lines -->
-								{#each Array(5) as _, i}
-									<line x1="0" y1="{i * 150}" x2="1200" y2="{i * 150}" 
-										  stroke="rgba(255,255,255,0.05)" stroke-width="1"/>
-									<line x1="{i * 300}" y1="0" x2="{i * 300}" y2="600" 
-										  stroke="rgba(255,255,255,0.05)" stroke-width="1"/>
-								{/each}
-								
-								<!-- Country bubbles -->
-								{#each topTen as [country, count], i}
-									{@const x = 150 + (i % 5) * 220}
-									{@const y = 200 + Math.floor(i / 5) * 200}
-									{@const radius = Math.sqrt(count / maxHosts) * 60}
-									{@const status = getCountryStatus(count)}
-									
-									<g class="country-bubble" on:click={() => drillDownCountry(country, count)}>
-										<!-- Outer ring -->
-										<circle cx="{x}" cy="{y}" r="{radius + 10}" 
-												fill="none" stroke="{status.color}" stroke-width="1" 
-												opacity="0.3" stroke-dasharray="5,5">
-											<animate attributeName="stroke-dashoffset" 
-													 values="0;10" dur="2s" repeatCount="indefinite"/>
-										</circle>
-										<!-- Main bubble -->
-										<circle cx="{x}" cy="{y}" r="{radius}" 
-												fill="{status.color}" opacity="0.4"/>
-										<!-- Inner core -->
-										<circle cx="{x}" cy="{y}" r="{radius * 0.6}" 
-												fill="{status.color}" opacity="0.8"/>
-										<!-- Country name -->
-										<text x="{x}" y="{y - radius - 15}" 
-											  text-anchor="middle" fill="#FFFFFF" 
-											  font-size="11" font-weight="600">
-											{country.substring(0, 20).toUpperCase()}
-										</text>
-										<!-- Host count -->
-										<text x="{x}" y="{y}" 
-											  text-anchor="middle" fill="#FFFFFF" 
-											  font-size="16" font-weight="700">
-											{count.toLocaleString()}
-										</text>
-										<!-- Icon -->
-										<text x="{x}" y="{y + 20}" 
-											  text-anchor="middle" fill="#FFFFFF" 
-											  font-size="20">
-											{status.icon}
-										</text>
-									</g>
-								{/each}
-							</svg>
-						</div>
-						
-						<!-- Heatmap Grid -->
-						<div class="heatmap-section">
-							<h3>HOST DENSITY HEATMAP</h3>
-							<div class="heatmap-grid">
-								{#each countries.slice(0, 50) as [country, count], i}
-									{@const intensity = count / maxHosts}
-									{@const status = getCountryStatus(count)}
-									<div class="heat-cell"
-										 style="background: {status.color}; 
-												opacity: {0.2 + intensity * 0.8}"
-										 title="{country}: {count} hosts"
-										 on:click={() => drillDownCountry(country, count)}>
-									</div>
-								{/each}
-							</div>
-						</div>
-					</div>
-				{/if}
-			</div>
-			
-			<!-- Middle: Charts -->
-			<div class="charts-panel">
-				<!-- Horizontal Bar Chart -->
-				<div class="chart-box">
-					<h3>TOP 10 COUNTRIES BY HOST COUNT</h3>
-					<div class="h-bar-chart">
-						{#each topTen as [country, count], i}
-							{@const percentage = (count / maxHosts) * 100}
-							{@const status = getCountryStatus(count)}
-							<div class="h-bar-item" on:click={() => drillDownCountry(country, count)}>
-								<div class="h-bar-rank">#{i + 1}</div>
-								<div class="h-bar-country">{country.substring(0, 15).toUpperCase()}</div>
-								<div class="h-bar-track">
-									<div class="h-bar-fill" 
-										 style="width: {percentage}%; 
-												background: linear-gradient(90deg, {status.color}40, {status.color})">
-										<span class="h-bar-value">{count.toLocaleString()}</span>
-									</div>
-								</div>
-								<div class="h-bar-percent">{((count/totalHosts)*100).toFixed(1)}%</div>
-							</div>
+				</div>
+			{:else if viewMode === 'map'}
+				<div class="map-view">
+					<svg viewBox="0 0 1000 500">
+						{#each countries.slice(0, 20) as [country, count], i}
+							<g class="country-node" on:click={() => selectCountry(country, count)}>
+								<circle 
+									cx="{100 + (i % 5) * 180}" 
+									cy="{100 + Math.floor(i / 5) * 100}"
+									r="{Math.sqrt(count/maxHosts) * 40}"
+									fill="{getCountryLevel(count).color}"
+									opacity="0.6"/>
+								<text 
+									x="{100 + (i % 5) * 180}" 
+									y="{85 + Math.floor(i / 5) * 100}"
+									text-anchor="middle" 
+									fill="#fff" 
+									font-size="10">
+									{country.substring(0, 15).toUpperCase()}
+								</text>
+								<text 
+									x="{100 + (i % 5) * 180}" 
+									y="{105 + Math.floor(i / 5) * 100}"
+									text-anchor="middle" 
+									fill="#fff" 
+									font-size="14" 
+									font-weight="700">
+									{count.toLocaleString()}
+								</text>
+							</g>
 						{/each}
-					</div>
+					</svg>
 				</div>
-				
-				<!-- Regional Distribution -->
-				<div class="chart-box">
-					<h3>REGIONAL DISTRIBUTION</h3>
-					<div class="region-bars">
-						{@const regionGroups = countries.reduce((acc, [country, count]) => {
-							const region = getRegionFromCountry(country);
-							acc[region] = (acc[region] || 0) + count;
-							return acc;
-						}, {})}
-						{#each Object.entries(regionGroups).sort((a, b) => b[1] - a[1]) as [region, count], i}
-							{@const maxRegion = Math.max(...Object.values(regionGroups))}
-							{@const height = (count / maxRegion) * 100}
-							<div class="region-bar">
-								<div class="region-column">
-									<div class="region-fill" 
-										 style="height: {height}%; 
-												background: {['#BD93F9', '#8BE9FD', '#50FA7B', '#FFB86C', '#FF79C6'][i % 5]}">
-										<span class="region-value">{count.toLocaleString()}</span>
-									</div>
-								</div>
-								<div class="region-label">{region}</div>
+			{:else if viewMode === 'grid'}
+				<div class="grid-view">
+					{#each countries.slice(0, 20) as [country, count], i}
+						<div class="grid-card" on:click={() => selectCountry(country, count)}>
+							<div class="card-header" style="background:{getCountryLevel(count).color}20">
+								<span class="card-rank">#{i + 1}</span>
 							</div>
-						{/each}
-					</div>
+							<div class="card-body">
+								<div class="card-name">{country.substring(0, 20).toUpperCase()}</div>
+								<div class="card-value" style="color:{getCountryLevel(count).color}">
+									{count.toLocaleString()}
+								</div>
+								<div class="card-bar">
+									<div class="bar-fill" style="width:{(count/maxHosts)*100}%; background:{getCountryLevel(count).color}"></div>
+								</div>
+							</div>
+						</div>
+					{/each}
 				</div>
-			</div>
-			
-			<!-- Right: Country List -->
-			<div class="list-panel">
-				<div class="panel-header">
-					<h3>ALL COUNTRIES</h3>
-					<span class="country-count">{countries.length} TOTAL</span>
-				</div>
-				<div class="country-list">
-					<table class="countries-table">
+			{:else if viewMode === 'list'}
+				<div class="list-view">
+					<table>
 						<thead>
 							<tr>
-								<th>#</th>
+								<th>RANK</th>
 								<th>COUNTRY</th>
 								<th>HOSTS</th>
-								<th>%</th>
+								<th>% OF TOTAL</th>
 								<th>STATUS</th>
 							</tr>
 						</thead>
 						<tbody>
 							{#each countries as [country, count], i}
-								{@const percentage = ((count / totalHosts) * 100).toFixed(2)}
-								{@const status = getCountryStatus(count)}
-								<tr on:click={() => drillDownCountry(country, count)}>
-									<td class="rank">{i + 1}</td>
-									<td class="country-name">
-										<span class="status-icon">{status.icon}</span>
-										{country.substring(0, 20).toUpperCase()}
-									</td>
-									<td class="host-count" style="color: {status.color}">
+								<tr on:click={() => selectCountry(country, count)}>
+									<td class="rank">#{i + 1}</td>
+									<td>{country.toUpperCase()}</td>
+									<td class="value" style="color:{getCountryLevel(count).color}">
 										{count.toLocaleString()}
 									</td>
-									<td class="percentage">{percentage}%</td>
+									<td>{((count/totalHosts)*100).toFixed(2)}%</td>
 									<td>
-										<span class="status-badge" 
-											  style="background: {status.color}20; 
-													 color: {status.color};
-													 border: 1px solid {status.color}">
-											{status.level}
+										<span class="badge" style="color:{getCountryLevel(count).color}; border-color:{getCountryLevel(count).color}">
+											{getCountryLevel(count).level}
 										</span>
 									</td>
 								</tr>
@@ -390,505 +228,455 @@
 						</tbody>
 					</table>
 				</div>
+			{/if}
+		</div>
+		
+		<!-- Analytics -->
+		<div class="analytics">
+			<!-- Top 10 -->
+			<div class="card">
+				<h3>TOP 10 COUNTRIES</h3>
+				<div class="top-list">
+					{#each countries.slice(0, 10) as [country, count], i}
+						<div class="top-item" on:click={() => selectCountry(country, count)}>
+							<span class="top-rank" style="color:{getCountryLevel(count).color}">#{i + 1}</span>
+							<span class="top-name">{country.substring(0, 15).toUpperCase()}</span>
+							<span class="top-count" style="color:{getCountryLevel(count).color}">{count.toLocaleString()}</span>
+						</div>
+					{/each}
+				</div>
+			</div>
+			
+			<!-- Stats -->
+			<div class="card">
+				<h3>STATISTICS</h3>
+				<div class="stat-list">
+					<div class="stat">
+						<span>Countries >1000 hosts</span>
+						<span style="color:#BD93F9">{countries.filter(([_,c]) => c > 1000).length}</span>
+					</div>
+					<div class="stat">
+						<span>Countries >5000 hosts</span>
+						<span style="color:#8BE9FD">{countries.filter(([_,c]) => c > 5000).length}</span>
+					</div>
+					<div class="stat">
+						<span>Countries >10000 hosts</span>
+						<span style="color:#50FA7B">{countries.filter(([_,c]) => c > 10000).length}</span>
+					</div>
+				</div>
 			</div>
 		</div>
 	</div>
 </div>
 
 <style>
-	.country-interface {
-		width: 100%;
+	.container {
 		height: calc(100vh - 80px);
-		background: #000000;
-		overflow: hidden;
-	}
-	
-	.interface-layout {
-		height: 100%;
+		background: #000;
+		padding: 1rem;
 		display: flex;
 		flex-direction: column;
-		padding: 1rem;
 		gap: 1rem;
 	}
 	
-	/* Stats Row */
-	.stats-row {
+	.kpis {
 		display: flex;
 		gap: 1rem;
-	}
-	
-	.stat-card {
-		flex: 1;
-		background: rgba(255, 255, 255, 0.02);
-		border: 1px solid rgba(139, 233, 253, 0.1);
-		border-radius: 10px;
+		background: rgba(255,255,255,0.02);
+		border: 1px solid rgba(139,233,253,0.1);
+		border-radius: 8px;
 		padding: 1rem;
-		display: flex;
-		gap: 1rem;
-		align-items: center;
 	}
 	
-	.stat-icon {
-		font-size: 2rem;
-	}
-	
-	.stat-content {
+	.kpi {
 		flex: 1;
+		text-align: center;
+		border-right: 1px solid rgba(255,255,255,0.1);
 	}
 	
-	.stat-value {
-		font-size: 1.5rem;
-		font-weight: 700;
-		font-family: 'Courier New', monospace;
-		margin-bottom: 0.25rem;
+	.kpi:last-child {
+		border: none;
 	}
 	
-	.stat-label {
-		font-size: 0.65rem;
-		color: rgba(255, 255, 255, 0.5);
+	.kpi-value {
+		font: 700 1.6rem/1 'SF Mono', monospace;
+		margin-bottom: 0.5rem;
+	}
+	
+	.kpi-label {
+		font: 600 0.65rem/1 system-ui;
+		color: rgba(255,255,255,0.5);
 		letter-spacing: 0.1em;
-		font-weight: 600;
 	}
 	
-	/* Content Area */
-	.content-area {
+	.layout {
 		flex: 1;
 		display: grid;
-		grid-template-columns: 1fr 400px 320px;
+		grid-template-columns: 1fr 380px;
 		gap: 1rem;
 		min-height: 0;
 	}
 	
-	/* Geo Panel */
-	.geo-panel {
-		background: rgba(255, 255, 255, 0.02);
-		border: 1px solid rgba(189, 147, 249, 0.1);
-		border-radius: 12px;
-		padding: 1rem;
+	.main-view, .analytics {
+		background: rgba(255,255,255,0.02);
+		border: 1px solid rgba(189,147,249,0.1);
+		border-radius: 8px;
+		overflow: hidden;
+	}
+	
+	.main-view {
 		display: flex;
 		flex-direction: column;
 	}
 	
-	.panel-header {
+	.view-header {
 		display: flex;
 		justify-content: space-between;
 		align-items: center;
-		margin-bottom: 1rem;
-		padding-bottom: 0.5rem;
-		border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+		padding: 1rem;
+		border-bottom: 1px solid rgba(255,255,255,0.1);
 	}
 	
-	.panel-header h2, .panel-header h3 {
+	.view-header h2 {
 		margin: 0;
-		font-size: 0.9rem;
-		font-weight: 300;
-		letter-spacing: 0.1em;
+		font: 300 0.9rem/1 system-ui;
 		color: #BD93F9;
+		letter-spacing: 0.1em;
 	}
 	
-	.search-input {
-		padding: 0.4rem 0.8rem;
-		background: rgba(0, 0, 0, 0.5);
-		border: 1px solid rgba(139, 233, 253, 0.3);
-		border-radius: 6px;
-		color: #FFFFFF;
-		font-size: 0.75rem;
+	.controls {
+		display: flex;
+		gap: 1rem;
+		align-items: center;
+	}
+	
+	.search {
+		padding: 0.5rem 1rem;
+		background: rgba(0,0,0,0.5);
+		border: 1px solid rgba(139,233,253,0.3);
+		border-radius: 4px;
+		color: #fff;
+		font-size: 0.8rem;
 		width: 180px;
 	}
 	
-	.search-input:focus {
+	.search:focus {
 		outline: none;
 		border-color: #8BE9FD;
 	}
 	
-	.geo-visualization {
+	.tabs {
+		display: flex;
+		gap: 2px;
+		background: rgba(0,0,0,0.5);
+		padding: 2px;
+		border-radius: 4px;
+	}
+	
+	.tab {
+		padding: 0.4rem 0.8rem;
+		background: transparent;
+		border: none;
+		color: rgba(255,255,255,0.6);
+		font: 600 0.7rem/1 system-ui;
+		cursor: pointer;
+		border-radius: 3px;
+		transition: all 0.2s;
+	}
+	
+	.tab:hover {
+		background: rgba(139,233,253,0.1);
+	}
+	
+	.tab.active {
+		background: rgba(139,233,253,0.2);
+		color: #8BE9FD;
+	}
+	
+	.map-view {
 		flex: 1;
 		display: flex;
-		flex-direction: column;
-		gap: 1rem;
+		align-items: center;
+		justify-content: center;
+		padding: 2rem;
 	}
 	
-	.bubble-map {
-		flex: 2;
-	}
-	
-	.bubble-map svg {
+	.map-view svg {
 		width: 100%;
 		height: 100%;
 	}
 	
-	.country-bubble {
+	.country-node {
 		cursor: pointer;
-		transition: all 0.3s ease;
+		transition: transform 0.3s;
 	}
 	
-	.country-bubble:hover {
+	.country-node:hover {
 		transform: scale(1.1);
 	}
 	
-	.heatmap-section {
+	.grid-view {
 		flex: 1;
-	}
-	
-	.heatmap-section h3 {
-		margin: 0 0 0.5rem 0;
-		font-size: 0.8rem;
-		color: #8BE9FD;
-		font-weight: 300;
-		letter-spacing: 0.1em;
-	}
-	
-	.heatmap-grid {
 		display: grid;
-		grid-template-columns: repeat(10, 1fr);
-		grid-template-rows: repeat(5, 1fr);
-		gap: 2px;
-		height: 100px;
-		background: rgba(0, 0, 0, 0.5);
-		padding: 4px;
-		border-radius: 8px;
-	}
-	
-	.heat-cell {
-		border-radius: 2px;
-		cursor: pointer;
-		transition: all 0.2s ease;
-	}
-	
-	.heat-cell:hover {
-		transform: scale(1.5);
-		z-index: 10;
-		box-shadow: 0 0 10px currentColor;
-	}
-	
-	/* Charts Panel */
-	.charts-panel {
-		display: flex;
-		flex-direction: column;
+		grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
 		gap: 1rem;
-	}
-	
-	.chart-box {
-		flex: 1;
-		background: rgba(255, 255, 255, 0.02);
-		border: 1px solid rgba(139, 233, 253, 0.1);
-		border-radius: 10px;
 		padding: 1rem;
-		display: flex;
-		flex-direction: column;
+		overflow-y: auto;
 	}
 	
-	.chart-box h3 {
-		margin: 0 0 1rem 0;
-		font-size: 0.75rem;
-		color: #8BE9FD;
-		font-weight: 300;
-		letter-spacing: 0.1em;
-	}
-	
-	.h-bar-chart {
-		flex: 1;
-		display: flex;
-		flex-direction: column;
-		gap: 0.4rem;
-	}
-	
-	.h-bar-item {
-		display: grid;
-		grid-template-columns: 20px 100px 1fr 40px;
-		gap: 0.5rem;
-		align-items: center;
+	.grid-card {
+		background: rgba(0,0,0,0.5);
+		border: 1px solid rgba(139,233,253,0.2);
+		border-radius: 6px;
 		cursor: pointer;
-		transition: all 0.2s ease;
-	}
-	
-	.h-bar-item:hover {
-		transform: translateX(2px);
-	}
-	
-	.h-bar-rank {
-		font-size: 0.65rem;
-		color: #BD93F9;
-		font-weight: 600;
-	}
-	
-	.h-bar-country {
-		font-size: 0.65rem;
-		color: rgba(255, 255, 255, 0.8);
-		white-space: nowrap;
 		overflow: hidden;
-		text-overflow: ellipsis;
+		transition: all 0.3s;
 	}
 	
-	.h-bar-track {
-		height: 18px;
-		background: rgba(255, 255, 255, 0.05);
-		border-radius: 4px;
-		overflow: hidden;
+	.grid-card:hover {
+		transform: scale(1.05);
+		border-color: #8BE9FD;
 	}
 	
-	.h-bar-fill {
-		height: 100%;
-		display: flex;
-		align-items: center;
-		justify-content: flex-end;
-		padding: 0 0.4rem;
-		transition: width 0.5s ease;
-		border-radius: 4px;
-	}
-	
-	.h-bar-value {
-		font-size: 0.6rem;
-		color: #FFFFFF;
-		font-weight: 600;
-	}
-	
-	.h-bar-percent {
-		font-size: 0.65rem;
-		color: rgba(255, 255, 255, 0.5);
+	.card-header {
+		padding: 0.5rem;
 		text-align: right;
+		font: 600 0.7rem/1 system-ui;
+		color: #fff;
 	}
 	
-	.region-bars {
-		flex: 1;
-		display: flex;
-		align-items: flex-end;
-		gap: 0.5rem;
+	.card-body {
+		padding: 0.75rem;
 	}
 	
-	.region-bar {
-		flex: 1;
-		display: flex;
-		flex-direction: column;
-		align-items: center;
-		gap: 0.25rem;
+	.card-name {
+		font: 400 0.7rem/1.2 system-ui;
+		color: rgba(255,255,255,0.8);
+		margin-bottom: 0.5rem;
 	}
 	
-	.region-column {
-		width: 100%;
-		height: 120px;
-		display: flex;
-		align-items: flex-end;
+	.card-value {
+		font: 700 1.2rem/1 'SF Mono', monospace;
+		margin-bottom: 0.5rem;
 	}
 	
-	.region-fill {
-		width: 100%;
-		display: flex;
-		align-items: flex-start;
-		justify-content: center;
-		padding-top: 0.25rem;
-		border-radius: 4px 4px 0 0;
-		transition: height 0.5s ease;
-	}
-	
-	.region-value {
-		font-size: 0.6rem;
-		color: #FFFFFF;
-		font-weight: 600;
-	}
-	
-	.region-label {
-		font-size: 0.6rem;
-		color: rgba(255, 255, 255, 0.6);
-		writing-mode: vertical-lr;
-		text-align: center;
-	}
-	
-	/* List Panel */
-	.list-panel {
-		background: rgba(255, 255, 255, 0.02);
-		border: 1px solid rgba(189, 147, 249, 0.1);
-		border-radius: 12px;
-		display: flex;
-		flex-direction: column;
+	.card-bar {
+		height: 3px;
+		background: rgba(255,255,255,0.1);
+		border-radius: 2px;
 		overflow: hidden;
 	}
 	
-	.country-count {
-		font-size: 0.7rem;
-		color: rgba(255, 255, 255, 0.5);
+	.bar-fill {
+		height: 100%;
+		transition: width 0.5s;
 	}
 	
-	.country-list {
+	.list-view {
 		flex: 1;
 		overflow-y: auto;
 	}
 	
-	.countries-table {
+	table {
 		width: 100%;
 		border-collapse: collapse;
 	}
 	
-	.countries-table thead {
+	thead {
 		position: sticky;
 		top: 0;
-		background: rgba(0, 0, 0, 0.9);
+		background: rgba(0,0,0,0.9);
 		z-index: 10;
 	}
 	
-	.countries-table th {
-		padding: 0.5rem;
+	th {
+		padding: 0.75rem;
 		text-align: left;
-		font-size: 0.6rem;
-		font-weight: 600;
-		color: rgba(255, 255, 255, 0.5);
-		letter-spacing: 0.05em;
-		border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+		font: 600 0.7rem/1 system-ui;
+		color: rgba(255,255,255,0.5);
+		letter-spacing: 0.1em;
+		border-bottom: 1px solid rgba(255,255,255,0.1);
 	}
 	
-	.countries-table tbody tr {
+	tbody tr {
 		cursor: pointer;
-		transition: all 0.2s ease;
-		border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+		transition: background 0.2s;
+		border-bottom: 1px solid rgba(255,255,255,0.05);
 	}
 	
-	.countries-table tbody tr:hover {
-		background: rgba(139, 233, 253, 0.05);
+	tbody tr:hover {
+		background: rgba(139,233,253,0.05);
 	}
 	
-	.countries-table td {
-		padding: 0.5rem;
-		font-size: 0.7rem;
-		color: rgba(255, 255, 255, 0.8);
+	td {
+		padding: 0.75rem;
+		font: 400 0.75rem/1 system-ui;
+		color: rgba(255,255,255,0.8);
 	}
 	
 	.rank {
 		color: #BD93F9;
 		font-weight: 600;
-		font-size: 0.65rem;
 	}
 	
-	.country-name {
-		display: flex;
-		align-items: center;
-		gap: 0.3rem;
-		font-size: 0.65rem;
-	}
-	
-	.status-icon {
-		font-size: 0.8rem;
-	}
-	
-	.host-count {
-		font-family: 'Courier New', monospace;
+	.value {
+		font-family: 'SF Mono', monospace;
 		font-weight: 600;
 	}
 	
-	.percentage {
-		color: rgba(255, 255, 255, 0.6);
+	.badge {
 		font-size: 0.65rem;
-	}
-	
-	.status-badge {
-		font-size: 0.55rem;
-		padding: 0.15rem 0.3rem;
+		padding: 0.2rem 0.4rem;
+		border: 1px solid;
 		border-radius: 3px;
 		font-weight: 600;
-		letter-spacing: 0.03em;
 	}
 	
-	/* Detail View */
-	.detail-view {
+	.analytics {
+		display: flex;
+		flex-direction: column;
+		gap: 1rem;
+		padding: 1rem;
+	}
+	
+	.card {
+		background: rgba(0,0,0,0.3);
+		border-radius: 6px;
+		padding: 1rem;
+	}
+	
+	.card h3 {
+		margin: 0 0 1rem 0;
+		font: 300 0.8rem/1 system-ui;
+		color: #8BE9FD;
+		letter-spacing: 0.1em;
+	}
+	
+	.top-list {
+		display: flex;
+		flex-direction: column;
+		gap: 0.4rem;
+	}
+	
+	.top-item {
+		display: grid;
+		grid-template-columns: 30px 1fr auto;
+		gap: 0.5rem;
+		align-items: center;
+		padding: 0.4rem;
+		background: rgba(255,255,255,0.02);
+		border-radius: 4px;
+		cursor: pointer;
+		transition: all 0.2s;
+	}
+	
+	.top-item:hover {
+		background: rgba(139,233,253,0.05);
+		transform: translateX(2px);
+	}
+	
+	.top-rank {
+		font: 600 0.7rem/1 system-ui;
+	}
+	
+	.top-name {
+		font: 400 0.7rem/1 system-ui;
+		color: rgba(255,255,255,0.8);
+	}
+	
+	.top-count {
+		font: 600 0.8rem/1 'SF Mono', monospace;
+	}
+	
+	.stat-list {
+		display: flex;
+		flex-direction: column;
+		gap: 0.75rem;
+	}
+	
+	.stat {
+		display: flex;
+		justify-content: space-between;
+		padding: 0.5rem;
+		background: rgba(255,255,255,0.02);
+		border-radius: 4px;
+		font: 400 0.7rem/1 system-ui;
+		color: rgba(255,255,255,0.7);
+	}
+	
+	.stat span:last-child {
+		font-family: 'SF Mono', monospace;
+		font-weight: 700;
+		font-size: 1rem;
+	}
+	
+	.detail {
 		flex: 1;
 		display: flex;
 		flex-direction: column;
+		padding: 1rem;
 	}
 	
 	.detail-header {
 		display: flex;
 		justify-content: space-between;
-		align-items: start;
 		margin-bottom: 1rem;
 	}
 	
-	.country-info h3 {
+	.detail-header h3 {
 		margin: 0 0 0.25rem 0;
-		font-size: 1.1rem;
+		font: 600 1.1rem/1 system-ui;
 		color: #BD93F9;
 	}
 	
-	.country-stats {
-		font-size: 0.7rem;
-		color: rgba(255, 255, 255, 0.6);
+	.stats {
+		font: 400 0.7rem/1 system-ui;
+		color: rgba(255,255,255,0.6);
 		display: flex;
 		gap: 0.5rem;
 	}
 	
-	.close-btn {
-		background: rgba(255, 255, 255, 0.1);
-		border: 1px solid rgba(255, 255, 255, 0.2);
-		color: #FFFFFF;
-		width: 28px;
-		height: 28px;
-		border-radius: 6px;
-		font-size: 1rem;
+	.close {
+		background: rgba(255,255,255,0.1);
+		border: 1px solid rgba(255,255,255,0.2);
+		color: #fff;
+		width: 32px;
+		height: 32px;
+		border-radius: 4px;
+		font-size: 1.5rem;
 		cursor: pointer;
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		transition: all 0.2s ease;
+		transition: all 0.2s;
 	}
 	
-	.close-btn:hover {
-		background: rgba(189, 147, 249, 0.2);
+	.close:hover {
+		background: rgba(189,147,249,0.2);
 		border-color: #BD93F9;
 	}
 	
-	.hosts-container {
+	.detail-table {
 		flex: 1;
 		overflow-y: auto;
-		background: rgba(0, 0, 0, 0.3);
-		border-radius: 8px;
+		background: rgba(0,0,0,0.3);
+		border-radius: 4px;
 		padding: 1rem;
 	}
 	
-	.hosts-table {
-		width: 100%;
-		border-collapse: collapse;
-	}
-	
-	.hosts-table thead {
-		position: sticky;
-		top: 0;
-		background: rgba(0, 0, 0, 0.9);
-		z-index: 10;
-	}
-	
-	.hosts-table th {
-		padding: 0.5rem;
-		text-align: left;
-		font-size: 0.65rem;
-		color: rgba(255, 255, 255, 0.5);
-		border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-	}
-	
-	.hosts-table td {
-		padding: 0.5rem;
-		font-size: 0.65rem;
-		color: rgba(255, 255, 255, 0.8);
-		border-bottom: 1px solid rgba(255, 255, 255, 0.05);
-	}
-	
-	.hostname {
-		font-family: 'Courier New', monospace;
+	.mono {
+		font-family: 'SF Mono', monospace;
 		color: #8BE9FD;
-		font-size: 0.6rem;
+		font-size: 0.65rem;
 	}
 	
-	.status-dot {
-		font-size: 0.8rem;
+	.dot {
+		color: #FF5555;
+		font-size: 0.9rem;
 	}
 	
-	.status-dot.active {
+	.dot.ok {
 		color: #50FA7B;
 	}
 	
-	.status-dot.inactive {
-		color: #FF5555;
-	}
-	
-	/* Loading State */
-	.loading-state {
+	.loading {
 		flex: 1;
 		display: flex;
 		flex-direction: column;
@@ -897,62 +685,35 @@
 		gap: 2rem;
 	}
 	
-	.world-loader {
-		position: relative;
-		width: 120px;
-		height: 120px;
-	}
-	
-	.continent {
-		position: absolute;
-		background: linear-gradient(135deg, #BD93F9, #8BE9FD);
+	.spinner {
+		width: 48px;
+		height: 48px;
+		border: 3px solid rgba(189,147,249,0.2);
+		border-top-color: #BD93F9;
 		border-radius: 50%;
-		animation: float 3s ease-in-out infinite;
+		animation: spin 1s linear infinite;
 	}
 	
-	.con-1 {
-		width: 40px;
-		height: 40px;
-		top: 10px;
-		left: 40px;
+	@keyframes spin {
+		to { transform: rotate(360deg); }
 	}
 	
-	.con-2 {
-		width: 50px;
-		height: 50px;
-		top: 40px;
-		left: 10px;
-		animation-delay: 0.5s;
-	}
-	
-	.con-3 {
-		width: 30px;
-		height: 30px;
-		top: 60px;
-		left: 60px;
-		animation-delay: 1s;
-	}
-	
-	@keyframes float {
-		0%, 100% { transform: translateY(0); }
-		50% { transform: translateY(-10px); }
-	}
-	
-	.loading-state p {
-		color: rgba(255, 255, 255, 0.5);
-		font-size: 0.8rem;
+	.loading p {
+		color: rgba(255,255,255,0.5);
+		font: 400 0.8rem/1 system-ui;
 		letter-spacing: 0.2em;
 	}
 	
-	/* Scrollbar */
 	::-webkit-scrollbar {
 		width: 6px;
 	}
 	
 	::-webkit-scrollbar-track {
-		background: rgba(0, 0, 0, 0.5);
+		background: rgba(0,0,0,0.5);
 	}
 	
 	::-webkit-scrollbar-thumb {
-		background: rgba(189, 147, 249, 0.3);
+		background: rgba(189,147,249,0.3);
 		border-radius: 3px;
+	}
+</style>
