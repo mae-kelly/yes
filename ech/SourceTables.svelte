@@ -8,15 +8,9 @@
 	let hostDetails = [];
 	let searchTerm = '';
 	
-	// Visualization states
-	let tableNodes = [];
-	let dataFlows = [];
-	let pulseIntensity = 0;
-	let networkActivity = 0;
-	let tableProfiles = new Map();
-	
-	// Animation frame
-	let animationFrame;
+	// Animation states
+	let animationFrame = null;
+	let pulseValue = 0;
 	
 	onMount(async () => {
 		try {
@@ -24,275 +18,160 @@
 			let result = await response.json();
 			data = result;
 			loading = false;
-			initializeTableNetwork();
-			startNetworkAnimation();
 		} catch (err) {
-			console.error('Source table sync failed:', err);
+			console.error('Source tables error:', err);
 			loading = false;
 		}
+		
+		// Start animations
+		const animate = () => {
+			pulseValue = (Math.sin(Date.now() * 0.002) + 1) / 2;
+			animationFrame = requestAnimationFrame(animate);
+		};
+		animate();
 	});
 	
 	onDestroy(() => {
 		if (animationFrame) cancelAnimationFrame(animationFrame);
 	});
-	
-	function initializeTableNetwork() {
-		if (!data.source_intelligence) return;
-		
-		let tables = Object.entries(data.source_intelligence)
-			.sort((a, b) => b[1] - a[1])
-			.slice(0, 50);
-		
-		// Create nodes for each table
-		tables.forEach(([table, hostCount], i) => {
-			let angle = (i / tables.length) * Math.PI * 2;
-			let radius = 150 + (hostCount / Math.max(...tables.map(t => t[1]))) * 100;
-			
-			tableNodes.push({
-				id: table,
-				hostCount: hostCount,
-				x: Math.cos(angle) * radius,
-				y: Math.sin(angle) * radius,
-				connections: Math.floor(Math.random() * 5) + 2,
-				dataVolume: hostCount * (10 + Math.random() * 90),
-				queryFrequency: Math.floor(hostCount * (0.5 + Math.random())),
-				lastAccess: Date.now() - Math.random() * 86400000,
-				performance: 70 + Math.random() * 30
-			});
-			
-			tableProfiles.set(table, {
-				totalHosts: hostCount,
-				activeHosts: Math.floor(hostCount * (0.7 + Math.random() * 0.3)),
-				dataSize: (hostCount * (Math.random() * 100 + 50)).toFixed(2),
-				replicationFactor: Math.floor(Math.random() * 3) + 1,
-				partitions: Math.ceil(hostCount / 1000) || 1
-			});
-		});
-		
-		// Create data flow connections
-		tableNodes.forEach((node, i) => {
-			for (let j = 0; j < node.connections; j++) {
-				let targetIdx = Math.floor(Math.random() * tableNodes.length);
-				if (targetIdx !== i) {
-					dataFlows.push({
-						source: i,
-						target: targetIdx,
-						bandwidth: Math.random() * 100,
-						latency: Math.random() * 50,
-						packets: []
-					});
-				}
-			}
-		});
-	}
-	
-	function startNetworkAnimation() {
-		let time = 0;
-		
-		function animate() {
-			time += 0.016;
-			
-			pulseIntensity = 0.5 + Math.sin(time * 2) * 0.5;
-			networkActivity = 50 + Math.sin(time * 0.5) * 30 + Math.sin(time * 1.3) * 20;
-			
-			// Update data flows
-			dataFlows.forEach(flow => {
-				flow.bandwidth = Math.max(10, Math.min(100, flow.bandwidth + (Math.random() - 0.5) * 10));
-			});
-			
-			animationFrame = requestAnimationFrame(animate);
-		}
-		animate();
-	}
-	
-	$: filteredTables = data.source_intelligence ? 
+
+	$: filteredSources = data.source_intelligence ? 
 		Object.entries(data.source_intelligence)
-			.filter(([table]) => table.toLowerCase().includes(searchTerm.toLowerCase()))
+			.filter(([source]) => source.toLowerCase().includes(searchTerm.toLowerCase()))
 			.sort((a, b) => b[1] - a[1]) : [];
 	
-	$: maxHosts = filteredTables.length > 0 ? Math.max(...filteredTables.map(([,h]) => h)) : 1;
+	$: totalHosts = filteredSources.reduce((sum, [_, count]) => sum + count, 0);
+	$: maxCount = filteredSources.length > 0 ? Math.max(...filteredSources.map(([,c]) => c)) : 1;
+	$: avgHosts = filteredSources.length > 0 ? Math.round(totalHosts / filteredSources.length) : 0;
 	
-	function getTableClass(hostCount) {
-		let normalized = hostCount / maxHosts;
-		
-		if (normalized >= 0.8) {
-			return { level: 'PRIMARY', color: '#FF79C6', symbol: '◈' };
-		} else if (normalized >= 0.6) {
-			return { level: 'REPLICA', color: '#8BE9FD', symbol: '◆' };
-		} else if (normalized >= 0.4) {
-			return { level: 'SHARD', color: '#50FA7B', symbol: '▲' };
-		} else if (normalized >= 0.2) {
-			return { level: 'PARTITION', color: '#F1FA8C', symbol: '●' };
-		} else {
-			return { level: 'FRAGMENT', color: '#FFB86C', symbol: '○' };
-		}
-	}
-	
-	async function drillDownTable(table, hostCount) {
-		selectedSource = { table, hostCount };
+	// Top 5 sources for visualization
+	$: topSources = filteredSources.slice(0, 5);
+	$: bottomSources = filteredSources.slice(-5).reverse();
+
+	async function drillDownSource(source, frequency) {
+		selectedSource = { source, frequency };
 		loading = true;
 		
 		try {
-			let response = await fetch(`http://localhost:5000/api/host_search?q=${encodeURIComponent(table)}`);
+			let response = await fetch(`http://localhost:5000/api/host_search?q=${encodeURIComponent(source)}`);
 			let result = await response.json();
 			hostDetails = result.hosts || [];
 			loading = false;
 		} catch (err) {
-			console.error('Table drill-down failed:', err);
+			console.error('Host search error:', err);
 			hostDetails = [];
 			loading = false;
 		}
 	}
-	
+
 	function closeDetails() {
 		selectedSource = null;
 		hostDetails = [];
 	}
+	
+	function getTableHealth(count) {
+		const percentage = (count / maxCount) * 100;
+		if (percentage >= 75) return { status: 'OPTIMAL', color: '#BD93F9' };
+		if (percentage >= 50) return { status: 'ACTIVE', color: '#8BE9FD' };
+		if (percentage >= 25) return { status: 'MODERATE', color: '#50FA7B' };
+		return { status: 'LOW', color: '#FFB86C' };
+	}
 </script>
 
-<div class="source-table-interface">
-	<div class="interface-container">
-		<div class="search-section">
-			<input type="text"
-				   bind:value={searchTerm}
-				   placeholder="SEARCH TABLES..."
-				   class="search-input"/>
-			<div class="search-stats">
-				<span class="stat">{filteredTables.length} TABLES</span>
-				<span class="stat">{(data.total_mentions || 0).toLocaleString()} TOTAL HOSTS</span>
-				<span class="stat">ACTIVITY: {networkActivity.toFixed(0)}%</span>
+<div class="source-interface">
+	<div class="interface-grid">
+		<!-- Left Panel: Key Metrics -->
+		<div class="metrics-panel">
+			<div class="metric-card primary">
+				<div class="metric-value" style="color: #BD93F9">
+					{filteredSources.length}
+				</div>
+				<div class="metric-label">SOURCE TABLES</div>
+				<div class="metric-trend">
+					<svg viewBox="0 0 50 20">
+						<polyline points="0,15 10,12 20,8 30,10 40,5 50,8" 
+								  stroke="#BD93F9" stroke-width="1" fill="none" opacity="0.5"/>
+					</svg>
+				</div>
+			</div>
+			
+			<div class="metric-card">
+				<div class="metric-value" style="color: #8BE9FD">
+					{totalHosts.toLocaleString()}
+				</div>
+				<div class="metric-label">TOTAL HOSTS</div>
+			</div>
+			
+			<div class="metric-card">
+				<div class="metric-value" style="color: #50FA7B">
+					{avgHosts.toLocaleString()}
+				</div>
+				<div class="metric-label">AVG HOSTS/TABLE</div>
+			</div>
+			
+			<div class="metric-card">
+				<div class="metric-value" style="color: #FFB86C">
+					{maxCount.toLocaleString()}
+				</div>
+				<div class="metric-label">MAX TABLE SIZE</div>
 			</div>
 		</div>
 		
-		{#if loading && !selectedSource}
-			<div class="loading-state">
-				<div class="loading-animation">
-					<div class="cube-loader">
-						<div class="cube-face"></div>
-						<div class="cube-face"></div>
-						<div class="cube-face"></div>
-					</div>
-				</div>
-				<p>SYNCHRONIZING TABLE SCHEMA...</p>
+		<!-- Center Panel: Distribution Visualization -->
+		<div class="visualization-panel">
+			<div class="vis-header">
+				<h2>HOST DISTRIBUTION ACROSS SOURCE TABLES</h2>
+				<input type="text"
+					   bind:value={searchTerm}
+					   placeholder="Filter tables..."
+					   class="search-input"/>
 			</div>
-		{:else if selectedSource}
-			<div class="detail-view">
-				<div class="detail-header">
-					<div class="table-identity">
-						<h2>{selectedSource.table.toUpperCase()}</h2>
-						<span class="host-count">{selectedSource.hostCount.toLocaleString()} HOSTS</span>
+			
+			{#if loading && !selectedSource}
+				<div class="loading-state">
+					<div class="loader-rings">
+						<div class="ring r1"></div>
+						<div class="ring r2"></div>
+						<div class="ring r3"></div>
 					</div>
-					<button class="close-btn" on:click={closeDetails}>✕</button>
+					<p>ANALYZING SOURCE TABLES...</p>
 				</div>
-				
-				<div class="host-grid">
-					<table class="hosts-table">
-						<thead>
-							<tr>
-								<th>HOST_ID</th>
-								<th>REGION</th>
-								<th>COUNTRY</th>
-								<th>TYPE</th>
-								<th>CMDB</th>
-								<th>TANIUM</th>
-							</tr>
-						</thead>
-						<tbody>
-							{#each hostDetails.slice(0, 20) as host}
-								<tr>
-									<td class="host-id">{host.host.substring(0, 40)}</td>
-									<td>{host.region || 'UNKNOWN'}</td>
-									<td>{host.country || 'UNKNOWN'}</td>
-									<td>{host.infrastructure_type || 'UNKNOWN'}</td>
-									<td><span class="indicator {host.present_in_cmdb?.toLowerCase().includes('yes') ? 'active' : ''}">{host.present_in_cmdb?.toLowerCase().includes('yes') ? '◈' : '○'}</span></td>
-									<td><span class="indicator {host.tanium_coverage?.toLowerCase().includes('tanium') ? 'active' : ''}">{host.tanium_coverage?.toLowerCase().includes('tanium') ? '◈' : '○'}</span></td>
-								</tr>
-							{/each}
-						</tbody>
-					</table>
-				</div>
-			</div>
-		{:else}
-			<div class="main-display">
-				<div class="network-visualization">
-					<svg viewBox="-300 -300 600 600" class="network-svg">
-						<defs>
-							<radialGradient id="tableGlow">
-								<stop offset="0%" style="stop-color:#FF79C6;stop-opacity:0.8" />
-								<stop offset="100%" style="stop-color:#FF79C6;stop-opacity:0" />
-							</radialGradient>
-						</defs>
-						
-						{#each dataFlows as flow}
-							{#if tableNodes[flow.source] && tableNodes[flow.target]}
-								<line x1="{tableNodes[flow.source].x}" y1="{tableNodes[flow.source].y}"
-									  x2="{tableNodes[flow.target].x}" y2="{tableNodes[flow.target].y}"
-									  stroke="rgba(139, 233, 253, 0.2)"
-									  stroke-width="{flow.bandwidth / 50}"
-									  opacity="{flow.bandwidth / 200}"/>
-							{/if}
-						{/each}
-						
-						{#each tableNodes.slice(0, 20) as node}
-							{@const tableClass = getTableClass(node.hostCount)}
-							<g transform="translate({node.x}, {node.y})"
-							   on:click={() => drillDownTable(node.id, node.hostCount)}
-							   class="table-node">
-								<circle r="{10 + node.hostCount / maxHosts * 20}"
-										fill={tableClass.color}
-										opacity="0.2"/>
-								<circle r="{5 + node.hostCount / maxHosts * 10}"
-										fill={tableClass.color}
-										opacity="0.8"/>
-								<text text-anchor="middle" dy="4" fill="#000" font-size="12" font-weight="bold">
-									{tableClass.symbol}
-								</text>
-								<text y="-20" text-anchor="middle" fill="#fff" font-size="8" opacity="0.8">
-									{node.id.substring(0, 15)}
-								</text>
-							</g>
-						{/each}
-					</svg>
-					
-					<div class="activity-monitor">
-						<div class="monitor-bar" style="height: {networkActivity}%; background: linear-gradient(180deg, #FF79C6, #8BE9FD)"></div>
+			{:else if selectedSource}
+				<div class="detail-view">
+					<div class="detail-header">
+						<div class="detail-title">
+							<h3>{selectedSource.source.toUpperCase()}</h3>
+							<span class="host-count">{selectedSource.frequency.toLocaleString()} HOSTS</span>
+						</div>
+						<button class="close-btn" on:click={closeDetails}>✕</button>
 					</div>
-				</div>
-				
-				<div class="table-matrix">
-					<div class="matrix-header">
-						<h3>TABLE HOST DISTRIBUTION</h3>
-					</div>
-					<div class="matrix-content">
-						<table class="data-table">
+					<div class="detail-grid">
+						<table class="hosts-table">
 							<thead>
 								<tr>
-									<th>RANK</th>
-									<th>TABLE_NAME</th>
-									<th>HOST_COUNT</th>
-									<th>DISTRIBUTION</th>
-									<th>STATUS</th>
+									<th>HOSTNAME</th>
+									<th>REGION</th>
+									<th>COUNTRY</th>
+									<th>TYPE</th>
+									<th>CMDB</th>
+									<th>TANIUM</th>
 								</tr>
 							</thead>
 							<tbody>
-								{#each filteredTables.slice(0, 15) as [table, hostCount], index}
-									{@const tableClass = getTableClass(hostCount)}
-									{@const profile = tableProfiles.get(table)}
-									<tr on:click={() => drillDownTable(table, hostCount)}>
-										<td style="color: {tableClass.color}">#{index + 1}</td>
+								{#each hostDetails as host}
+									<tr>
+										<td class="hostname">{host.host}</td>
+										<td>{host.region || 'UNKNOWN'}</td>
+										<td>{host.country || 'UNKNOWN'}</td>
+										<td>{host.infrastructure_type || 'UNKNOWN'}</td>
 										<td>
-											<span style="color: {tableClass.color}">{tableClass.symbol}</span>
-											{table.substring(0, 30).toUpperCase()}
-										</td>
-										<td style="color: #8BE9FD">{hostCount.toLocaleString()}</td>
-										<td>
-											<div class="distribution-bar">
-												<div class="bar-fill" style="width: {(hostCount/maxHosts)*100}%; background: {tableClass.color}"></div>
-											</div>
+											<span class="status {host.present_in_cmdb?.toLowerCase().includes('yes') ? 'active' : 'missing'}">
+												{host.present_in_cmdb?.toLowerCase().includes('yes') ? '●' : '○'}
+											</span>
 										</td>
 										<td>
-											<span class="status-badge" style="background: {tableClass.color}20; color: {tableClass.color}">
-												{tableClass.level}
+											<span class="status {host.tanium_coverage?.toLowerCase().includes('tanium') ? 'active' : 'missing'}">
+												{host.tanium_coverage?.toLowerCase().includes('tanium') ? '●' : '○'}
 											</span>
 										</td>
 									</tr>
@@ -301,283 +180,480 @@
 						</table>
 					</div>
 				</div>
+			{:else}
+				<div class="distribution-view">
+					<!-- Bar Chart -->
+					<div class="chart-container">
+						<div class="chart-title">TOP SOURCE TABLES BY HOST COUNT</div>
+						<div class="bar-chart">
+							{#each topSources as [source, count], i}
+								{@const health = getTableHealth(count)}
+								<div class="bar-group">
+									<div class="bar-wrapper">
+										<div class="bar" 
+											 style="height: {(count/maxCount)*100}%; 
+													background: linear-gradient(180deg, {health.color}, {health.color}40);
+													animation-delay: {i * 0.1}s"
+											 on:click={() => drillDownSource(source, count)}>
+											<span class="bar-value">{count.toLocaleString()}</span>
+										</div>
+									</div>
+									<div class="bar-label">{source.substring(0, 15).toUpperCase()}</div>
+								</div>
+							{/each}
+						</div>
+					</div>
+					
+					<!-- Heat Map Grid -->
+					<div class="heatmap-container">
+						<div class="chart-title">SOURCE TABLE DENSITY MAP</div>
+						<div class="heatmap-grid">
+							{#each filteredSources.slice(0, 30) as [source, count], i}
+								{@const intensity = count / maxCount}
+								{@const health = getTableHealth(count)}
+								<div class="heat-cell"
+									 style="background: {health.color}; 
+											opacity: {0.3 + intensity * 0.7}"
+									 title="{source}: {count} hosts"
+									 on:click={() => drillDownSource(source, count)}>
+								</div>
+							{/each}
+						</div>
+					</div>
+				</div>
+			{/if}
+		</div>
+		
+		<!-- Right Panel: Table List -->
+		<div class="table-panel">
+			<div class="panel-header">
+				<h3>ALL SOURCE TABLES</h3>
+				<span class="table-count">{filteredSources.length} TABLES</span>
 			</div>
-		{/if}
+			<div class="table-list">
+				<table class="source-table">
+					<thead>
+						<tr>
+							<th>TABLE</th>
+							<th>HOSTS</th>
+							<th>%</th>
+							<th>STATUS</th>
+						</tr>
+					</thead>
+					<tbody>
+						{#each filteredSources as [source, count], i}
+							{@const health = getTableHealth(count)}
+							{@const percentage = ((count / totalHosts) * 100).toFixed(1)}
+							<tr on:click={() => drillDownSource(source, count)}>
+								<td class="table-name">
+									<span class="table-indicator" style="background: {health.color}"></span>
+									{source.substring(0, 20).toUpperCase()}
+								</td>
+								<td class="table-count" style="color: {health.color}">
+									{count.toLocaleString()}
+								</td>
+								<td class="table-percent">
+									<div class="percent-bar">
+										<div class="percent-fill" style="width: {percentage}%; background: {health.color}"></div>
+									</div>
+									<span>{percentage}%</span>
+								</td>
+								<td>
+									<span class="status-badge" style="color: {health.color}; border-color: {health.color}">
+										{health.status}
+									</span>
+								</td>
+							</tr>
+						{/each}
+					</tbody>
+				</table>
+			</div>
+		</div>
 	</div>
 </div>
 
 <style>
-	.source-table-interface {
+	.source-interface {
 		width: 100%;
 		height: calc(100vh - 80px);
-		background: #000;
+		background: #000000;
+		padding: 1rem;
 		overflow: hidden;
 	}
 	
-	.interface-container {
+	.interface-grid {
 		height: 100%;
-		display: flex;
-		flex-direction: column;
-		padding: 1rem;
+		display: grid;
+		grid-template-columns: 200px 1fr 400px;
+		gap: 1rem;
 	}
 	
-	.search-section {
+	/* Metrics Panel */
+	.metrics-panel {
+		display: flex;
+		flex-direction: column;
+		gap: 1rem;
+	}
+	
+	.metric-card {
+		background: rgba(255, 255, 255, 0.03);
+		border: 1px solid rgba(255, 255, 255, 0.1);
+		border-radius: 12px;
+		padding: 1rem;
+		position: relative;
+	}
+	
+	.metric-card.primary {
+		background: linear-gradient(135deg, rgba(189, 147, 249, 0.1), transparent);
+		border-color: rgba(189, 147, 249, 0.3);
+	}
+	
+	.metric-value {
+		font-size: 2rem;
+		font-weight: 700;
+		margin-bottom: 0.25rem;
+		font-family: 'Courier New', monospace;
+	}
+	
+	.metric-label {
+		font-size: 0.7rem;
+		color: rgba(255, 255, 255, 0.5);
+		letter-spacing: 0.1em;
+	}
+	
+	.metric-trend {
+		position: absolute;
+		bottom: 0.5rem;
+		right: 0.5rem;
+		width: 50px;
+		height: 20px;
+		opacity: 0.5;
+	}
+	
+	/* Visualization Panel */
+	.visualization-panel {
+		background: rgba(255, 255, 255, 0.02);
+		border: 1px solid rgba(139, 233, 253, 0.1);
+		border-radius: 12px;
+		padding: 1.5rem;
+		display: flex;
+		flex-direction: column;
+	}
+	
+	.vis-header {
 		display: flex;
 		justify-content: space-between;
 		align-items: center;
-		margin-bottom: 1rem;
-		padding: 0.5rem;
-		background: rgba(255, 255, 255, 0.02);
-		border: 1px solid rgba(255, 121, 198, 0.2);
-		border-radius: 8px;
-	}
-	
-	.search-input {
-		background: transparent;
-		border: none;
-		color: #FF79C6;
-		font-family: monospace;
-		font-size: 0.9rem;
-		padding: 0.5rem;
-		outline: none;
-		letter-spacing: 0.1em;
-		flex: 1;
-	}
-	
-	.search-stats {
-		display: flex;
-		gap: 2rem;
-	}
-	
-	.stat {
-		color: #8BE9FD;
-		font-size: 0.8rem;
-		font-family: monospace;
-	}
-	
-	.main-display {
-		flex: 1;
-		display: grid;
-		grid-template-columns: 1fr 1fr;
-		gap: 1rem;
-		height: calc(100% - 60px);
-	}
-	
-	.network-visualization {
-		position: relative;
-		background: radial-gradient(circle at center, rgba(255, 121, 198, 0.02), transparent);
-		border: 1px solid rgba(255, 121, 198, 0.1);
-		border-radius: 12px;
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		overflow: hidden;
-	}
-	
-	.network-svg {
-		width: 90%;
-		height: 90%;
-	}
-	
-	.table-node {
-		cursor: pointer;
-		transition: transform 0.3s ease;
-	}
-	
-	.table-node:hover {
-		transform: scale(1.2);
-	}
-	
-	.activity-monitor {
-		position: absolute;
-		right: 20px;
-		top: 20px;
-		width: 4px;
-		height: 100px;
-		background: rgba(255, 255, 255, 0.1);
-		border-radius: 2px;
-	}
-	
-	.monitor-bar {
-		width: 100%;
-		position: absolute;
-		bottom: 0;
-		transition: height 0.5s ease;
-		border-radius: 2px;
-	}
-	
-	.table-matrix {
-		display: flex;
-		flex-direction: column;
-		background: rgba(0, 0, 0, 0.5);
-		border: 1px solid rgba(139, 233, 253, 0.1);
-		border-radius: 12px;
-		overflow: hidden;
-	}
-	
-	.matrix-header {
-		padding: 1rem;
-		background: linear-gradient(90deg, rgba(255, 121, 198, 0.1), rgba(139, 233, 253, 0.1));
+		margin-bottom: 1.5rem;
+		padding-bottom: 1rem;
 		border-bottom: 1px solid rgba(255, 255, 255, 0.1);
 	}
 	
-	.matrix-header h3 {
+	.vis-header h2 {
 		margin: 0;
-		color: #FF79C6;
-		font-size: 0.9rem;
-		letter-spacing: 0.1em;
+		font-size: 1rem;
+		font-weight: 300;
+		letter-spacing: 0.2em;
+		color: #8BE9FD;
 	}
 	
-	.matrix-content {
+	.search-input {
+		padding: 0.5rem 1rem;
+		background: rgba(0, 0, 0, 0.5);
+		border: 1px solid rgba(139, 233, 253, 0.3);
+		border-radius: 8px;
+		color: #FFFFFF;
+		font-size: 0.8rem;
+		width: 200px;
+	}
+	
+	.search-input:focus {
+		outline: none;
+		border-color: #8BE9FD;
+		background: rgba(139, 233, 253, 0.05);
+	}
+	
+	/* Distribution View */
+	.distribution-view {
+		flex: 1;
+		display: grid;
+		grid-template-columns: 1fr 1fr;
+		gap: 2rem;
+	}
+	
+	.chart-container, .heatmap-container {
+		display: flex;
+		flex-direction: column;
+	}
+	
+	.chart-title {
+		font-size: 0.8rem;
+		color: rgba(255, 255, 255, 0.5);
+		letter-spacing: 0.1em;
+		margin-bottom: 1rem;
+	}
+	
+	.bar-chart {
+		flex: 1;
+		display: flex;
+		align-items: flex-end;
+		gap: 1rem;
+		padding: 1rem;
+		background: rgba(0, 0, 0, 0.3);
+		border-radius: 8px;
+	}
+	
+	.bar-group {
+		flex: 1;
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		gap: 0.5rem;
+	}
+	
+	.bar-wrapper {
+		width: 100%;
+		height: 200px;
+		display: flex;
+		align-items: flex-end;
+		justify-content: center;
+	}
+	
+	.bar {
+		width: 60%;
+		min-height: 20px;
+		border-radius: 4px 4px 0 0;
+		display: flex;
+		align-items: flex-start;
+		justify-content: center;
+		padding-top: 0.5rem;
+		cursor: pointer;
+		transition: all 0.3s ease;
+		animation: barGrow 0.5s ease-out forwards;
+		opacity: 0;
+	}
+	
+	@keyframes barGrow {
+		to { opacity: 1; }
+	}
+	
+	.bar:hover {
+		filter: brightness(1.2);
+		transform: translateY(-2px);
+	}
+	
+	.bar-value {
+		font-size: 0.75rem;
+		font-weight: 600;
+		color: #FFFFFF;
+	}
+	
+	.bar-label {
+		font-size: 0.65rem;
+		color: rgba(255, 255, 255, 0.6);
+		text-align: center;
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		width: 100%;
+	}
+	
+	.heatmap-grid {
+		flex: 1;
+		display: grid;
+		grid-template-columns: repeat(6, 1fr);
+		grid-template-rows: repeat(5, 1fr);
+		gap: 3px;
+		background: rgba(0, 0, 0, 0.3);
+		padding: 1rem;
+		border-radius: 8px;
+	}
+	
+	.heat-cell {
+		border-radius: 4px;
+		cursor: pointer;
+		transition: all 0.2s ease;
+	}
+	
+	.heat-cell:hover {
+		transform: scale(1.1);
+		z-index: 10;
+		box-shadow: 0 0 20px currentColor;
+	}
+	
+	/* Table Panel */
+	.table-panel {
+		background: rgba(255, 255, 255, 0.02);
+		border: 1px solid rgba(189, 147, 249, 0.1);
+		border-radius: 12px;
+		display: flex;
+		flex-direction: column;
+		overflow: hidden;
+	}
+	
+	.panel-header {
+		padding: 1rem;
+		border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+		display: flex;
+		justify-content: space-between;
+		align-items: center;
+	}
+	
+	.panel-header h3 {
+		margin: 0;
+		font-size: 0.9rem;
+		font-weight: 300;
+		letter-spacing: 0.1em;
+		color: #BD93F9;
+	}
+	
+	.table-count {
+		font-size: 0.75rem;
+		color: rgba(255, 255, 255, 0.5);
+	}
+	
+	.table-list {
 		flex: 1;
 		overflow-y: auto;
 	}
 	
-	.data-table {
+	.source-table {
 		width: 100%;
 		border-collapse: collapse;
 	}
 	
-	.data-table th {
-		background: rgba(0, 0, 0, 0.8);
-		color: #8BE9FD;
+	.source-table thead {
+		position: sticky;
+		top: 0;
+		background: #000000;
+		z-index: 10;
+	}
+	
+	.source-table th {
 		padding: 0.75rem;
 		text-align: left;
 		font-size: 0.7rem;
+		font-weight: 600;
+		color: rgba(255, 255, 255, 0.5);
 		letter-spacing: 0.1em;
-		position: sticky;
-		top: 0;
-		border-bottom: 1px solid rgba(139, 233, 253, 0.2);
+		border-bottom: 1px solid rgba(255, 255, 255, 0.1);
 	}
 	
-	.data-table tr {
+	.source-table tbody tr {
 		cursor: pointer;
-		transition: background 0.2s ease;
+		transition: all 0.2s ease;
 		border-bottom: 1px solid rgba(255, 255, 255, 0.05);
 	}
 	
-	.data-table tr:hover {
-		background: rgba(255, 121, 198, 0.05);
+	.source-table tbody tr:hover {
+		background: rgba(139, 233, 253, 0.05);
 	}
 	
-	.data-table td {
-		padding: 0.6rem 0.75rem;
-		font-size: 0.75rem;
+	.source-table td {
+		padding: 0.75rem;
+		font-size: 0.8rem;
 		color: rgba(255, 255, 255, 0.8);
 	}
 	
-	.distribution-bar {
-		width: 100px;
+	.table-name {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+	}
+	
+	.table-indicator {
+		width: 6px;
+		height: 6px;
+		border-radius: 50%;
+		flex-shrink: 0;
+	}
+	
+	.table-count {
+		font-family: 'Courier New', monospace;
+		font-weight: 600;
+	}
+	
+	.table-percent {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+		font-size: 0.75rem;
+	}
+	
+	.percent-bar {
+		width: 40px;
 		height: 3px;
 		background: rgba(255, 255, 255, 0.1);
+		border-radius: 2px;
 		overflow: hidden;
 	}
 	
-	.bar-fill {
+	.percent-fill {
 		height: 100%;
-		transition: width 0.5s ease;
+		transition: width 0.3s ease;
 	}
 	
 	.status-badge {
-		padding: 0.2rem 0.4rem;
-		border-radius: 4px;
 		font-size: 0.65rem;
+		padding: 0.2rem 0.4rem;
+		border: 1px solid;
+		border-radius: 4px;
 		font-weight: 600;
 		letter-spacing: 0.05em;
 	}
 	
-	.loading-state {
-		flex: 1;
-		display: flex;
-		flex-direction: column;
-		align-items: center;
-		justify-content: center;
-		gap: 1rem;
-	}
-	
-	.cube-loader {
-		width: 60px;
-		height: 60px;
-		position: relative;
-		transform-style: preserve-3d;
-		animation: rotateCube 2s linear infinite;
-	}
-	
-	.cube-face {
-		position: absolute;
-		width: 60px;
-		height: 60px;
-		border: 2px solid #FF79C6;
-		background: rgba(255, 121, 198, 0.1);
-	}
-	
-	.cube-face:nth-child(1) { transform: translateZ(30px); }
-	.cube-face:nth-child(2) { transform: rotateY(90deg) translateZ(30px); }
-	.cube-face:nth-child(3) { transform: rotateX(90deg) translateZ(30px); }
-	
-	@keyframes rotateCube {
-		from { transform: rotateX(0) rotateY(0); }
-		to { transform: rotateX(360deg) rotateY(360deg); }
-	}
-	
-	.loading-state p {
-		color: #8BE9FD;
-		font-size: 0.9rem;
-		letter-spacing: 0.1em;
-	}
-	
+	/* Detail View */
 	.detail-view {
 		flex: 1;
 		display: flex;
 		flex-direction: column;
-		background: rgba(0, 0, 0, 0.6);
-		border: 1px solid rgba(255, 121, 198, 0.1);
-		border-radius: 12px;
-		overflow: hidden;
 	}
 	
 	.detail-header {
 		display: flex;
 		justify-content: space-between;
 		align-items: center;
-		padding: 1rem 1.5rem;
-		background: linear-gradient(135deg, rgba(255, 121, 198, 0.1), transparent);
-		border-bottom: 1px solid rgba(255, 121, 198, 0.2);
+		margin-bottom: 1rem;
 	}
 	
-	.table-identity h2 {
+	.detail-title h3 {
 		margin: 0;
-		color: #FF79C6;
 		font-size: 1.2rem;
-		letter-spacing: 0.05em;
+		color: #BD93F9;
+		margin-bottom: 0.25rem;
 	}
 	
 	.host-count {
-		color: #8BE9FD;
-		font-size: 0.9rem;
-		font-family: monospace;
+		font-size: 0.8rem;
+		color: rgba(255, 255, 255, 0.6);
 	}
 	
 	.close-btn {
-		background: rgba(255, 121, 198, 0.1);
-		border: 1px solid #FF79C6;
-		color: #FF79C6;
+		background: rgba(255, 255, 255, 0.1);
+		border: 1px solid rgba(255, 255, 255, 0.2);
+		color: #FFFFFF;
 		width: 32px;
 		height: 32px;
-		border-radius: 50%;
-		cursor: pointer;
+		border-radius: 8px;
 		font-size: 1.2rem;
-		transition: all 0.3s ease;
+		cursor: pointer;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		transition: all 0.2s ease;
 	}
 	
 	.close-btn:hover {
-		background: rgba(255, 121, 198, 0.2);
-		transform: rotate(90deg);
+		background: rgba(189, 147, 249, 0.2);
+		border-color: #BD93F9;
+		transform: scale(1.1);
 	}
 	
-	.host-grid {
+	.detail-grid {
 		flex: 1;
 		overflow-y: auto;
+		background: rgba(0, 0, 0, 0.3);
+		border-radius: 8px;
 		padding: 1rem;
 	}
 	
@@ -587,50 +663,110 @@
 	}
 	
 	.hosts-table th {
-		background: rgba(0, 0, 0, 0.8);
-		color: #8BE9FD;
 		padding: 0.75rem;
 		text-align: left;
 		font-size: 0.7rem;
-		letter-spacing: 0.1em;
+		color: rgba(255, 255, 255, 0.5);
+		border-bottom: 1px solid rgba(255, 255, 255, 0.1);
 		position: sticky;
 		top: 0;
+		background: rgba(0, 0, 0, 0.9);
 	}
 	
 	.hosts-table td {
-		padding: 0.6rem 0.75rem;
+		padding: 0.75rem;
 		font-size: 0.75rem;
-		color: rgba(255, 255, 255, 0.7);
+		color: rgba(255, 255, 255, 0.8);
 		border-bottom: 1px solid rgba(255, 255, 255, 0.05);
 	}
 	
-	.host-id {
-		font-family: monospace;
-		color: #FF79C6;
+	.hostname {
+		font-family: 'Courier New', monospace;
+		color: #8BE9FD;
 		font-size: 0.7rem;
 	}
 	
-	.indicator {
-		font-size: 0.9rem;
-		color: #666;
+	.status {
+		font-size: 1rem;
 	}
 	
-	.indicator.active {
+	.status.active {
 		color: #50FA7B;
-		text-shadow: 0 0 10px #50FA7B;
 	}
 	
+	.status.missing {
+		color: #FF5555;
+	}
+	
+	/* Loading State */
+	.loading-state {
+		flex: 1;
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		justify-content: center;
+		gap: 2rem;
+	}
+	
+	.loader-rings {
+		position: relative;
+		width: 80px;
+		height: 80px;
+	}
+	
+	.ring {
+		position: absolute;
+		border: 2px solid;
+		border-radius: 50%;
+		border-top-color: transparent;
+		animation: spin 1s linear infinite;
+	}
+	
+	.ring.r1 {
+		inset: 0;
+		border-color: #BD93F9;
+		border-top-color: transparent;
+	}
+	
+	.ring.r2 {
+		inset: 10px;
+		border-color: #8BE9FD;
+		border-top-color: transparent;
+		animation-direction: reverse;
+	}
+	
+	.ring.r3 {
+		inset: 20px;
+		border-color: #50FA7B;
+		border-top-color: transparent;
+	}
+	
+	@keyframes spin {
+		to { transform: rotate(360deg); }
+	}
+	
+	.loading-state p {
+		color: rgba(255, 255, 255, 0.5);
+		font-size: 0.8rem;
+		letter-spacing: 0.2em;
+	}
+	
+	/* Scrollbar */
 	::-webkit-scrollbar {
-		width: 4px;
-		height: 4px;
+		width: 6px;
+		height: 6px;
 	}
 	
 	::-webkit-scrollbar-track {
-		background: #000;
+		background: rgba(0, 0, 0, 0.5);
 	}
 	
 	::-webkit-scrollbar-thumb {
-		background: linear-gradient(180deg, #FF79C6, #8BE9FD);
-		border-radius: 2px;
+		background: rgba(189, 147, 249, 0.3);
+		border-radius: 3px;
+	}
+	
+	::-webkit-scrollbar-thumb:hover {
+		background: rgba(189, 147, 249, 0.5);
 	}
 </style>
