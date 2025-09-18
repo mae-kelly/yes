@@ -63,211 +63,224 @@
 	}
 </script>
 
-<div class="dashboard-container">
-	<!-- Left Panel: Main Table -->
-	<div class="main-panel">
-		<div class="panel-header">
-			<div class="header-top">
-				<h2 class="panel-title">
-					<span class="title-icon">◈</span>
-					SOURCE TABLE FREQUENCY ANALYSIS
-				</h2>
-				<div class="header-stats">
-					<div class="stat-badge">
-						<span class="stat-value">{filteredSources.length}</span>
-						<span class="stat-label">Sources</span>
+<div class="dashboard-wrapper">
+	<div class="dashboard-container">
+		<!-- Left Panel: Main Table -->
+		<div class="main-panel">
+			<div class="panel-header">
+				<div class="header-top">
+					<h2 class="panel-title">
+						<span class="title-icon">◈</span>
+						SOURCE TABLE FREQUENCY ANALYSIS
+					</h2>
+					<div class="header-stats">
+						<div class="stat-badge">
+							<span class="stat-value">{filteredSources.length}</span>
+							<span class="stat-label">Sources</span>
+						</div>
+						<div class="stat-badge">
+							<span class="stat-value">{(data.total_mentions || 0).toLocaleString()}</span>
+							<span class="stat-label">Mentions</span>
+						</div>
 					</div>
-					<div class="stat-badge">
-						<span class="stat-value">{(data.total_mentions || 0).toLocaleString()}</span>
-						<span class="stat-label">Mentions</span>
+				</div>
+				<div class="search-bar">
+					<svg class="search-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+						<circle cx="11" cy="11" r="8"></circle>
+						<path d="m21 21-4.35-4.35"></path>
+					</svg>
+					<input 
+						type="text" 
+						bind:value={searchTerm}
+						placeholder="Search sources..."
+						class="search-input"
+					/>
+				</div>
+			</div>
+			
+			{#if loading && !selectedSource}
+				<div class="loading-state">
+					<div class="loader">
+						<div class="loader-ring"></div>
+						<div class="loader-ring"></div>
+						<div class="loader-ring"></div>
+					</div>
+					<p>Analyzing source matrices...</p>
+				</div>
+			{:else if selectedSource}
+				<div class="detail-view">
+					<div class="detail-header">
+						<h3>{selectedSource.source.toUpperCase()}</h3>
+						<button class="close-btn" on:click={closeDetails}>
+							<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+								<line x1="18" y1="6" x2="6" y2="18"></line>
+								<line x1="6" y1="6" x2="18" y2="18"></line>
+							</svg>
+						</button>
+					</div>
+					<div class="detail-content">
+						<table class="detail-table">
+							<thead>
+								<tr>
+									<th>HOST</th>
+									<th>REGION</th>
+									<th>COUNTRY</th>
+									<th>INFRASTRUCTURE</th>
+									<th>CMDB</th>
+									<th>TANIUM</th>
+								</tr>
+							</thead>
+							<tbody>
+								{#each hostDetails as host}
+									<tr>
+										<td class="host-cell">{host.host}</td>
+										<td>{host.region || 'Unknown'}</td>
+										<td>{host.country || 'Unknown'}</td>
+										<td>{host.infrastructure_type || 'Unknown'}</td>
+										<td>
+											<span class="badge {host.present_in_cmdb?.toLowerCase().includes('yes') ? 'success' : 'danger'}">
+												{host.present_in_cmdb?.toLowerCase().includes('yes') ? 'YES' : 'NO'}
+											</span>
+										</td>
+										<td>
+											<span class="badge {host.tanium_coverage?.toLowerCase().includes('tanium') ? 'success' : 'warning'}">
+												{host.tanium_coverage?.toLowerCase().includes('tanium') ? 'YES' : 'NO'}
+											</span>
+										</td>
+									</tr>
+								{/each}
+							</tbody>
+						</table>
 					</div>
 				</div>
-			</div>
-			<div class="search-bar">
-				<svg class="search-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-					<circle cx="11" cy="11" r="8"></circle>
-					<path d="m21 21-4.35-4.35"></path>
-				</svg>
-				<input 
-					type="text" 
-					bind:value={searchTerm}
-					placeholder="Search sources..."
-					class="search-input"
-				/>
-			</div>
-		</div>
-		
-		{#if loading && !selectedSource}
-			<div class="loading-state">
-				<div class="loader">
-					<div class="loader-ring"></div>
-					<div class="loader-ring"></div>
-					<div class="loader-ring"></div>
-				</div>
-				<p>Analyzing source matrices...</p>
-			</div>
-		{:else if selectedSource}
-			<div class="detail-view">
-				<div class="detail-header">
-					<h3>{selectedSource.source.toUpperCase()}</h3>
-					<button class="close-btn" on:click={closeDetails}>
-						<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-							<line x1="18" y1="6" x2="6" y2="18"></line>
-							<line x1="6" y1="6" x2="18" y2="18"></line>
-						</svg>
-					</button>
-				</div>
-				<div class="detail-content">
-					<table class="detail-table">
+			{:else}
+				<div class="table-container">
+					<table class="data-table">
 						<thead>
 							<tr>
-								<th>HOST</th>
-								<th>REGION</th>
-								<th>COUNTRY</th>
-								<th>INFRASTRUCTURE</th>
-								<th>CMDB</th>
-								<th>TANIUM</th>
+								<th>SOURCE TABLE</th>
+								<th>FREQUENCY</th>
+								<th>COVERAGE</th>
+								<th>THREAT LEVEL</th>
+								<th>VISIBILITY</th>
 							</tr>
 						</thead>
 						<tbody>
-							{#each hostDetails as host}
-								<tr>
-									<td class="host-cell">{host.host}</td>
-									<td>{host.region || 'Unknown'}</td>
-									<td>{host.country || 'Unknown'}</td>
-									<td>{host.infrastructure_type || 'Unknown'}</td>
+							{#each filteredSources as [source, frequency], index}
+								{@const threat = getThreatLevel(frequency)}
+								<tr class="table-row {hoveredIndex === index ? 'hovered' : ''}"
+									on:click={() => drillDownSource(source, frequency)}
+									on:mouseenter={() => hoveredIndex = index}
+									on:mouseleave={() => hoveredIndex = -1}>
+									<td class="source-cell">
+										<div class="source-indicator" style="background: {threat.color}"></div>
+										<span>{source.toUpperCase()}</span>
+									</td>
+									<td class="numeric">{frequency.toLocaleString()}</td>
+									<td class="coverage-cell">
+										<div class="progress-bar">
+											<div class="progress-fill" style="width: {(frequency/maxFreq)*100}%; background: {threat.color}"></div>
+										</div>
+										<span class="percentage">{getPercentage(frequency)}%</span>
+									</td>
 									<td>
-										<span class="badge {host.present_in_cmdb?.toLowerCase().includes('yes') ? 'success' : 'danger'}">
-											{host.present_in_cmdb?.toLowerCase().includes('yes') ? 'YES' : 'NO'}
+										<span class="threat-badge" style="color: {threat.color}; border-color: {threat.color}">
+											{threat.level}
 										</span>
 									</td>
 									<td>
-										<span class="badge {host.tanium_coverage?.toLowerCase().includes('tanium') ? 'success' : 'warning'}">
-											{host.tanium_coverage?.toLowerCase().includes('tanium') ? 'YES' : 'NO'}
-										</span>
+										<div class="visibility-bars">
+											{#each Array(10) as _, i}
+												<div class="bar" style="opacity: {(frequency/maxFreq) > (i/10) ? 1 : 0.2}; background: {threat.color}"></div>
+											{/each}
+										</div>
 									</td>
 								</tr>
 							{/each}
 						</tbody>
 					</table>
 				</div>
-			</div>
-		{:else}
-			<div class="table-container">
-				<table class="data-table">
-					<thead>
-						<tr>
-							<th>SOURCE TABLE</th>
-							<th>FREQUENCY</th>
-							<th>COVERAGE</th>
-							<th>THREAT LEVEL</th>
-							<th>VISIBILITY</th>
-						</tr>
-					</thead>
-					<tbody>
-						{#each filteredSources as [source, frequency], index}
-							{@const threat = getThreatLevel(frequency)}
-							<tr class="table-row {hoveredIndex === index ? 'hovered' : ''}"
-								on:click={() => drillDownSource(source, frequency)}
-								on:mouseenter={() => hoveredIndex = index}
-								on:mouseleave={() => hoveredIndex = -1}>
-								<td class="source-cell">
-									<div class="source-indicator" style="background: {threat.color}"></div>
-									<span>{source.toUpperCase()}</span>
-								</td>
-								<td class="numeric">{frequency.toLocaleString()}</td>
-								<td class="coverage-cell">
-									<div class="progress-bar">
-										<div class="progress-fill" style="width: {(frequency/maxFreq)*100}%; background: {threat.color}"></div>
-									</div>
-									<span class="percentage">{getPercentage(frequency)}%</span>
-								</td>
-								<td>
-									<span class="threat-badge" style="color: {threat.color}; border-color: {threat.color}">
-										{threat.level}
-									</span>
-								</td>
-								<td>
-									<div class="visibility-bars">
-										{#each Array(10) as _, i}
-											<div class="bar" style="opacity: {(frequency/maxFreq) > (i/10) ? 1 : 0.2}; background: {threat.color}"></div>
-										{/each}
-									</div>
-								</td>
-							</tr>
-						{/each}
-					</tbody>
-				</table>
-			</div>
-		{/if}
-	</div>
-
-	<!-- Right Panel: Analytics -->
-	<div class="analytics-panel">
-		<!-- Top Sources Card -->
-		<div class="card">
-			<h3 class="card-title">TOP SOURCES</h3>
-			<div class="top-sources">
-				{#each filteredSources.slice(0, 5) as [source, frequency], i}
-					{@const threat = getThreatLevel(frequency)}
-					<div class="top-source-item">
-						<span class="rank">#{i + 1}</span>
-						<div class="source-info">
-							<span class="source-name">{source.substring(0, 20).toUpperCase()}</span>
-							<div class="source-bar">
-								<div class="bar-fill" style="width: {(frequency/maxFreq)*100}%; background: {threat.color}"></div>
-							</div>
-						</div>
-						<span class="source-count" style="color: {threat.color}">{frequency}</span>
-					</div>
-				{/each}
-			</div>
+			{/if}
 		</div>
 
-		<!-- Distribution Chart -->
-		<div class="card">
-			<h3 class="card-title">DISTRIBUTION ANALYSIS</h3>
-			<div class="distribution-chart">
-				<svg viewBox="0 0 200 150" class="chart-svg">
-					{#each filteredSources.slice(0, 8) as [source, frequency], i}
-						{@const x = (i % 4) * 50 + 25}
-						{@const y = Math.floor(i / 4) * 50 + 25}
-						{@const size = (frequency / maxFreq) * 15 + 5}
+		<!-- Right Panel: Analytics -->
+		<div class="analytics-panel">
+			<!-- Top Sources Card -->
+			<div class="card">
+				<h3 class="card-title">TOP SOURCES</h3>
+				<div class="top-sources">
+					{#each filteredSources.slice(0, 5) as [source, frequency], i}
 						{@const threat = getThreatLevel(frequency)}
-						
-						<circle cx="{x}" cy="{y}" r="{size}" 
-								fill={threat.color} opacity="0.3"/>
-						<circle cx="{x}" cy="{y}" r="{size/2}" 
-								fill={threat.color} opacity="0.8"/>
-						<circle cx="{x}" cy="{y}" r="2" fill="#ffffff"/>
+						<div class="top-source-item">
+							<span class="rank">#{i + 1}</span>
+							<div class="source-info">
+								<span class="source-name">{source.substring(0, 20).toUpperCase()}</span>
+								<div class="source-bar">
+									<div class="bar-fill" style="width: {(frequency/maxFreq)*100}%; background: {threat.color}"></div>
+								</div>
+							</div>
+							<span class="source-count" style="color: {threat.color}">{frequency}</span>
+						</div>
 					{/each}
-				</svg>
+				</div>
 			</div>
-		</div>
 
-		<!-- Metrics Grid -->
-		<div class="metrics-grid">
-			<div class="metric-card">
-				<div class="metric-value">{filteredSources.length}</div>
-				<div class="metric-label">Total Sources</div>
+			<!-- Distribution Chart -->
+			<div class="card">
+				<h3 class="card-title">DISTRIBUTION ANALYSIS</h3>
+				<div class="distribution-chart">
+					<svg viewBox="0 0 200 150" class="chart-svg">
+						{#each filteredSources.slice(0, 8) as [source, frequency], i}
+							{@const x = (i % 4) * 50 + 25}
+							{@const y = Math.floor(i / 4) * 50 + 25}
+							{@const size = (frequency / maxFreq) * 15 + 5}
+							{@const threat = getThreatLevel(frequency)}
+							
+							<circle cx="{x}" cy="{y}" r="{size}" 
+									fill={threat.color} opacity="0.3"/>
+							<circle cx="{x}" cy="{y}" r="{size/2}" 
+									fill={threat.color} opacity="0.8"/>
+							<circle cx="{x}" cy="{y}" r="2" fill="#ffffff"/>
+						{/each}
+					</svg>
+				</div>
 			</div>
-			<div class="metric-card">
-				<div class="metric-value">{(data.total_mentions || 0).toLocaleString()}</div>
-				<div class="metric-label">Total Mentions</div>
+
+			<!-- Metrics Grid -->
+			<div class="metrics-grid">
+				<div class="metric-card">
+					<div class="metric-value">{filteredSources.length}</div>
+					<div class="metric-label">Total Sources</div>
+				</div>
+				<div class="metric-card">
+					<div class="metric-value">{(data.total_mentions || 0).toLocaleString()}</div>
+					<div class="metric-label">Total Mentions</div>
+				</div>
 			</div>
 		</div>
 	</div>
 </div>
 
 <style>
+	.dashboard-wrapper {
+		width: 100%;
+		height: 100%;
+		position: absolute;
+		top: 0;
+		left: 0;
+		padding: 0;
+		margin: 0;
+		overflow: hidden;
+	}
+
 	.dashboard-container {
-		height: calc(100vh - 80px);
+		height: 100%;
 		width: 100%;
 		display: grid;
 		grid-template-columns: 1fr 400px;
 		gap: 1.5rem;
-		padding: 0;
-		background: #000000;
+		padding: 1.5rem;
+		background: transparent;
 		overflow: hidden;
 	}
 
@@ -280,12 +293,14 @@
 		display: flex;
 		flex-direction: column;
 		overflow: hidden;
+		min-height: 0;
 	}
 
 	.panel-header {
 		padding: 1.5rem;
 		border-bottom: 1px solid rgba(255, 255, 255, 0.1);
 		background: rgba(0, 0, 0, 0.3);
+		flex-shrink: 0;
 	}
 
 	.header-top {
@@ -293,6 +308,8 @@
 		justify-content: space-between;
 		align-items: center;
 		margin-bottom: 1rem;
+		flex-wrap: wrap;
+		gap: 1rem;
 	}
 
 	.panel-title {
@@ -329,12 +346,14 @@
 		font-size: 1.25rem;
 		font-weight: 600;
 		color: #00E5FF;
+		line-height: 1;
 	}
 
 	.stat-label {
 		font-size: 0.7rem;
 		color: rgba(255, 255, 255, 0.5);
 		text-transform: uppercase;
+		line-height: 1;
 	}
 
 	/* Search Bar */
@@ -349,6 +368,7 @@
 		top: 50%;
 		transform: translateY(-50%);
 		color: rgba(255, 255, 255, 0.4);
+		pointer-events: none;
 	}
 
 	.search-input {
@@ -373,6 +393,7 @@
 		flex: 1;
 		overflow-y: auto;
 		overflow-x: hidden;
+		min-height: 0;
 	}
 
 	.data-table {
@@ -483,7 +504,8 @@
 		flex-direction: column;
 		gap: 1.5rem;
 		overflow-y: auto;
-		padding-right: 0.5rem;
+		overflow-x: hidden;
+		min-height: 0;
 	}
 
 	.card {
@@ -492,6 +514,7 @@
 		border: 1px solid rgba(255, 255, 255, 0.1);
 		border-radius: 16px;
 		padding: 1.5rem;
+		flex-shrink: 0;
 	}
 
 	.card-title {
@@ -529,11 +552,15 @@
 		display: flex;
 		flex-direction: column;
 		gap: 0.25rem;
+		min-width: 0;
 	}
 
 	.source-name {
 		font-size: 0.8rem;
 		color: rgba(255, 255, 255, 0.8);
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
 	}
 
 	.source-bar {
@@ -649,6 +676,7 @@
 		display: flex;
 		flex-direction: column;
 		overflow: hidden;
+		min-height: 0;
 	}
 
 	.detail-header {
@@ -658,6 +686,7 @@
 		padding: 1.5rem;
 		border-bottom: 1px solid rgba(0, 229, 255, 0.2);
 		background: rgba(0, 229, 255, 0.05);
+		flex-shrink: 0;
 	}
 
 	.detail-header h3 {
@@ -689,6 +718,7 @@
 		flex: 1;
 		overflow: auto;
 		padding: 1rem;
+		min-height: 0;
 	}
 
 	.detail-table {
@@ -704,6 +734,9 @@
 		font-size: 0.7rem;
 		font-weight: 600;
 		letter-spacing: 0.05em;
+		position: sticky;
+		top: 0;
+		z-index: 10;
 	}
 
 	.detail-table td {
@@ -715,6 +748,7 @@
 	.host-cell {
 		font-family: 'SF Mono', monospace;
 		color: #00E5FF;
+		word-break: break-all;
 	}
 
 	.badge {
@@ -743,10 +777,31 @@
 		border: 1px solid #FF1744;
 	}
 
+	/* Scrollbars */
+	::-webkit-scrollbar {
+		width: 8px;
+		height: 8px;
+	}
+
+	::-webkit-scrollbar-track {
+		background: rgba(0, 0, 0, 0.4);
+		border-radius: 4px;
+	}
+
+	::-webkit-scrollbar-thumb {
+		background: rgba(0, 229, 255, 0.3);
+		border-radius: 4px;
+	}
+
+	::-webkit-scrollbar-thumb:hover {
+		background: rgba(0, 229, 255, 0.5);
+	}
+
 	/* Responsive */
 	@media (max-width: 1400px) {
 		.dashboard-container {
 			grid-template-columns: 1fr;
+			grid-template-rows: 1fr auto;
 		}
 
 		.analytics-panel {
@@ -754,6 +809,7 @@
 			grid-template-columns: repeat(3, 1fr);
 			grid-template-rows: auto;
 			overflow: visible;
+			max-height: 300px;
 		}
 
 		.card:first-child {
@@ -762,8 +818,14 @@
 	}
 
 	@media (max-width: 768px) {
+		.dashboard-container {
+			padding: 1rem;
+			gap: 1rem;
+		}
+
 		.analytics-panel {
 			grid-template-columns: 1fr;
+			max-height: none;
 		}
 
 		.card:first-child {
@@ -772,8 +834,12 @@
 
 		.header-top {
 			flex-direction: column;
-			gap: 1rem;
 			align-items: flex-start;
+		}
+
+		.header-stats {
+			width: 100%;
+			justify-content: space-between;
 		}
 	}
 </style>
