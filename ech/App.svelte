@@ -25,10 +25,6 @@
 		currentView = moduleId;
 	}
 
-	function getCurrentModule() {
-		return modules.find(m => m.id === currentView) || modules[0];
-	}
-
 	// Update time every second
 	const interval = setInterval(() => {
 		time = new Date().toLocaleTimeString('en-US', { hour12: false });
@@ -147,6 +143,12 @@
 </main>
 
 <style>
+	:global(*) {
+		margin: 0;
+		padding: 0;
+		box-sizing: border-box;
+	}
+
 	:global(body) {
 		font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', 'Inter', sans-serif;
 		background: #000000;
@@ -156,6 +158,12 @@
 		padding: 0;
 		height: 100vh;
 		width: 100vw;
+		position: fixed;
+	}
+
+	:global(html) {
+		overflow: hidden;
+		height: 100%;
 	}
 
 	.command-interface {
@@ -164,11 +172,13 @@
 		display: flex;
 		flex-direction: column;
 		background: linear-gradient(135deg, #000000 0%, #0a0a14 100%);
-		position: relative;
+		position: fixed;
+		top: 0;
+		left: 0;
 		overflow: hidden;
 	}
 
-	/* Premium Header */
+	/* Premium Header - Fixed Height */
 	.premium-header {
 		background: rgba(0, 0, 0, 0.9);
 		backdrop-filter: blur(20px);
@@ -176,14 +186,16 @@
 		position: relative;
 		z-index: 100;
 		box-shadow: 0 4px 24px rgba(0, 0, 0, 0.8);
+		flex-shrink: 0;
+		height: 80px;
 	}
 
 	.header-container {
 		display: flex;
 		align-items: center;
 		justify-content: space-between;
-		padding: 1rem 2rem;
-		height: 80px;
+		padding: 0 2rem;
+		height: 100%;
 	}
 
 	/* Logo Section */
@@ -218,6 +230,7 @@
 		-webkit-text-fill-color: transparent;
 		background-clip: text;
 		letter-spacing: 0.1em;
+		line-height: 1;
 	}
 
 	.tagline {
@@ -225,6 +238,7 @@
 		color: rgba(255, 255, 255, 0.5);
 		letter-spacing: 0.2em;
 		font-weight: 500;
+		line-height: 1;
 	}
 
 	/* Navigation Section */
@@ -242,6 +256,7 @@
 		padding: 0.5rem;
 		border-radius: 16px;
 		border: 1px solid rgba(255, 255, 255, 0.1);
+		height: fit-content;
 	}
 
 	.nav-module {
@@ -259,15 +274,18 @@
 		align-items: center;
 		gap: 0.5rem;
 		letter-spacing: 0.05em;
+		white-space: nowrap;
 	}
 
 	.module-icon {
 		font-size: 1.1rem;
 		filter: saturate(1.5);
+		line-height: 1;
 	}
 
 	.module-name {
 		font-size: 0.75rem;
+		line-height: 1;
 	}
 
 	.nav-module:hover {
@@ -320,6 +338,7 @@
 		color: rgba(255, 255, 255, 0.4);
 		letter-spacing: 0.1em;
 		font-weight: 600;
+		line-height: 1;
 	}
 
 	.status-value {
@@ -327,6 +346,7 @@
 		color: rgba(255, 255, 255, 0.8);
 		font-weight: 500;
 		font-family: 'SF Mono', 'Monaco', monospace;
+		line-height: 1;
 	}
 
 	.status-value.online {
@@ -345,12 +365,13 @@
 		pointer-events: none;
 	}
 
-	/* Content Viewport */
+	/* Content Viewport - Fills remaining space */
 	.content-viewport {
 		flex: 1;
 		position: relative;
 		overflow: hidden;
 		background: radial-gradient(ellipse at center, rgba(0, 229, 255, 0.01) 0%, transparent 70%);
+		min-height: 0; /* Important for flex child */
 	}
 
 	.content-container {
@@ -358,6 +379,9 @@
 		height: 100%;
 		padding: 1.5rem;
 		overflow: hidden;
+		position: absolute;
+		top: 0;
+		left: 0;
 	}
 
 	/* Responsive Design */
@@ -376,9 +400,12 @@
 	}
 
 	@media (max-width: 768px) {
+		.premium-header {
+			height: 70px;
+		}
+
 		.header-container {
-			padding: 0.75rem 1rem;
-			height: 60px;
+			padding: 0 1rem;
 		}
 
 		.logo-text h1 {
@@ -393,8 +420,26 @@
 			gap: 1rem;
 		}
 
+		.nav-section {
+			padding: 0 0.5rem;
+		}
+
+		.nav-modules {
+			padding: 0.4rem;
+			gap: 0.2rem;
+		}
+
+		.nav-module {
+			padding: 0.6rem 0.8rem;
+		}
+
 		.content-container {
 			padding: 1rem;
 		}
+	}
+
+	/* Ensure scrollbars don't appear on body */
+	:global(body::-webkit-scrollbar) {
+		display: none;
 	}
 </style>
