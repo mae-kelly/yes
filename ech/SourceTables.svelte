@@ -1,4 +1,4 @@
-<!-- SourceTables.svelte - Matching Data Center Aesthetic -->
+<!-- SourceTables.svelte - Enhanced with Moving Graph -->
 <script>
 	import { onMount, onDestroy } from 'svelte';
 	
@@ -7,12 +7,11 @@
 	let selectedSource = null;
 	let sourceDetails = [];
 	let searchTerm = '';
-	let sortColumn = 'count';
-	let sortDirection = 'desc';
 	
 	// Animation states
 	let animationFrame = null;
 	let pulsePhase = 0;
+	let synapticActivity = [];
 	
 	onMount(async () => {
 		try {
@@ -27,6 +26,12 @@
 		// Start animations
 		const animate = () => {
 			pulsePhase = (pulsePhase + 0.02) % (Math.PI * 2);
+			
+			// Generate synaptic activity patterns
+			synapticActivity = Array(50).fill(0).map((_, i) => 
+				50 + Math.sin(Date.now() * 0.002 + i * 0.2) * 30 + Math.random() * 20
+			);
+			
 			animationFrame = requestAnimationFrame(animate);
 		};
 		animate();
@@ -39,14 +44,7 @@
 	$: sources = data.source_intelligence ? 
 		Object.entries(data.source_intelligence)
 			.filter(([source]) => source.toLowerCase().includes(searchTerm.toLowerCase()))
-			.sort((a, b) => {
-				if (sortColumn === 'name') {
-					return sortDirection === 'asc' ? 
-						a[0].localeCompare(b[0]) : 
-						b[0].localeCompare(a[0]);
-				}
-				return sortDirection === 'asc' ? a[1] - b[1] : b[1] - a[1];
-			}) : [];
+			.sort((a, b) => b[1] - a[1]) : [];
 	
 	$: totalHosts = sources.reduce((sum, [_, count]) => sum + count, 0);
 	$: maxHosts = sources.length > 0 ? Math.max(...sources.map(([,c]) => c)) : 1;
@@ -57,14 +55,8 @@
 	$: topSource = sources[0] || ['N/A', 0];
 	$: utilization = topSource[1] > 0 ? ((topSource[1] / totalHosts) * 100).toFixed(1) : 0;
 	
-	function handleSort(column) {
-		if (sortColumn === column) {
-			sortDirection = sortDirection === 'asc' ? 'desc' : 'asc';
-		} else {
-			sortColumn = column;
-			sortDirection = 'desc';
-		}
-	}
+	// Top performers
+	$: topFive = sources.slice(0, 5);
 	
 	async function selectSource(source, count) {
 		selectedSource = { source, count };
@@ -87,46 +79,69 @@
 	
 	function getSourceStatus(count) {
 		const percentage = (count / maxHosts) * 100;
-		if (percentage >= 75) return { level: 'CRITICAL', color: '#BD93F9', icon: '🔴' };
-		if (percentage >= 50) return { level: 'HIGH', color: '#8BE9FD', icon: '🟢' };
-		if (percentage >= 25) return { level: 'MODERATE', color: '#50FA7B', icon: '🟡' };
-		return { level: 'LOW', color: '#FFB86C', icon: '⚪' };
+		if (percentage >= 75) return { level: 'CRITICAL', color: '#BD93F9' };
+		if (percentage >= 50) return { level: 'HIGH', color: '#8BE9FD' };
+		if (percentage >= 25) return { level: 'MODERATE', color: '#50FA7B' };
+		return { level: 'LOW', color: '#FFB86C' };
+	}
+	
+	function getSourceType(count) {
+		if (count > 10000) return 'ENTERPRISE';
+		if (count > 5000) return 'LARGE';
+		if (count > 1000) return 'MEDIUM';
+		if (count > 100) return 'SMALL';
+		return 'MINIMAL';
 	}
 </script>
 
 <div class="source-interface">
 	<!-- Top Metrics -->
-	<div class="metrics-ribbon">
-		<div class="metric-box">
-			<div class="metric-label">SOURCE TABLES</div>
-			<div class="metric-value" style="color: #BD93F9">{sourceCount}</div>
-		</div>
-		<div class="metric-box">
-			<div class="metric-label">TOTAL HOSTS</div>
-			<div class="metric-value" style="color: #8BE9FD">{totalHosts.toLocaleString()}</div>
-		</div>
-		<div class="metric-box">
-			<div class="metric-label">TOP SOURCE</div>
-			<div class="metric-value" style="color: #50FA7B; font-size: 1.2rem">
-				{topSource[0].substring(0, 20).toUpperCase()}
+	<div class="metrics-header">
+		<div class="metric-card">
+			<div class="metric-icon">📊</div>
+			<div class="metric-content">
+				<div class="metric-value" style="color: #BD93F9">{sourceCount}</div>
+				<div class="metric-label">SOURCE TABLES</div>
 			</div>
 		</div>
-		<div class="metric-box">
-			<div class="metric-label">AVG HOSTS/TABLE</div>
-			<div class="metric-value" style="color: #FFB86C">{avgHosts.toLocaleString()}</div>
+		<div class="metric-card">
+			<div class="metric-icon">💻</div>
+			<div class="metric-content">
+				<div class="metric-value" style="color: #8BE9FD">{totalHosts.toLocaleString()}</div>
+				<div class="metric-label">TOTAL HOSTS</div>
+			</div>
 		</div>
-		<div class="metric-box">
-			<div class="metric-label">TOP UTILIZATION</div>
-			<div class="metric-value" style="color: #FF79C6">{utilization}%</div>
+		<div class="metric-card">
+			<div class="metric-icon">🎯</div>
+			<div class="metric-content">
+				<div class="metric-value" style="color: #50FA7B; font-size: 1.2rem">
+					{topSource[0].substring(0, 25).toUpperCase()}
+				</div>
+				<div class="metric-label">TOP SOURCE</div>
+			</div>
+		</div>
+		<div class="metric-card">
+			<div class="metric-icon">📈</div>
+			<div class="metric-content">
+				<div class="metric-value" style="color: #FFB86C">{utilization}%</div>
+				<div class="metric-label">TOP UTILIZATION</div>
+			</div>
+		</div>
+		<div class="metric-card">
+			<div class="metric-icon">⚖️</div>
+			<div class="metric-content">
+				<div class="metric-value" style="color: #FF79C6">{avgHosts.toLocaleString()}</div>
+				<div class="metric-label">AVG HOSTS/TABLE</div>
+			</div>
 		</div>
 	</div>
 	
 	<!-- Main Content -->
 	<div class="content-layout">
 		<!-- Left: Source Visualization -->
-		<div class="network-panel">
+		<div class="source-panel">
 			<div class="panel-header">
-				<h2>SOURCE TABLE TOPOLOGY</h2>
+				<h2>SOURCE TABLE ARCHITECTURE</h2>
 				<input type="text"
 					   bind:value={searchTerm}
 					   placeholder="Search sources..."
@@ -136,11 +151,12 @@
 			{#if loading && !selectedSource}
 				<div class="loading-state">
 					<div class="source-loader">
-						<div class="data-block block-1"></div>
-						<div class="data-block block-2"></div>
-						<div class="data-block block-3"></div>
+						<div class="data-node node-1"></div>
+						<div class="data-node node-2"></div>
+						<div class="data-node node-3"></div>
+						<div class="data-node node-4"></div>
 					</div>
-					<p>SCANNING SOURCE TABLES...</p>
+					<p>ANALYZING SOURCE TABLES...</p>
 				</div>
 			{:else if selectedSource}
 				<div class="detail-view">
@@ -150,20 +166,22 @@
 							<div class="source-stats">
 								<span>{selectedSource.count.toLocaleString()} HOSTS</span>
 								<span>•</span>
-								<span>{((selectedSource.count/totalHosts)*100).toFixed(2)}% OF TOTAL</span>
+								<span>{((selectedSource.count / totalHosts) * 100).toFixed(2)}% OF TOTAL</span>
+								<span>•</span>
+								<span>{getSourceType(selectedSource.count)} TABLE</span>
 							</div>
 						</div>
 						<button class="close-btn" on:click={closeDetails}>✕</button>
 					</div>
-					<div class="hosts-list">
+					<div class="hosts-container">
 						<table class="hosts-table">
 							<thead>
 								<tr>
 									<th>HOSTNAME</th>
 									<th>REGION</th>
 									<th>COUNTRY</th>
+									<th>DATA CENTER</th>
 									<th>TYPE</th>
-									<th>DIVISION</th>
 									<th>CMDB</th>
 									<th>TANIUM</th>
 								</tr>
@@ -174,15 +192,15 @@
 										<td class="hostname">{host.host}</td>
 										<td>{host.region || 'UNKNOWN'}</td>
 										<td>{host.country || 'UNKNOWN'}</td>
+										<td>{host.data_center || 'UNKNOWN'}</td>
 										<td>{host.infrastructure_type || 'UNKNOWN'}</td>
-										<td>{host.business_unit || 'UNKNOWN'}</td>
 										<td>
-											<span class="status-ind {host.present_in_cmdb?.toLowerCase().includes('yes') ? 'active' : 'inactive'}">
+											<span class="status-dot {host.present_in_cmdb?.toLowerCase().includes('yes') ? 'active' : 'inactive'}">
 												●
 											</span>
 										</td>
 										<td>
-											<span class="status-ind {host.tanium_coverage?.toLowerCase().includes('tanium') ? 'active' : 'inactive'}">
+											<span class="status-dot {host.tanium_coverage?.toLowerCase().includes('tanium') ? 'active' : 'inactive'}">
 												●
 											</span>
 										</td>
@@ -193,89 +211,156 @@
 					</div>
 				</div>
 			{:else}
-				<div class="network-visualization">
-					<!-- Source Grid -->
-					<div class="source-grid">
-						{#each sources.slice(0, 12) as [source, count], i}
-							{@const status = getSourceStatus(count)}
-							{@const percentage = (count / maxHosts) * 100}
-							<div class="source-node" on:click={() => selectSource(source, count)}>
-								<div class="source-icon">
-									<div class="data-stack">
-										<div class="data-light" style="background: {status.color}; 
-																	   opacity: {0.3 + Math.sin(pulsePhase + i) * 0.3}"></div>
-										<div class="data-light" style="background: {status.color}; 
-																	   opacity: {0.3 + Math.sin(pulsePhase + i + 1) * 0.3}"></div>
-										<div class="data-light" style="background: {status.color}; 
-																	   opacity: {0.3 + Math.sin(pulsePhase + i + 2) * 0.3}"></div>
-									</div>
-								</div>
-								<div class="source-name">{source.substring(0, 15).toUpperCase()}</div>
-								<div class="source-hosts">{count.toLocaleString()} HOSTS</div>
-								<div class="source-capacity">
-									<div class="capacity-bar">
-										<div class="capacity-fill" style="width: {percentage}%; background: {status.color}"></div>
-									</div>
-									<span class="capacity-text">{percentage.toFixed(0)}%</span>
-								</div>
+				<div class="source-visualization">
+					<!-- Tree Structure -->
+					<div class="tree-container">
+						<div class="tree-root">
+							<div class="root-node">
+								<div class="node-icon">🗄️</div>
+								<div class="node-label">SOURCE TABLES</div>
+								<div class="node-count">{totalHosts.toLocaleString()} HOSTS</div>
 							</div>
-						{/each}
+						</div>
+						<div class="tree-branches">
+							{#each topFive as [source, count], i}
+								{@const status = getSourceStatus(count)}
+								{@const percentage = ((count / totalHosts) * 100).toFixed(1)}
+								<div class="branch-container">
+									<div class="branch-line"></div>
+									<div class="source-node" 
+										 style="border-color: {status.color}"
+										 on:click={() => selectSource(source, count)}>
+										<div class="node-header" style="background: {status.color}20">
+											<span class="node-rank">#{i + 1}</span>
+										</div>
+										<div class="node-body">
+											<div class="node-name">{source.substring(0, 20).toUpperCase()}</div>
+											<div class="node-metrics">
+												<span class="node-hosts" style="color: {status.color}">
+													{count.toLocaleString()}
+												</span>
+												<span class="node-percent">{percentage}%</span>
+											</div>
+											<div class="node-bar">
+												<div class="bar-fill" style="width: {percentage}%; background: {status.color}"></div>
+											</div>
+										</div>
+									</div>
+								</div>
+							{/each}
+						</div>
+					</div>
+					
+					<!-- Bubble Chart -->
+					<div class="bubble-chart">
+						<svg viewBox="0 0 400 300">
+							{#each sources.slice(0, 15) as [source, count], i}
+								{@const radius = Math.sqrt(count / maxHosts) * 40}
+								{@const x = 50 + (i % 5) * 75}
+								{@const y = 50 + Math.floor(i / 5) * 80}
+								{@const status = getSourceStatus(count)}
+								
+								<g class="bubble-group" on:click={() => selectSource(source, count)}>
+									<circle cx="{x}" cy="{y}" r="{radius}" 
+											fill="{status.color}" opacity="0.3"/>
+									<circle cx="{x}" cy="{y}" r="{radius * 0.7}" 
+											fill="{status.color}" opacity="0.6"/>
+									<text x="{x}" y="{y}" text-anchor="middle" 
+										  fill="#FFFFFF" font-size="9" font-weight="600">
+										{count.toLocaleString()}
+									</text>
+								</g>
+							{/each}
+						</svg>
+					</div>
+					
+					<!-- Synaptic Activity Graph -->
+					<div class="synaptic-activity">
+						<svg viewBox="0 0 200 50">
+							<polyline points="{synapticActivity.map((val, i) => `${i * 4},${50 - val * 0.5}`).join(' ')}"
+									  fill="none" 
+									  stroke="#8BE9FD" 
+									  stroke-width="1"
+									  opacity="0.8"/>
+						</svg>
+						<div class="activity-label">DATA FLOW ACTIVITY</div>
 					</div>
 				</div>
 			{/if}
 		</div>
 		
-		<!-- Middle: Charts -->
-		<div class="charts-section">
+		<!-- Middle: Analytics -->
+		<div class="analytics-panel">
 			<!-- Distribution Chart -->
-			<div class="chart-panel">
-				<h3>TABLE SIZE DISTRIBUTION</h3>
-				<div class="distribution-chart">
-					{#each sources.slice(0, 8) as [source, count], i}
+			<div class="chart-box">
+				<h3>HOST DISTRIBUTION BY SOURCE</h3>
+				<div class="distribution-bars">
+					{#each topFive as [source, count], i}
 						{@const percentage = (count / maxHosts) * 100}
 						{@const status = getSourceStatus(count)}
-						<div class="dist-item">
-							<div class="dist-label">{source.substring(0, 10).toUpperCase()}</div>
-							<div class="dist-gauge">
-								<svg viewBox="0 0 100 100">
-									<circle cx="50" cy="50" r="35" fill="none" 
-											stroke="rgba(255,255,255,0.1)" stroke-width="8"/>
-									<circle cx="50" cy="50" r="35" fill="none"
-											stroke="{status.color}" stroke-width="8"
-											stroke-dasharray="{percentage * 2.2} 220"
-											stroke-linecap="round"
-											transform="rotate(-90 50 50)"/>
-									<text x="50" y="50" text-anchor="middle" dy="5"
-										  fill="{status.color}" font-size="16" font-weight="600">
-										{percentage.toFixed(0)}%
-									</text>
-								</svg>
+						<div class="dist-item" on:click={() => selectSource(source, count)}>
+							<div class="dist-rank">#{i + 1}</div>
+							<div class="dist-name">{source.substring(0, 12).toUpperCase()}</div>
+							<div class="dist-bar">
+								<div class="dist-fill" 
+									 style="width: {percentage}%; 
+											background: linear-gradient(90deg, {status.color}40, {status.color})">
+									<span class="dist-value">{count.toLocaleString()}</span>
+								</div>
 							</div>
-							<div class="dist-hosts">{count}</div>
+							<div class="dist-percent">{((count/totalHosts)*100).toFixed(1)}%</div>
 						</div>
 					{/each}
 				</div>
 			</div>
 			
-			<!-- Load Distribution -->
-			<div class="chart-panel">
-				<h3>HOST DISTRIBUTION</h3>
-				<div class="load-bars">
-					{#each sources.slice(0, 10) as [source, count], i}
-						{@const percentage = (count / maxHosts) * 100}
-						{@const status = getSourceStatus(count)}
-						<div class="load-bar-item" on:click={() => selectSource(source, count)}>
-							<div class="load-label">{source.substring(0, 8).toUpperCase()}</div>
-							<div class="load-track">
-								<div class="load-fill" 
-									 style="width: {percentage}%; 
-											background: linear-gradient(90deg, {status.color}40, {status.color})">
-									<span class="load-value">{count}</span>
+			<!-- Size Distribution -->
+			<div class="chart-box">
+				<h3>TABLE SIZE DISTRIBUTION</h3>
+				<div class="size-chart">
+					{@const sizeGroups = sources.reduce((acc, [src, count]) => {
+						const size = getSourceType(count);
+						acc[size] = (acc[size] || 0) + 1;
+						return acc;
+					}, {})}
+					{#each Object.entries(sizeGroups) as [size, count], i}
+						{@const colors = ['#BD93F9', '#8BE9FD', '#50FA7B', '#FFB86C', '#FF79C6']}
+						<div class="size-item">
+							<div class="size-label">{size}</div>
+							<div class="size-count" style="color: {colors[i % 5]}">{count}</div>
+							<div class="size-bar">
+								<div class="size-fill" 
+									 style="height: {(count / sourceCount) * 100}%; 
+											background: {colors[i % 5]}">
 								</div>
 							</div>
-							<div class="load-icon">{status.icon}</div>
 						</div>
 					{/each}
+				</div>
+			</div>
+			
+			<!-- Coverage Stats -->
+			<div class="chart-box">
+				<h3>COVERAGE STATISTICS</h3>
+				<div class="coverage-stats">
+					<div class="coverage-item">
+						<span class="coverage-label">Tables with >1000 hosts</span>
+						<span class="coverage-value" style="color: #BD93F9">
+							{sources.filter(([_, c]) => c > 1000).length}
+						</span>
+					</div>
+					<div class="coverage-item">
+						<span class="coverage-label">Tables with >5000 hosts</span>
+						<span class="coverage-value" style="color: #8BE9FD">
+							{sources.filter(([_, c]) => c > 5000).length}
+						</span>
+					</div>
+					<div class="coverage-item">
+						<span class="coverage-label">Tables with >10000 hosts</span>
+						<span class="coverage-value" style="color: #50FA7B">
+							{sources.filter(([_, c]) => c > 10000).length}
+						</span>
+					</div>
 				</div>
 			</div>
 		</div>
@@ -284,49 +369,39 @@
 		<div class="list-panel">
 			<div class="panel-header">
 				<h3>ALL SOURCES</h3>
-				<span class="source-count">{sources.length} ACTIVE</span>
+				<span class="source-count">{sources.length} TOTAL</span>
 			</div>
 			<div class="source-list">
 				<table class="sources-table">
 					<thead>
 						<tr>
 							<th>#</th>
-							<th class="sortable" on:click={() => handleSort('name')}>
-								SOURCE
-								{#if sortColumn === 'name'}
-									<span class="sort-icon">{sortDirection === 'asc' ? '↑' : '↓'}</span>
-								{/if}
-							</th>
-							<th class="sortable" on:click={() => handleSort('count')}>
-								HOSTS
-								{#if sortColumn === 'count'}
-									<span class="sort-icon">{sortDirection === 'asc' ? '↑' : '↓'}</span>
-								{/if}
-							</th>
-							<th>LOAD</th>
+							<th>SOURCE</th>
+							<th>HOSTS</th>
+							<th>SIZE</th>
 							<th>STATUS</th>
 						</tr>
 					</thead>
 					<tbody>
 						{#each sources as [source, count], i}
 							{@const status = getSourceStatus(count)}
-							{@const percentage = (count / maxHosts) * 100}
+							{@const size = getSourceType(count)}
 							<tr on:click={() => selectSource(source, count)}>
 								<td class="rank">{i + 1}</td>
-								<td class="table-name">
-									<span class="status-dot" style="color: {status.color}">●</span>
-									{source.substring(0, 20).toUpperCase()}
+								<td class="source-name">
+									<span class="status-indicator" style="background: {status.color}"></span>
+									{source.substring(0, 25).toUpperCase()}
 								</td>
 								<td class="host-count" style="color: {status.color}">
 									{count.toLocaleString()}
 								</td>
 								<td>
-									<div class="mini-bar">
-										<div class="mini-fill" style="width: {percentage}%; background: {status.color}"></div>
-									</div>
+									<span class="size-badge" style="color: {status.color}">
+										{size}
+									</span>
 								</td>
 								<td>
-									<span class="status-label" style="color: {status.color}">
+									<span class="status-badge" style="color: {status.color}; border-color: {status.color}">
 										{status.level}
 									</span>
 								</td>
@@ -351,25 +426,36 @@
 		overflow: hidden;
 	}
 	
-	/* Metrics Ribbon */
-	.metrics-ribbon {
+	/* Metrics Header */
+	.metrics-header {
 		display: flex;
 		gap: 1rem;
+	}
+	
+	.metric-card {
+		flex: 1;
 		background: rgba(255, 255, 255, 0.02);
 		border: 1px solid rgba(139, 233, 253, 0.1);
 		border-radius: 10px;
 		padding: 1rem;
+		display: flex;
+		gap: 1rem;
+		align-items: center;
 	}
 	
-	.metric-box {
+	.metric-icon {
+		font-size: 2rem;
+	}
+	
+	.metric-content {
 		flex: 1;
-		text-align: center;
-		padding: 0 1rem;
-		border-right: 1px solid rgba(255, 255, 255, 0.1);
 	}
 	
-	.metric-box:last-child {
-		border-right: none;
+	.metric-value {
+		font-size: 1.5rem;
+		font-weight: 700;
+		font-family: 'Courier New', monospace;
+		margin-bottom: 0.25rem;
 	}
 	
 	.metric-label {
@@ -377,26 +463,19 @@
 		color: rgba(255, 255, 255, 0.5);
 		letter-spacing: 0.1em;
 		font-weight: 600;
-		margin-bottom: 0.5rem;
-	}
-	
-	.metric-value {
-		font-size: 1.8rem;
-		font-weight: 700;
-		font-family: 'Courier New', monospace;
 	}
 	
 	/* Content Layout */
 	.content-layout {
 		flex: 1;
 		display: grid;
-		grid-template-columns: 1fr 380px 300px;
+		grid-template-columns: 1fr 380px 320px;
 		gap: 1rem;
 		min-height: 0;
 	}
 	
-	/* Network Panel */
-	.network-panel {
+	/* Source Panel */
+	.source-panel {
 		background: rgba(255, 255, 255, 0.02);
 		border: 1px solid rgba(189, 147, 249, 0.1);
 		border-radius: 12px;
@@ -437,113 +516,194 @@
 		border-color: #8BE9FD;
 	}
 	
-	.network-visualization {
+	.source-visualization {
 		flex: 1;
+		display: flex;
+		flex-direction: column;
+		gap: 1rem;
 		position: relative;
 	}
 	
-	.source-grid {
-		display: grid;
-		grid-template-columns: repeat(4, 1fr);
-		grid-template-rows: repeat(3, 1fr);
-		gap: 1rem;
-		height: 100%;
+	/* Tree Container */
+	.tree-container {
+		flex: 1;
+	}
+	
+	.tree-root {
+		display: flex;
+		justify-content: center;
+		margin-bottom: 2rem;
+	}
+	
+	.root-node {
+		background: rgba(189, 147, 249, 0.1);
+		border: 2px solid #BD93F9;
+		border-radius: 10px;
+		padding: 1rem 2rem;
+		text-align: center;
+	}
+	
+	.node-icon {
+		font-size: 2rem;
+		margin-bottom: 0.5rem;
+	}
+	
+	.node-label {
+		font-size: 0.8rem;
+		color: #BD93F9;
+		font-weight: 600;
+		letter-spacing: 0.1em;
+	}
+	
+	.node-count {
+		font-size: 1rem;
+		color: #FFFFFF;
+		font-weight: 700;
+		margin-top: 0.25rem;
+	}
+	
+	.tree-branches {
+		display: flex;
+		justify-content: space-around;
 		position: relative;
-		z-index: 2;
+	}
+	
+	.branch-container {
+		position: relative;
+		flex: 1;
+		max-width: 150px;
+	}
+	
+	.branch-line {
+		position: absolute;
+		top: -2rem;
+		left: 50%;
+		width: 1px;
+		height: 2rem;
+		background: rgba(139, 233, 253, 0.3);
 	}
 	
 	.source-node {
 		background: rgba(0, 0, 0, 0.5);
-		border: 1px solid rgba(139, 233, 253, 0.2);
+		border: 1px solid;
 		border-radius: 8px;
-		padding: 1rem;
 		cursor: pointer;
 		transition: all 0.3s ease;
-		display: flex;
-		flex-direction: column;
-		align-items: center;
-		gap: 0.5rem;
+		overflow: hidden;
 	}
 	
 	.source-node:hover {
-		background: rgba(139, 233, 253, 0.05);
-		border-color: #8BE9FD;
 		transform: scale(1.05);
-		z-index: 10;
+		background: rgba(139, 233, 253, 0.05);
 	}
 	
-	.source-icon {
-		width: 40px;
-		height: 40px;
-		display: flex;
-		align-items: center;
-		justify-content: center;
-	}
-	
-	.data-stack {
-		display: flex;
-		flex-direction: column;
-		gap: 3px;
-		width: 30px;
-		background: rgba(255, 255, 255, 0.1);
-		padding: 5px;
-		border-radius: 4px;
-	}
-	
-	.data-light {
-		width: 100%;
-		height: 4px;
-		border-radius: 1px;
-	}
-	
-	.source-name {
-		font-size: 0.7rem;
-		color: rgba(255, 255, 255, 0.9);
+	.node-header {
+		padding: 0.3rem;
 		text-align: center;
+		font-size: 0.7rem;
 		font-weight: 600;
 	}
 	
-	.source-hosts {
-		font-size: 0.8rem;
-		color: #8BE9FD;
-		font-family: 'Courier New', monospace;
-		font-weight: 600;
+	.node-rank {
+		color: #FFFFFF;
 	}
 	
-	.source-capacity {
-		width: 100%;
+	.node-body {
+		padding: 0.5rem;
+	}
+	
+	.node-name {
+		font-size: 0.65rem;
+		color: rgba(255, 255, 255, 0.9);
+		margin-bottom: 0.3rem;
+		text-align: center;
+	}
+	
+	.node-metrics {
 		display: flex;
-		align-items: center;
-		gap: 0.5rem;
+		justify-content: space-between;
+		margin-bottom: 0.3rem;
+		font-size: 0.7rem;
 	}
 	
-	.capacity-bar {
-		flex: 1;
-		height: 4px;
+	.node-hosts {
+		font-weight: 700;
+		font-family: 'Courier New', monospace;
+	}
+	
+	.node-percent {
+		color: rgba(255, 255, 255, 0.6);
+	}
+	
+	.node-bar {
+		height: 3px;
 		background: rgba(255, 255, 255, 0.1);
 		border-radius: 2px;
 		overflow: hidden;
 	}
 	
-	.capacity-fill {
+	.bar-fill {
 		height: 100%;
 		transition: width 0.5s ease;
 	}
 	
-	.capacity-text {
-		font-size: 0.65rem;
-		color: rgba(255, 255, 255, 0.6);
-		min-width: 30px;
+	/* Bubble Chart */
+	.bubble-chart {
+		height: 180px;
+		background: rgba(0, 0, 0, 0.3);
+		border-radius: 8px;
+		padding: 0.5rem;
 	}
 	
-	/* Charts Section */
-	.charts-section {
+	.bubble-chart svg {
+		width: 100%;
+		height: 100%;
+	}
+	
+	.bubble-group {
+		cursor: pointer;
+		transition: all 0.3s ease;
+	}
+	
+	.bubble-group:hover {
+		transform: scale(1.1);
+	}
+	
+	/* Synaptic Activity */
+	.synaptic-activity {
+		position: absolute;
+		bottom: 20px;
+		left: 20px;
+		right: 20px;
+		height: 60px;
+		background: rgba(0, 0, 0, 0.8);
+		border: 1px solid rgba(139, 233, 253, 0.3);
+		padding: 5px;
+		border-radius: 10px;
+	}
+	
+	.synaptic-activity svg {
+		width: 100%;
+		height: 100%;
+	}
+	
+	.activity-label {
+		position: absolute;
+		top: 5px;
+		left: 10px;
+		font-size: 0.6rem;
+		color: rgba(255, 255, 255, 0.5);
+		letter-spacing: 0.1em;
+	}
+	
+	/* Analytics Panel */
+	.analytics-panel {
 		display: flex;
 		flex-direction: column;
 		gap: 1rem;
 	}
 	
-	.chart-panel {
+	.chart-box {
 		flex: 1;
 		background: rgba(255, 255, 255, 0.02);
 		border: 1px solid rgba(139, 233, 253, 0.1);
@@ -553,7 +713,7 @@
 		flex-direction: column;
 	}
 	
-	.chart-panel h3 {
+	.chart-box h3 {
 		margin: 0 0 1rem 0;
 		font-size: 0.75rem;
 		color: #8BE9FD;
@@ -561,77 +721,45 @@
 		letter-spacing: 0.1em;
 	}
 	
-	.distribution-chart {
-		display: grid;
-		grid-template-columns: repeat(4, 1fr);
-		grid-template-rows: repeat(2, 1fr);
-		gap: 0.5rem;
+	.distribution-bars {
 		flex: 1;
+		display: flex;
+		flex-direction: column;
+		gap: 0.5rem;
 	}
 	
 	.dist-item {
-		display: flex;
-		flex-direction: column;
-		align-items: center;
-		gap: 0.25rem;
-	}
-	
-	.dist-label {
-		font-size: 0.6rem;
-		color: rgba(255, 255, 255, 0.6);
-		text-align: center;
-	}
-	
-	.dist-gauge {
-		width: 60px;
-		height: 60px;
-	}
-	
-	.dist-gauge svg {
-		width: 100%;
-		height: 100%;
-	}
-	
-	.dist-hosts {
-		font-size: 0.65rem;
-		color: rgba(255, 255, 255, 0.7);
-		font-family: 'Courier New', monospace;
-	}
-	
-	.load-bars {
-		flex: 1;
-		display: flex;
-		flex-direction: column;
-		gap: 0.4rem;
-	}
-	
-	.load-bar-item {
 		display: grid;
-		grid-template-columns: 60px 1fr 20px;
+		grid-template-columns: 25px 100px 1fr 45px;
 		gap: 0.5rem;
 		align-items: center;
 		cursor: pointer;
 		transition: all 0.2s ease;
 	}
 	
-	.load-bar-item:hover {
+	.dist-item:hover {
 		transform: translateX(2px);
 	}
 	
-	.load-label {
-		font-size: 0.6rem;
-		color: rgba(255, 255, 255, 0.7);
-		text-align: right;
+	.dist-rank {
+		font-size: 0.65rem;
+		color: #BD93F9;
+		font-weight: 600;
 	}
 	
-	.load-track {
-		height: 16px;
+	.dist-name {
+		font-size: 0.65rem;
+		color: rgba(255, 255, 255, 0.8);
+	}
+	
+	.dist-bar {
+		height: 18px;
 		background: rgba(255, 255, 255, 0.05);
 		border-radius: 4px;
 		overflow: hidden;
 	}
 	
-	.load-fill {
+	.dist-fill {
 		height: 100%;
 		display: flex;
 		align-items: center;
@@ -640,15 +768,86 @@
 		transition: width 0.5s ease;
 	}
 	
-	.load-value {
+	.dist-value {
 		font-size: 0.6rem;
 		color: #FFFFFF;
 		font-weight: 600;
 	}
 	
-	.load-icon {
-		font-size: 0.8rem;
+	.dist-percent {
+		font-size: 0.65rem;
+		color: rgba(255, 255, 255, 0.5);
+		text-align: right;
+	}
+	
+	/* Size Chart */
+	.size-chart {
+		display: flex;
+		align-items: flex-end;
+		justify-content: space-around;
+		height: 100px;
+	}
+	
+	.size-item {
+		flex: 1;
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		gap: 0.3rem;
+	}
+	
+	.size-label {
+		font-size: 0.6rem;
+		color: rgba(255, 255, 255, 0.6);
+		writing-mode: vertical-lr;
 		text-align: center;
+	}
+	
+	.size-count {
+		font-size: 0.9rem;
+		font-weight: 700;
+	}
+	
+	.size-bar {
+		width: 30px;
+		height: 60px;
+		background: rgba(255, 255, 255, 0.05);
+		border-radius: 4px 4px 0 0;
+		display: flex;
+		align-items: flex-end;
+	}
+	
+	.size-fill {
+		width: 100%;
+		border-radius: 4px 4px 0 0;
+		transition: height 0.5s ease;
+	}
+	
+	/* Coverage Stats */
+	.coverage-stats {
+		display: flex;
+		flex-direction: column;
+		gap: 0.75rem;
+	}
+	
+	.coverage-item {
+		display: flex;
+		justify-content: space-between;
+		align-items: center;
+		padding: 0.5rem;
+		background: rgba(0, 0, 0, 0.3);
+		border-radius: 6px;
+	}
+	
+	.coverage-label {
+		font-size: 0.7rem;
+		color: rgba(255, 255, 255, 0.7);
+	}
+	
+	.coverage-value {
+		font-size: 1rem;
+		font-weight: 700;
+		font-family: 'Courier New', monospace;
 	}
 	
 	/* List Panel */
@@ -693,20 +892,6 @@
 		border-bottom: 1px solid rgba(255, 255, 255, 0.1);
 	}
 	
-	.sources-table th.sortable {
-		cursor: pointer;
-		transition: color 0.2s;
-	}
-	
-	.sources-table th.sortable:hover {
-		color: #8BE9FD;
-	}
-	
-	.sort-icon {
-		color: #8BE9FD;
-		margin-left: 0.25rem;
-	}
-	
 	.sources-table tbody tr {
 		cursor: pointer;
 		transition: all 0.2s ease;
@@ -729,15 +914,18 @@
 		font-size: 0.65rem;
 	}
 	
-	.table-name {
+	.source-name {
 		display: flex;
 		align-items: center;
-		gap: 0.3rem;
+		gap: 0.4rem;
 		font-size: 0.65rem;
 	}
 	
-	.status-dot {
-		font-size: 0.8rem;
+	.status-indicator {
+		width: 6px;
+		height: 6px;
+		border-radius: 50%;
+		flex-shrink: 0;
 	}
 	
 	.host-count {
@@ -745,21 +933,17 @@
 		font-weight: 600;
 	}
 	
-	.mini-bar {
-		width: 50px;
-		height: 4px;
-		background: rgba(255, 255, 255, 0.1);
-		border-radius: 2px;
-		overflow: hidden;
-	}
-	
-	.mini-fill {
-		height: 100%;
-		transition: width 0.5s ease;
-	}
-	
-	.status-label {
+	.size-badge {
 		font-size: 0.6rem;
+		font-weight: 600;
+		letter-spacing: 0.05em;
+	}
+	
+	.status-badge {
+		font-size: 0.6rem;
+		padding: 0.15rem 0.3rem;
+		border: 1px solid;
+		border-radius: 4px;
 		font-weight: 600;
 		letter-spacing: 0.03em;
 	}
@@ -811,7 +995,7 @@
 		border-color: #BD93F9;
 	}
 	
-	.hosts-list {
+	.hosts-container {
 		flex: 1;
 		overflow-y: auto;
 		background: rgba(0, 0, 0, 0.3);
@@ -853,15 +1037,15 @@
 		font-size: 0.6rem;
 	}
 	
-	.status-ind {
+	.status-dot {
 		font-size: 0.8rem;
 	}
 	
-	.status-ind.active {
+	.status-dot.active {
 		color: #50FA7B;
 	}
 	
-	.status-ind.inactive {
+	.status-dot.inactive {
 		color: #FF5555;
 	}
 	
@@ -876,36 +1060,46 @@
 	}
 	
 	.source-loader {
-		display: flex;
-		gap: 1rem;
-		align-items: flex-end;
+		position: relative;
+		width: 100px;
+		height: 100px;
 	}
 	
-	.data-block {
-		width: 30px;
-		background: linear-gradient(180deg, #BD93F9, #8BE9FD);
-		border-radius: 4px;
-		animation: blockPulse 1.5s ease-in-out infinite;
+	.data-node {
+		position: absolute;
+		width: 20px;
+		height: 20px;
+		background: linear-gradient(135deg, #BD93F9, #8BE9FD);
+		border-radius: 50%;
+		animation: nodeFloat 2s ease-in-out infinite;
 	}
 	
-	.block-1 {
-		height: 60px;
-		animation-delay: 0s;
+	.node-1 {
+		top: 0;
+		left: 40px;
 	}
 	
-	.block-2 {
-		height: 80px;
-		animation-delay: 0.3s;
+	.node-2 {
+		top: 30px;
+		left: 10px;
+		animation-delay: 0.5s;
 	}
 	
-	.block-3 {
-		height: 50px;
-		animation-delay: 0.6s;
+	.node-3 {
+		top: 30px;
+		left: 70px;
+		animation-delay: 1s;
 	}
 	
-	@keyframes blockPulse {
-		0%, 100% { opacity: 0.3; transform: scaleY(0.9); }
-		50% { opacity: 1; transform: scaleY(1); }
+	.node-4 {
+		top: 70px;
+		left: 40px;
+		animation-delay: 1.5s;
+	}
+	
+	@keyframes nodeFloat {
+		0%, 100% { transform: scale(1); opacity: 0.5; }
+		50% { transform: scale(1.2); opacity: 1; }
 	}
 	
 	.loading-state p {
@@ -926,9 +1120,5 @@
 	::-webkit-scrollbar-thumb {
 		background: rgba(189, 147, 249, 0.3);
 		border-radius: 3px;
-	}
-	
-	::-webkit-scrollbar-thumb:hover {
-		background: rgba(189, 147, 249, 0.5);
 	}
 </style>
