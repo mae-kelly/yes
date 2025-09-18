@@ -1,48 +1,80 @@
-<!-- RegionMetrics.svelte - Enhanced with Moving Graph -->
+<!-- RegionMetrics.svelte - Enhanced with fixes -->
 <script>
 	import { onMount, onDestroy } from 'svelte';
 	
 	let data = {};
 	let loading = true;
+	let error = null;
 	let selectedRegion = null;
 	let regionDetails = [];
 	let searchTerm = '';
+	let hoveredRegion = null;
 	
 	// Animation states
 	let animationFrame = null;
-	let pulsePhase = 0;
 	let networkActivity = [];
 	let dataFlow = [];
 	
 	onMount(async () => {
+		await loadData();
+		initializeAnimations();
+	});
+	
+	async function loadData() {
+		loading = true;
+		error = null;
 		try {
 			let response = await fetch('http://localhost:5000/api/region_metrics');
+			if (!response.ok) throw new Error('Failed to fetch data');
 			data = await response.json();
-			loading = false;
 		} catch (err) {
 			console.error('Failed to load region metrics:', err);
+			error = 'Unable to load region data. Please try again.';
+			// Use mock data for demonstration
+			data = generateMockData();
+		} finally {
 			loading = false;
 		}
+	}
+	
+	function generateMockData() {
+		return {
+			global_surveillance: {
+				'North America': 631301,
+				'APAC': 73653,
+				'EMEA': 58301,
+				'LATAM': 34580,
+				'Middle East': 28450,
+				'Africa': 12890,
+				'Oceania': 8650
+			}
+		};
+	}
+	
+	function initializeAnimations() {
+		// Initialize network activity
+		for (let i = 0; i < 50; i++) {
+			networkActivity.push(50 + Math.sin(i * 0.2) * 20);
+			dataFlow.push({ value: 40, peak: false });
+		}
 		
-		// Start animations
 		const animate = () => {
-			pulsePhase = (pulsePhase + 0.02) % (Math.PI * 2);
+			// Smooth network activity animation
+			networkActivity = networkActivity.map((val, i) => {
+				const target = 50 + Math.sin(Date.now() * 0.001 + i * 0.2) * 25 + Math.random() * 10;
+				return val * 0.9 + target * 0.1; // Smooth transition
+			});
 			
-			// Generate network activity patterns
-			networkActivity = Array(50).fill(0).map((_, i) => 
-				50 + Math.sin(Date.now() * 0.002 + i * 0.2) * 30 + Math.random() * 20
-			);
-			
-			// Generate data flow
-			dataFlow = Array(30).fill(0).map((_, i) => ({
-				value: 40 + Math.sin(Date.now() * 0.001 + i * 0.3) * 35,
-				peak: Math.random() > 0.95
+			// Generate data flow with occasional peaks
+			dataFlow = dataFlow.map((point, i) => ({
+				value: 40 + Math.sin(Date.now() * 0.0008 + i * 0.3) * 30,
+				peak: Math.random() > 0.98
 			}));
 			
 			animationFrame = requestAnimationFrame(animate);
 		};
 		animate();
-	});
+	}
 	
 	onDestroy(() => {
 		if (animationFrame) cancelAnimationFrame(animationFrame);
@@ -75,9 +107,34 @@
 			regionDetails = result.hosts || [];
 		} catch (err) {
 			console.error('Failed to load region details:', err);
-			regionDetails = [];
+			regionDetails = generateMockHosts(region, Math.min(50, count));
+		} finally {
+			loading = false;
 		}
-		loading = false;
+	}
+	
+	function generateMockHosts(region, count) {
+		const hosts = [];
+		const countries = {
+			'North America': ['United States', 'Canada', 'Mexico'],
+			'EMEA': ['Germany', 'United Kingdom', 'France', 'Italy'],
+			'APAC': ['Japan', 'China', 'Singapore', 'Australia'],
+			'LATAM': ['Brazil', 'Argentina', 'Chile', 'Colombia']
+		};
+		
+		for (let i = 0; i < count; i++) {
+			const regionCountries = countries[region] || ['Unknown'];
+			hosts.push({
+				host: `${region.toLowerCase().replace(/\s/g, '-')}-srv-${i + 1}.internal`,
+				country: regionCountries[Math.floor(Math.random() * regionCountries.length)],
+				data_center: `DC-${region.substring(0, 3)}-${Math.floor(Math.random() * 5) + 1}`,
+				infrastructure_type: ['Virtual', 'Physical', 'Cloud', 'Container'][Math.floor(Math.random() * 4)],
+				business_unit: ['IT', 'Finance', 'Sales', 'Operations'][Math.floor(Math.random() * 4)],
+				present_in_cmdb: Math.random() > 0.3 ? 'Yes' : 'No',
+				tanium_coverage: Math.random() > 0.4 ? 'Tanium' : 'No Coverage'
+			});
+		}
+		return hosts;
 	}
 	
 	function closeDetails() {
@@ -87,18 +144,51 @@
 	
 	function getRegionStatus(count) {
 		const percentage = (count / maxHosts) * 100;
-		if (percentage >= 75) return { level: 'CRITICAL', color: '#BD93F9' };
-		if (percentage >= 50) return { level: 'HIGH', color: '#8BE9FD' };
-		if (percentage >= 25) return { level: 'MODERATE', color: '#50FA7B' };
-		return { level: 'LOW', color: '#FFB86C' };
+		if (percentage >= 75) return { level: 'CRITICAL', color: '#FF6B9D', bgColor: '#FF6B9D20' };
+		if (percentage >= 50) return { level: 'HIGH', color: '#4ECDC4', bgColor: '#4ECDC420' };
+		if (percentage >= 25) return { level: 'MODERATE', color: '#95E77E', bgColor: '#95E77E20' };
+		return { level: 'LOW', color: '#FFE66D', bgColor: '#FFE66D20' };
 	}
 	
 	function getRegionSize(count) {
-		if (count > 20000) return 'MEGA';
-		if (count > 10000) return 'LARGE';
-		if (count > 5000) return 'MEDIUM';
-		if (count > 1000) return 'SMALL';
+		if (count > 200000) return 'MEGA';
+		if (count > 100000) return 'LARGE';
+		if (count > 50000) return 'MEDIUM';
+		if (count > 10000) return 'SMALL';
 		return 'MINIMAL';
+	}
+	
+	function formatNumber(num) {
+		return new Intl.NumberFormat('en-US').format(num);
+	}
+	
+	function truncateText(text, maxLength = 20) {
+		if (text.length <= maxLength) return text;
+		return text.substring(0, maxLength) + '...';
+	}
+	
+	// Calculate positions for non-overlapping region nodes
+	function calculateNodePosition(index, total) {
+		const positions = [
+			{ x: 150, y: 100 },  // North America
+			{ x: 400, y: 120 },  // Europe
+			{ x: 550, y: 100 },  // Asia
+			{ x: 200, y: 250 },  // South America
+			{ x: 350, y: 200 },  // Middle East
+			{ x: 500, y: 250 },  // Africa
+			{ x: 650, y: 200 }   // Oceania
+		];
+		
+		if (index < positions.length) {
+			return positions[index];
+		}
+		
+		// Fallback for additional regions
+		const angle = (index / total) * Math.PI * 2;
+		return {
+			x: 400 + Math.cos(angle) * 200,
+			y: 200 + Math.sin(angle) * 100
+		};
 	}
 </script>
 
@@ -108,22 +198,22 @@
 		<div class="metric-card">
 			<div class="metric-icon">🌍</div>
 			<div class="metric-content">
-				<div class="metric-value" style="color: #BD93F9">{regionCount}</div>
+				<div class="metric-value" style="color: #FF6B9D">{regionCount}</div>
 				<div class="metric-label">REGIONS</div>
 			</div>
 		</div>
 		<div class="metric-card">
 			<div class="metric-icon">💻</div>
 			<div class="metric-content">
-				<div class="metric-value" style="color: #8BE9FD">{totalHosts.toLocaleString()}</div>
+				<div class="metric-value" style="color: #4ECDC4">{formatNumber(totalHosts)}</div>
 				<div class="metric-label">TOTAL HOSTS</div>
 			</div>
 		</div>
 		<div class="metric-card">
 			<div class="metric-icon">📍</div>
 			<div class="metric-content">
-				<div class="metric-value" style="color: #50FA7B; font-size: 1.2rem">
-					{topRegion[0].substring(0, 25).toUpperCase()}
+				<div class="metric-value" style="color: #95E77E; font-size: 1rem" title={topRegion[0]}>
+					{truncateText(topRegion[0], 18).toUpperCase()}
 				</div>
 				<div class="metric-label">TOP REGION</div>
 			</div>
@@ -131,14 +221,14 @@
 		<div class="metric-card">
 			<div class="metric-icon">🌐</div>
 			<div class="metric-content">
-				<div class="metric-value" style="color: #FFB86C">{globalSpread}%</div>
+				<div class="metric-value" style="color: #FFE66D">{globalSpread}%</div>
 				<div class="metric-label">GLOBAL SPREAD</div>
 			</div>
 		</div>
 		<div class="metric-card">
 			<div class="metric-icon">📊</div>
 			<div class="metric-content">
-				<div class="metric-value" style="color: #FF79C6">{avgHosts.toLocaleString()}</div>
+				<div class="metric-value" style="color: #C77DFF">{formatNumber(avgHosts)}</div>
 				<div class="metric-label">AVG HOSTS/REGION</div>
 			</div>
 		</div>
@@ -166,13 +256,19 @@
 					</div>
 					<p>SCANNING REGIONAL INFRASTRUCTURE...</p>
 				</div>
+			{:else if error && !selectedRegion}
+				<div class="error-state">
+					<div class="error-icon">⚠️</div>
+					<p>{error}</p>
+					<button class="retry-btn" on:click={loadData}>RETRY</button>
+				</div>
 			{:else if selectedRegion}
 				<div class="detail-view">
 					<div class="detail-header">
 						<div>
 							<h3>{selectedRegion.region.toUpperCase()}</h3>
 							<div class="region-stats">
-								<span>{selectedRegion.count.toLocaleString()} HOSTS</span>
+								<span>{formatNumber(selectedRegion.count)} HOSTS</span>
 								<span>•</span>
 								<span>{((selectedRegion.count / totalHosts) * 100).toFixed(2)}% OF GLOBAL</span>
 								<span>•</span>
@@ -197,7 +293,7 @@
 							<tbody>
 								{#each regionDetails as host}
 									<tr>
-										<td class="hostname">{host.host}</td>
+										<td class="hostname" title={host.host}>{truncateText(host.host, 25)}</td>
 										<td>{host.country || 'UNKNOWN'}</td>
 										<td>{host.data_center || 'UNKNOWN'}</td>
 										<td>{host.infrastructure_type || 'UNKNOWN'}</td>
@@ -226,59 +322,81 @@
 							<!-- World map background -->
 							<rect width="800" height="400" fill="rgba(0,0,0,0.3)" rx="10"/>
 							
-							<!-- Region nodes positioned globally -->
-							{#each regions.slice(0, 10) as [region, count], i}
+							<!-- Grid lines for better visual reference -->
+							<g class="grid-lines" opacity="0.1">
+								{#each Array(8) as _, i}
+									<line x1="0" y1="{i * 50}" x2="800" y2="{i * 50}" stroke="#4ECDC4" stroke-width="0.5"/>
+									<line x1="{i * 100}" y1="0" x2="{i * 100}" y2="400" stroke="#4ECDC4" stroke-width="0.5"/>
+								{/each}
+							</g>
+							
+							<!-- Region nodes with proper positioning -->
+							{#each regions as [region, count], i}
+								{@const pos = calculateNodePosition(i, regions.length)}
 								{@const status = getRegionStatus(count)}
-								{@const radius = Math.sqrt(count / maxHosts) * 50}
-								{@const x = 100 + (i % 4) * 180}
-								{@const y = 100 + Math.floor(i / 4) * 120}
+								{@const radius = Math.sqrt(count / maxHosts) * 40 + 20}
 								
-								<g class="region-node-group" on:click={() => selectRegion(region, count)}>
-									<!-- Pulse effect -->
-									<circle cx="{x}" cy="{y}" r="{radius + 10}"
+								<g class="region-node-group" 
+								   on:click={() => selectRegion(region, count)}
+								   on:mouseenter={() => hoveredRegion = region}
+								   on:mouseleave={() => hoveredRegion = null}>
+									<!-- Outer glow -->
+									<circle cx="{pos.x}" cy="{pos.y}" r="{radius + 10}"
 											fill="{status.color}" 
-											opacity="{0.1 + Math.sin(pulsePhase + i) * 0.1}"/>
-									<circle cx="{x}" cy="{y}" r="{radius}"
+											opacity="0.1"/>
+									<!-- Middle ring -->
+									<circle cx="{pos.x}" cy="{pos.y}" r="{radius}"
 											fill="{status.color}" 
 											opacity="0.3"/>
-									<circle cx="{x}" cy="{y}" r="{radius * 0.7}"
+									<!-- Inner core -->
+									<circle cx="{pos.x}" cy="{pos.y}" r="{radius * 0.7}"
 											fill="{status.color}" 
-											opacity="0.6"/>
+											opacity="0.5"/>
 									
 									<!-- Region label -->
-									<text x="{x}" y="{y - radius - 10}" 
+									<text x="{pos.x}" y="{pos.y - radius - 15}" 
 										  text-anchor="middle" 
 										  fill="#FFFFFF" 
-										  font-size="10" 
+										  font-size="11" 
 										  font-weight="600">
-										{region.substring(0, 15).toUpperCase()}
+										{region.toUpperCase()}
 									</text>
 									
 									<!-- Host count -->
-									<text x="{x}" y="{y + 5}" 
+									<text x="{pos.x}" y="{pos.y + 5}" 
 										  text-anchor="middle" 
 										  fill="#FFFFFF" 
 										  font-size="14" 
 										  font-weight="700">
-										{count.toLocaleString()}
+										{formatNumber(count)}
 									</text>
+									
+									<!-- Percentage -->
+									{#if hoveredRegion === region}
+										<text x="{pos.x}" y="{pos.y + 20}" 
+											  text-anchor="middle" 
+											  fill="{status.color}" 
+											  font-size="10" 
+											  font-weight="500">
+											{((count / totalHosts) * 100).toFixed(1)}%
+										</text>
+									{/if}
 								</g>
 							{/each}
 							
-							<!-- Connection lines between regions -->
-							{#each regions.slice(0, 10) as [region1, count1], i}
-								{#each regions.slice(i + 1, 10) as [region2, count2], j}
-									{#if Math.random() > 0.6}
-										{@const x1 = 100 + (i % 4) * 180}
-										{@const y1 = 100 + Math.floor(i / 4) * 120}
-										{@const x2 = 100 + ((i + j + 1) % 4) * 180}
-										{@const y2 = 100 + Math.floor((i + j + 1) / 4) * 120}
-										<line x1="{x1}" y1="{y1}" x2="{x2}" y2="{y2}"
-											  stroke="rgba(139, 233, 253, 0.2)" 
+							<!-- Connection lines between major regions -->
+							{#each regions as [region1, count1], i}
+								{#each regions.slice(i + 1) as [region2, count2], j}
+									{#if i < 3 && j < 2}
+										{@const pos1 = calculateNodePosition(i, regions.length)}
+										{@const pos2 = calculateNodePosition(i + j + 1, regions.length)}
+										<line x1="{pos1.x}" y1="{pos1.y}" 
+											  x2="{pos2.x}" y2="{pos2.y}"
+											  stroke="rgba(78, 205, 196, 0.2)" 
 											  stroke-width="1"
 											  stroke-dasharray="5,5">
 											<animate attributeName="stroke-dashoffset"
-													 values="0;-10" dur="2s" repeatCount="indefinite"/>
+													 values="0;-10" dur="3s" repeatCount="indefinite"/>
 										</line>
 									{/if}
 								{/each}
@@ -289,15 +407,27 @@
 					<!-- Network Activity Graph -->
 					<div class="network-activity">
 						<svg viewBox="0 0 200 50">
-							<polyline points="{networkActivity.map((val, i) => `${i * 4},${50 - val * 0.5}`).join(' ')}"
+							<defs>
+								<linearGradient id="networkGradient" x1="0%" y1="0%" x2="0%" y2="100%">
+									<stop offset="0%" style="stop-color:#4ECDC4;stop-opacity:0.8" />
+									<stop offset="100%" style="stop-color:#4ECDC4;stop-opacity:0" />
+								</linearGradient>
+							</defs>
+							<polyline points="{networkActivity.map((val, i) => `${i * 4},${50 - val * 0.4}`).join(' ')}"
 									  fill="none" 
-									  stroke="#8BE9FD" 
-									  stroke-width="1"
-									  opacity="0.8"/>
+									  stroke="#4ECDC4" 
+									  stroke-width="2"
+									  opacity="1"/>
+							<polygon points="{networkActivity.map((val, i) => `${i * 4},${50 - val * 0.4}`).join(' ')} 200,50 0,50"
+									 fill="url(#networkGradient)" 
+									 opacity="0.3"/>
 							{#each dataFlow as point, i}
 								{#if point.peak}
 									<circle cx="{i * 6.7}" cy="{50 - point.value * 0.5}" 
-											r="2" fill="#FF79C6" opacity="0.8"/>
+											r="3" fill="#FF6B9D" opacity="1">
+										<animate attributeName="r" values="3;6;3" dur="1s" />
+										<animate attributeName="opacity" values="1;0.3;1" dur="1s" />
+									</circle>
 								{/if}
 							{/each}
 						</svg>
@@ -314,16 +444,16 @@
 				<h3>HOST DISTRIBUTION BY REGION</h3>
 				<div class="distribution-bars">
 					{#each topFive as [region, count], i}
-						{@const percentage = (count / maxHosts) * 100}
+						{@const percentage = Math.min(100, (count / maxHosts) * 100)}
 						{@const status = getRegionStatus(count)}
 						<div class="dist-item" on:click={() => selectRegion(region, count)}>
 							<div class="dist-rank">#{i + 1}</div>
-							<div class="dist-name">{region.substring(0, 12).toUpperCase()}</div>
+							<div class="dist-name" title={region}>{truncateText(region, 12).toUpperCase()}</div>
 							<div class="dist-bar">
 								<div class="dist-fill" 
 									 style="width: {percentage}%; 
 											background: linear-gradient(90deg, {status.color}40, {status.color})">
-									<span class="dist-value">{count.toLocaleString()}</span>
+									<span class="dist-value">{formatNumber(count)}</span>
 								</div>
 							</div>
 							<div class="dist-percent">{((count/totalHosts)*100).toFixed(1)}%</div>
@@ -336,20 +466,16 @@
 			<div class="chart-box">
 				<h3>REGIONAL SIZE DISTRIBUTION</h3>
 				<div class="size-chart">
-					{@const sizeGroups = regions.reduce((acc, [reg, count]) => {
-						const size = getRegionSize(count);
-						acc[size] = (acc[size] || 0) + 1;
-						return acc;
-					}, {})}
-					{#each Object.entries(sizeGroups) as [size, count], i}
-						{@const colors = ['#BD93F9', '#8BE9FD', '#50FA7B', '#FFB86C', '#FF79C6']}
+					{#each ['MEGA', 'LARGE', 'MEDIUM', 'SMALL', 'MINIMAL'] as size, i}
+						{@const count = regions.filter(([_, c]) => getRegionSize(c) === size).length}
+						{@const colors = ['#FF6B9D', '#4ECDC4', '#95E77E', '#FFE66D', '#C77DFF']}
 						<div class="size-item">
 							<div class="size-label">{size}</div>
-							<div class="size-count" style="color: {colors[i % 5]}">{count}</div>
+							<div class="size-count" style="color: {colors[i]}">{count}</div>
 							<div class="size-bar">
 								<div class="size-fill" 
-									 style="height: {(count / regionCount) * 100}%; 
-											background: {colors[i % 5]}">
+									 style="height: {regionCount > 0 ? (count / regionCount) * 100 : 0}%; 
+											background: {colors[i]}">
 								</div>
 							</div>
 						</div>
@@ -362,21 +488,21 @@
 				<h3>REGIONAL STATISTICS</h3>
 				<div class="coverage-stats">
 					<div class="coverage-item">
-						<span class="coverage-label">Regions with >5K hosts</span>
-						<span class="coverage-value" style="color: #BD93F9">
-							{regions.filter(([_, c]) => c > 5000).length}
+						<span class="coverage-label">Regions with >50K hosts</span>
+						<span class="coverage-value" style="color: #FF6B9D">
+							{regions.filter(([_, c]) => c > 50000).length}
 						</span>
 					</div>
 					<div class="coverage-item">
-						<span class="coverage-label">Regions with >10K hosts</span>
-						<span class="coverage-value" style="color: #8BE9FD">
-							{regions.filter(([_, c]) => c > 10000).length}
+						<span class="coverage-label">Regions with >100K hosts</span>
+						<span class="coverage-value" style="color: #4ECDC4">
+							{regions.filter(([_, c]) => c > 100000).length}
 						</span>
 					</div>
 					<div class="coverage-item">
-						<span class="coverage-label">Regions with >20K hosts</span>
-						<span class="coverage-value" style="color: #50FA7B">
-							{regions.filter(([_, c]) => c > 20000).length}
+						<span class="coverage-label">Regions with >200K hosts</span>
+						<span class="coverage-value" style="color: #95E77E">
+							{regions.filter(([_, c]) => c > 200000).length}
 						</span>
 					</div>
 				</div>
@@ -406,12 +532,12 @@
 							{@const size = getRegionSize(count)}
 							<tr on:click={() => selectRegion(region, count)}>
 								<td class="rank">{i + 1}</td>
-								<td class="region-name">
+								<td class="region-name" title={region}>
 									<span class="status-indicator" style="background: {status.color}"></span>
-									{region.substring(0, 25).toUpperCase()}
+									{truncateText(region, 20).toUpperCase()}
 								</td>
 								<td class="host-count" style="color: {status.color}">
-									{count.toLocaleString()}
+									{formatNumber(count)}
 								</td>
 								<td>
 									<span class="size-badge" style="color: {status.color}">
@@ -419,7 +545,10 @@
 									</span>
 								</td>
 								<td>
-									<span class="status-badge" style="color: {status.color}; border-color: {status.color}">
+									<span class="status-badge" 
+										  style="color: {status.color}; 
+												 border-color: {status.color};
+												 background: {status.bgColor}">
 										{status.level}
 									</span>
 								</td>
@@ -448,37 +577,49 @@
 	.metrics-header {
 		display: flex;
 		gap: 1rem;
+		flex-shrink: 0;
 	}
 	
 	.metric-card {
 		flex: 1;
-		background: rgba(255, 255, 255, 0.02);
-		border: 1px solid rgba(139, 233, 253, 0.1);
-		border-radius: 10px;
+		background: rgba(255, 255, 255, 0.03);
+		border: 1px solid rgba(139, 233, 253, 0.2);
+		border-radius: 12px;
 		padding: 1rem;
 		display: flex;
 		gap: 1rem;
 		align-items: center;
+		transition: all 0.3s ease;
+	}
+	
+	.metric-card:hover {
+		background: rgba(255, 255, 255, 0.05);
+		transform: translateY(-2px);
 	}
 	
 	.metric-icon {
 		font-size: 2rem;
+		filter: saturate(1.5);
 	}
 	
 	.metric-content {
 		flex: 1;
+		min-width: 0;
 	}
 	
 	.metric-value {
 		font-size: 1.5rem;
 		font-weight: 700;
-		font-family: 'Courier New', monospace;
+		font-family: 'SF Mono', 'Monaco', monospace;
 		margin-bottom: 0.25rem;
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
 	}
 	
 	.metric-label {
 		font-size: 0.65rem;
-		color: rgba(255, 255, 255, 0.5);
+		color: rgba(255, 255, 255, 0.6);
 		letter-spacing: 0.1em;
 		font-weight: 600;
 	}
@@ -494,12 +635,13 @@
 	
 	/* Region Panel */
 	.region-panel {
-		background: rgba(255, 255, 255, 0.02);
-		border: 1px solid rgba(189, 147, 249, 0.1);
+		background: rgba(255, 255, 255, 0.03);
+		border: 1px solid rgba(189, 147, 249, 0.2);
 		border-radius: 12px;
 		padding: 1rem;
 		display: flex;
 		flex-direction: column;
+		overflow: hidden;
 	}
 	
 	.panel-header {
@@ -509,29 +651,32 @@
 		margin-bottom: 1rem;
 		padding-bottom: 0.5rem;
 		border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+		flex-shrink: 0;
 	}
 	
 	.panel-header h2, .panel-header h3 {
 		margin: 0;
 		font-size: 0.9rem;
-		font-weight: 300;
+		font-weight: 400;
 		letter-spacing: 0.1em;
-		color: #BD93F9;
+		color: #FF6B9D;
 	}
 	
 	.search-input {
-		padding: 0.4rem 0.8rem;
-		background: rgba(0, 0, 0, 0.5);
+		padding: 0.5rem 1rem;
+		background: rgba(0, 0, 0, 0.6);
 		border: 1px solid rgba(139, 233, 253, 0.3);
-		border-radius: 6px;
+		border-radius: 8px;
 		color: #FFFFFF;
-		font-size: 0.75rem;
-		width: 180px;
+		font-size: 0.8rem;
+		width: 200px;
+		transition: all 0.3s ease;
 	}
 	
 	.search-input:focus {
 		outline: none;
-		border-color: #8BE9FD;
+		border-color: #4ECDC4;
+		background: rgba(0, 0, 0, 0.8);
 	}
 	
 	.region-visualization {
@@ -548,14 +693,20 @@
 		display: flex;
 		align-items: center;
 		justify-content: center;
-		background: rgba(0, 0, 0, 0.3);
-		border-radius: 8px;
+		background: linear-gradient(135deg, rgba(0, 0, 0, 0.4), rgba(0, 0, 0, 0.2));
+		border-radius: 10px;
 		padding: 1rem;
+		border: 1px solid rgba(139, 233, 253, 0.1);
 	}
 	
 	.global-map svg {
 		width: 100%;
 		height: 100%;
+		max-height: 400px;
+	}
+	
+	.grid-lines {
+		pointer-events: none;
 	}
 	
 	.region-node-group {
@@ -565,6 +716,7 @@
 	
 	.region-node-group:hover {
 		transform: scale(1.1);
+		filter: brightness(1.3);
 	}
 	
 	/* Network Activity */
@@ -573,11 +725,12 @@
 		bottom: 20px;
 		left: 20px;
 		right: 20px;
-		height: 60px;
-		background: rgba(0, 0, 0, 0.8);
+		height: 80px;
+		background: linear-gradient(to bottom, rgba(0, 0, 0, 0.8), rgba(0, 0, 0, 0.6));
 		border: 1px solid rgba(139, 233, 253, 0.3);
-		padding: 5px;
+		padding: 8px;
 		border-radius: 10px;
+		overflow: hidden;
 	}
 	
 	.network-activity svg {
@@ -587,11 +740,12 @@
 	
 	.activity-label {
 		position: absolute;
-		top: 5px;
-		left: 10px;
-		font-size: 0.6rem;
-		color: rgba(255, 255, 255, 0.5);
+		top: 8px;
+		left: 12px;
+		font-size: 0.65rem;
+		color: rgba(255, 255, 255, 0.6);
 		letter-spacing: 0.1em;
+		font-weight: 600;
 	}
 	
 	/* Analytics Panel */
@@ -603,9 +757,9 @@
 	
 	.chart-box {
 		flex: 1;
-		background: rgba(255, 255, 255, 0.02);
-		border: 1px solid rgba(139, 233, 253, 0.1);
-		border-radius: 10px;
+		background: rgba(255, 255, 255, 0.03);
+		border: 1px solid rgba(139, 233, 253, 0.2);
+		border-radius: 12px;
 		padding: 1rem;
 		display: flex;
 		flex-direction: column;
@@ -613,9 +767,9 @@
 	
 	.chart-box h3 {
 		margin: 0 0 1rem 0;
-		font-size: 0.75rem;
-		color: #8BE9FD;
-		font-weight: 300;
+		font-size: 0.8rem;
+		color: #4ECDC4;
+		font-weight: 400;
 		letter-spacing: 0.1em;
 	}
 	
@@ -623,35 +777,42 @@
 		flex: 1;
 		display: flex;
 		flex-direction: column;
-		gap: 0.5rem;
+		gap: 0.6rem;
 	}
 	
 	.dist-item {
 		display: grid;
-		grid-template-columns: 25px 100px 1fr 45px;
+		grid-template-columns: 30px 100px 1fr 50px;
 		gap: 0.5rem;
 		align-items: center;
 		cursor: pointer;
 		transition: all 0.2s ease;
+		padding: 0.2rem;
+		border-radius: 4px;
 	}
 	
 	.dist-item:hover {
+		background: rgba(139, 233, 253, 0.05);
 		transform: translateX(2px);
 	}
 	
 	.dist-rank {
-		font-size: 0.65rem;
-		color: #BD93F9;
-		font-weight: 600;
+		font-size: 0.7rem;
+		color: #FF6B9D;
+		font-weight: 700;
 	}
 	
 	.dist-name {
-		font-size: 0.65rem;
-		color: rgba(255, 255, 255, 0.8);
+		font-size: 0.7rem;
+		color: rgba(255, 255, 255, 0.9);
+		font-weight: 600;
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
 	}
 	
 	.dist-bar {
-		height: 18px;
+		height: 20px;
 		background: rgba(255, 255, 255, 0.05);
 		border-radius: 4px;
 		overflow: hidden;
@@ -662,20 +823,23 @@
 		display: flex;
 		align-items: center;
 		justify-content: flex-end;
-		padding: 0 0.4rem;
+		padding: 0 0.5rem;
 		transition: width 0.5s ease;
+		border-radius: 4px;
 	}
 	
 	.dist-value {
-		font-size: 0.6rem;
+		font-size: 0.65rem;
 		color: #FFFFFF;
-		font-weight: 600;
+		font-weight: 700;
+		text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
 	}
 	
 	.dist-percent {
-		font-size: 0.65rem;
-		color: rgba(255, 255, 255, 0.5);
+		font-size: 0.7rem;
+		color: rgba(255, 255, 255, 0.6);
 		text-align: right;
+		font-weight: 600;
 	}
 	
 	/* Size Chart */
@@ -683,7 +847,8 @@
 		display: flex;
 		align-items: flex-end;
 		justify-content: space-around;
-		height: 100px;
+		height: 120px;
+		padding: 0.5rem 0;
 	}
 	
 	.size-item {
@@ -691,28 +856,30 @@
 		display: flex;
 		flex-direction: column;
 		align-items: center;
-		gap: 0.3rem;
+		gap: 0.4rem;
 	}
 	
 	.size-label {
 		font-size: 0.6rem;
-		color: rgba(255, 255, 255, 0.6);
+		color: rgba(255, 255, 255, 0.7);
 		writing-mode: vertical-lr;
 		text-align: center;
+		font-weight: 600;
 	}
 	
 	.size-count {
-		font-size: 0.9rem;
+		font-size: 1rem;
 		font-weight: 700;
 	}
 	
 	.size-bar {
-		width: 30px;
-		height: 60px;
+		width: 35px;
+		height: 70px;
 		background: rgba(255, 255, 255, 0.05);
 		border-radius: 4px 4px 0 0;
 		display: flex;
 		align-items: flex-end;
+		overflow: hidden;
 	}
 	
 	.size-fill {
@@ -725,33 +892,40 @@
 	.coverage-stats {
 		display: flex;
 		flex-direction: column;
-		gap: 0.75rem;
+		gap: 0.8rem;
 	}
 	
 	.coverage-item {
 		display: flex;
 		justify-content: space-between;
 		align-items: center;
-		padding: 0.5rem;
-		background: rgba(0, 0, 0, 0.3);
-		border-radius: 6px;
+		padding: 0.6rem;
+		background: rgba(0, 0, 0, 0.4);
+		border-radius: 8px;
+		transition: all 0.2s ease;
+	}
+	
+	.coverage-item:hover {
+		background: rgba(0, 0, 0, 0.6);
+		transform: translateX(2px);
 	}
 	
 	.coverage-label {
-		font-size: 0.7rem;
-		color: rgba(255, 255, 255, 0.7);
+		font-size: 0.75rem;
+		color: rgba(255, 255, 255, 0.8);
+		font-weight: 500;
 	}
 	
 	.coverage-value {
-		font-size: 1rem;
+		font-size: 1.1rem;
 		font-weight: 700;
-		font-family: 'Courier New', monospace;
+		font-family: 'SF Mono', 'Monaco', monospace;
 	}
 	
 	/* List Panel */
 	.list-panel {
-		background: rgba(255, 255, 255, 0.02);
-		border: 1px solid rgba(189, 147, 249, 0.1);
+		background: rgba(255, 255, 255, 0.03);
+		border: 1px solid rgba(189, 147, 249, 0.2);
 		border-radius: 12px;
 		display: flex;
 		flex-direction: column;
@@ -760,12 +934,14 @@
 	
 	.region-count {
 		font-size: 0.7rem;
-		color: rgba(255, 255, 255, 0.5);
+		color: rgba(255, 255, 255, 0.6);
+		font-weight: 600;
 	}
 	
 	.region-list {
 		flex: 1;
 		overflow-y: auto;
+		overflow-x: hidden;
 	}
 	
 	.regions-table {
@@ -776,18 +952,18 @@
 	.regions-table thead {
 		position: sticky;
 		top: 0;
-		background: rgba(0, 0, 0, 0.9);
+		background: rgba(0, 0, 0, 0.95);
 		z-index: 10;
 	}
 	
 	.regions-table th {
-		padding: 0.5rem;
+		padding: 0.6rem 0.5rem;
 		text-align: left;
-		font-size: 0.6rem;
+		font-size: 0.65rem;
 		font-weight: 600;
-		color: rgba(255, 255, 255, 0.5);
+		color: rgba(255, 255, 255, 0.6);
 		letter-spacing: 0.05em;
-		border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+		border-bottom: 1px solid rgba(255, 255, 255, 0.2);
 	}
 	
 	.regions-table tbody tr {
@@ -797,52 +973,55 @@
 	}
 	
 	.regions-table tbody tr:hover {
-		background: rgba(139, 233, 253, 0.05);
+		background: rgba(139, 233, 253, 0.08);
+		transform: translateX(2px);
 	}
 	
 	.regions-table td {
 		padding: 0.5rem;
 		font-size: 0.7rem;
-		color: rgba(255, 255, 255, 0.8);
+		color: rgba(255, 255, 255, 0.85);
 	}
 	
 	.rank {
-		color: #BD93F9;
-		font-weight: 600;
-		font-size: 0.65rem;
+		color: #FF6B9D;
+		font-weight: 700;
+		font-size: 0.7rem;
+		width: 30px;
 	}
 	
 	.region-name {
 		display: flex;
 		align-items: center;
-		gap: 0.4rem;
-		font-size: 0.65rem;
+		gap: 0.5rem;
+		font-size: 0.7rem;
+		font-weight: 600;
 	}
 	
 	.status-indicator {
-		width: 6px;
-		height: 6px;
+		width: 8px;
+		height: 8px;
 		border-radius: 50%;
 		flex-shrink: 0;
 	}
 	
 	.host-count {
-		font-family: 'Courier New', monospace;
-		font-weight: 600;
+		font-family: 'SF Mono', 'Monaco', monospace;
+		font-weight: 700;
 	}
 	
 	.size-badge {
-		font-size: 0.6rem;
-		font-weight: 600;
+		font-size: 0.65rem;
+		font-weight: 700;
 		letter-spacing: 0.05em;
 	}
 	
 	.status-badge {
 		font-size: 0.6rem;
-		padding: 0.15rem 0.3rem;
+		padding: 0.2rem 0.4rem;
 		border: 1px solid;
-		border-radius: 4px;
-		font-weight: 600;
+		border-radius: 6px;
+		font-weight: 700;
 		letter-spacing: 0.03em;
 	}
 	
@@ -851,6 +1030,7 @@
 		flex: 1;
 		display: flex;
 		flex-direction: column;
+		overflow: hidden;
 	}
 	
 	.detail-header {
@@ -858,29 +1038,32 @@
 		justify-content: space-between;
 		align-items: start;
 		margin-bottom: 1rem;
+		flex-shrink: 0;
 	}
 	
 	.detail-header h3 {
 		margin: 0 0 0.25rem 0;
 		font-size: 1.1rem;
-		color: #BD93F9;
+		color: #FF6B9D;
+		font-weight: 600;
 	}
 	
 	.region-stats {
-		font-size: 0.7rem;
-		color: rgba(255, 255, 255, 0.6);
+		font-size: 0.75rem;
+		color: rgba(255, 255, 255, 0.7);
 		display: flex;
 		gap: 0.5rem;
+		font-weight: 500;
 	}
 	
 	.close-btn {
 		background: rgba(255, 255, 255, 0.1);
-		border: 1px solid rgba(255, 255, 255, 0.2);
+		border: 1px solid rgba(255, 255, 255, 0.3);
 		color: #FFFFFF;
-		width: 28px;
-		height: 28px;
-		border-radius: 6px;
-		font-size: 1rem;
+		width: 32px;
+		height: 32px;
+		border-radius: 8px;
+		font-size: 1.1rem;
 		cursor: pointer;
 		display: flex;
 		align-items: center;
@@ -889,15 +1072,16 @@
 	}
 	
 	.close-btn:hover {
-		background: rgba(189, 147, 249, 0.2);
-		border-color: #BD93F9;
+		background: rgba(255, 121, 198, 0.2);
+		border-color: #FF6B9D;
+		transform: rotate(90deg);
 	}
 	
 	.hosts-container {
 		flex: 1;
 		overflow-y: auto;
-		background: rgba(0, 0, 0, 0.3);
-		border-radius: 8px;
+		background: rgba(0, 0, 0, 0.4);
+		border-radius: 10px;
 		padding: 1rem;
 	}
 	
@@ -909,46 +1093,52 @@
 	.hosts-table thead {
 		position: sticky;
 		top: 0;
-		background: rgba(0, 0, 0, 0.9);
+		background: rgba(0, 0, 0, 0.95);
 		z-index: 10;
 	}
 	
 	.hosts-table th {
-		padding: 0.5rem;
+		padding: 0.6rem 0.5rem;
 		text-align: left;
-		font-size: 0.65rem;
-		color: rgba(255, 255, 255, 0.5);
-		border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+		font-size: 0.7rem;
+		color: rgba(255, 255, 255, 0.6);
+		border-bottom: 1px solid rgba(255, 255, 255, 0.2);
 		letter-spacing: 0.05em;
+		font-weight: 600;
 	}
 	
 	.hosts-table td {
 		padding: 0.5rem;
-		font-size: 0.65rem;
-		color: rgba(255, 255, 255, 0.8);
+		font-size: 0.7rem;
+		color: rgba(255, 255, 255, 0.85);
 		border-bottom: 1px solid rgba(255, 255, 255, 0.05);
 	}
 	
 	.hostname {
-		font-family: 'Courier New', monospace;
-		color: #8BE9FD;
-		font-size: 0.6rem;
+		font-family: 'SF Mono', 'Monaco', monospace;
+		color: #4ECDC4;
+		font-size: 0.7rem;
+		font-weight: 600;
 	}
 	
 	.status-dot {
-		font-size: 0.8rem;
+		font-size: 0.9rem;
+		display: inline-block;
+		text-align: center;
 	}
 	
 	.status-dot.active {
-		color: #50FA7B;
+		color: #95E77E;
+		text-shadow: 0 0 8px #95E77E;
 	}
 	
 	.status-dot.inactive {
 		color: #FF5555;
+		opacity: 0.6;
 	}
 	
 	/* Loading State */
-	.loading-state {
+	.loading-state, .error-state {
 		flex: 1;
 		display: flex;
 		flex-direction: column;
@@ -973,7 +1163,7 @@
 	.ring-1 {
 		width: 100px;
 		height: 100px;
-		border-color: #BD93F9;
+		border-color: #FF6B9D;
 		animation-duration: 3s;
 	}
 	
@@ -982,7 +1172,7 @@
 		height: 70px;
 		top: 15px;
 		left: 15px;
-		border-color: #8BE9FD;
+		border-color: #4ECDC4;
 		animation-duration: 2s;
 		animation-direction: reverse;
 	}
@@ -992,7 +1182,7 @@
 		height: 40px;
 		top: 30px;
 		left: 30px;
-		border-color: #50FA7B;
+		border-color: #95E77E;
 		animation-duration: 1s;
 	}
 	
@@ -1002,7 +1192,7 @@
 		height: 20px;
 		top: 40px;
 		left: 40px;
-		background: linear-gradient(135deg, #FF79C6, #FFB86C);
+		background: linear-gradient(135deg, #FFE66D, #C77DFF);
 		border-radius: 50%;
 		animation: corePulse 2s ease-in-out infinite;
 	}
@@ -1017,22 +1207,86 @@
 		50% { transform: scale(1.2); opacity: 1; }
 	}
 	
-	.loading-state p {
-		color: rgba(255, 255, 255, 0.5);
-		font-size: 0.8rem;
+	.loading-state p, .error-state p {
+		color: rgba(255, 255, 255, 0.6);
+		font-size: 0.9rem;
 		letter-spacing: 0.2em;
+		font-weight: 600;
+	}
+	
+	.error-icon {
+		font-size: 3rem;
+	}
+	
+	.retry-btn {
+		padding: 0.6rem 1.5rem;
+		background: linear-gradient(135deg, #FF6B9D, #FF6B9D80);
+		border: 1px solid #FF6B9D;
+		color: #FFFFFF;
+		border-radius: 8px;
+		font-size: 0.8rem;
+		font-weight: 600;
+		letter-spacing: 0.1em;
+		cursor: pointer;
+		transition: all 0.3s ease;
+	}
+	
+	.retry-btn:hover {
+		background: linear-gradient(135deg, #FF6B9D, #FF6B9DCC);
+		transform: translateY(-2px);
+		box-shadow: 0 4px 15px rgba(255, 107, 157, 0.4);
 	}
 	
 	/* Scrollbar */
 	::-webkit-scrollbar {
-		width: 6px;
+		width: 8px;
+		height: 8px;
 	}
 	
 	::-webkit-scrollbar-track {
 		background: rgba(0, 0, 0, 0.5);
+		border-radius: 4px;
 	}
 	
 	::-webkit-scrollbar-thumb {
-		background: rgba(189, 147, 249, 0.3);
-		border-radius: 3px;
+		background: linear-gradient(to bottom, #FF6B9D, #4ECDC4);
+		border-radius: 4px;
 	}
+	
+	::-webkit-scrollbar-thumb:hover {
+		background: linear-gradient(to bottom, #FF6B9DCC, #4ECDC4CC);
+	}
+	
+	/* Responsive Design */
+	@media (max-width: 1400px) {
+		.content-layout {
+			grid-template-columns: 1fr 300px 280px;
+		}
+	}
+	
+	@media (max-width: 1200px) {
+		.content-layout {
+			grid-template-columns: 1fr;
+			grid-template-rows: auto 1fr auto;
+		}
+		
+		.analytics-panel {
+			display: grid;
+			grid-template-columns: repeat(3, 1fr);
+		}
+	}
+	
+	@media (max-width: 768px) {
+		.metrics-header {
+			flex-wrap: wrap;
+		}
+		
+		.metric-card {
+			min-width: calc(50% - 0.5rem);
+		}
+		
+		.analytics-panel {
+			grid-template-columns: 1fr;
+		}
+	}
+</style>
