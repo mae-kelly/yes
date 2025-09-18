@@ -1,4 +1,4 @@
-<!-- CountryMetrics.svelte - Quantum Geopolitical Intelligence Matrix -->
+<!-- CountryMetrics.svelte - Country Host Distribution -->
 <script>
 	import { onMount, onDestroy } from 'svelte';
 	
@@ -8,70 +8,9 @@
 	let countryDetails = [];
 	let searchTerm = '';
 	
-	// Visualization states
-	let viewMode = 'globe'; // 'globe', 'heatmap', 'connections', 'intelligence'
-	let globeRotation = { x: -23.5, y: 0, z: 0 };
-	let countryNodes = [];
-	let geoConnections = [];
-	let heatmapData = [];
-	let intelligenceNetwork = [];
-	let quantumState = 'INITIALIZING';
-	let threatLevel = 'STABLE';
-	let globalActivity = 0;
-	let dataFlowRate = 0;
-	
-	// Interactive globe
-	let isDragging = false;
-	let lastMouseX = 0;
-	let lastMouseY = 0;
-	let autoRotate = true;
-	
-	// Particle system for atmosphere
-	let atmosphereParticles = [];
-	let satellites = [];
-	let dataStreams = [];
-	
-	// Animation references
-	let animationFrameId;
-	let intervals = [];
-	
-	// Neon pastel colors for geopolitical visualization
-	const neonColors = {
-		primary: '#00FFAA',     // Mint (allied)
-		secondary: '#FF00AA',    // Magenta (neutral)
-		tertiary: '#FFAA00',     // Gold (economic)
-		quaternary: '#00AAFF',   // Sky Blue (diplomatic)
-		threat: '#FF0066',       // Red-Pink (threat)
-		safe: '#00FF66',         // Green (safe)
-		warning: '#FFAA66',      // Orange (warning)
-		critical: '#FF0044',     // Red (critical)
-		data: '#66FFFF',         // Light Cyan (data)
-		quantum: '#FF66FF'       // Light Magenta (quantum)
-	};
-	
-	// Real world approximate coordinates for major countries
-	const countryCoordinates = {
-		'united states': { lat: 39.8283, lng: -98.5795 },
-		'china': { lat: 35.8617, lng: 104.1954 },
-		'russia': { lat: 61.5240, lng: 105.3188 },
-		'india': { lat: 20.5937, lng: 78.9629 },
-		'brazil': { lat: -14.2350, lng: -51.9253 },
-		'united kingdom': { lat: 55.3781, lng: -3.4360 },
-		'germany': { lat: 51.1657, lng: 10.4515 },
-		'japan': { lat: 36.2048, lng: 138.2529 },
-		'australia': { lat: -25.2744, lng: 133.7751 },
-		'canada': { lat: 56.1304, lng: -106.3468 },
-		'france': { lat: 46.2276, lng: 2.2137 },
-		'italy': { lat: 41.8719, lng: 12.5674 },
-		'mexico': { lat: 23.6345, lng: -102.5528 },
-		'south korea': { lat: 35.9078, lng: 127.7669 },
-		'spain': { lat: 40.4637, lng: -3.7492 },
-		'indonesia': { lat: -0.7893, lng: 113.9213 },
-		'netherlands': { lat: 52.1326, lng: 5.2913 },
-		'saudi arabia': { lat: 23.8859, lng: 45.0792 },
-		'turkey': { lat: 38.9637, lng: 35.2433 },
-		'switzerland': { lat: 46.8182, lng: 8.2275 }
-	};
+	// Animation states
+	let animationFrame = null;
+	let waveOffset = 0;
 	
 	onMount(async () => {
 		try {
@@ -79,608 +18,190 @@
 			let result = await response.json();
 			data = result;
 			loading = false;
-			quantumState = 'SYNCHRONIZED';
-			initializeVisualization();
-			startAnimations();
 		} catch (err) {
-			console.error('Geopolitical matrix sync failed:', err);
+			console.error('Country metrics error:', err);
 			loading = false;
-			quantumState = 'DESYNCHRONIZED';
 		}
+		
+		// Start animations
+		const animate = () => {
+			waveOffset = (waveOffset + 1) % 100;
+			animationFrame = requestAnimationFrame(animate);
+		};
+		animate();
 	});
 	
 	onDestroy(() => {
-		if (animationFrameId) cancelAnimationFrame(animationFrameId);
-		intervals.forEach(interval => clearInterval(interval));
+		if (animationFrame) cancelAnimationFrame(animationFrame);
 	});
-	
-	function initializeVisualization() {
-		if (!data.global_intelligence) return;
-		
-		// Create country nodes with coordinates
-		let countries = Object.entries(data.global_intelligence);
-		let maxCount = Math.max(...countries.map(([,c]) => c));
-		
-		countries.forEach(([country, count], i) => {
-			let importance = count / maxCount;
-			let coords = getCountryCoordinates(country);
-			
-			// Convert lat/lng to 3D sphere coordinates
-			let phi = (90 - coords.lat) * Math.PI / 180;
-			let theta = (coords.lng + 180) * Math.PI / 180;
-			let radius = 200;
-			
-			countryNodes.push({
-				id: i,
-				name: country,
-				count: count,
-				importance: importance,
-				lat: coords.lat,
-				lng: coords.lng,
-				x: radius * Math.sin(phi) * Math.cos(theta),
-				y: radius * Math.cos(phi),
-				z: radius * Math.sin(phi) * Math.sin(theta),
-				threatLevel: Math.random() * 100,
-				economicPower: importance * 100,
-				diplomaticInfluence: Math.random() * 100,
-				cyberCapability: Math.random() * 100,
-				color: interpolateGeopoliticalColor(importance, Math.random() * 100)
-			});
-		});
-		
-		// Create geopolitical connections
-		countryNodes.forEach((node, i) => {
-			// Connect to nearby high-importance countries
-			countryNodes.forEach((target, j) => {
-				if (i !== j) {
-					let distance = calculateDistance(node, target);
-					if ((distance < 5000 && Math.random() > 0.5) || 
-					    (node.importance > 0.7 && target.importance > 0.7 && Math.random() > 0.7)) {
-						geoConnections.push({
-							source: i,
-							target: j,
-							strength: Math.min(node.importance, target.importance),
-							type: getConnectionType(node, target),
-							active: true,
-							dataFlow: []
-						});
-						
-						// Add data flow particles
-						for (let k = 0; k < 5; k++) {
-							geoConnections[geoConnections.length - 1].dataFlow.push({
-								progress: Math.random(),
-								speed: 0.005 + Math.random() * 0.01,
-								size: Math.random() * 3 + 1
-							});
-						}
-					}
-				}
-			});
-		});
-		
-		// Initialize atmosphere particles
-		for (let i = 0; i < 500; i++) {
-			atmosphereParticles.push({
-				lat: (Math.random() - 0.5) * 180,
-				lng: (Math.random() - 0.5) * 360,
-				altitude: 210 + Math.random() * 50,
-				speed: 0.1 + Math.random() * 0.5,
-				size: Math.random() * 2 + 0.5,
-				color: Object.values(neonColors)[Math.floor(Math.random() * 10)],
-				type: ['data', 'signal', 'quantum'][Math.floor(Math.random() * 3)]
-			});
-		}
-		
-		// Initialize satellites
-		for (let i = 0; i < 12; i++) {
-			satellites.push({
-				id: i,
-				lat: (Math.random() - 0.5) * 180,
-				lng: (Math.random() - 0.5) * 360,
-				altitude: 250 + Math.random() * 100,
-				orbit: {
-					speed: 0.2 + Math.random() * 0.3,
-					inclination: Math.random() * 90
-				},
-				type: ['surveillance', 'communication', 'weather', 'military'][Math.floor(Math.random() * 4)],
-				active: true,
-				signalStrength: Math.random() * 100
-			});
-		}
-		
-		// Initialize heatmap data
-		for (let lat = -80; lat <= 80; lat += 20) {
-			for (let lng = -180; lng <= 180; lng += 30) {
-				heatmapData.push({
-					lat: lat,
-					lng: lng,
-					intensity: Math.random() * 100,
-					type: ['economic', 'military', 'cyber', 'diplomatic'][Math.floor(Math.random() * 4)]
-				});
-			}
-		}
-	}
-	
-	function getCountryCoordinates(countryName) {
-		let key = countryName.toLowerCase();
-		if (countryCoordinates[key]) {
-			return countryCoordinates[key];
-		}
-		// Default random position if country not found
-		return {
-			lat: (Math.random() - 0.5) * 160,
-			lng: (Math.random() - 0.5) * 360
-		};
-	}
-	
-	function calculateDistance(node1, node2) {
-		// Simplified distance calculation
-		return Math.sqrt(
-			Math.pow(node1.lat - node2.lat, 2) + 
-			Math.pow(node1.lng - node2.lng, 2)
-		) * 111; // Convert to approximate km
-	}
-	
-	function getConnectionType(node1, node2) {
-		if (node1.economicPower > 70 && node2.economicPower > 70) return 'economic';
-		if (node1.cyberCapability > 70 && node2.cyberCapability > 70) return 'cyber';
-		if (node1.diplomaticInfluence > 70 && node2.diplomaticInfluence > 70) return 'diplomatic';
-		return 'general';
-	}
-	
-	function interpolateGeopoliticalColor(importance, threat) {
-		if (threat > 70) return neonColors.threat;
-		if (threat > 50) return neonColors.warning;
-		if (importance > 0.7) return neonColors.primary;
-		if (importance > 0.5) return neonColors.secondary;
-		if (importance > 0.3) return neonColors.tertiary;
-		return neonColors.quaternary;
-	}
-	
-	function startAnimations() {
-		// Main animation loop
-		function animate() {
-			updateGlobeRotation();
-			updateAtmosphere();
-			updateSatellites();
-			updateDataFlows();
-			updateHeatmap();
-			
-			globalActivity = 50 + Math.sin(Date.now() * 0.001) * 50;
-			dataFlowRate = 30 + Math.sin(Date.now() * 0.0008) * 30;
-			
-			animationFrameId = requestAnimationFrame(animate);
-		}
-		animate();
-		
-		// Update quantum state
-		intervals.push(setInterval(() => {
-			quantumState = ['SYNCHRONIZED', 'ANALYZING', 'PROCESSING', 'CORRELATING', 'MONITORING'][
-				Math.floor(Math.random() * 5)
-			];
-			
-			// Update threat level based on activity
-			let avgThreat = countryNodes.reduce((sum, node) => sum + node.threatLevel, 0) / countryNodes.length;
-			if (avgThreat < 30) threatLevel = 'STABLE';
-			else if (avgThreat < 50) threatLevel = 'ELEVATED';
-			else if (avgThreat < 70) threatLevel = 'HIGH';
-			else threatLevel = 'CRITICAL';
-		}, 3000));
-	}
-	
-	function updateGlobeRotation() {
-		if (autoRotate && !isDragging) {
-			globeRotation.y = (globeRotation.y + 0.2) % 360;
-		}
-	}
-	
-	function updateAtmosphere() {
-		atmosphereParticles = atmosphereParticles.map(particle => {
-			particle.lng = (particle.lng + particle.speed) % 360;
-			return particle;
-		});
-	}
-	
-	function updateSatellites() {
-		satellites = satellites.map(sat => {
-			sat.lng = (sat.lng + sat.orbit.speed) % 360;
-			sat.lat = Math.sin(Date.now() * 0.001 * sat.orbit.speed) * sat.orbit.inclination;
-			sat.signalStrength = Math.max(0, Math.min(100, sat.signalStrength + (Math.random() - 0.5) * 10));
-			return sat;
-		});
-	}
-	
-	function updateDataFlows() {
-		geoConnections.forEach(conn => {
-			conn.dataFlow = conn.dataFlow.map(particle => ({
-				...particle,
-				progress: (particle.progress + particle.speed) % 1
-			}));
-		});
-	}
-	
-	function updateHeatmap() {
-		heatmapData = heatmapData.map(point => ({
-			...point,
-			intensity: Math.max(0, Math.min(100, point.intensity + (Math.random() - 0.5) * 5))
-		}));
-	}
-	
-	$: filteredCountries = data.global_intelligence ? 
+
+	$: countries = data.global_intelligence ? 
 		Object.entries(data.global_intelligence)
 			.filter(([country]) => country.toLowerCase().includes(searchTerm.toLowerCase()))
 			.sort((a, b) => b[1] - a[1]) : [];
 	
-	$: maxCount = filteredCountries.length > 0 ? 
-		Math.max(...filteredCountries.map(([,c]) => c)) : 1;
+	$: totalHosts = countries.reduce((sum, [_, count]) => sum + count, 0);
+	$: maxHosts = countries.length > 0 ? Math.max(...countries.map(([,c]) => c)) : 1;
+	$: avgHostsPerCountry = countries.length > 0 ? Math.round(totalHosts / countries.length) : 0;
 	
-	function calculateMetrics(count) {
-		let normalized = count / maxCount;
-		
-		return {
-			percentile: (normalized * 100).toFixed(1),
-			globalInfluence: (normalized * 100).toFixed(0),
-			economicPower: (50 + normalized * 50).toFixed(0),
-			cyberCapability: (30 + normalized * 70).toFixed(0),
-			diplomaticReach: (40 + normalized * 60).toFixed(0),
-			threatIndex: (Math.random() * 100).toFixed(0),
-			stabilityScore: (100 - Math.random() * 30).toFixed(0),
-			dataNodes: count,
-			quantumSignature: generateQuantumSignature(count),
-			color: interpolateGeopoliticalColor(normalized, Math.random() * 100)
-		};
-	}
+	// Key metrics
+	$: topCountry = countries[0] || ['N/A', 0];
+	$: countryCount = countries.length;
+	$: globalCoverage = ((countryCount / 195) * 100).toFixed(1); // ~195 countries in the world
+	$: concentration = topCountry[1] > 0 ? ((topCountry[1] / totalHosts) * 100).toFixed(1) : 0;
 	
-	function generateQuantumSignature(seed) {
-		let sig = '';
-		let chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
-		for (let i = 0; i < 12; i++) {
-			sig += chars[(seed * (i + 1) * 997) % 36];
-			if (i === 2 || i === 5 || i === 8) sig += '-';
-		}
-		return sig;
-	}
-	
-	function getPercentage(count) {
-		let total = Object.values(data.global_intelligence || {}).reduce((a, b) => a + b, 0);
-		return total > 0 ? ((count / total) * 100).toFixed(2) : '0.00';
-	}
-	
+	// Top 10 for chart
+	$: topTen = countries.slice(0, 10);
+
 	async function drillDownCountry(country, count) {
 		selectedCountry = { country, count };
 		loading = true;
-		quantumState = 'DEEP_SCANNING';
 		
 		try {
 			let response = await fetch(`http://localhost:5000/api/host_search?q=${encodeURIComponent(country)}`);
 			let result = await response.json();
 			countryDetails = result.hosts || [];
 			loading = false;
-			quantumState = 'SYNCHRONIZED';
 		} catch (err) {
-			console.error('Country deep scan failed:', err);
+			console.error('Country drill-down error:', err);
 			countryDetails = [];
 			loading = false;
-			quantumState = 'ERROR';
 		}
 	}
-	
+
 	function closeDetails() {
 		selectedCountry = null;
 		countryDetails = [];
-		quantumState = 'SYNCHRONIZED';
 	}
 	
-	// Globe interaction handlers
-	function handleMouseDown(e) {
-		if (viewMode === 'globe') {
-			isDragging = true;
-			lastMouseX = e.clientX;
-			lastMouseY = e.clientY;
-			autoRotate = false;
-		}
+	function getCountryStatus(count) {
+		const percentage = (count / maxHosts) * 100;
+		if (percentage >= 75) return { level: 'CRITICAL', color: '#BD93F9', icon: '⚡' };
+		if (percentage >= 50) return { level: 'HIGH', color: '#8BE9FD', icon: '◆' };
+		if (percentage >= 25) return { level: 'MODERATE', color: '#50FA7B', icon: '●' };
+		return { level: 'LOW', color: '#FFB86C', icon: '○' };
 	}
 	
-	function handleMouseMove(e) {
-		if (isDragging && viewMode === 'globe') {
-			globeRotation.y += (e.clientX - lastMouseX) * 0.5;
-			globeRotation.x = Math.max(-90, Math.min(90, globeRotation.x + (e.clientY - lastMouseY) * 0.5));
-			lastMouseX = e.clientX;
-			lastMouseY = e.clientY;
-		}
-	}
-	
-	function handleMouseUp() {
-		isDragging = false;
-	}
-	
-	function handleWheel(e) {
-		if (viewMode === 'globe') {
-			e.preventDefault();
-			// Zoom functionality can be added here
-		}
+	function getRegionFromCountry(country) {
+		// Simple mapping - in production would use proper geo data
+		const regions = {
+			'united states': 'AMERICAS',
+			'canada': 'AMERICAS',
+			'brazil': 'AMERICAS',
+			'united kingdom': 'EUROPE',
+			'germany': 'EUROPE',
+			'france': 'EUROPE',
+			'china': 'ASIA',
+			'japan': 'ASIA',
+			'india': 'ASIA',
+			'australia': 'OCEANIA'
+		};
+		return regions[country.toLowerCase()] || 'OTHER';
 	}
 </script>
 
-<svelte:window 
-	on:mousemove={handleMouseMove}
-	on:mouseup={handleMouseUp}
-/>
-
-<div class="quantum-geo-interface">
-	<!-- Atmosphere Particle Field -->
-	<div class="atmosphere-field">
-		{#each atmosphereParticles as particle}
-			{@const phi = (90 - particle.lat) * Math.PI / 180}
-			{@const theta = (particle.lng + 180) * Math.PI / 180}
-			{@const x = particle.altitude * Math.sin(phi) * Math.cos(theta)}
-			{@const y = particle.altitude * Math.cos(phi)}
-			{@const z = particle.altitude * Math.sin(phi) * Math.sin(theta)}
-			<div class="atmosphere-particle"
-				 style="transform: translate3d({x}px, {y}px, {z}px);
-						width: {particle.size}px;
-						height: {particle.size}px;
-						background: {particle.color};
-						opacity: {0.3 + Math.sin(Date.now() * 0.001 + particle.lat) * 0.2}">
-			</div>
-		{/each}
-	</div>
-	
-	<div class="geo-container">
-		<!-- Quantum Header -->
-		<header class="geo-header">
-			<div class="header-layout">
-				<div class="brand-area">
-					<div class="geo-emblem">
-						<div class="emblem-globe">
-							<div class="globe-layer layer-1" style="border-color: {neonColors.primary}"></div>
-							<div class="globe-layer layer-2" style="border-color: {neonColors.secondary}"></div>
-							<div class="globe-layer layer-3" style="border-color: {neonColors.tertiary}"></div>
-							<div class="globe-core">🌍</div>
-						</div>
-					</div>
-					<div class="brand-data">
-						<h1 class="interface-name" data-text="GLOBAL INTELLIGENCE MATRIX">
-							GLOBAL INTELLIGENCE MATRIX
-						</h1>
-						<div class="status-bar">
-							<span class="status-item">
-								<span class="status-indicator" style="background: {threatLevel === 'CRITICAL' ? neonColors.critical : 
-																					  threatLevel === 'HIGH' ? neonColors.threat : 
-																					  threatLevel === 'ELEVATED' ? neonColors.warning : 
-																					  neonColors.safe}"></span>
-								THREAT: {threatLevel}
-							</span>
-							<span class="status-divider">|</span>
-							<span class="status-item">STATE: {quantumState}</span>
-							<span class="status-divider">|</span>
-							<span class="status-item">ACTIVITY: {globalActivity.toFixed(0)}%</span>
-							<span class="status-divider">|</span>
-							<span class="status-item">FLOW: {dataFlowRate.toFixed(0)} Tb/s</span>
-						</div>
-					</div>
-				</div>
-				
-				<div class="control-zone">
-					<div class="search-module">
-						<input 
-							type="text" 
-							bind:value={searchTerm}
-							placeholder="COUNTRY SEARCH..."
-							class="geo-search"
-						/>
-						<div class="search-scan" style="width: {searchTerm ? '100%' : '0'}"></div>
-					</div>
-					
-					<div class="view-selector">
-						<button class="view-btn {viewMode === 'globe' ? 'active' : ''}"
-								on:click={() => { viewMode = 'globe'; autoRotate = true; }}
-								style="--color: {neonColors.primary}">
-							<span class="btn-icon">🌍</span>
-							<span class="btn-label">GLOBE</span>
-						</button>
-						<button class="view-btn {viewMode === 'heatmap' ? 'active' : ''}"
-								on:click={() => viewMode = 'heatmap'}
-								style="--color: {neonColors.secondary}">
-							<span class="btn-icon">🗺️</span>
-							<span class="btn-label">HEATMAP</span>
-						</button>
-						<button class="view-btn {viewMode === 'connections' ? 'active' : ''}"
-								on:click={() => viewMode = 'connections'}
-								style="--color: {neonColors.tertiary}">
-							<span class="btn-icon">🔗</span>
-							<span class="btn-label">NETWORK</span>
-						</button>
-						<button class="view-btn {viewMode === 'intelligence' ? 'active' : ''}"
-								on:click={() => viewMode = 'intelligence'}
-								style="--color: {neonColors.quaternary}">
-							<span class="btn-icon">🎯</span>
-							<span class="btn-label">INTEL</span>
-						</button>
-					</div>
-				</div>
-				
-				<div class="metrics-zone">
-					<div class="metric-display">
-						<div class="metric-value" style="color: {neonColors.primary}">
-							{filteredCountries.length}
-						</div>
-						<div class="metric-label">NATIONS</div>
-					</div>
-					<div class="metric-display">
-						<div class="metric-value" style="color: {neonColors.secondary}">
-							{Object.values(data.global_intelligence || {}).reduce((a, b) => a + b, 0).toLocaleString()}
-						</div>
-						<div class="metric-label">ASSETS</div>
-					</div>
+<div class="country-interface">
+	<div class="interface-layout">
+		<!-- Top Stats -->
+		<div class="stats-row">
+			<div class="stat-card">
+				<div class="stat-icon">🌍</div>
+				<div class="stat-content">
+					<div class="stat-value" style="color: #BD93F9">{countryCount}</div>
+					<div class="stat-label">COUNTRIES</div>
 				</div>
 			</div>
-		</header>
+			<div class="stat-card">
+				<div class="stat-icon">💻</div>
+				<div class="stat-content">
+					<div class="stat-value" style="color: #8BE9FD">{totalHosts.toLocaleString()}</div>
+					<div class="stat-label">TOTAL HOSTS</div>
+				</div>
+			</div>
+			<div class="stat-card">
+				<div class="stat-icon">📍</div>
+				<div class="stat-content">
+					<div class="stat-value" style="color: #50FA7B">{topCountry[0].toUpperCase()}</div>
+					<div class="stat-label">TOP COUNTRY</div>
+				</div>
+			</div>
+			<div class="stat-card">
+				<div class="stat-icon">🌐</div>
+				<div class="stat-content">
+					<div class="stat-value" style="color: #FFB86C">{globalCoverage}%</div>
+					<div class="stat-label">GLOBAL COVERAGE</div>
+				</div>
+			</div>
+			<div class="stat-card">
+				<div class="stat-icon">📊</div>
+				<div class="stat-content">
+					<div class="stat-value" style="color: #FF79C6">{concentration}%</div>
+					<div class="stat-label">TOP CONCENTRATION</div>
+				</div>
+			</div>
+		</div>
 		
-		<!-- Main Viewport -->
-		<div class="geo-viewport">
-			{#if loading && !selectedCountry}
-				<div class="loading-screen">
-					<div class="loading-globe">
-						<div class="globe-scanner">
-							<div class="scanner-ring ring-1" style="border-color: {neonColors.primary}"></div>
-							<div class="scanner-ring ring-2" style="border-color: {neonColors.secondary}"></div>
-							<div class="scanner-ring ring-3" style="border-color: {neonColors.tertiary}"></div>
-						</div>
-						<div class="scanner-core">🌍</div>
-					</div>
-					<p class="loading-message">ESTABLISHING GLOBAL QUANTUM LINK...</p>
+		<!-- Main Content -->
+		<div class="content-area">
+			<!-- Left: Geo Visualization -->
+			<div class="geo-panel">
+				<div class="panel-header">
+					<h2>GLOBAL HOST INFRASTRUCTURE</h2>
+					<input type="text"
+						   bind:value={searchTerm}
+						   placeholder="Search countries..."
+						   class="search-input"/>
 				</div>
-			{:else if selectedCountry}
-				<!-- Country Detail View -->
-				<div class="country-detail-interface">
-					<div class="detail-header">
-						<div class="country-profile">
-							<div class="profile-flag" style="border-color: {calculateMetrics(selectedCountry.count).color}">
-								<div class="flag-layers">
-									<div class="layer" style="border-color: {neonColors.primary}"></div>
-									<div class="layer" style="border-color: {neonColors.secondary}"></div>
-								</div>
-								<div class="flag-icon">🏳️</div>
-							</div>
-							<div class="profile-info">
-								<h2 class="country-name">{selectedCountry.country.toUpperCase()}</h2>
-								<div class="country-signature">
-									{calculateMetrics(selectedCountry.count).quantumSignature}
-								</div>
-								<div class="country-badges">
-									<span class="badge" style="background: {neonColors.primary}20; color: {neonColors.primary}">
-										INFLUENCE: {calculateMetrics(selectedCountry.count).globalInfluence}%
-									</span>
-									<span class="badge" style="background: {neonColors.secondary}20; color: {neonColors.secondary}">
-										ECONOMIC: {calculateMetrics(selectedCountry.count).economicPower}%
-									</span>
-									<span class="badge" style="background: {neonColors.tertiary}20; color: {neonColors.tertiary}">
-										CYBER: {calculateMetrics(selectedCountry.count).cyberCapability}%
-									</span>
-								</div>
-							</div>
+				
+				{#if loading && !selectedCountry}
+					<div class="loading-state">
+						<div class="world-loader">
+							<div class="continent con-1"></div>
+							<div class="continent con-2"></div>
+							<div class="continent con-3"></div>
 						</div>
-						<button class="close-btn" on:click={closeDetails}>
-							<span>✕</span>
-						</button>
+						<p>MAPPING GLOBAL INFRASTRUCTURE...</p>
 					</div>
-					
-					<div class="detail-metrics-grid">
-						<div class="metric-card">
-							<div class="card-icon" style="color: {neonColors.primary}">📊</div>
-							<div class="card-data">
-								<div class="data-value" style="color: {neonColors.primary}">
-									{selectedCountry.count.toLocaleString()}
-								</div>
-								<div class="data-label">DIGITAL ASSETS</div>
-							</div>
-							<div class="card-visual">
-								<div class="mini-chart">
-									{#each Array(20) as _, i}
-										<div class="chart-bar" style="height: {Math.random() * 100}%; background: {neonColors.primary}"></div>
-									{/each}
+				{:else if selectedCountry}
+					<div class="detail-view">
+						<div class="detail-header">
+							<div class="country-info">
+								<h3>{selectedCountry.country.toUpperCase()}</h3>
+								<div class="country-stats">
+									<span>{selectedCountry.count.toLocaleString()} HOSTS</span>
+									<span>•</span>
+									<span>{((selectedCountry.count / totalHosts) * 100).toFixed(2)}% OF TOTAL</span>
 								</div>
 							</div>
+							<button class="close-btn" on:click={closeDetails}>✕</button>
 						</div>
-						
-						<div class="metric-card">
-							<div class="card-icon" style="color: {neonColors.secondary}">🌐</div>
-							<div class="card-data">
-								<div class="data-value" style="color: {neonColors.secondary}">
-									{getPercentage(selectedCountry.count)}%
-								</div>
-								<div class="data-label">GLOBAL SHARE</div>
-							</div>
-							<div class="card-visual">
-								<div class="progress-ring">
-									<svg viewBox="0 0 36 36">
-										<path d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
-											  fill="none"
-											  stroke="{neonColors.secondary}"
-											  stroke-width="2"
-											  stroke-dasharray="{getPercentage(selectedCountry.count)}, 100"/>
-									</svg>
-									<div class="ring-value">{getPercentage(selectedCountry.count)}%</div>
-								</div>
-							</div>
-						</div>
-						
-						<div class="metric-card">
-							<div class="card-icon" style="color: {neonColors.tertiary}">🛡️</div>
-							<div class="card-data">
-								<div class="data-value" style="color: {neonColors.tertiary}">
-									{calculateMetrics(selectedCountry.count).stabilityScore}%
-								</div>
-								<div class="data-label">STABILITY</div>
-							</div>
-							<div class="card-visual">
-								<div class="stability-meter">
-									<div class="meter-fill" style="width: {calculateMetrics(selectedCountry.count).stabilityScore}%; 
-																   background: {neonColors.tertiary}"></div>
-									<div class="meter-markers">
-										{#each Array(10) as _, i}
-											<div class="marker"></div>
-										{/each}
-									</div>
-								</div>
-							</div>
-						</div>
-						
-						<div class="metric-card">
-							<div class="card-icon" style="color: {neonColors.threat}">⚠️</div>
-							<div class="card-data">
-								<div class="data-value" style="color: {neonColors.threat}">
-									{calculateMetrics(selectedCountry.count).threatIndex}
-								</div>
-								<div class="data-label">THREAT INDEX</div>
-							</div>
-							<div class="card-visual">
-								<div class="threat-radar">
-									<div class="radar-sweep" style="transform: rotate({Date.now() * 0.1 % 360}deg)"></div>
-									<div class="radar-dot" style="background: {neonColors.threat}"></div>
-								</div>
-							</div>
-						</div>
-					</div>
-					
-					<div class="detail-data-stream">
-						<div class="stream-header">
-							<h3>INTELLIGENCE DATA STREAM</h3>
-							<div class="stream-indicators">
-								<span class="indicator-live">LIVE</span>
-								<span class="indicator-pulse"></span>
-							</div>
-						</div>
-						<div class="stream-table-wrapper">
-							<table class="intel-table">
+						<div class="hosts-container">
+							<table class="hosts-table">
 								<thead>
 									<tr>
-										<th>ASSET_ID</th>
+										<th>HOSTNAME</th>
 										<th>REGION</th>
 										<th>INFRASTRUCTURE</th>
 										<th>DIVISION</th>
-										<th>CMDB_SYNC</th>
-										<th>TANIUM_SHIELD</th>
+										<th>CMDB</th>
+										<th>TANIUM</th>
 									</tr>
 								</thead>
 								<tbody>
 									{#each countryDetails as host}
-										<tr class="intel-row">
-											<td class="asset-id">{host.host.substring(0, 30)}</td>
-											<td>{host.region || 'CLASSIFIED'}</td>
+										<tr>
+											<td class="hostname">{host.host}</td>
+											<td>{host.region || 'UNKNOWN'}</td>
 											<td>{host.infrastructure_type || 'UNKNOWN'}</td>
-											<td>{host.business_unit || 'UNASSIGNED'}</td>
+											<td>{host.business_unit || 'UNKNOWN'}</td>
 											<td>
-												<span class="sync-status {host.present_in_cmdb?.toLowerCase().includes('yes') ? 'synced' : 'desynced'}"
-													  style="color: {host.present_in_cmdb?.toLowerCase().includes('yes') ? neonColors.safe : neonColors.critical}">
-													{host.present_in_cmdb?.toLowerCase().includes('yes') ? '◈' : '○'}
+												<span class="status-dot {host.present_in_cmdb?.toLowerCase().includes('yes') ? 'active' : 'inactive'}">
+													●
 												</span>
 											</td>
 											<td>
-												<span class="shield-status {host.tanium_coverage?.toLowerCase().includes('tanium') ? 'protected' : 'vulnerable'}"
-													  style="color: {host.tanium_coverage?.toLowerCase().includes('tanium') ? neonColors.primary : neonColors.warning}">
-													{host.tanium_coverage?.toLowerCase().includes('tanium') ? '⬢' : '⬡'}
+												<span class="status-dot {host.tanium_coverage?.toLowerCase().includes('tanium') ? 'active' : 'inactive'}">
+													●
 												</span>
 											</td>
 										</tr>
@@ -689,100 +210,751 @@
 							</table>
 						</div>
 					</div>
-				</div>
-			{:else if viewMode === 'globe'}
-				<!-- Globe View -->
-				<div class="globe-view" on:mousedown={handleMouseDown} on:wheel={handleWheel}>
-					<div class="globe-container" style="transform: rotateX({globeRotation.x}deg) rotateY({globeRotation.y}deg) rotateZ({globeRotation.z}deg)">
-						<div class="globe-sphere">
-							<!-- Globe mesh -->
-							<svg class="globe-svg" viewBox="-300 -300 600 600">
+				{:else}
+					<div class="geo-visualization">
+						<!-- World Bubble Map -->
+						<div class="bubble-map">
+							<svg viewBox="0 0 1200 600">
 								<defs>
-									<radialGradient id="globeGradient">
-										<stop offset="0%" style="stop-color:{neonColors.primary};stop-opacity:0.3" />
-										<stop offset="100%" style="stop-color:{neonColors.primary};stop-opacity:0" />
-									</radialGradient>
-									<filter id="glow">
-										<feGaussianBlur stdDeviation="3" result="coloredBlur"/>
-										<feMerge>
-											<feMergeNode in="coloredBlur"/>
-											<feMergeNode in="SourceGraphic"/>
-										</feMerge>
-									</filter>
+									<linearGradient id="bubbleGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+										<stop offset="0%" style="stop-color:#BD93F9;stop-opacity:1" />
+										<stop offset="100%" style="stop-color:#8BE9FD;stop-opacity:1" />
+									</linearGradient>
 								</defs>
 								
-								<!-- Globe outline -->
-								<circle cx="0" cy="0" r="200" fill="url(#globeGradient)" stroke="{neonColors.primary}" stroke-width="0.5" opacity="0.3"/>
-								
-								<!-- Latitude lines -->
-								{#each [-60, -30, 0, 30, 60] as lat}
-									{@const y = Math.sin(lat * Math.PI / 180) * 200}
-									{@const r = Math.cos(lat * Math.PI / 180) * 200}
-									<ellipse cx="0" cy="{y}" rx="{r}" ry="{r * 0.3}" fill="none" stroke="{neonColors.primary}" stroke-width="0.3" opacity="0.5"/>
+								<!-- Grid lines -->
+								{#each Array(5) as _, i}
+									<line x1="0" y1="{i * 150}" x2="1200" y2="{i * 150}" 
+										  stroke="rgba(255,255,255,0.05)" stroke-width="1"/>
+									<line x1="{i * 300}" y1="0" x2="{i * 300}" y2="600" 
+										  stroke="rgba(255,255,255,0.05)" stroke-width="1"/>
 								{/each}
 								
-								<!-- Longitude lines -->
-								{#each [0, 30, 60, 90, 120, 150] as lng}
-									<ellipse cx="0" cy="0" rx="200" ry="200" fill="none" stroke="{neonColors.primary}" stroke-width="0.3" opacity="0.5"
-											 transform="rotate({lng} 0 0)"/>
-								{/each}
-								
-								<!-- Country nodes -->
-								{#each countryNodes as node}
-									{@const visible = node.z > 0}
-									{#if visible}
-										<g transform="translate({node.x}, {-node.y})" on:click={() => drillDownCountry(node.name, node.count)}>
-											<circle r="{5 + node.importance * 15}" fill="{node.color}" opacity="0.3"/>
-											<circle r="{3 + node.importance * 8}" fill="{node.color}" opacity="0.8" filter="url(#glow)"/>
-											<text y="-{10 + node.importance * 15}" text-anchor="middle" fill="#ffffff" font-size="8" opacity="0.9">
-												{node.name.substring(0, 15).toUpperCase()}
-											</text>
-										</g>
-									{/if}
-								{/each}
-								
-								<!-- Connections -->
-								{#each geoConnections as conn}
-									{#if countryNodes[conn.source] && countryNodes[conn.target] && countryNodes[conn.source].z > 0 && countryNodes[conn.target].z > 0}
-										<line x1="{countryNodes[conn.source].x}" y1="{-countryNodes[conn.source].y}"
-											  x2="{countryNodes[conn.target].x}" y2="{-countryNodes[conn.target].y}"
-											  stroke="{conn.type === 'economic' ? neonColors.tertiary : 
-													   conn.type === 'cyber' ? neonColors.data : 
-													   conn.type === 'diplomatic' ? neonColors.quaternary : 
-													   neonColors.primary}"
-											  stroke-width="{0.5 + conn.strength}"
-											  opacity="{0.2 + conn.strength * 0.3}"/>
-									{/if}
-								{/each}
-								
-								<!-- Satellites -->
-								{#each satellites as sat}
-									{@const satPhi = (90 - sat.lat) * Math.PI / 180}
-									{@const satTheta = (sat.lng + 180) * Math.PI / 180}
-									{@const satX = sat.altitude * Math.sin(satPhi) * Math.cos(satTheta)}
-									{@const satY = sat.altitude * Math.cos(satPhi)}
-									<g transform="translate({satX}, {-satY})">
-										<rect x="-5" y="-2" width="10" height="4" fill="{sat.active ? neonColors.safe : neonColors.critical}" opacity="0.8"/>
-										<line x1="0" y1="0" x2="0" y2="{200 - sat.altitude}" stroke="{neonColors.data}" stroke-width="0.3" opacity="0.5" stroke-dasharray="2,3"/>
+								<!-- Country bubbles -->
+								{#each topTen as [country, count], i}
+									{@const x = 150 + (i % 5) * 220}
+									{@const y = 200 + Math.floor(i / 5) * 200}
+									{@const radius = Math.sqrt(count / maxHosts) * 60}
+									{@const status = getCountryStatus(count)}
+									
+									<g class="country-bubble" on:click={() => drillDownCountry(country, count)}>
+										<!-- Outer ring -->
+										<circle cx="{x}" cy="{y}" r="{radius + 10}" 
+												fill="none" stroke="{status.color}" stroke-width="1" 
+												opacity="0.3" stroke-dasharray="5,5">
+											<animate attributeName="stroke-dashoffset" 
+													 values="0;10" dur="2s" repeatCount="indefinite"/>
+										</circle>
+										<!-- Main bubble -->
+										<circle cx="{x}" cy="{y}" r="{radius}" 
+												fill="{status.color}" opacity="0.4"/>
+										<!-- Inner core -->
+										<circle cx="{x}" cy="{y}" r="{radius * 0.6}" 
+												fill="{status.color}" opacity="0.8"/>
+										<!-- Country name -->
+										<text x="{x}" y="{y - radius - 15}" 
+											  text-anchor="middle" fill="#FFFFFF" 
+											  font-size="11" font-weight="600">
+											{country.substring(0, 20).toUpperCase()}
+										</text>
+										<!-- Host count -->
+										<text x="{x}" y="{y}" 
+											  text-anchor="middle" fill="#FFFFFF" 
+											  font-size="16" font-weight="700">
+											{count.toLocaleString()}
+										</text>
+										<!-- Icon -->
+										<text x="{x}" y="{y + 20}" 
+											  text-anchor="middle" fill="#FFFFFF" 
+											  font-size="20">
+											{status.icon}
+										</text>
 									</g>
 								{/each}
 							</svg>
 						</div>
+						
+						<!-- Heatmap Grid -->
+						<div class="heatmap-section">
+							<h3>HOST DENSITY HEATMAP</h3>
+							<div class="heatmap-grid">
+								{#each countries.slice(0, 50) as [country, count], i}
+									{@const intensity = count / maxHosts}
+									{@const status = getCountryStatus(count)}
+									<div class="heat-cell"
+										 style="background: {status.color}; 
+												opacity: {0.2 + intensity * 0.8}"
+										 title="{country}: {count} hosts"
+										 on:click={() => drillDownCountry(country, count)}>
+									</div>
+								{/each}
+							</div>
+						</div>
 					</div>
-					
-					<div class="globe-controls">
-						<button class="control-btn" on:click={() => autoRotate = !autoRotate} style="color: {neonColors.primary}">
-							{autoRotate ? '⏸️' : '▶️'} {autoRotate ? 'PAUSE' : 'ROTATE'}
-						</button>
+				{/if}
+			</div>
+			
+			<!-- Middle: Charts -->
+			<div class="charts-panel">
+				<!-- Horizontal Bar Chart -->
+				<div class="chart-box">
+					<h3>TOP 10 COUNTRIES BY HOST COUNT</h3>
+					<div class="h-bar-chart">
+						{#each topTen as [country, count], i}
+							{@const percentage = (count / maxHosts) * 100}
+							{@const status = getCountryStatus(count)}
+							<div class="h-bar-item" on:click={() => drillDownCountry(country, count)}>
+								<div class="h-bar-rank">#{i + 1}</div>
+								<div class="h-bar-country">{country.substring(0, 15).toUpperCase()}</div>
+								<div class="h-bar-track">
+									<div class="h-bar-fill" 
+										 style="width: {percentage}%; 
+												background: linear-gradient(90deg, {status.color}40, {status.color})">
+										<span class="h-bar-value">{count.toLocaleString()}</span>
+									</div>
+								</div>
+								<div class="h-bar-percent">{((count/totalHosts)*100).toFixed(1)}%</div>
+							</div>
+						{/each}
 					</div>
 				</div>
-			{:else if viewMode === 'heatmap'}
-				<!-- Heatmap View (continued in next part...) -->
-			{/if}
+				
+				<!-- Regional Distribution -->
+				<div class="chart-box">
+					<h3>REGIONAL DISTRIBUTION</h3>
+					<div class="region-bars">
+						{@const regionGroups = countries.reduce((acc, [country, count]) => {
+							const region = getRegionFromCountry(country);
+							acc[region] = (acc[region] || 0) + count;
+							return acc;
+						}, {})}
+						{#each Object.entries(regionGroups).sort((a, b) => b[1] - a[1]) as [region, count], i}
+							{@const maxRegion = Math.max(...Object.values(regionGroups))}
+							{@const height = (count / maxRegion) * 100}
+							<div class="region-bar">
+								<div class="region-column">
+									<div class="region-fill" 
+										 style="height: {height}%; 
+												background: {['#BD93F9', '#8BE9FD', '#50FA7B', '#FFB86C', '#FF79C6'][i % 5]}">
+										<span class="region-value">{count.toLocaleString()}</span>
+									</div>
+								</div>
+								<div class="region-label">{region}</div>
+							</div>
+						{/each}
+					</div>
+				</div>
+			</div>
+			
+			<!-- Right: Country List -->
+			<div class="list-panel">
+				<div class="panel-header">
+					<h3>ALL COUNTRIES</h3>
+					<span class="country-count">{countries.length} TOTAL</span>
+				</div>
+				<div class="country-list">
+					<table class="countries-table">
+						<thead>
+							<tr>
+								<th>#</th>
+								<th>COUNTRY</th>
+								<th>HOSTS</th>
+								<th>%</th>
+								<th>STATUS</th>
+							</tr>
+						</thead>
+						<tbody>
+							{#each countries as [country, count], i}
+								{@const percentage = ((count / totalHosts) * 100).toFixed(2)}
+								{@const status = getCountryStatus(count)}
+								<tr on:click={() => drillDownCountry(country, count)}>
+									<td class="rank">{i + 1}</td>
+									<td class="country-name">
+										<span class="status-icon">{status.icon}</span>
+										{country.substring(0, 20).toUpperCase()}
+									</td>
+									<td class="host-count" style="color: {status.color}">
+										{count.toLocaleString()}
+									</td>
+									<td class="percentage">{percentage}%</td>
+									<td>
+										<span class="status-badge" 
+											  style="background: {status.color}20; 
+													 color: {status.color};
+													 border: 1px solid {status.color}">
+											{status.level}
+										</span>
+									</td>
+								</tr>
+							{/each}
+						</tbody>
+					</table>
+				</div>
+			</div>
 		</div>
 	</div>
 </div>
 
 <style>
-	/* Styles will continue in next part */
+	.country-interface {
+		width: 100%;
+		height: calc(100vh - 80px);
+		background: #000000;
+		overflow: hidden;
+	}
+	
+	.interface-layout {
+		height: 100%;
+		display: flex;
+		flex-direction: column;
+		padding: 1rem;
+		gap: 1rem;
+	}
+	
+	/* Stats Row */
+	.stats-row {
+		display: flex;
+		gap: 1rem;
+	}
+	
+	.stat-card {
+		flex: 1;
+		background: rgba(255, 255, 255, 0.02);
+		border: 1px solid rgba(139, 233, 253, 0.1);
+		border-radius: 10px;
+		padding: 1rem;
+		display: flex;
+		gap: 1rem;
+		align-items: center;
+	}
+	
+	.stat-icon {
+		font-size: 2rem;
+	}
+	
+	.stat-content {
+		flex: 1;
+	}
+	
+	.stat-value {
+		font-size: 1.5rem;
+		font-weight: 700;
+		font-family: 'Courier New', monospace;
+		margin-bottom: 0.25rem;
+	}
+	
+	.stat-label {
+		font-size: 0.65rem;
+		color: rgba(255, 255, 255, 0.5);
+		letter-spacing: 0.1em;
+		font-weight: 600;
+	}
+	
+	/* Content Area */
+	.content-area {
+		flex: 1;
+		display: grid;
+		grid-template-columns: 1fr 400px 320px;
+		gap: 1rem;
+		min-height: 0;
+	}
+	
+	/* Geo Panel */
+	.geo-panel {
+		background: rgba(255, 255, 255, 0.02);
+		border: 1px solid rgba(189, 147, 249, 0.1);
+		border-radius: 12px;
+		padding: 1rem;
+		display: flex;
+		flex-direction: column;
+	}
+	
+	.panel-header {
+		display: flex;
+		justify-content: space-between;
+		align-items: center;
+		margin-bottom: 1rem;
+		padding-bottom: 0.5rem;
+		border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+	}
+	
+	.panel-header h2, .panel-header h3 {
+		margin: 0;
+		font-size: 0.9rem;
+		font-weight: 300;
+		letter-spacing: 0.1em;
+		color: #BD93F9;
+	}
+	
+	.search-input {
+		padding: 0.4rem 0.8rem;
+		background: rgba(0, 0, 0, 0.5);
+		border: 1px solid rgba(139, 233, 253, 0.3);
+		border-radius: 6px;
+		color: #FFFFFF;
+		font-size: 0.75rem;
+		width: 180px;
+	}
+	
+	.search-input:focus {
+		outline: none;
+		border-color: #8BE9FD;
+	}
+	
+	.geo-visualization {
+		flex: 1;
+		display: flex;
+		flex-direction: column;
+		gap: 1rem;
+	}
+	
+	.bubble-map {
+		flex: 2;
+	}
+	
+	.bubble-map svg {
+		width: 100%;
+		height: 100%;
+	}
+	
+	.country-bubble {
+		cursor: pointer;
+		transition: all 0.3s ease;
+	}
+	
+	.country-bubble:hover {
+		transform: scale(1.1);
+	}
+	
+	.heatmap-section {
+		flex: 1;
+	}
+	
+	.heatmap-section h3 {
+		margin: 0 0 0.5rem 0;
+		font-size: 0.8rem;
+		color: #8BE9FD;
+		font-weight: 300;
+		letter-spacing: 0.1em;
+	}
+	
+	.heatmap-grid {
+		display: grid;
+		grid-template-columns: repeat(10, 1fr);
+		grid-template-rows: repeat(5, 1fr);
+		gap: 2px;
+		height: 100px;
+		background: rgba(0, 0, 0, 0.5);
+		padding: 4px;
+		border-radius: 8px;
+	}
+	
+	.heat-cell {
+		border-radius: 2px;
+		cursor: pointer;
+		transition: all 0.2s ease;
+	}
+	
+	.heat-cell:hover {
+		transform: scale(1.5);
+		z-index: 10;
+		box-shadow: 0 0 10px currentColor;
+	}
+	
+	/* Charts Panel */
+	.charts-panel {
+		display: flex;
+		flex-direction: column;
+		gap: 1rem;
+	}
+	
+	.chart-box {
+		flex: 1;
+		background: rgba(255, 255, 255, 0.02);
+		border: 1px solid rgba(139, 233, 253, 0.1);
+		border-radius: 10px;
+		padding: 1rem;
+		display: flex;
+		flex-direction: column;
+	}
+	
+	.chart-box h3 {
+		margin: 0 0 1rem 0;
+		font-size: 0.75rem;
+		color: #8BE9FD;
+		font-weight: 300;
+		letter-spacing: 0.1em;
+	}
+	
+	.h-bar-chart {
+		flex: 1;
+		display: flex;
+		flex-direction: column;
+		gap: 0.4rem;
+	}
+	
+	.h-bar-item {
+		display: grid;
+		grid-template-columns: 20px 100px 1fr 40px;
+		gap: 0.5rem;
+		align-items: center;
+		cursor: pointer;
+		transition: all 0.2s ease;
+	}
+	
+	.h-bar-item:hover {
+		transform: translateX(2px);
+	}
+	
+	.h-bar-rank {
+		font-size: 0.65rem;
+		color: #BD93F9;
+		font-weight: 600;
+	}
+	
+	.h-bar-country {
+		font-size: 0.65rem;
+		color: rgba(255, 255, 255, 0.8);
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
+	}
+	
+	.h-bar-track {
+		height: 18px;
+		background: rgba(255, 255, 255, 0.05);
+		border-radius: 4px;
+		overflow: hidden;
+	}
+	
+	.h-bar-fill {
+		height: 100%;
+		display: flex;
+		align-items: center;
+		justify-content: flex-end;
+		padding: 0 0.4rem;
+		transition: width 0.5s ease;
+		border-radius: 4px;
+	}
+	
+	.h-bar-value {
+		font-size: 0.6rem;
+		color: #FFFFFF;
+		font-weight: 600;
+	}
+	
+	.h-bar-percent {
+		font-size: 0.65rem;
+		color: rgba(255, 255, 255, 0.5);
+		text-align: right;
+	}
+	
+	.region-bars {
+		flex: 1;
+		display: flex;
+		align-items: flex-end;
+		gap: 0.5rem;
+	}
+	
+	.region-bar {
+		flex: 1;
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		gap: 0.25rem;
+	}
+	
+	.region-column {
+		width: 100%;
+		height: 120px;
+		display: flex;
+		align-items: flex-end;
+	}
+	
+	.region-fill {
+		width: 100%;
+		display: flex;
+		align-items: flex-start;
+		justify-content: center;
+		padding-top: 0.25rem;
+		border-radius: 4px 4px 0 0;
+		transition: height 0.5s ease;
+	}
+	
+	.region-value {
+		font-size: 0.6rem;
+		color: #FFFFFF;
+		font-weight: 600;
+	}
+	
+	.region-label {
+		font-size: 0.6rem;
+		color: rgba(255, 255, 255, 0.6);
+		writing-mode: vertical-lr;
+		text-align: center;
+	}
+	
+	/* List Panel */
+	.list-panel {
+		background: rgba(255, 255, 255, 0.02);
+		border: 1px solid rgba(189, 147, 249, 0.1);
+		border-radius: 12px;
+		display: flex;
+		flex-direction: column;
+		overflow: hidden;
+	}
+	
+	.country-count {
+		font-size: 0.7rem;
+		color: rgba(255, 255, 255, 0.5);
+	}
+	
+	.country-list {
+		flex: 1;
+		overflow-y: auto;
+	}
+	
+	.countries-table {
+		width: 100%;
+		border-collapse: collapse;
+	}
+	
+	.countries-table thead {
+		position: sticky;
+		top: 0;
+		background: rgba(0, 0, 0, 0.9);
+		z-index: 10;
+	}
+	
+	.countries-table th {
+		padding: 0.5rem;
+		text-align: left;
+		font-size: 0.6rem;
+		font-weight: 600;
+		color: rgba(255, 255, 255, 0.5);
+		letter-spacing: 0.05em;
+		border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+	}
+	
+	.countries-table tbody tr {
+		cursor: pointer;
+		transition: all 0.2s ease;
+		border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+	}
+	
+	.countries-table tbody tr:hover {
+		background: rgba(139, 233, 253, 0.05);
+	}
+	
+	.countries-table td {
+		padding: 0.5rem;
+		font-size: 0.7rem;
+		color: rgba(255, 255, 255, 0.8);
+	}
+	
+	.rank {
+		color: #BD93F9;
+		font-weight: 600;
+		font-size: 0.65rem;
+	}
+	
+	.country-name {
+		display: flex;
+		align-items: center;
+		gap: 0.3rem;
+		font-size: 0.65rem;
+	}
+	
+	.status-icon {
+		font-size: 0.8rem;
+	}
+	
+	.host-count {
+		font-family: 'Courier New', monospace;
+		font-weight: 600;
+	}
+	
+	.percentage {
+		color: rgba(255, 255, 255, 0.6);
+		font-size: 0.65rem;
+	}
+	
+	.status-badge {
+		font-size: 0.55rem;
+		padding: 0.15rem 0.3rem;
+		border-radius: 3px;
+		font-weight: 600;
+		letter-spacing: 0.03em;
+	}
+	
+	/* Detail View */
+	.detail-view {
+		flex: 1;
+		display: flex;
+		flex-direction: column;
+	}
+	
+	.detail-header {
+		display: flex;
+		justify-content: space-between;
+		align-items: start;
+		margin-bottom: 1rem;
+	}
+	
+	.country-info h3 {
+		margin: 0 0 0.25rem 0;
+		font-size: 1.1rem;
+		color: #BD93F9;
+	}
+	
+	.country-stats {
+		font-size: 0.7rem;
+		color: rgba(255, 255, 255, 0.6);
+		display: flex;
+		gap: 0.5rem;
+	}
+	
+	.close-btn {
+		background: rgba(255, 255, 255, 0.1);
+		border: 1px solid rgba(255, 255, 255, 0.2);
+		color: #FFFFFF;
+		width: 28px;
+		height: 28px;
+		border-radius: 6px;
+		font-size: 1rem;
+		cursor: pointer;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		transition: all 0.2s ease;
+	}
+	
+	.close-btn:hover {
+		background: rgba(189, 147, 249, 0.2);
+		border-color: #BD93F9;
+	}
+	
+	.hosts-container {
+		flex: 1;
+		overflow-y: auto;
+		background: rgba(0, 0, 0, 0.3);
+		border-radius: 8px;
+		padding: 1rem;
+	}
+	
+	.hosts-table {
+		width: 100%;
+		border-collapse: collapse;
+	}
+	
+	.hosts-table thead {
+		position: sticky;
+		top: 0;
+		background: rgba(0, 0, 0, 0.9);
+		z-index: 10;
+	}
+	
+	.hosts-table th {
+		padding: 0.5rem;
+		text-align: left;
+		font-size: 0.65rem;
+		color: rgba(255, 255, 255, 0.5);
+		border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+	}
+	
+	.hosts-table td {
+		padding: 0.5rem;
+		font-size: 0.65rem;
+		color: rgba(255, 255, 255, 0.8);
+		border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+	}
+	
+	.hostname {
+		font-family: 'Courier New', monospace;
+		color: #8BE9FD;
+		font-size: 0.6rem;
+	}
+	
+	.status-dot {
+		font-size: 0.8rem;
+	}
+	
+	.status-dot.active {
+		color: #50FA7B;
+	}
+	
+	.status-dot.inactive {
+		color: #FF5555;
+	}
+	
+	/* Loading State */
+	.loading-state {
+		flex: 1;
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		justify-content: center;
+		gap: 2rem;
+	}
+	
+	.world-loader {
+		position: relative;
+		width: 120px;
+		height: 120px;
+	}
+	
+	.continent {
+		position: absolute;
+		background: linear-gradient(135deg, #BD93F9, #8BE9FD);
+		border-radius: 50%;
+		animation: float 3s ease-in-out infinite;
+	}
+	
+	.con-1 {
+		width: 40px;
+		height: 40px;
+		top: 10px;
+		left: 40px;
+	}
+	
+	.con-2 {
+		width: 50px;
+		height: 50px;
+		top: 40px;
+		left: 10px;
+		animation-delay: 0.5s;
+	}
+	
+	.con-3 {
+		width: 30px;
+		height: 30px;
+		top: 60px;
+		left: 60px;
+		animation-delay: 1s;
+	}
+	
+	@keyframes float {
+		0%, 100% { transform: translateY(0); }
+		50% { transform: translateY(-10px); }
+	}
+	
+	.loading-state p {
+		color: rgba(255, 255, 255, 0.5);
+		font-size: 0.8rem;
+		letter-spacing: 0.2em;
+	}
+	
+	/* Scrollbar */
+	::-webkit-scrollbar {
+		width: 6px;
+	}
+	
+	::-webkit-scrollbar-track {
+		background: rgba(0, 0, 0, 0.5);
+	}
+	
+	::-webkit-scrollbar-thumb {
+		background: rgba(189, 147, 249, 0.3);
+		border-radius: 3px;
+	}
 </style>
