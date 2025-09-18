@@ -10,7 +10,7 @@
 	
 	// Animation states
 	let animationFrame = null;
-	let pulsePhase = 0;
+	let rotationDegree = 0;
 	let synapticActivity = [];
 	
 	onMount(async () => {
@@ -23,11 +23,16 @@
 			loading = false;
 		}
 		
+		// Initialize synaptic activity
+		for (let i = 0; i < 50; i++) {
+			synapticActivity.push(0);
+		}
+		
 		// Start animations
 		const animate = () => {
-			pulsePhase = (pulsePhase + 0.02) % (Math.PI * 2);
+			rotationDegree = (rotationDegree + 0.2) % 360;
 			
-			// Generate synaptic activity patterns
+			// Update synaptic activity
 			synapticActivity = Array(50).fill(0).map((_, i) => 
 				50 + Math.sin(Date.now() * 0.002 + i * 0.2) * 30 + Math.random() * 20
 			);
@@ -40,7 +45,7 @@
 	onDestroy(() => {
 		if (animationFrame) cancelAnimationFrame(animationFrame);
 	});
-	
+
 	$: sources = data.source_intelligence ? 
 		Object.entries(data.source_intelligence)
 			.filter(([source]) => source.toLowerCase().includes(searchTerm.toLowerCase()))
@@ -48,45 +53,47 @@
 	
 	$: totalHosts = sources.reduce((sum, [_, count]) => sum + count, 0);
 	$: maxHosts = sources.length > 0 ? Math.max(...sources.map(([,c]) => c)) : 1;
-	$: avgHosts = sources.length > 0 ? Math.round(totalHosts / sources.length) : 0;
+	$: avgHostsPerSource = sources.length > 0 ? Math.round(totalHosts / sources.length) : 0;
 	
 	// Key metrics
 	$: sourceCount = sources.length;
 	$: topSource = sources[0] || ['N/A', 0];
-	$: utilization = topSource[1] > 0 ? ((topSource[1] / totalHosts) * 100).toFixed(1) : 0;
+	$: concentration = topSource[1] > 0 ? ((topSource[1] / totalHosts) * 100).toFixed(1) : 0;
 	
 	// Top performers
 	$: topFive = sources.slice(0, 5);
-	
-	async function selectSource(source, count) {
+
+	async function drillDownSource(source, count) {
 		selectedSource = { source, count };
 		loading = true;
+		
 		try {
 			let response = await fetch(`http://localhost:5000/api/host_search?q=${encodeURIComponent(source)}`);
 			let result = await response.json();
 			sourceDetails = result.hosts || [];
+			loading = false;
 		} catch (err) {
-			console.error('Failed to load source details:', err);
+			console.error('Source drill-down error:', err);
 			sourceDetails = [];
+			loading = false;
 		}
-		loading = false;
 	}
-	
+
 	function closeDetails() {
 		selectedSource = null;
 		sourceDetails = [];
 	}
 	
 	function getSourceStatus(count) {
-		const percentage = (count / maxHosts) * 100;
+		let percentage = (count / maxHosts) * 100;
 		if (percentage >= 75) return { level: 'CRITICAL', color: '#BD93F9' };
 		if (percentage >= 50) return { level: 'HIGH', color: '#8BE9FD' };
-		if (percentage >= 25) return { level: 'MODERATE', color: '#50FA7B' };
+		if (percentage >= 25) return { level: 'MEDIUM', color: '#50FA7B' };
 		return { level: 'LOW', color: '#FFB86C' };
 	}
 	
-	function getSourceType(count) {
-		if (count > 10000) return 'ENTERPRISE';
+	function getSourceSize(count) {
+		if (count > 10000) return 'MASSIVE';
 		if (count > 5000) return 'LARGE';
 		if (count > 1000) return 'MEDIUM';
 		if (count > 100) return 'SMALL';
@@ -101,7 +108,7 @@
 			<div class="metric-icon">📊</div>
 			<div class="metric-content">
 				<div class="metric-value" style="color: #BD93F9">{sourceCount}</div>
-				<div class="metric-label">SOURCE TABLES</div>
+				<div class="metric-label">SOURCES</div>
 			</div>
 		</div>
 		<div class="metric-card">
@@ -112,7 +119,7 @@
 			</div>
 		</div>
 		<div class="metric-card">
-			<div class="metric-icon">🎯</div>
+			<div class="metric-icon">🔝</div>
 			<div class="metric-content">
 				<div class="metric-value" style="color: #50FA7B; font-size: 1.2rem">
 					{topSource[0].substring(0, 25).toUpperCase()}
@@ -123,15 +130,15 @@
 		<div class="metric-card">
 			<div class="metric-icon">📈</div>
 			<div class="metric-content">
-				<div class="metric-value" style="color: #FFB86C">{utilization}%</div>
-				<div class="metric-label">TOP UTILIZATION</div>
+				<div class="metric-value" style="color: #FFB86C">{concentration}%</div>
+				<div class="metric-label">TOP CONCENTRATION</div>
 			</div>
 		</div>
 		<div class="metric-card">
 			<div class="metric-icon">⚖️</div>
 			<div class="metric-content">
-				<div class="metric-value" style="color: #FF79C6">{avgHosts.toLocaleString()}</div>
-				<div class="metric-label">AVG HOSTS/TABLE</div>
+				<div class="metric-value" style="color: #FF79C6">{avgHostsPerSource.toLocaleString()}</div>
+				<div class="metric-label">AVG HOSTS/SRC</div>
 			</div>
 		</div>
 	</div>
@@ -139,9 +146,9 @@
 	<!-- Main Content -->
 	<div class="content-layout">
 		<!-- Left: Source Visualization -->
-		<div class="source-panel">
+		<div class="org-panel">
 			<div class="panel-header">
-				<h2>SOURCE TABLE ARCHITECTURE</h2>
+				<h2>SOURCE TABLE STRUCTURE</h2>
 				<input type="text"
 					   bind:value={searchTerm}
 					   placeholder="Search sources..."
@@ -150,13 +157,13 @@
 			
 			{#if loading && !selectedSource}
 				<div class="loading-state">
-					<div class="source-loader">
-						<div class="data-node node-1"></div>
-						<div class="data-node node-2"></div>
-						<div class="data-node node-3"></div>
-						<div class="data-node node-4"></div>
+					<div class="org-loader">
+						<div class="org-node node-1"></div>
+						<div class="org-node node-2"></div>
+						<div class="org-node node-3"></div>
+						<div class="org-node node-4"></div>
 					</div>
-					<p>ANALYZING SOURCE TABLES...</p>
+					<p>ANALYZING SOURCE STRUCTURE...</p>
 				</div>
 			{:else if selectedSource}
 				<div class="detail-view">
@@ -168,7 +175,7 @@
 								<span>•</span>
 								<span>{((selectedSource.count / totalHosts) * 100).toFixed(2)}% OF TOTAL</span>
 								<span>•</span>
-								<span>{getSourceType(selectedSource.count)} TABLE</span>
+								<span>{getSourceSize(selectedSource.count)} TABLE</span>
 							</div>
 						</div>
 						<button class="close-btn" on:click={closeDetails}>✕</button>
@@ -211,38 +218,36 @@
 					</div>
 				</div>
 			{:else}
-				<div class="source-visualization">
-					<!-- Tree Structure -->
+				<div class="org-visualization">
+					<!-- Hierarchical Tree -->
 					<div class="tree-container">
 						<div class="tree-root">
 							<div class="root-node">
-								<div class="node-icon">🗄️</div>
+								<div class="node-icon">📊</div>
 								<div class="node-label">SOURCE TABLES</div>
 								<div class="node-count">{totalHosts.toLocaleString()} HOSTS</div>
 							</div>
 						</div>
 						<div class="tree-branches">
 							{#each topFive as [source, count], i}
-								{@const status = getSourceStatus(count)}
-								{@const percentage = ((count / totalHosts) * 100).toFixed(1)}
 								<div class="branch-container">
 									<div class="branch-line"></div>
 									<div class="source-node" 
-										 style="border-color: {status.color}"
-										 on:click={() => selectSource(source, count)}>
-										<div class="node-header" style="background: {status.color}20">
+										 style="border-color: {getSourceStatus(count).color}"
+										 on:click={() => drillDownSource(source, count)}>
+										<div class="node-header" style="background: {getSourceStatus(count).color}20">
 											<span class="node-rank">#{i + 1}</span>
 										</div>
 										<div class="node-body">
 											<div class="node-name">{source.substring(0, 20).toUpperCase()}</div>
 											<div class="node-metrics">
-												<span class="node-hosts" style="color: {status.color}">
+												<span class="node-hosts" style="color: {getSourceStatus(count).color}">
 													{count.toLocaleString()}
 												</span>
-												<span class="node-percent">{percentage}%</span>
+												<span class="node-percent">{((count / totalHosts) * 100).toFixed(1)}%</span>
 											</div>
 											<div class="node-bar">
-												<div class="bar-fill" style="width: {percentage}%; background: {status.color}"></div>
+												<div class="bar-fill" style="width: {((count / totalHosts) * 100).toFixed(1)}%; background: {getSourceStatus(count).color}"></div>
 											</div>
 										</div>
 									</div>
@@ -255,17 +260,15 @@
 					<div class="bubble-chart">
 						<svg viewBox="0 0 400 300">
 							{#each sources.slice(0, 15) as [source, count], i}
-								{@const radius = Math.sqrt(count / maxHosts) * 40}
-								{@const x = 50 + (i % 5) * 75}
-								{@const y = 50 + Math.floor(i / 5) * 80}
-								{@const status = getSourceStatus(count)}
-								
-								<g class="bubble-group" on:click={() => selectSource(source, count)}>
-									<circle cx="{x}" cy="{y}" r="{radius}" 
-											fill="{status.color}" opacity="0.3"/>
-									<circle cx="{x}" cy="{y}" r="{radius * 0.7}" 
-											fill="{status.color}" opacity="0.6"/>
-									<text x="{x}" y="{y}" text-anchor="middle" 
+								<g class="bubble-group" on:click={() => drillDownSource(source, count)}>
+									<circle cx="{50 + (i % 5) * 75}" cy="{50 + Math.floor(i / 5) * 80}" 
+											r="{Math.sqrt(count / maxHosts) * 40}" 
+											fill="{getSourceStatus(count).color}" opacity="0.3"/>
+									<circle cx="{50 + (i % 5) * 75}" cy="{50 + Math.floor(i / 5) * 80}" 
+											r="{Math.sqrt(count / maxHosts) * 40 * 0.7}" 
+											fill="{getSourceStatus(count).color}" opacity="0.6"/>
+									<text x="{50 + (i % 5) * 75}" y="{50 + Math.floor(i / 5) * 80}" 
+										  text-anchor="middle" 
 										  fill="#FFFFFF" font-size="9" font-weight="600">
 										{count.toLocaleString()}
 									</text>
@@ -283,7 +286,7 @@
 									  stroke-width="1"
 									  opacity="0.8"/>
 						</svg>
-						<div class="activity-label">DATA FLOW ACTIVITY</div>
+						<div class="activity-label">SOURCE ACTIVITY</div>
 					</div>
 				</div>
 			{/if}
@@ -296,15 +299,13 @@
 				<h3>HOST DISTRIBUTION BY SOURCE</h3>
 				<div class="distribution-bars">
 					{#each topFive as [source, count], i}
-						{@const percentage = (count / maxHosts) * 100}
-						{@const status = getSourceStatus(count)}
-						<div class="dist-item" on:click={() => selectSource(source, count)}>
+						<div class="dist-item" on:click={() => drillDownSource(source, count)}>
 							<div class="dist-rank">#{i + 1}</div>
 							<div class="dist-name">{source.substring(0, 12).toUpperCase()}</div>
 							<div class="dist-bar">
 								<div class="dist-fill" 
-									 style="width: {percentage}%; 
-											background: linear-gradient(90deg, {status.color}40, {status.color})">
+									 style="width: {(count / maxHosts) * 100}%; 
+											background: linear-gradient(90deg, {getSourceStatus(count).color}40, {getSourceStatus(count).color})">
 									<span class="dist-value">{count.toLocaleString()}</span>
 								</div>
 							</div>
@@ -316,22 +317,18 @@
 			
 			<!-- Size Distribution -->
 			<div class="chart-box">
-				<h3>TABLE SIZE DISTRIBUTION</h3>
+				<h3>SOURCE SIZE DISTRIBUTION</h3>
 				<div class="size-chart">
-					{@const sizeGroups = sources.reduce((acc, [src, count]) => {
-						const size = getSourceType(count);
-						acc[size] = (acc[size] || 0) + 1;
-						return acc;
-					}, {})}
-					{#each Object.entries(sizeGroups) as [size, count], i}
-						{@const colors = ['#BD93F9', '#8BE9FD', '#50FA7B', '#FFB86C', '#FF79C6']}
+					{#each ['MASSIVE', 'LARGE', 'MEDIUM', 'SMALL', 'MINIMAL'] as size, i}
 						<div class="size-item">
 							<div class="size-label">{size}</div>
-							<div class="size-count" style="color: {colors[i % 5]}">{count}</div>
+							<div class="size-count" style="color: {['#BD93F9', '#8BE9FD', '#50FA7B', '#FFB86C', '#FF79C6'][i]}">
+								{sources.filter(([_, c]) => getSourceSize(c) === size).length}
+							</div>
 							<div class="size-bar">
 								<div class="size-fill" 
-									 style="height: {(count / sourceCount) * 100}%; 
-											background: {colors[i % 5]}">
+									 style="height: {(sources.filter(([_, c]) => getSourceSize(c) === size).length / sourceCount) * 100}%; 
+											background: {['#BD93F9', '#8BE9FD', '#50FA7B', '#FFB86C', '#FF79C6'][i]}">
 								</div>
 							</div>
 						</div>
@@ -344,19 +341,19 @@
 				<h3>COVERAGE STATISTICS</h3>
 				<div class="coverage-stats">
 					<div class="coverage-item">
-						<span class="coverage-label">Tables with >1000 hosts</span>
+						<span class="coverage-label">Sources with >1000 hosts</span>
 						<span class="coverage-value" style="color: #BD93F9">
 							{sources.filter(([_, c]) => c > 1000).length}
 						</span>
 					</div>
 					<div class="coverage-item">
-						<span class="coverage-label">Tables with >5000 hosts</span>
+						<span class="coverage-label">Sources with >5000 hosts</span>
 						<span class="coverage-value" style="color: #8BE9FD">
 							{sources.filter(([_, c]) => c > 5000).length}
 						</span>
 					</div>
 					<div class="coverage-item">
-						<span class="coverage-label">Tables with >10000 hosts</span>
+						<span class="coverage-label">Sources with >10000 hosts</span>
 						<span class="coverage-value" style="color: #50FA7B">
 							{sources.filter(([_, c]) => c > 10000).length}
 						</span>
@@ -384,25 +381,23 @@
 					</thead>
 					<tbody>
 						{#each sources as [source, count], i}
-							{@const status = getSourceStatus(count)}
-							{@const size = getSourceType(count)}
-							<tr on:click={() => selectSource(source, count)}>
+							<tr on:click={() => drillDownSource(source, count)}>
 								<td class="rank">{i + 1}</td>
 								<td class="source-name">
-									<span class="status-indicator" style="background: {status.color}"></span>
+									<span class="status-indicator" style="background: {getSourceStatus(count).color}"></span>
 									{source.substring(0, 25).toUpperCase()}
 								</td>
-								<td class="host-count" style="color: {status.color}">
+								<td class="host-count" style="color: {getSourceStatus(count).color}">
 									{count.toLocaleString()}
 								</td>
 								<td>
-									<span class="size-badge" style="color: {status.color}">
-										{size}
+									<span class="size-badge" style="color: {getSourceStatus(count).color}">
+										{getSourceSize(count)}
 									</span>
 								</td>
 								<td>
-									<span class="status-badge" style="color: {status.color}; border-color: {status.color}">
-										{status.level}
+									<span class="status-badge" style="color: {getSourceStatus(count).color}; border-color: {getSourceStatus(count).color}">
+										{getSourceStatus(count).level}
 									</span>
 								</td>
 							</tr>
@@ -474,8 +469,8 @@
 		min-height: 0;
 	}
 	
-	/* Source Panel */
-	.source-panel {
+	/* Org Panel */
+	.org-panel {
 		background: rgba(255, 255, 255, 0.02);
 		border: 1px solid rgba(189, 147, 249, 0.1);
 		border-radius: 12px;
@@ -516,7 +511,7 @@
 		border-color: #8BE9FD;
 	}
 	
-	.source-visualization {
+	.org-visualization {
 		flex: 1;
 		display: flex;
 		flex-direction: column;
@@ -671,15 +666,13 @@
 	
 	/* Synaptic Activity */
 	.synaptic-activity {
-		position: absolute;
-		bottom: 20px;
-		left: 20px;
-		right: 20px;
+		position: relative;
 		height: 60px;
 		background: rgba(0, 0, 0, 0.8);
 		border: 1px solid rgba(139, 233, 253, 0.3);
 		padding: 5px;
 		border-radius: 10px;
+		margin-top: 1rem;
 	}
 	
 	.synaptic-activity svg {
@@ -1059,13 +1052,13 @@
 		gap: 2rem;
 	}
 	
-	.source-loader {
+	.org-loader {
 		position: relative;
 		width: 100px;
 		height: 100px;
 	}
 	
-	.data-node {
+	.org-node {
 		position: absolute;
 		width: 20px;
 		height: 20px;
