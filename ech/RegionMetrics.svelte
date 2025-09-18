@@ -1,4 +1,4 @@
-<!-- RegionMetrics.svelte - Matching Data Center Aesthetic -->
+<!-- RegionMetrics.svelte - Enhanced with Moving Graph -->
 <script>
 	import { onMount, onDestroy } from 'svelte';
 	
@@ -7,13 +7,12 @@
 	let selectedRegion = null;
 	let regionDetails = [];
 	let searchTerm = '';
-	let sortColumn = 'count';
-	let sortDirection = 'desc';
 	
 	// Animation states
 	let animationFrame = null;
 	let pulsePhase = 0;
-	let connectionFlow = 0;
+	let networkActivity = [];
+	let dataFlow = [];
 	
 	onMount(async () => {
 		try {
@@ -28,7 +27,18 @@
 		// Start animations
 		const animate = () => {
 			pulsePhase = (pulsePhase + 0.02) % (Math.PI * 2);
-			connectionFlow = (connectionFlow + 1) % 100;
+			
+			// Generate network activity patterns
+			networkActivity = Array(50).fill(0).map((_, i) => 
+				50 + Math.sin(Date.now() * 0.002 + i * 0.2) * 30 + Math.random() * 20
+			);
+			
+			// Generate data flow
+			dataFlow = Array(30).fill(0).map((_, i) => ({
+				value: 40 + Math.sin(Date.now() * 0.001 + i * 0.3) * 35,
+				peak: Math.random() > 0.95
+			}));
+			
 			animationFrame = requestAnimationFrame(animate);
 		};
 		animate();
@@ -41,14 +51,7 @@
 	$: regions = data.global_surveillance ? 
 		Object.entries(data.global_surveillance)
 			.filter(([region]) => region.toLowerCase().includes(searchTerm.toLowerCase()))
-			.sort((a, b) => {
-				if (sortColumn === 'name') {
-					return sortDirection === 'asc' ? 
-						a[0].localeCompare(b[0]) : 
-						b[0].localeCompare(a[0]);
-				}
-				return sortDirection === 'asc' ? a[1] - b[1] : b[1] - a[1];
-			}) : [];
+			.sort((a, b) => b[1] - a[1]) : [];
 	
 	$: totalHosts = regions.reduce((sum, [_, count]) => sum + count, 0);
 	$: maxHosts = regions.length > 0 ? Math.max(...regions.map(([,c]) => c)) : 1;
@@ -58,15 +61,10 @@
 	$: regionCount = regions.length;
 	$: topRegion = regions[0] || ['N/A', 0];
 	$: coverage = topRegion[1] > 0 ? ((topRegion[1] / totalHosts) * 100).toFixed(1) : 0;
+	$: globalSpread = ((regionCount / 7) * 100).toFixed(1); // Assume 7 major regions
 	
-	function handleSort(column) {
-		if (sortColumn === column) {
-			sortDirection = sortDirection === 'asc' ? 'desc' : 'asc';
-		} else {
-			sortColumn = column;
-			sortDirection = 'desc';
-		}
-	}
+	// Top performers
+	$: topFive = regions.slice(0, 5);
 	
 	async function selectRegion(region, count) {
 		selectedRegion = { region, count };
@@ -89,46 +87,69 @@
 	
 	function getRegionStatus(count) {
 		const percentage = (count / maxHosts) * 100;
-		if (percentage >= 75) return { level: 'CRITICAL', color: '#BD93F9', icon: '🔴' };
-		if (percentage >= 50) return { level: 'HIGH', color: '#8BE9FD', icon: '🟢' };
-		if (percentage >= 25) return { level: 'MODERATE', color: '#50FA7B', icon: '🟡' };
-		return { level: 'LOW', color: '#FFB86C', icon: '⚪' };
+		if (percentage >= 75) return { level: 'CRITICAL', color: '#BD93F9' };
+		if (percentage >= 50) return { level: 'HIGH', color: '#8BE9FD' };
+		if (percentage >= 25) return { level: 'MODERATE', color: '#50FA7B' };
+		return { level: 'LOW', color: '#FFB86C' };
+	}
+	
+	function getRegionSize(count) {
+		if (count > 20000) return 'MEGA';
+		if (count > 10000) return 'LARGE';
+		if (count > 5000) return 'MEDIUM';
+		if (count > 1000) return 'SMALL';
+		return 'MINIMAL';
 	}
 </script>
 
 <div class="region-interface">
 	<!-- Top Metrics -->
-	<div class="metrics-ribbon">
-		<div class="metric-box">
-			<div class="metric-label">REGIONS</div>
-			<div class="metric-value" style="color: #BD93F9">{regionCount}</div>
-		</div>
-		<div class="metric-box">
-			<div class="metric-label">TOTAL HOSTS</div>
-			<div class="metric-value" style="color: #8BE9FD">{totalHosts.toLocaleString()}</div>
-		</div>
-		<div class="metric-box">
-			<div class="metric-label">TOP REGION</div>
-			<div class="metric-value" style="color: #50FA7B; font-size: 1.2rem">
-				{topRegion[0].substring(0, 20).toUpperCase()}
+	<div class="metrics-header">
+		<div class="metric-card">
+			<div class="metric-icon">🌍</div>
+			<div class="metric-content">
+				<div class="metric-value" style="color: #BD93F9">{regionCount}</div>
+				<div class="metric-label">REGIONS</div>
 			</div>
 		</div>
-		<div class="metric-box">
-			<div class="metric-label">AVG HOSTS/REGION</div>
-			<div class="metric-value" style="color: #FFB86C">{avgHosts.toLocaleString()}</div>
+		<div class="metric-card">
+			<div class="metric-icon">💻</div>
+			<div class="metric-content">
+				<div class="metric-value" style="color: #8BE9FD">{totalHosts.toLocaleString()}</div>
+				<div class="metric-label">TOTAL HOSTS</div>
+			</div>
 		</div>
-		<div class="metric-box">
-			<div class="metric-label">TOP COVERAGE</div>
-			<div class="metric-value" style="color: #FF79C6">{coverage}%</div>
+		<div class="metric-card">
+			<div class="metric-icon">📍</div>
+			<div class="metric-content">
+				<div class="metric-value" style="color: #50FA7B; font-size: 1.2rem">
+					{topRegion[0].substring(0, 25).toUpperCase()}
+				</div>
+				<div class="metric-label">TOP REGION</div>
+			</div>
+		</div>
+		<div class="metric-card">
+			<div class="metric-icon">🌐</div>
+			<div class="metric-content">
+				<div class="metric-value" style="color: #FFB86C">{globalSpread}%</div>
+				<div class="metric-label">GLOBAL SPREAD</div>
+			</div>
+		</div>
+		<div class="metric-card">
+			<div class="metric-icon">📊</div>
+			<div class="metric-content">
+				<div class="metric-value" style="color: #FF79C6">{avgHosts.toLocaleString()}</div>
+				<div class="metric-label">AVG HOSTS/REGION</div>
+			</div>
 		</div>
 	</div>
 	
 	<!-- Main Content -->
 	<div class="content-layout">
 		<!-- Left: Region Network -->
-		<div class="network-panel">
+		<div class="region-panel">
 			<div class="panel-header">
-				<h2>REGIONAL NETWORK TOPOLOGY</h2>
+				<h2>GLOBAL REGIONAL NETWORK</h2>
 				<input type="text"
 					   bind:value={searchTerm}
 					   placeholder="Search regions..."
@@ -141,6 +162,7 @@
 						<div class="globe-ring ring-1"></div>
 						<div class="globe-ring ring-2"></div>
 						<div class="globe-ring ring-3"></div>
+						<div class="globe-core"></div>
 					</div>
 					<p>SCANNING REGIONAL INFRASTRUCTURE...</p>
 				</div>
@@ -152,12 +174,14 @@
 							<div class="region-stats">
 								<span>{selectedRegion.count.toLocaleString()} HOSTS</span>
 								<span>•</span>
-								<span>{((selectedRegion.count/totalHosts)*100).toFixed(2)}% OF GLOBAL</span>
+								<span>{((selectedRegion.count / totalHosts) * 100).toFixed(2)}% OF GLOBAL</span>
+								<span>•</span>
+								<span>{getRegionSize(selectedRegion.count)} REGION</span>
 							</div>
 						</div>
 						<button class="close-btn" on:click={closeDetails}>✕</button>
 					</div>
-					<div class="hosts-list">
+					<div class="hosts-container">
 						<table class="hosts-table">
 							<thead>
 								<tr>
@@ -179,12 +203,12 @@
 										<td>{host.infrastructure_type || 'UNKNOWN'}</td>
 										<td>{host.business_unit || 'UNKNOWN'}</td>
 										<td>
-											<span class="status-ind {host.present_in_cmdb?.toLowerCase().includes('yes') ? 'active' : 'inactive'}">
+											<span class="status-dot {host.present_in_cmdb?.toLowerCase().includes('yes') ? 'active' : 'inactive'}">
 												●
 											</span>
 										</td>
 										<td>
-											<span class="status-ind {host.tanium_coverage?.toLowerCase().includes('tanium') ? 'active' : 'inactive'}">
+											<span class="status-dot {host.tanium_coverage?.toLowerCase().includes('tanium') ? 'active' : 'inactive'}">
 												●
 											</span>
 										</td>
@@ -195,104 +219,166 @@
 					</div>
 				</div>
 			{:else}
-				<div class="network-visualization">
-					<!-- Region Grid -->
-					<div class="region-grid">
-						{#each regions.slice(0, 12) as [region, count], i}
-							{@const status = getRegionStatus(count)}
-							{@const percentage = (count / maxHosts) * 100}
-							<div class="region-node" on:click={() => selectRegion(region, count)}>
-								<div class="region-icon">
-									<div class="globe-pulse" style="background: {status.color}; 
-																   opacity: {0.3 + Math.sin(pulsePhase + i) * 0.3}">
-									</div>
-								</div>
-								<div class="region-name">{region.substring(0, 15).toUpperCase()}</div>
-								<div class="region-hosts">{count.toLocaleString()} HOSTS</div>
-								<div class="region-capacity">
-									<div class="capacity-bar">
-										<div class="capacity-fill" style="width: {percentage}%; background: {status.color}"></div>
-									</div>
-									<span class="capacity-text">{percentage.toFixed(0)}%</span>
-								</div>
-							</div>
-						{/each}
+				<div class="region-visualization">
+					<!-- Global Map Visualization -->
+					<div class="global-map">
+						<svg viewBox="0 0 800 400">
+							<!-- World map background -->
+							<rect width="800" height="400" fill="rgba(0,0,0,0.3)" rx="10"/>
+							
+							<!-- Region nodes positioned globally -->
+							{#each regions.slice(0, 10) as [region, count], i}
+								{@const status = getRegionStatus(count)}
+								{@const radius = Math.sqrt(count / maxHosts) * 50}
+								{@const x = 100 + (i % 4) * 180}
+								{@const y = 100 + Math.floor(i / 4) * 120}
+								
+								<g class="region-node-group" on:click={() => selectRegion(region, count)}>
+									<!-- Pulse effect -->
+									<circle cx="{x}" cy="{y}" r="{radius + 10}"
+											fill="{status.color}" 
+											opacity="{0.1 + Math.sin(pulsePhase + i) * 0.1}"/>
+									<circle cx="{x}" cy="{y}" r="{radius}"
+											fill="{status.color}" 
+											opacity="0.3"/>
+									<circle cx="{x}" cy="{y}" r="{radius * 0.7}"
+											fill="{status.color}" 
+											opacity="0.6"/>
+									
+									<!-- Region label -->
+									<text x="{x}" y="{y - radius - 10}" 
+										  text-anchor="middle" 
+										  fill="#FFFFFF" 
+										  font-size="10" 
+										  font-weight="600">
+										{region.substring(0, 15).toUpperCase()}
+									</text>
+									
+									<!-- Host count -->
+									<text x="{x}" y="{y + 5}" 
+										  text-anchor="middle" 
+										  fill="#FFFFFF" 
+										  font-size="14" 
+										  font-weight="700">
+										{count.toLocaleString()}
+									</text>
+								</g>
+							{/each}
+							
+							<!-- Connection lines between regions -->
+							{#each regions.slice(0, 10) as [region1, count1], i}
+								{#each regions.slice(i + 1, 10) as [region2, count2], j}
+									{#if Math.random() > 0.6}
+										{@const x1 = 100 + (i % 4) * 180}
+										{@const y1 = 100 + Math.floor(i / 4) * 120}
+										{@const x2 = 100 + ((i + j + 1) % 4) * 180}
+										{@const y2 = 100 + Math.floor((i + j + 1) / 4) * 120}
+										<line x1="{x1}" y1="{y1}" x2="{x2}" y2="{y2}"
+											  stroke="rgba(139, 233, 253, 0.2)" 
+											  stroke-width="1"
+											  stroke-dasharray="5,5">
+											<animate attributeName="stroke-dashoffset"
+													 values="0;-10" dur="2s" repeatCount="indefinite"/>
+										</line>
+									{/if}
+								{/each}
+							{/each}
+						</svg>
 					</div>
 					
-					<!-- Connection Lines -->
-					<svg class="connection-mesh" viewBox="0 0 600 400">
-						{#each regions.slice(0, 12) as [region1, count1], i}
-							{#each regions.slice(i + 1, 12) as [region2, count2], j}
-								{#if Math.random() > 0.7}
-									{@const x1 = (i % 4) * 150 + 75}
-									{@const y1 = Math.floor(i / 4) * 130 + 65}
-									{@const x2 = ((i + j + 1) % 4) * 150 + 75}
-									{@const y2 = Math.floor((i + j + 1) / 4) * 130 + 65}
-									<line x1="{x1}" y1="{y1}" x2="{x2}" y2="{y2}"
-										  stroke="rgba(139, 233, 253, 0.2)" stroke-width="1"
-										  stroke-dasharray="5,5">
-										<animate attributeName="stroke-dashoffset"
-												 values="0;-10" dur="1s" repeatCount="indefinite"/>
-									</line>
+					<!-- Network Activity Graph -->
+					<div class="network-activity">
+						<svg viewBox="0 0 200 50">
+							<polyline points="{networkActivity.map((val, i) => `${i * 4},${50 - val * 0.5}`).join(' ')}"
+									  fill="none" 
+									  stroke="#8BE9FD" 
+									  stroke-width="1"
+									  opacity="0.8"/>
+							{#each dataFlow as point, i}
+								{#if point.peak}
+									<circle cx="{i * 6.7}" cy="{50 - point.value * 0.5}" 
+											r="2" fill="#FF79C6" opacity="0.8"/>
 								{/if}
 							{/each}
-						{/each}
-					</svg>
+						</svg>
+						<div class="activity-label">REGIONAL NETWORK ACTIVITY</div>
+					</div>
 				</div>
 			{/if}
 		</div>
 		
-		<!-- Middle: Charts -->
-		<div class="charts-section">
-			<!-- Coverage Chart -->
-			<div class="chart-panel">
-				<h3>REGIONAL COVERAGE</h3>
-				<div class="coverage-chart">
-					{#each regions.slice(0, 8) as [region, count], i}
+		<!-- Middle: Analytics -->
+		<div class="analytics-panel">
+			<!-- Distribution Chart -->
+			<div class="chart-box">
+				<h3>HOST DISTRIBUTION BY REGION</h3>
+				<div class="distribution-bars">
+					{#each topFive as [region, count], i}
 						{@const percentage = (count / maxHosts) * 100}
 						{@const status = getRegionStatus(count)}
-						<div class="coverage-item">
-							<div class="coverage-label">{region.substring(0, 10).toUpperCase()}</div>
-							<div class="coverage-gauge">
-								<svg viewBox="0 0 100 100">
-									<circle cx="50" cy="50" r="35" fill="none" 
-											stroke="rgba(255,255,255,0.1)" stroke-width="8"/>
-									<circle cx="50" cy="50" r="35" fill="none"
-											stroke="{status.color}" stroke-width="8"
-											stroke-dasharray="{percentage * 2.2} 220"
-											stroke-linecap="round"
-											transform="rotate(-90 50 50)"/>
-									<text x="50" y="50" text-anchor="middle" dy="5"
-										  fill="{status.color}" font-size="16" font-weight="600">
-										{percentage.toFixed(0)}%
-									</text>
-								</svg>
+						<div class="dist-item" on:click={() => selectRegion(region, count)}>
+							<div class="dist-rank">#{i + 1}</div>
+							<div class="dist-name">{region.substring(0, 12).toUpperCase()}</div>
+							<div class="dist-bar">
+								<div class="dist-fill" 
+									 style="width: {percentage}%; 
+											background: linear-gradient(90deg, {status.color}40, {status.color})">
+									<span class="dist-value">{count.toLocaleString()}</span>
+								</div>
 							</div>
-							<div class="coverage-hosts">{count}</div>
+							<div class="dist-percent">{((count/totalHosts)*100).toFixed(1)}%</div>
 						</div>
 					{/each}
 				</div>
 			</div>
 			
-			<!-- Distribution Bars -->
-			<div class="chart-panel">
-				<h3>DISTRIBUTION ANALYSIS</h3>
-				<div class="load-bars">
-					{#each regions.slice(0, 10) as [region, count], i}
-						{@const percentage = (count / maxHosts) * 100}
-						{@const status = getRegionStatus(count)}
-						<div class="load-bar-item" on:click={() => selectRegion(region, count)}>
-							<div class="load-label">{region.substring(0, 8).toUpperCase()}</div>
-							<div class="load-track">
-								<div class="load-fill" 
-									 style="width: {percentage}%; 
-											background: linear-gradient(90deg, {status.color}40, {status.color})">
-									<span class="load-value">{count}</span>
+			<!-- Regional Size Distribution -->
+			<div class="chart-box">
+				<h3>REGIONAL SIZE DISTRIBUTION</h3>
+				<div class="size-chart">
+					{@const sizeGroups = regions.reduce((acc, [reg, count]) => {
+						const size = getRegionSize(count);
+						acc[size] = (acc[size] || 0) + 1;
+						return acc;
+					}, {})}
+					{#each Object.entries(sizeGroups) as [size, count], i}
+						{@const colors = ['#BD93F9', '#8BE9FD', '#50FA7B', '#FFB86C', '#FF79C6']}
+						<div class="size-item">
+							<div class="size-label">{size}</div>
+							<div class="size-count" style="color: {colors[i % 5]}">{count}</div>
+							<div class="size-bar">
+								<div class="size-fill" 
+									 style="height: {(count / regionCount) * 100}%; 
+											background: {colors[i % 5]}">
 								</div>
 							</div>
-							<div class="load-icon">{status.icon}</div>
 						</div>
 					{/each}
+				</div>
+			</div>
+			
+			<!-- Coverage Stats -->
+			<div class="chart-box">
+				<h3>REGIONAL STATISTICS</h3>
+				<div class="coverage-stats">
+					<div class="coverage-item">
+						<span class="coverage-label">Regions with >5K hosts</span>
+						<span class="coverage-value" style="color: #BD93F9">
+							{regions.filter(([_, c]) => c > 5000).length}
+						</span>
+					</div>
+					<div class="coverage-item">
+						<span class="coverage-label">Regions with >10K hosts</span>
+						<span class="coverage-value" style="color: #8BE9FD">
+							{regions.filter(([_, c]) => c > 10000).length}
+						</span>
+					</div>
+					<div class="coverage-item">
+						<span class="coverage-label">Regions with >20K hosts</span>
+						<span class="coverage-value" style="color: #50FA7B">
+							{regions.filter(([_, c]) => c > 20000).length}
+						</span>
+					</div>
 				</div>
 			</div>
 		</div>
@@ -301,49 +387,39 @@
 		<div class="list-panel">
 			<div class="panel-header">
 				<h3>ALL REGIONS</h3>
-				<span class="region-count">{regions.length} ACTIVE</span>
+				<span class="region-count">{regions.length} TOTAL</span>
 			</div>
 			<div class="region-list">
 				<table class="regions-table">
 					<thead>
 						<tr>
 							<th>#</th>
-							<th class="sortable" on:click={() => handleSort('name')}>
-								REGION
-								{#if sortColumn === 'name'}
-									<span class="sort-icon">{sortDirection === 'asc' ? '↑' : '↓'}</span>
-								{/if}
-							</th>
-							<th class="sortable" on:click={() => handleSort('count')}>
-								HOSTS
-								{#if sortColumn === 'count'}
-									<span class="sort-icon">{sortDirection === 'asc' ? '↑' : '↓'}</span>
-								{/if}
-							</th>
-							<th>LOAD</th>
+							<th>REGION</th>
+							<th>HOSTS</th>
+							<th>SIZE</th>
 							<th>STATUS</th>
 						</tr>
 					</thead>
 					<tbody>
 						{#each regions as [region, count], i}
 							{@const status = getRegionStatus(count)}
-							{@const percentage = (count / maxHosts) * 100}
+							{@const size = getRegionSize(count)}
 							<tr on:click={() => selectRegion(region, count)}>
 								<td class="rank">{i + 1}</td>
-								<td class="region-table-name">
-									<span class="status-dot" style="color: {status.color}">●</span>
-									{region.substring(0, 20).toUpperCase()}
+								<td class="region-name">
+									<span class="status-indicator" style="background: {status.color}"></span>
+									{region.substring(0, 25).toUpperCase()}
 								</td>
 								<td class="host-count" style="color: {status.color}">
 									{count.toLocaleString()}
 								</td>
 								<td>
-									<div class="mini-bar">
-										<div class="mini-fill" style="width: {percentage}%; background: {status.color}"></div>
-									</div>
+									<span class="size-badge" style="color: {status.color}">
+										{size}
+									</span>
 								</td>
 								<td>
-									<span class="status-label" style="color: {status.color}">
+									<span class="status-badge" style="color: {status.color}; border-color: {status.color}">
 										{status.level}
 									</span>
 								</td>
@@ -368,25 +444,36 @@
 		overflow: hidden;
 	}
 	
-	/* Metrics Ribbon */
-	.metrics-ribbon {
+	/* Metrics Header */
+	.metrics-header {
 		display: flex;
 		gap: 1rem;
+	}
+	
+	.metric-card {
+		flex: 1;
 		background: rgba(255, 255, 255, 0.02);
 		border: 1px solid rgba(139, 233, 253, 0.1);
 		border-radius: 10px;
 		padding: 1rem;
+		display: flex;
+		gap: 1rem;
+		align-items: center;
 	}
 	
-	.metric-box {
+	.metric-icon {
+		font-size: 2rem;
+	}
+	
+	.metric-content {
 		flex: 1;
-		text-align: center;
-		padding: 0 1rem;
-		border-right: 1px solid rgba(255, 255, 255, 0.1);
 	}
 	
-	.metric-box:last-child {
-		border-right: none;
+	.metric-value {
+		font-size: 1.5rem;
+		font-weight: 700;
+		font-family: 'Courier New', monospace;
+		margin-bottom: 0.25rem;
 	}
 	
 	.metric-label {
@@ -394,26 +481,19 @@
 		color: rgba(255, 255, 255, 0.5);
 		letter-spacing: 0.1em;
 		font-weight: 600;
-		margin-bottom: 0.5rem;
-	}
-	
-	.metric-value {
-		font-size: 1.8rem;
-		font-weight: 700;
-		font-family: 'Courier New', monospace;
 	}
 	
 	/* Content Layout */
 	.content-layout {
 		flex: 1;
 		display: grid;
-		grid-template-columns: 1fr 380px 300px;
+		grid-template-columns: 1fr 380px 320px;
 		gap: 1rem;
 		min-height: 0;
 	}
 	
-	/* Network Panel */
-	.network-panel {
+	/* Region Panel */
+	.region-panel {
 		background: rgba(255, 255, 255, 0.02);
 		border: 1px solid rgba(189, 147, 249, 0.1);
 		border-radius: 12px;
@@ -454,115 +534,74 @@
 		border-color: #8BE9FD;
 	}
 	
-	.network-visualization {
+	.region-visualization {
 		flex: 1;
-		position: relative;
-	}
-	
-	.region-grid {
-		display: grid;
-		grid-template-columns: repeat(4, 1fr);
-		grid-template-rows: repeat(3, 1fr);
-		gap: 1rem;
-		height: 100%;
-		position: relative;
-		z-index: 2;
-	}
-	
-	.region-node {
-		background: rgba(0, 0, 0, 0.5);
-		border: 1px solid rgba(139, 233, 253, 0.2);
-		border-radius: 8px;
-		padding: 1rem;
-		cursor: pointer;
-		transition: all 0.3s ease;
 		display: flex;
 		flex-direction: column;
-		align-items: center;
-		gap: 0.5rem;
+		gap: 1rem;
+		position: relative;
 	}
 	
-	.region-node:hover {
-		background: rgba(139, 233, 253, 0.05);
-		border-color: #8BE9FD;
-		transform: scale(1.05);
-		z-index: 10;
-	}
-	
-	.region-icon {
-		width: 40px;
-		height: 40px;
+	/* Global Map */
+	.global-map {
+		flex: 1;
 		display: flex;
 		align-items: center;
 		justify-content: center;
-		position: relative;
+		background: rgba(0, 0, 0, 0.3);
+		border-radius: 8px;
+		padding: 1rem;
 	}
 	
-	.globe-pulse {
-		width: 30px;
-		height: 30px;
-		border-radius: 50%;
-		position: absolute;
-	}
-	
-	.region-name {
-		font-size: 0.7rem;
-		color: rgba(255, 255, 255, 0.9);
-		text-align: center;
-		font-weight: 600;
-	}
-	
-	.region-hosts {
-		font-size: 0.8rem;
-		color: #8BE9FD;
-		font-family: 'Courier New', monospace;
-		font-weight: 600;
-	}
-	
-	.region-capacity {
-		width: 100%;
-		display: flex;
-		align-items: center;
-		gap: 0.5rem;
-	}
-	
-	.capacity-bar {
-		flex: 1;
-		height: 4px;
-		background: rgba(255, 255, 255, 0.1);
-		border-radius: 2px;
-		overflow: hidden;
-	}
-	
-	.capacity-fill {
-		height: 100%;
-		transition: width 0.5s ease;
-	}
-	
-	.capacity-text {
-		font-size: 0.65rem;
-		color: rgba(255, 255, 255, 0.6);
-		min-width: 30px;
-	}
-	
-	.connection-mesh {
-		position: absolute;
-		top: 0;
-		left: 0;
+	.global-map svg {
 		width: 100%;
 		height: 100%;
-		pointer-events: none;
-		z-index: 1;
 	}
 	
-	/* Charts Section */
-	.charts-section {
+	.region-node-group {
+		cursor: pointer;
+		transition: all 0.3s ease;
+	}
+	
+	.region-node-group:hover {
+		transform: scale(1.1);
+	}
+	
+	/* Network Activity */
+	.network-activity {
+		position: absolute;
+		bottom: 20px;
+		left: 20px;
+		right: 20px;
+		height: 60px;
+		background: rgba(0, 0, 0, 0.8);
+		border: 1px solid rgba(139, 233, 253, 0.3);
+		padding: 5px;
+		border-radius: 10px;
+	}
+	
+	.network-activity svg {
+		width: 100%;
+		height: 100%;
+	}
+	
+	.activity-label {
+		position: absolute;
+		top: 5px;
+		left: 10px;
+		font-size: 0.6rem;
+		color: rgba(255, 255, 255, 0.5);
+		letter-spacing: 0.1em;
+	}
+	
+	/* Analytics Panel */
+	.analytics-panel {
 		display: flex;
 		flex-direction: column;
 		gap: 1rem;
 	}
 	
-	.chart-panel {
+	.chart-box {
 		flex: 1;
 		background: rgba(255, 255, 255, 0.02);
 		border: 1px solid rgba(139, 233, 253, 0.1);
@@ -572,7 +611,7 @@
 		flex-direction: column;
 	}
 	
-	.chart-panel h3 {
+	.chart-box h3 {
 		margin: 0 0 1rem 0;
 		font-size: 0.75rem;
 		color: #8BE9FD;
@@ -580,77 +619,45 @@
 		letter-spacing: 0.1em;
 	}
 	
-	.coverage-chart {
-		display: grid;
-		grid-template-columns: repeat(4, 1fr);
-		grid-template-rows: repeat(2, 1fr);
+	.distribution-bars {
+		flex: 1;
+		display: flex;
+		flex-direction: column;
 		gap: 0.5rem;
-		flex: 1;
 	}
 	
-	.coverage-item {
-		display: flex;
-		flex-direction: column;
-		align-items: center;
-		gap: 0.25rem;
-	}
-	
-	.coverage-label {
-		font-size: 0.6rem;
-		color: rgba(255, 255, 255, 0.6);
-		text-align: center;
-	}
-	
-	.coverage-gauge {
-		width: 60px;
-		height: 60px;
-	}
-	
-	.coverage-gauge svg {
-		width: 100%;
-		height: 100%;
-	}
-	
-	.coverage-hosts {
-		font-size: 0.65rem;
-		color: rgba(255, 255, 255, 0.7);
-		font-family: 'Courier New', monospace;
-	}
-	
-	.load-bars {
-		flex: 1;
-		display: flex;
-		flex-direction: column;
-		gap: 0.4rem;
-	}
-	
-	.load-bar-item {
+	.dist-item {
 		display: grid;
-		grid-template-columns: 60px 1fr 20px;
+		grid-template-columns: 25px 100px 1fr 45px;
 		gap: 0.5rem;
 		align-items: center;
 		cursor: pointer;
 		transition: all 0.2s ease;
 	}
 	
-	.load-bar-item:hover {
+	.dist-item:hover {
 		transform: translateX(2px);
 	}
 	
-	.load-label {
-		font-size: 0.6rem;
-		color: rgba(255, 255, 255, 0.7);
-		text-align: right;
+	.dist-rank {
+		font-size: 0.65rem;
+		color: #BD93F9;
+		font-weight: 600;
 	}
 	
-	.load-track {
-		height: 16px;
+	.dist-name {
+		font-size: 0.65rem;
+		color: rgba(255, 255, 255, 0.8);
+	}
+	
+	.dist-bar {
+		height: 18px;
 		background: rgba(255, 255, 255, 0.05);
 		border-radius: 4px;
 		overflow: hidden;
 	}
 	
-	.load-fill {
+	.dist-fill {
 		height: 100%;
 		display: flex;
 		align-items: center;
@@ -659,15 +666,86 @@
 		transition: width 0.5s ease;
 	}
 	
-	.load-value {
+	.dist-value {
 		font-size: 0.6rem;
 		color: #FFFFFF;
 		font-weight: 600;
 	}
 	
-	.load-icon {
-		font-size: 0.8rem;
+	.dist-percent {
+		font-size: 0.65rem;
+		color: rgba(255, 255, 255, 0.5);
+		text-align: right;
+	}
+	
+	/* Size Chart */
+	.size-chart {
+		display: flex;
+		align-items: flex-end;
+		justify-content: space-around;
+		height: 100px;
+	}
+	
+	.size-item {
+		flex: 1;
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		gap: 0.3rem;
+	}
+	
+	.size-label {
+		font-size: 0.6rem;
+		color: rgba(255, 255, 255, 0.6);
+		writing-mode: vertical-lr;
 		text-align: center;
+	}
+	
+	.size-count {
+		font-size: 0.9rem;
+		font-weight: 700;
+	}
+	
+	.size-bar {
+		width: 30px;
+		height: 60px;
+		background: rgba(255, 255, 255, 0.05);
+		border-radius: 4px 4px 0 0;
+		display: flex;
+		align-items: flex-end;
+	}
+	
+	.size-fill {
+		width: 100%;
+		border-radius: 4px 4px 0 0;
+		transition: height 0.5s ease;
+	}
+	
+	/* Coverage Stats */
+	.coverage-stats {
+		display: flex;
+		flex-direction: column;
+		gap: 0.75rem;
+	}
+	
+	.coverage-item {
+		display: flex;
+		justify-content: space-between;
+		align-items: center;
+		padding: 0.5rem;
+		background: rgba(0, 0, 0, 0.3);
+		border-radius: 6px;
+	}
+	
+	.coverage-label {
+		font-size: 0.7rem;
+		color: rgba(255, 255, 255, 0.7);
+	}
+	
+	.coverage-value {
+		font-size: 1rem;
+		font-weight: 700;
+		font-family: 'Courier New', monospace;
 	}
 	
 	/* List Panel */
@@ -712,20 +790,6 @@
 		border-bottom: 1px solid rgba(255, 255, 255, 0.1);
 	}
 	
-	.regions-table th.sortable {
-		cursor: pointer;
-		transition: color 0.2s;
-	}
-	
-	.regions-table th.sortable:hover {
-		color: #8BE9FD;
-	}
-	
-	.sort-icon {
-		color: #8BE9FD;
-		margin-left: 0.25rem;
-	}
-	
 	.regions-table tbody tr {
 		cursor: pointer;
 		transition: all 0.2s ease;
@@ -748,15 +812,18 @@
 		font-size: 0.65rem;
 	}
 	
-	.region-table-name {
+	.region-name {
 		display: flex;
 		align-items: center;
-		gap: 0.3rem;
+		gap: 0.4rem;
 		font-size: 0.65rem;
 	}
 	
-	.status-dot {
-		font-size: 0.8rem;
+	.status-indicator {
+		width: 6px;
+		height: 6px;
+		border-radius: 50%;
+		flex-shrink: 0;
 	}
 	
 	.host-count {
@@ -764,21 +831,17 @@
 		font-weight: 600;
 	}
 	
-	.mini-bar {
-		width: 50px;
-		height: 4px;
-		background: rgba(255, 255, 255, 0.1);
-		border-radius: 2px;
-		overflow: hidden;
-	}
-	
-	.mini-fill {
-		height: 100%;
-		transition: width 0.5s ease;
-	}
-	
-	.status-label {
+	.size-badge {
 		font-size: 0.6rem;
+		font-weight: 600;
+		letter-spacing: 0.05em;
+	}
+	
+	.status-badge {
+		font-size: 0.6rem;
+		padding: 0.15rem 0.3rem;
+		border: 1px solid;
+		border-radius: 4px;
 		font-weight: 600;
 		letter-spacing: 0.03em;
 	}
@@ -830,7 +893,7 @@
 		border-color: #BD93F9;
 	}
 	
-	.hosts-list {
+	.hosts-container {
 		flex: 1;
 		overflow-y: auto;
 		background: rgba(0, 0, 0, 0.3);
@@ -872,15 +935,15 @@
 		font-size: 0.6rem;
 	}
 	
-	.status-ind {
+	.status-dot {
 		font-size: 0.8rem;
 	}
 	
-	.status-ind.active {
+	.status-dot.active {
 		color: #50FA7B;
 	}
 	
-	.status-ind.inactive {
+	.status-dot.inactive {
 		color: #FF5555;
 	}
 	
@@ -933,9 +996,25 @@
 		animation-duration: 1s;
 	}
 	
+	.globe-core {
+		position: absolute;
+		width: 20px;
+		height: 20px;
+		top: 40px;
+		left: 40px;
+		background: linear-gradient(135deg, #FF79C6, #FFB86C);
+		border-radius: 50%;
+		animation: corePulse 2s ease-in-out infinite;
+	}
+	
 	@keyframes ringRotate {
 		from { transform: rotate(0deg); }
 		to { transform: rotate(360deg); }
+	}
+	
+	@keyframes corePulse {
+		0%, 100% { transform: scale(1); opacity: 0.8; }
+		50% { transform: scale(1.2); opacity: 1; }
 	}
 	
 	.loading-state p {
@@ -957,8 +1036,3 @@
 		background: rgba(189, 147, 249, 0.3);
 		border-radius: 3px;
 	}
-	
-	::-webkit-scrollbar-thumb:hover {
-		background: rgba(189, 147, 249, 0.5);
-	}
-</style>
