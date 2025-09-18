@@ -1,4 +1,4 @@
-<!-- SourceTables.svelte - Enhanced with Moving Graph -->
+<!-- SourceTables.svelte - Clean and Readable -->
 <script>
 	import { onMount, onDestroy } from 'svelte';
 	
@@ -8,10 +8,9 @@
 	let sourceDetails = [];
 	let searchTerm = '';
 	
-	// Animation states
+	// Simple animation states
 	let animationFrame = null;
-	let rotationDegree = 0;
-	let synapticActivity = [];
+	let activityData = [];
 	
 	onMount(async () => {
 		try {
@@ -23,20 +22,16 @@
 			loading = false;
 		}
 		
-		// Initialize synaptic activity
+		// Initialize activity data
 		for (let i = 0; i < 50; i++) {
-			synapticActivity.push(0);
+			activityData.push(50 + Math.random() * 30);
 		}
 		
-		// Start animations
+		// Start simple animation
 		const animate = () => {
-			rotationDegree = (rotationDegree + 0.2) % 360;
-			
-			// Update synaptic activity
-			synapticActivity = Array(50).fill(0).map((_, i) => 
-				50 + Math.sin(Date.now() * 0.002 + i * 0.2) * 30 + Math.random() * 20
+			activityData = activityData.map((val, i) => 
+				50 + Math.sin(Date.now() * 0.001 + i * 0.2) * 20 + Math.random() * 10
 			);
-			
 			animationFrame = requestAnimationFrame(animate);
 		};
 		animate();
@@ -86,69 +81,77 @@
 	
 	function getSourceStatus(count) {
 		let percentage = (count / maxHosts) * 100;
-		if (percentage >= 75) return { level: 'CRITICAL', color: '#BD93F9' };
-		if (percentage >= 50) return { level: 'HIGH', color: '#8BE9FD' };
-		if (percentage >= 25) return { level: 'MEDIUM', color: '#50FA7B' };
-		return { level: 'LOW', color: '#FFB86C' };
+		if (percentage >= 75) return { level: 'HIGH', color: '#00E5FF', bgColor: 'rgba(0, 229, 255, 0.1)' };
+		if (percentage >= 50) return { level: 'MEDIUM', color: '#50FA7B', bgColor: 'rgba(80, 250, 123, 0.1)' };
+		if (percentage >= 25) return { level: 'LOW', color: '#FFB86C', bgColor: 'rgba(255, 184, 108, 0.1)' };
+		return { level: 'MINIMAL', color: '#FF79C6', bgColor: 'rgba(255, 121, 198, 0.1)' };
 	}
 	
 	function getSourceSize(count) {
-		if (count > 10000) return 'MASSIVE';
-		if (count > 5000) return 'LARGE';
-		if (count > 1000) return 'MEDIUM';
-		if (count > 100) return 'SMALL';
+		if (count > 10000) return 'LARGE';
+		if (count > 5000) return 'MEDIUM';
+		if (count > 1000) return 'SMALL';
 		return 'MINIMAL';
+	}
+
+	function formatNumber(num) {
+		return new Intl.NumberFormat('en-US').format(num);
+	}
+
+	function truncateText(text, maxLength = 25) {
+		if (text.length <= maxLength) return text;
+		return text.substring(0, maxLength) + '...';
 	}
 </script>
 
 <div class="source-interface">
-	<!-- Top Metrics -->
+	<!-- Clean Header with Key Metrics -->
 	<div class="metrics-header">
 		<div class="metric-card">
 			<div class="metric-icon">📊</div>
 			<div class="metric-content">
-				<div class="metric-value" style="color: #BD93F9">{sourceCount}</div>
-				<div class="metric-label">SOURCES</div>
+				<div class="metric-value" style="color: #00E5FF">{sourceCount}</div>
+				<div class="metric-label">DATA SOURCES</div>
 			</div>
 		</div>
 		<div class="metric-card">
 			<div class="metric-icon">💻</div>
 			<div class="metric-content">
-				<div class="metric-value" style="color: #8BE9FD">{totalHosts.toLocaleString()}</div>
+				<div class="metric-value" style="color: #50FA7B">{formatNumber(totalHosts)}</div>
 				<div class="metric-label">TOTAL HOSTS</div>
 			</div>
 		</div>
 		<div class="metric-card">
 			<div class="metric-icon">🔝</div>
 			<div class="metric-content">
-				<div class="metric-value" style="color: #50FA7B; font-size: 1.2rem">
-					{topSource[0].substring(0, 25).toUpperCase()}
+				<div class="metric-value" style="color: #FFB86C; font-size: 1rem" title={topSource[0]}>
+					{truncateText(topSource[0], 20).toUpperCase()}
 				</div>
-				<div class="metric-label">TOP SOURCE</div>
+				<div class="metric-label">LARGEST SOURCE</div>
 			</div>
 		</div>
 		<div class="metric-card">
 			<div class="metric-icon">📈</div>
 			<div class="metric-content">
-				<div class="metric-value" style="color: #FFB86C">{concentration}%</div>
-				<div class="metric-label">TOP CONCENTRATION</div>
+				<div class="metric-value" style="color: #FF79C6">{concentration}%</div>
+				<div class="metric-label">CONCENTRATION</div>
 			</div>
 		</div>
 		<div class="metric-card">
 			<div class="metric-icon">⚖️</div>
 			<div class="metric-content">
-				<div class="metric-value" style="color: #FF79C6">{avgHostsPerSource.toLocaleString()}</div>
-				<div class="metric-label">AVG HOSTS/SRC</div>
+				<div class="metric-value" style="color: #BD93F9">{formatNumber(avgHostsPerSource)}</div>
+				<div class="metric-label">AVG PER SOURCE</div>
 			</div>
 		</div>
 	</div>
 	
-	<!-- Main Content -->
+	<!-- Main Content Grid -->
 	<div class="content-layout">
 		<!-- Left: Source Visualization -->
-		<div class="org-panel">
+		<div class="source-panel">
 			<div class="panel-header">
-				<h2>SOURCE TABLE STRUCTURE</h2>
+				<h2>Source Distribution</h2>
 				<input type="text"
 					   bind:value={searchTerm}
 					   placeholder="Search sources..."
@@ -157,13 +160,12 @@
 			
 			{#if loading && !selectedSource}
 				<div class="loading-state">
-					<div class="org-loader">
-						<div class="org-node node-1"></div>
-						<div class="org-node node-2"></div>
-						<div class="org-node node-3"></div>
-						<div class="org-node node-4"></div>
+					<div class="loader-animation">
+						<div class="load-bar"></div>
+						<div class="load-bar"></div>
+						<div class="load-bar"></div>
 					</div>
-					<p>ANALYZING SOURCE STRUCTURE...</p>
+					<p>Loading source data...</p>
 				</div>
 			{:else if selectedSource}
 				<div class="detail-view">
@@ -171,11 +173,11 @@
 						<div>
 							<h3>{selectedSource.source.toUpperCase()}</h3>
 							<div class="source-stats">
-								<span>{selectedSource.count.toLocaleString()} HOSTS</span>
+								<span>{formatNumber(selectedSource.count)} hosts</span>
 								<span>•</span>
-								<span>{((selectedSource.count / totalHosts) * 100).toFixed(2)}% OF TOTAL</span>
+								<span>{((selectedSource.count / totalHosts) * 100).toFixed(2)}% of total</span>
 								<span>•</span>
-								<span>{getSourceSize(selectedSource.count)} TABLE</span>
+								<span>{getSourceSize(selectedSource.count)} source</span>
 							</div>
 						</div>
 						<button class="close-btn" on:click={closeDetails}>✕</button>
@@ -184,31 +186,31 @@
 						<table class="hosts-table">
 							<thead>
 								<tr>
-									<th>HOSTNAME</th>
-									<th>REGION</th>
-									<th>COUNTRY</th>
-									<th>DATA CENTER</th>
-									<th>TYPE</th>
+									<th>Hostname</th>
+									<th>Region</th>
+									<th>Country</th>
+									<th>Data Center</th>
+									<th>Type</th>
 									<th>CMDB</th>
-									<th>TANIUM</th>
+									<th>Security</th>
 								</tr>
 							</thead>
 							<tbody>
 								{#each sourceDetails as host}
 									<tr>
-										<td class="hostname">{host.host}</td>
-										<td>{host.region || 'UNKNOWN'}</td>
-										<td>{host.country || 'UNKNOWN'}</td>
-										<td>{host.data_center || 'UNKNOWN'}</td>
-										<td>{host.infrastructure_type || 'UNKNOWN'}</td>
+										<td class="hostname" title={host.host}>{truncateText(host.host, 30)}</td>
+										<td>{host.region || 'Unknown'}</td>
+										<td>{host.country || 'Unknown'}</td>
+										<td>{host.data_center || 'Unknown'}</td>
+										<td>{host.infrastructure_type || 'Unknown'}</td>
 										<td>
-											<span class="status-dot {host.present_in_cmdb?.toLowerCase().includes('yes') ? 'active' : 'inactive'}">
-												●
+											<span class="status-indicator {host.present_in_cmdb?.toLowerCase().includes('yes') ? 'active' : 'inactive'}">
+												{host.present_in_cmdb?.toLowerCase().includes('yes') ? '✓' : '✗'}
 											</span>
 										</td>
 										<td>
-											<span class="status-dot {host.tanium_coverage?.toLowerCase().includes('tanium') ? 'active' : 'inactive'}">
-												●
+											<span class="status-indicator {host.tanium_coverage?.toLowerCase().includes('tanium') ? 'active' : 'inactive'}">
+												{host.tanium_coverage?.toLowerCase().includes('tanium') ? '✓' : '✗'}
 											</span>
 										</td>
 									</tr>
@@ -218,37 +220,28 @@
 					</div>
 				</div>
 			{:else}
-				<div class="org-visualization">
-					<!-- Hierarchical Tree -->
+				<div class="source-visualization">
+					<!-- Clean Tree Structure -->
 					<div class="tree-container">
 						<div class="tree-root">
 							<div class="root-node">
-								<div class="node-icon">📊</div>
-								<div class="node-label">SOURCE TABLES</div>
-								<div class="node-count">{totalHosts.toLocaleString()} HOSTS</div>
+								<div class="node-label">All Sources</div>
+								<div class="node-count">{formatNumber(totalHosts)} hosts</div>
 							</div>
 						</div>
 						<div class="tree-branches">
 							{#each topFive as [source, count], i}
-								<div class="branch-container">
-									<div class="branch-line"></div>
-									<div class="source-node" 
-										 style="border-color: {getSourceStatus(count).color}"
-										 on:click={() => drillDownSource(source, count)}>
-										<div class="node-header" style="background: {getSourceStatus(count).color}20">
-											<span class="node-rank">#{i + 1}</span>
-										</div>
-										<div class="node-body">
-											<div class="node-name">{source.substring(0, 20).toUpperCase()}</div>
-											<div class="node-metrics">
-												<span class="node-hosts" style="color: {getSourceStatus(count).color}">
-													{count.toLocaleString()}
-												</span>
-												<span class="node-percent">{((count / totalHosts) * 100).toFixed(1)}%</span>
-											</div>
-											<div class="node-bar">
-												<div class="bar-fill" style="width: {((count / totalHosts) * 100).toFixed(1)}%; background: {getSourceStatus(count).color}"></div>
-											</div>
+								{@const status = getSourceStatus(count)}
+								<div class="source-node" 
+									 style="border-color: {status.color}; background: {status.bgColor}"
+									 on:click={() => drillDownSource(source, count)}>
+									<div class="node-rank">#{i + 1}</div>
+									<div class="node-name" title={source}>{truncateText(source, 18)}</div>
+									<div class="node-count" style="color: {status.color}">{formatNumber(count)}</div>
+									<div class="node-percent">{((count / totalHosts) * 100).toFixed(1)}%</div>
+									<div class="node-bar">
+										<div class="bar-fill" 
+											 style="width: {((count / totalHosts) * 100)}%; background: {status.color}">
 										</div>
 									</div>
 								</div>
@@ -256,148 +249,56 @@
 						</div>
 					</div>
 					
-					<!-- Bubble Chart -->
-					<div class="bubble-chart">
-						<svg viewBox="0 0 400 300">
-							{#each sources.slice(0, 15) as [source, count], i}
-								<g class="bubble-group" on:click={() => drillDownSource(source, count)}>
-									<circle cx="{50 + (i % 5) * 75}" cy="{50 + Math.floor(i / 5) * 80}" 
-											r="{Math.sqrt(count / maxHosts) * 40}" 
-											fill="{getSourceStatus(count).color}" opacity="0.3"/>
-									<circle cx="{50 + (i % 5) * 75}" cy="{50 + Math.floor(i / 5) * 80}" 
-											r="{Math.sqrt(count / maxHosts) * 40 * 0.7}" 
-											fill="{getSourceStatus(count).color}" opacity="0.6"/>
-									<text x="{50 + (i % 5) * 75}" y="{50 + Math.floor(i / 5) * 80}" 
-										  text-anchor="middle" 
-										  fill="#FFFFFF" font-size="9" font-weight="600">
-										{count.toLocaleString()}
-									</text>
-								</g>
-							{/each}
-						</svg>
-					</div>
-					
-					<!-- Synaptic Activity Graph -->
-					<div class="synaptic-activity">
-						<svg viewBox="0 0 200 50">
-							<polyline points="{synapticActivity.map((val, i) => `${i * 4},${50 - val * 0.5}`).join(' ')}"
+					<!-- Activity Chart -->
+					<div class="activity-chart">
+						<h4>Source Activity</h4>
+						<svg viewBox="0 0 200 60">
+							<polyline points="{activityData.map((val, i) => `${i * 4},${60 - val * 0.6}`).join(' ')}"
 									  fill="none" 
-									  stroke="#8BE9FD" 
-									  stroke-width="1"
+									  stroke="#00E5FF" 
+									  stroke-width="2"
 									  opacity="0.8"/>
 						</svg>
-						<div class="activity-label">SOURCE ACTIVITY</div>
 					</div>
 				</div>
 			{/if}
 		</div>
 		
-		<!-- Middle: Analytics -->
-		<div class="analytics-panel">
-			<!-- Distribution Chart -->
-			<div class="chart-box">
-				<h3>HOST DISTRIBUTION BY SOURCE</h3>
-				<div class="distribution-bars">
-					{#each topFive as [source, count], i}
-						<div class="dist-item" on:click={() => drillDownSource(source, count)}>
-							<div class="dist-rank">#{i + 1}</div>
-							<div class="dist-name">{source.substring(0, 12).toUpperCase()}</div>
-							<div class="dist-bar">
-								<div class="dist-fill" 
-									 style="width: {(count / maxHosts) * 100}%; 
-											background: linear-gradient(90deg, {getSourceStatus(count).color}40, {getSourceStatus(count).color})">
-									<span class="dist-value">{count.toLocaleString()}</span>
-								</div>
-							</div>
-							<div class="dist-percent">{((count/totalHosts)*100).toFixed(1)}%</div>
-						</div>
-					{/each}
-				</div>
-			</div>
-			
-			<!-- Size Distribution -->
-			<div class="chart-box">
-				<h3>SOURCE SIZE DISTRIBUTION</h3>
-				<div class="size-chart">
-					{#each ['MASSIVE', 'LARGE', 'MEDIUM', 'SMALL', 'MINIMAL'] as size, i}
-						<div class="size-item">
-							<div class="size-label">{size}</div>
-							<div class="size-count" style="color: {['#BD93F9', '#8BE9FD', '#50FA7B', '#FFB86C', '#FF79C6'][i]}">
-								{sources.filter(([_, c]) => getSourceSize(c) === size).length}
-							</div>
-							<div class="size-bar">
-								<div class="size-fill" 
-									 style="height: {(sources.filter(([_, c]) => getSourceSize(c) === size).length / sourceCount) * 100}%; 
-											background: {['#BD93F9', '#8BE9FD', '#50FA7B', '#FFB86C', '#FF79C6'][i]}">
-								</div>
-							</div>
-						</div>
-					{/each}
-				</div>
-			</div>
-			
-			<!-- Coverage Stats -->
-			<div class="chart-box">
-				<h3>COVERAGE STATISTICS</h3>
-				<div class="coverage-stats">
-					<div class="coverage-item">
-						<span class="coverage-label">Sources with >1000 hosts</span>
-						<span class="coverage-value" style="color: #BD93F9">
-							{sources.filter(([_, c]) => c > 1000).length}
-						</span>
-					</div>
-					<div class="coverage-item">
-						<span class="coverage-label">Sources with >5000 hosts</span>
-						<span class="coverage-value" style="color: #8BE9FD">
-							{sources.filter(([_, c]) => c > 5000).length}
-						</span>
-					</div>
-					<div class="coverage-item">
-						<span class="coverage-label">Sources with >10000 hosts</span>
-						<span class="coverage-value" style="color: #50FA7B">
-							{sources.filter(([_, c]) => c > 10000).length}
-						</span>
-					</div>
-				</div>
-			</div>
-		</div>
-		
 		<!-- Right: Source List -->
 		<div class="list-panel">
 			<div class="panel-header">
-				<h3>ALL SOURCES</h3>
-				<span class="source-count">{sources.length} TOTAL</span>
+				<h3>All Sources</h3>
+				<span class="source-count">{sources.length} sources</span>
 			</div>
 			<div class="source-list">
 				<table class="sources-table">
 					<thead>
 						<tr>
-							<th>#</th>
-							<th>SOURCE</th>
-							<th>HOSTS</th>
-							<th>SIZE</th>
-							<th>STATUS</th>
+							<th>Rank</th>
+							<th>Source Name</th>
+							<th>Host Count</th>
+							<th>Percentage</th>
+							<th>Size</th>
 						</tr>
 					</thead>
 					<tbody>
 						{#each sources as [source, count], i}
+							{@const status = getSourceStatus(count)}
 							<tr on:click={() => drillDownSource(source, count)}>
-								<td class="rank">{i + 1}</td>
-								<td class="source-name">
-									<span class="status-indicator" style="background: {getSourceStatus(count).color}"></span>
-									{source.substring(0, 25).toUpperCase()}
+								<td class="rank">#{i + 1}</td>
+								<td class="source-name" title={source}>
+									<span class="status-dot" style="background: {status.color}"></span>
+									{truncateText(source, 25)}
 								</td>
-								<td class="host-count" style="color: {getSourceStatus(count).color}">
-									{count.toLocaleString()}
+								<td class="host-count" style="color: {status.color}">
+									{formatNumber(count)}
+								</td>
+								<td class="percentage">
+									{((count / totalHosts) * 100).toFixed(1)}%
 								</td>
 								<td>
-									<span class="size-badge" style="color: {getSourceStatus(count).color}">
+									<span class="size-badge" style="color: {status.color}; border-color: {status.color}">
 										{getSourceSize(count)}
-									</span>
-								</td>
-								<td>
-									<span class="status-badge" style="color: {getSourceStatus(count).color}; border-color: {getSourceStatus(count).color}">
-										{getSourceStatus(count).level}
 									</span>
 								</td>
 							</tr>
@@ -413,225 +314,205 @@
 	.source-interface {
 		width: 100%;
 		height: calc(100vh - 80px);
-		background: #000000;
+		background: transparent;
 		display: flex;
 		flex-direction: column;
-		padding: 1rem;
-		gap: 1rem;
+		gap: 1.5rem;
 		overflow: hidden;
 	}
 	
-	/* Metrics Header */
+	/* Clean Metrics Header */
 	.metrics-header {
 		display: flex;
 		gap: 1rem;
+		flex-shrink: 0;
 	}
 	
 	.metric-card {
 		flex: 1;
-		background: rgba(255, 255, 255, 0.02);
-		border: 1px solid rgba(139, 233, 253, 0.1);
+		background: rgba(0, 0, 0, 0.6);
+		border: 1px solid rgba(255, 255, 255, 0.1);
 		border-radius: 10px;
-		padding: 1rem;
+		padding: 1.2rem;
 		display: flex;
 		gap: 1rem;
 		align-items: center;
+		transition: all 0.2s ease;
+		backdrop-filter: blur(10px);
+	}
+	
+	.metric-card:hover {
+		background: rgba(0, 0, 0, 0.8);
+		border-color: rgba(0, 229, 255, 0.3);
+		transform: translateY(-1px);
 	}
 	
 	.metric-icon {
 		font-size: 2rem;
+		opacity: 0.8;
 	}
 	
 	.metric-content {
 		flex: 1;
+		min-width: 0;
 	}
 	
 	.metric-value {
-		font-size: 1.5rem;
-		font-weight: 700;
-		font-family: 'Courier New', monospace;
-		margin-bottom: 0.25rem;
+		font-size: 1.6rem;
+		font-weight: 600;
+		font-family: 'SF Mono', 'Monaco', monospace;
+		margin-bottom: 0.3rem;
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
 	}
 	
 	.metric-label {
-		font-size: 0.65rem;
-		color: rgba(255, 255, 255, 0.5);
-		letter-spacing: 0.1em;
-		font-weight: 600;
+		font-size: 0.7rem;
+		color: rgba(255, 255, 255, 0.6);
+		letter-spacing: 0.05em;
+		font-weight: 500;
+		text-transform: uppercase;
 	}
 	
 	/* Content Layout */
 	.content-layout {
 		flex: 1;
 		display: grid;
-		grid-template-columns: 1fr 380px 320px;
-		gap: 1rem;
+		grid-template-columns: 1fr 400px;
+		gap: 1.5rem;
 		min-height: 0;
 	}
 	
-	/* Org Panel */
-	.org-panel {
-		background: rgba(255, 255, 255, 0.02);
-		border: 1px solid rgba(189, 147, 249, 0.1);
+	/* Source Panel */
+	.source-panel {
+		background: rgba(0, 0, 0, 0.6);
+		border: 1px solid rgba(255, 255, 255, 0.1);
 		border-radius: 12px;
-		padding: 1rem;
+		padding: 1.5rem;
 		display: flex;
 		flex-direction: column;
+		backdrop-filter: blur(10px);
+		overflow: hidden;
 	}
 	
 	.panel-header {
 		display: flex;
 		justify-content: space-between;
 		align-items: center;
-		margin-bottom: 1rem;
-		padding-bottom: 0.5rem;
+		margin-bottom: 1.5rem;
+		padding-bottom: 1rem;
 		border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+		flex-shrink: 0;
 	}
 	
 	.panel-header h2, .panel-header h3 {
 		margin: 0;
-		font-size: 0.9rem;
-		font-weight: 300;
-		letter-spacing: 0.1em;
-		color: #BD93F9;
+		font-size: 1.1rem;
+		font-weight: 500;
+		color: #ffffff;
 	}
 	
 	.search-input {
-		padding: 0.4rem 0.8rem;
-		background: rgba(0, 0, 0, 0.5);
-		border: 1px solid rgba(139, 233, 253, 0.3);
-		border-radius: 6px;
-		color: #FFFFFF;
-		font-size: 0.75rem;
-		width: 180px;
+		padding: 0.6rem 1rem;
+		background: rgba(0, 0, 0, 0.8);
+		border: 1px solid rgba(255, 255, 255, 0.2);
+		border-radius: 8px;
+		color: #ffffff;
+		font-size: 0.9rem;
+		width: 220px;
+		transition: all 0.3s ease;
 	}
 	
 	.search-input:focus {
 		outline: none;
-		border-color: #8BE9FD;
+		border-color: #00E5FF;
+		background: rgba(0, 0, 0, 0.9);
+		box-shadow: 0 0 0 2px rgba(0, 229, 255, 0.2);
+	}
+
+	.search-input::placeholder {
+		color: rgba(255, 255, 255, 0.4);
 	}
 	
-	.org-visualization {
+	/* Source Visualization */
+	.source-visualization {
 		flex: 1;
 		display: flex;
 		flex-direction: column;
-		gap: 1rem;
-		position: relative;
+		gap: 1.5rem;
+		overflow: hidden;
 	}
 	
-	/* Tree Container */
 	.tree-container {
 		flex: 1;
+		overflow: hidden;
 	}
 	
 	.tree-root {
-		display: flex;
-		justify-content: center;
+		text-align: center;
 		margin-bottom: 2rem;
 	}
 	
 	.root-node {
-		background: rgba(189, 147, 249, 0.1);
-		border: 2px solid #BD93F9;
-		border-radius: 10px;
+		display: inline-block;
+		background: rgba(0, 229, 255, 0.1);
+		border: 2px solid #00E5FF;
+		border-radius: 12px;
 		padding: 1rem 2rem;
-		text-align: center;
-	}
-	
-	.node-icon {
-		font-size: 2rem;
-		margin-bottom: 0.5rem;
-	}
-	
-	.node-label {
-		font-size: 0.8rem;
-		color: #BD93F9;
-		font-weight: 600;
-		letter-spacing: 0.1em;
-	}
-	
-	.node-count {
-		font-size: 1rem;
-		color: #FFFFFF;
-		font-weight: 700;
-		margin-top: 0.25rem;
 	}
 	
 	.tree-branches {
 		display: flex;
-		justify-content: space-around;
-		position: relative;
-	}
-	
-	.branch-container {
-		position: relative;
-		flex: 1;
-		max-width: 150px;
-	}
-	
-	.branch-line {
-		position: absolute;
-		top: -2rem;
-		left: 50%;
-		width: 1px;
-		height: 2rem;
-		background: rgba(139, 233, 253, 0.3);
+		flex-wrap: wrap;
+		gap: 1rem;
+		justify-content: center;
 	}
 	
 	.source-node {
-		background: rgba(0, 0, 0, 0.5);
+		background: rgba(0, 0, 0, 0.8);
 		border: 1px solid;
-		border-radius: 8px;
+		border-radius: 10px;
+		padding: 1rem;
 		cursor: pointer;
 		transition: all 0.3s ease;
-		overflow: hidden;
+		min-width: 180px;
+		text-align: center;
 	}
 	
 	.source-node:hover {
-		transform: scale(1.05);
-		background: rgba(139, 233, 253, 0.05);
+		transform: translateY(-2px);
+		box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
 	}
 	
-	.node-header {
-		padding: 0.3rem;
-		text-align: center;
-		font-size: 0.7rem;
+	.node-label, .node-name {
+		font-size: 0.9rem;
+		color: #ffffff;
+		margin-bottom: 0.5rem;
+		font-weight: 500;
+	}
+	
+	.node-count {
+		font-size: 1.2rem;
 		font-weight: 600;
+		font-family: 'SF Mono', 'Monaco', monospace;
+		margin-bottom: 0.3rem;
 	}
 	
 	.node-rank {
-		color: #FFFFFF;
-	}
-	
-	.node-body {
-		padding: 0.5rem;
-	}
-	
-	.node-name {
-		font-size: 0.65rem;
-		color: rgba(255, 255, 255, 0.9);
-		margin-bottom: 0.3rem;
-		text-align: center;
-	}
-	
-	.node-metrics {
-		display: flex;
-		justify-content: space-between;
-		margin-bottom: 0.3rem;
-		font-size: 0.7rem;
-	}
-	
-	.node-hosts {
-		font-weight: 700;
-		font-family: 'Courier New', monospace;
+		font-size: 0.8rem;
+		color: rgba(255, 255, 255, 0.6);
+		margin-bottom: 0.5rem;
 	}
 	
 	.node-percent {
-		color: rgba(255, 255, 255, 0.6);
+		font-size: 0.8rem;
+		color: rgba(255, 255, 255, 0.7);
+		margin-bottom: 0.5rem;
 	}
 	
 	.node-bar {
-		height: 3px;
+		height: 4px;
 		background: rgba(255, 255, 255, 0.1);
 		border-radius: 2px;
 		overflow: hidden;
@@ -640,227 +521,52 @@
 	.bar-fill {
 		height: 100%;
 		transition: width 0.5s ease;
+		border-radius: 2px;
 	}
 	
-	/* Bubble Chart */
-	.bubble-chart {
-		height: 180px;
-		background: rgba(0, 0, 0, 0.3);
-		border-radius: 8px;
-		padding: 0.5rem;
-	}
-	
-	.bubble-chart svg {
-		width: 100%;
-		height: 100%;
-	}
-	
-	.bubble-group {
-		cursor: pointer;
-		transition: all 0.3s ease;
-	}
-	
-	.bubble-group:hover {
-		transform: scale(1.1);
-	}
-	
-	/* Synaptic Activity */
-	.synaptic-activity {
-		position: relative;
-		height: 60px;
+	/* Activity Chart */
+	.activity-chart {
 		background: rgba(0, 0, 0, 0.8);
-		border: 1px solid rgba(139, 233, 253, 0.3);
-		padding: 5px;
-		border-radius: 10px;
-		margin-top: 1rem;
-	}
-	
-	.synaptic-activity svg {
-		width: 100%;
-		height: 100%;
-	}
-	
-	.activity-label {
-		position: absolute;
-		top: 5px;
-		left: 10px;
-		font-size: 0.6rem;
-		color: rgba(255, 255, 255, 0.5);
-		letter-spacing: 0.1em;
-	}
-	
-	/* Analytics Panel */
-	.analytics-panel {
-		display: flex;
-		flex-direction: column;
-		gap: 1rem;
-	}
-	
-	.chart-box {
-		flex: 1;
-		background: rgba(255, 255, 255, 0.02);
-		border: 1px solid rgba(139, 233, 253, 0.1);
+		border: 1px solid rgba(255, 255, 255, 0.1);
 		border-radius: 10px;
 		padding: 1rem;
-		display: flex;
-		flex-direction: column;
+		height: 120px;
 	}
 	
-	.chart-box h3 {
-		margin: 0 0 1rem 0;
-		font-size: 0.75rem;
-		color: #8BE9FD;
-		font-weight: 300;
-		letter-spacing: 0.1em;
-	}
-	
-	.distribution-bars {
-		flex: 1;
-		display: flex;
-		flex-direction: column;
-		gap: 0.5rem;
-	}
-	
-	.dist-item {
-		display: grid;
-		grid-template-columns: 25px 100px 1fr 45px;
-		gap: 0.5rem;
-		align-items: center;
-		cursor: pointer;
-		transition: all 0.2s ease;
-	}
-	
-	.dist-item:hover {
-		transform: translateX(2px);
-	}
-	
-	.dist-rank {
-		font-size: 0.65rem;
-		color: #BD93F9;
-		font-weight: 600;
-	}
-	
-	.dist-name {
-		font-size: 0.65rem;
-		color: rgba(255, 255, 255, 0.8);
-	}
-	
-	.dist-bar {
-		height: 18px;
-		background: rgba(255, 255, 255, 0.05);
-		border-radius: 4px;
-		overflow: hidden;
-	}
-	
-	.dist-fill {
-		height: 100%;
-		display: flex;
-		align-items: center;
-		justify-content: flex-end;
-		padding: 0 0.4rem;
-		transition: width 0.5s ease;
-	}
-	
-	.dist-value {
-		font-size: 0.6rem;
-		color: #FFFFFF;
-		font-weight: 600;
-	}
-	
-	.dist-percent {
-		font-size: 0.65rem;
-		color: rgba(255, 255, 255, 0.5);
-		text-align: right;
-	}
-	
-	/* Size Chart */
-	.size-chart {
-		display: flex;
-		align-items: flex-end;
-		justify-content: space-around;
-		height: 100px;
-	}
-	
-	.size-item {
-		flex: 1;
-		display: flex;
-		flex-direction: column;
-		align-items: center;
-		gap: 0.3rem;
-	}
-	
-	.size-label {
-		font-size: 0.6rem;
-		color: rgba(255, 255, 255, 0.6);
-		writing-mode: vertical-lr;
-		text-align: center;
-	}
-	
-	.size-count {
+	.activity-chart h4 {
+		margin: 0 0 0.5rem 0;
 		font-size: 0.9rem;
-		font-weight: 700;
+		color: rgba(255, 255, 255, 0.8);
+		font-weight: 500;
 	}
 	
-	.size-bar {
-		width: 30px;
-		height: 60px;
-		background: rgba(255, 255, 255, 0.05);
-		border-radius: 4px 4px 0 0;
-		display: flex;
-		align-items: flex-end;
-	}
-	
-	.size-fill {
+	.activity-chart svg {
 		width: 100%;
-		border-radius: 4px 4px 0 0;
-		transition: height 0.5s ease;
-	}
-	
-	/* Coverage Stats */
-	.coverage-stats {
-		display: flex;
-		flex-direction: column;
-		gap: 0.75rem;
-	}
-	
-	.coverage-item {
-		display: flex;
-		justify-content: space-between;
-		align-items: center;
-		padding: 0.5rem;
-		background: rgba(0, 0, 0, 0.3);
-		border-radius: 6px;
-	}
-	
-	.coverage-label {
-		font-size: 0.7rem;
-		color: rgba(255, 255, 255, 0.7);
-	}
-	
-	.coverage-value {
-		font-size: 1rem;
-		font-weight: 700;
-		font-family: 'Courier New', monospace;
+		height: 70px;
 	}
 	
 	/* List Panel */
 	.list-panel {
-		background: rgba(255, 255, 255, 0.02);
-		border: 1px solid rgba(189, 147, 249, 0.1);
+		background: rgba(0, 0, 0, 0.6);
+		border: 1px solid rgba(255, 255, 255, 0.1);
 		border-radius: 12px;
 		display: flex;
 		flex-direction: column;
+		backdrop-filter: blur(10px);
 		overflow: hidden;
+		padding: 1.5rem;
 	}
 	
 	.source-count {
-		font-size: 0.7rem;
-		color: rgba(255, 255, 255, 0.5);
+		font-size: 0.8rem;
+		color: rgba(255, 255, 255, 0.6);
+		font-weight: 500;
 	}
 	
 	.source-list {
 		flex: 1;
 		overflow-y: auto;
+		margin-top: 1rem;
 	}
 	
 	.sources-table {
@@ -871,18 +577,17 @@
 	.sources-table thead {
 		position: sticky;
 		top: 0;
-		background: rgba(0, 0, 0, 0.9);
+		background: rgba(0, 0, 0, 0.95);
 		z-index: 10;
 	}
 	
 	.sources-table th {
-		padding: 0.5rem;
+		padding: 0.8rem 0.5rem;
 		text-align: left;
-		font-size: 0.6rem;
-		font-weight: 600;
-		color: rgba(255, 255, 255, 0.5);
-		letter-spacing: 0.05em;
-		border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+		font-size: 0.8rem;
+		font-weight: 500;
+		color: rgba(255, 255, 255, 0.7);
+		border-bottom: 1px solid rgba(255, 255, 255, 0.2);
 	}
 	
 	.sources-table tbody tr {
@@ -892,53 +597,53 @@
 	}
 	
 	.sources-table tbody tr:hover {
-		background: rgba(139, 233, 253, 0.05);
+		background: rgba(0, 229, 255, 0.05);
 	}
 	
 	.sources-table td {
-		padding: 0.5rem;
-		font-size: 0.7rem;
-		color: rgba(255, 255, 255, 0.8);
+		padding: 0.7rem 0.5rem;
+		font-size: 0.85rem;
+		color: rgba(255, 255, 255, 0.9);
 	}
 	
 	.rank {
-		color: #BD93F9;
+		color: #00E5FF;
 		font-weight: 600;
-		font-size: 0.65rem;
+		font-size: 0.8rem;
+		width: 60px;
 	}
 	
 	.source-name {
 		display: flex;
 		align-items: center;
-		gap: 0.4rem;
-		font-size: 0.65rem;
+		gap: 0.5rem;
+		font-weight: 500;
 	}
 	
-	.status-indicator {
-		width: 6px;
-		height: 6px;
+	.status-dot {
+		width: 8px;
+		height: 8px;
 		border-radius: 50%;
 		flex-shrink: 0;
 	}
 	
 	.host-count {
-		font-family: 'Courier New', monospace;
+		font-family: 'SF Mono', 'Monaco', monospace;
 		font-weight: 600;
+	}
+	
+	.percentage {
+		font-family: 'SF Mono', 'Monaco', monospace;
+		color: rgba(255, 255, 255, 0.7);
 	}
 	
 	.size-badge {
-		font-size: 0.6rem;
-		font-weight: 600;
-		letter-spacing: 0.05em;
-	}
-	
-	.status-badge {
-		font-size: 0.6rem;
-		padding: 0.15rem 0.3rem;
+		font-size: 0.7rem;
+		padding: 0.2rem 0.5rem;
 		border: 1px solid;
-		border-radius: 4px;
+		border-radius: 6px;
 		font-weight: 600;
-		letter-spacing: 0.03em;
+		text-transform: uppercase;
 	}
 	
 	/* Detail View */
@@ -946,36 +651,40 @@
 		flex: 1;
 		display: flex;
 		flex-direction: column;
+		overflow: hidden;
 	}
 	
 	.detail-header {
 		display: flex;
 		justify-content: space-between;
 		align-items: start;
-		margin-bottom: 1rem;
+		margin-bottom: 1.5rem;
+		flex-shrink: 0;
 	}
 	
 	.detail-header h3 {
-		margin: 0 0 0.25rem 0;
-		font-size: 1.1rem;
-		color: #BD93F9;
+		margin: 0 0 0.5rem 0;
+		font-size: 1.3rem;
+		color: #00E5FF;
+		font-weight: 500;
 	}
 	
 	.source-stats {
-		font-size: 0.7rem;
-		color: rgba(255, 255, 255, 0.6);
+		font-size: 0.85rem;
+		color: rgba(255, 255, 255, 0.7);
 		display: flex;
 		gap: 0.5rem;
+		font-weight: 400;
 	}
 	
 	.close-btn {
 		background: rgba(255, 255, 255, 0.1);
-		border: 1px solid rgba(255, 255, 255, 0.2);
-		color: #FFFFFF;
-		width: 28px;
-		height: 28px;
-		border-radius: 6px;
-		font-size: 1rem;
+		border: 1px solid rgba(255, 255, 255, 0.3);
+		color: #ffffff;
+		width: 36px;
+		height: 36px;
+		border-radius: 8px;
+		font-size: 1.2rem;
 		cursor: pointer;
 		display: flex;
 		align-items: center;
@@ -984,15 +693,15 @@
 	}
 	
 	.close-btn:hover {
-		background: rgba(189, 147, 249, 0.2);
-		border-color: #BD93F9;
+		background: rgba(0, 229, 255, 0.2);
+		border-color: #00E5FF;
 	}
 	
 	.hosts-container {
 		flex: 1;
 		overflow-y: auto;
-		background: rgba(0, 0, 0, 0.3);
-		border-radius: 8px;
+		background: rgba(0, 0, 0, 0.8);
+		border-radius: 10px;
 		padding: 1rem;
 	}
 	
@@ -1004,42 +713,50 @@
 	.hosts-table thead {
 		position: sticky;
 		top: 0;
-		background: rgba(0, 0, 0, 0.9);
+		background: rgba(0, 0, 0, 0.95);
 		z-index: 10;
 	}
 	
 	.hosts-table th {
-		padding: 0.5rem;
+		padding: 0.8rem 0.5rem;
 		text-align: left;
-		font-size: 0.65rem;
-		color: rgba(255, 255, 255, 0.5);
-		border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-		letter-spacing: 0.05em;
+		font-size: 0.8rem;
+		color: rgba(255, 255, 255, 0.7);
+		border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+		font-weight: 500;
 	}
 	
 	.hosts-table td {
-		padding: 0.5rem;
-		font-size: 0.65rem;
-		color: rgba(255, 255, 255, 0.8);
+		padding: 0.7rem 0.5rem;
+		font-size: 0.8rem;
+		color: rgba(255, 255, 255, 0.9);
 		border-bottom: 1px solid rgba(255, 255, 255, 0.05);
 	}
 	
 	.hostname {
-		font-family: 'Courier New', monospace;
-		color: #8BE9FD;
-		font-size: 0.6rem;
+		font-family: 'SF Mono', 'Monaco', monospace;
+		color: #00E5FF;
+		font-size: 0.75rem;
+		font-weight: 500;
 	}
 	
-	.status-dot {
-		font-size: 0.8rem;
+	.status-indicator {
+		font-size: 0.9rem;
+		font-weight: 600;
+		padding: 0.2rem 0.4rem;
+		border-radius: 4px;
+		text-align: center;
+		min-width: 24px;
 	}
 	
-	.status-dot.active {
+	.status-indicator.active {
 		color: #50FA7B;
+		background: rgba(80, 250, 123, 0.1);
 	}
 	
-	.status-dot.inactive {
+	.status-indicator.inactive {
 		color: #FF5555;
+		background: rgba(255, 85, 85, 0.1);
 	}
 	
 	/* Loading State */
@@ -1052,66 +769,98 @@
 		gap: 2rem;
 	}
 	
-	.org-loader {
-		position: relative;
-		width: 100px;
-		height: 100px;
+	.loader-animation {
+		display: flex;
+		gap: 0.5rem;
+		align-items: flex-end;
 	}
 	
-	.org-node {
-		position: absolute;
-		width: 20px;
-		height: 20px;
-		background: linear-gradient(135deg, #BD93F9, #8BE9FD);
-		border-radius: 50%;
-		animation: nodeFloat 2s ease-in-out infinite;
+	.load-bar {
+		width: 8px;
+		background: #00E5FF;
+		border-radius: 4px;
+		animation: loadPulse 1.5s ease-in-out infinite;
 	}
 	
-	.node-1 {
-		top: 0;
-		left: 40px;
+	.load-bar:nth-child(1) {
+		height: 30px;
+		animation-delay: 0s;
 	}
 	
-	.node-2 {
-		top: 30px;
-		left: 10px;
-		animation-delay: 0.5s;
+	.load-bar:nth-child(2) {
+		height: 40px;
+		animation-delay: 0.3s;
 	}
 	
-	.node-3 {
-		top: 30px;
-		left: 70px;
-		animation-delay: 1s;
+	.load-bar:nth-child(3) {
+		height: 25px;
+		animation-delay: 0.6s;
 	}
 	
-	.node-4 {
-		top: 70px;
-		left: 40px;
-		animation-delay: 1.5s;
-	}
-	
-	@keyframes nodeFloat {
-		0%, 100% { transform: scale(1); opacity: 0.5; }
-		50% { transform: scale(1.2); opacity: 1; }
+	@keyframes loadPulse {
+		0%, 100% { opacity: 0.3; transform: scaleY(0.8); }
+		50% { opacity: 1; transform: scaleY(1); }
 	}
 	
 	.loading-state p {
-		color: rgba(255, 255, 255, 0.5);
-		font-size: 0.8rem;
-		letter-spacing: 0.2em;
+		color: rgba(255, 255, 255, 0.6);
+		font-size: 1rem;
+		font-weight: 400;
 	}
 	
 	/* Scrollbar */
 	::-webkit-scrollbar {
 		width: 6px;
+		height: 6px;
 	}
 	
 	::-webkit-scrollbar-track {
-		background: rgba(0, 0, 0, 0.5);
+		background: rgba(0, 0, 0, 0.3);
+		border-radius: 3px;
 	}
 	
 	::-webkit-scrollbar-thumb {
-		background: rgba(189, 147, 249, 0.3);
+		background: rgba(0, 229, 255, 0.3);
 		border-radius: 3px;
+	}
+	
+	::-webkit-scrollbar-thumb:hover {
+		background: rgba(0, 229, 255, 0.5);
+	}
+	
+	/* Responsive Design */
+	@media (max-width: 1200px) {
+		.content-layout {
+			grid-template-columns: 1fr;
+			grid-template-rows: 1fr auto;
+		}
+		
+		.list-panel {
+			max-height: 300px;
+		}
+	}
+	
+	@media (max-width: 768px) {
+		.metrics-header {
+			flex-wrap: wrap;
+		}
+		
+		.metric-card {
+			min-width: calc(50% - 0.5rem);
+		}
+		
+		.metric-value {
+			font-size: 1.3rem;
+		}
+		
+		.search-input {
+			width: 100%;
+		}
+		
+		.panel-header {
+			flex-direction: column;
+			gap: 1rem;
+			align-items: stretch;
+		}
 	}
 </style>
