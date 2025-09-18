@@ -1,12 +1,14 @@
 <!-- RegionMetrics.svelte - Production Ready -->
 <script>
-	import { onMount, onDestroy } from 'svelte';
+	import { onMount } from 'svelte';
 	
 	let data = {};
 	let loading = true;
 	let selectedRegion = null;
 	let regionDetails = [];
 	let searchTerm = '';
+	let sortColumn = 'count';
+	let sortDirection = 'desc';
 	
 	onMount(async () => {
 		try {
@@ -18,15 +20,36 @@
 			loading = false;
 		}
 	});
-
+	
 	$: regions = data.global_surveillance ? 
 		Object.entries(data.global_surveillance)
 			.filter(([region]) => region.toLowerCase().includes(searchTerm.toLowerCase()))
-			.sort((a, b) => b[1] - a[1]) : [];
+			.sort((a, b) => {
+				if (sortColumn === 'name') {
+					return sortDirection === 'asc' ? 
+						a[0].localeCompare(b[0]) : 
+						b[0].localeCompare(a[0]);
+				}
+				return sortDirection === 'asc' ? a[1] - b[1] : b[1] - a[1];
+			}) : [];
 	
 	$: totalHosts = regions.reduce((sum, [_, count]) => sum + count, 0);
 	$: maxHosts = regions.length > 0 ? Math.max(...regions.map(([,c]) => c)) : 1;
-
+	$: avgHosts = regions.length > 0 ? Math.round(totalHosts / regions.length) : 0;
+	
+	// Chart data
+	$: topFive = regions.slice(0, 5);
+	$: bottomFive = regions.slice(-5);
+	
+	function handleSort(column) {
+		if (sortColumn === column) {
+			sortDirection = sortDirection === 'asc' ? 'desc' : 'asc';
+		} else {
+			sortColumn = column;
+			sortDirection = 'desc';
+		}
+	}
+	
 	async function selectRegion(region, count) {
 		selectedRegion = { region, count };
 		loading = true;
@@ -36,185 +59,215 @@
 			regionDetails = result.hosts || [];
 		} catch (err) {
 			console.error('Failed to load region details:', err);
-			regionDetails = [];
 		}
 		loading = false;
 	}
-
+	
 	function closeDetails() {
 		selectedRegion = null;
 		regionDetails = [];
 	}
 	
-	function getRegionLevel(count) {
-		let percentage = (count / maxHosts) * 100;
-		if (percentage >= 75) return { level: 'HIGH', color: '#BD93F9' };
-		if (percentage >= 50) return { level: 'MEDIUM', color: '#8BE9FD' };
-		if (percentage >= 25) return { level: 'LOW', color: '#50FA7B' };
-		return { level: 'MINIMAL', color: '#FFB86C' };
+	function getRegionColor(percentage) {
+		if (percentage >= 20) return '#BD93F9';
+		if (percentage >= 15) return '#8BE9FD';
+		if (percentage >= 10) return '#50FA7B';
+		if (percentage >= 5) return '#FFB86C';
+		return '#666';
 	}
 </script>
 
 <div class="container">
-	<!-- Metrics Bar -->
-	<div class="metrics">
-		<div class="metric">
-			<div class="value" style="color:#BD93F9">{regions.length}</div>
-			<div class="label">REGIONS</div>
-		</div>
-		<div class="metric">
-			<div class="value" style="color:#8BE9FD">{totalHosts.toLocaleString()}</div>
-			<div class="label">TOTAL HOSTS</div>
-		</div>
-		<div class="metric">
-			<div class="value" style="color:#50FA7B">{regions[0]?.[0]?.toUpperCase() || 'N/A'}</div>
-			<div class="label">TOP REGION</div>
-		</div>
-		<div class="metric">
-			<div class="value" style="color:#FFB86C">
-				{regions.length > 0 ? Math.round(totalHosts / regions.length).toLocaleString() : 0}
-			</div>
-			<div class="label">AVG HOSTS/REGION</div>
-		</div>
-	</div>
-	
-	<!-- Main Grid -->
-	<div class="grid">
-		<!-- Map Panel -->
-		<div class="map-panel">
-			<div class="header">
-				<h2>GLOBAL DISTRIBUTION</h2>
-				<input type="text" bind:value={searchTerm} placeholder="Search regions..." class="search"/>
-			</div>
-			
-			{#if loading && !selectedRegion}
-				<div class="loading">
-					<div class="spinner"></div>
-					<p>LOADING REGIONAL DATA...</p>
+	<header class="header">
+		<div class="header-content">
+			<h1 class="title">REGIONAL DISTRIBUTION</h1>
+			<div class="header-controls">
+				<input 
+					type="text" 
+					bind:value={searchTerm}
+					placeholder="Search regions..."
+					class="search-input"
+				/>
+				<div class="metrics">
+					<div class="metric">
+						<span class="metric-value">{regions.length}</span>
+						<span class="metric-label">Regions</span>
+					</div>
+					<div class="metric">
+						<span class="metric-value">{totalHosts.toLocaleString()}</span>
+						<span class="metric-label">Total Hosts</span>
+					</div>
+					<div class="metric">
+						<span class="metric-value">{avgHosts.toLocaleString()}</span>
+						<span class="metric-label">Avg/Region</span>
+					</div>
 				</div>
-			{:else if selectedRegion}
-				<div class="detail">
+			</div>
+		</div>
+	</header>
+
+	<div class="main-content">
+		<div class="table-section">
+			{#if selectedRegion}
+				<div class="detail-view">
 					<div class="detail-header">
-						<div>
-							<h3>{selectedRegion.region.toUpperCase()}</h3>
-							<span class="sub">{selectedRegion.count.toLocaleString()} HOSTS</span>
-						</div>
-						<button class="close" on:click={closeDetails}>×</button>
+						<h2>{selectedRegion.region}</h2>
+						<button class="close-btn" on:click={closeDetails}>×</button>
 					</div>
-					<div class="table-wrap">
-						<table>
-							<thead>
+					<table class="data-table">
+						<thead>
+							<tr>
+								<th>Hostname</th>
+								<th>Country</th>
+								<th>Infrastructure</th>
+								<th>Business Unit</th>
+								<th>CMDB</th>
+								<th>Tanium</th>
+							</tr>
+						</thead>
+						<tbody>
+							{#each regionDetails as host}
 								<tr>
-									<th>HOSTNAME</th>
-									<th>COUNTRY</th>
-									<th>TYPE</th>
-									<th>DIVISION</th>
-									<th>CMDB</th>
-									<th>TANIUM</th>
+									<td class="mono">{host.host}</td>
+									<td>{host.country || '-'}</td>
+									<td>{host.infrastructure_type || '-'}</td>
+									<td>{host.business_unit || '-'}</td>
+									<td>
+										<span class="status {host.present_in_cmdb?.toLowerCase().includes('yes') ? 'active' : ''}">
+											{host.present_in_cmdb?.toLowerCase().includes('yes') ? '●' : '○'}
+										</span>
+									</td>
+									<td>
+										<span class="status {host.tanium_coverage?.toLowerCase().includes('tanium') ? 'active' : ''}">
+											{host.tanium_coverage?.toLowerCase().includes('tanium') ? '●' : '○'}
+										</span>
+									</td>
 								</tr>
-							</thead>
-							<tbody>
-								{#each regionDetails as host}
-									<tr>
-										<td class="mono">{host.host}</td>
-										<td>{host.country || '-'}</td>
-										<td>{host.infrastructure_type || '-'}</td>
-										<td>{host.business_unit || '-'}</td>
-										<td><span class="status {host.present_in_cmdb?.toLowerCase().includes('yes') ? 'ok' : ''}">●</span></td>
-										<td><span class="status {host.tanium_coverage?.toLowerCase().includes('tanium') ? 'ok' : ''}">●</span></td>
-									</tr>
-								{/each}
-							</tbody>
-						</table>
-					</div>
+							{/each}
+						</tbody>
+					</table>
 				</div>
 			{:else}
-				<div class="map">
-					<svg viewBox="0 0 800 400">
-						{#each regions.slice(0, 10) as [region, count], i}
-							<g class="node" on:click={() => selectRegion(region, count)}>
-								<circle 
-									cx="{100 + (i % 4) * 180}" 
-									cy="{100 + Math.floor(i / 4) * 150}" 
-									r="{Math.sqrt(count / maxHosts) * 50}"
-									fill="{getRegionLevel(count).color}"
-									opacity="0.6"/>
-								<text 
-									x="{100 + (i % 4) * 180}" 
-									y="{100 + Math.floor(i / 4) * 150 - Math.sqrt(count / maxHosts) * 50 - 10}"
-									text-anchor="middle" 
-									fill="#fff" 
-									font-size="11">
-									{region.toUpperCase()}
-								</text>
-								<text 
-									x="{100 + (i % 4) * 180}" 
-									y="{100 + Math.floor(i / 4) * 150 + 5}"
-									text-anchor="middle" 
-									fill="#fff" 
-									font-size="14" 
-									font-weight="600">
-									{count.toLocaleString()}
-								</text>
-							</g>
+				<table class="data-table">
+					<thead>
+						<tr>
+							<th class="sortable" on:click={() => handleSort('name')}>
+								Region
+								{#if sortColumn === 'name'}
+									<span class="sort-indicator">{sortDirection === 'asc' ? '↑' : '↓'}</span>
+								{/if}
+							</th>
+							<th class="sortable" on:click={() => handleSort('count')}>
+								Host Count
+								{#if sortColumn === 'count'}
+									<span class="sort-indicator">{sortDirection === 'asc' ? '↑' : '↓'}</span>
+								{/if}
+							</th>
+							<th>Global Share</th>
+							<th>Density</th>
+						</tr>
+					</thead>
+					<tbody>
+						{#each regions as [region, count], i}
+							{#if region && count}
+								<tr on:click={() => selectRegion(region, count)}>
+									<td class="region-name">{region}</td>
+									<td class="mono">{count.toLocaleString()}</td>
+									<td>
+										<div class="share">
+											<div class="share-bar">
+												<div class="share-fill" 
+													 style="width: {(count/totalHosts)*100}%; 
+															background: {getRegionColor((count/totalHosts)*100)}">
+												</div>
+											</div>
+											<span class="share-text">{((count/totalHosts)*100).toFixed(1)}%</span>
+										</div>
+									</td>
+									<td>
+										<div class="density-indicator">
+											<span class="density-dot" style="background: {getRegionColor((count/totalHosts)*100)}"></span>
+											<span class="density-label">
+												{(count/totalHosts)*100 >= 20 ? 'CRITICAL' : 
+												 (count/totalHosts)*100 >= 15 ? 'HIGH' : 
+												 (count/totalHosts)*100 >= 10 ? 'MODERATE' : 
+												 (count/totalHosts)*100 >= 5 ? 'LOW' : 'MINIMAL'}
+											</span>
+										</div>
+									</td>
+								</tr>
+							{/if}
 						{/each}
-					</svg>
-				</div>
+					</tbody>
+				</table>
 			{/if}
 		</div>
-		
-		<!-- Charts -->
-		<div class="charts">
-			<div class="chart-card">
-				<h3>DISTRIBUTION</h3>
-				<div class="bars">
-					{#each regions.slice(0, 5) as [region, count]}
-						<div class="bar-item">
-							<span class="bar-label">{region.substring(0, 10)}</span>
-							<div class="bar-track">
-								<div class="bar-fill" 
-									 style="width:{(count/maxHosts)*100}%; background:{getRegionLevel(count).color}">
-									<span class="bar-value">{count.toLocaleString()}</span>
+
+		<div class="charts-section">
+			<!-- Chart 1: Top Regions -->
+			<div class="chart-container">
+				<h3 class="chart-title">TOP REGIONS</h3>
+				<div class="chart-content">
+					{#each topFive as [region, count]}
+						<div class="region-item">
+							<div class="region-info">
+								<span class="region-label">{region}</span>
+								<span class="region-count">{count.toLocaleString()}</span>
+							</div>
+							<div class="region-bar">
+								<div class="region-fill" 
+									 style="width: {(count/maxHosts)*100}%; 
+											background: {getRegionColor((count/totalHosts)*100)}">
 								</div>
 							</div>
 						</div>
 					{/each}
 				</div>
 			</div>
-		</div>
-		
-		<!-- List -->
-		<div class="list-panel">
-			<div class="header">
-				<h3>ALL REGIONS</h3>
-				<span class="count">{regions.length}</span>
-			</div>
-			<div class="list">
-				<table>
-					<thead>
-						<tr>
-							<th>#</th>
-							<th>REGION</th>
-							<th>HOSTS</th>
-							<th>%</th>
-						</tr>
-					</thead>
-					<tbody>
-						{#each regions as [region, count], i}
-							<tr on:click={() => selectRegion(region, count)}>
-								<td class="rank">#{i + 1}</td>
-								<td class="name">
-									<span class="dot" style="background:{getRegionLevel(count).color}"></span>
-									{region.toUpperCase()}
-								</td>
-								<td class="count" style="color:{getRegionLevel(count).color}">
-									{count.toLocaleString()}
-								</td>
-								<td class="percent">{((count/totalHosts)*100).toFixed(1)}%</td>
-							</tr>
+
+			<!-- Chart 2: Distribution Map -->
+			<div class="chart-container">
+				<h3 class="chart-title">GEOGRAPHIC SPREAD</h3>
+				<div class="chart-content">
+					<div class="map-grid">
+						{#each regions.slice(0, 12) as [region, count]}
+							<div class="map-cell" 
+								 style="background: {getRegionColor((count/totalHosts)*100)}; 
+										opacity: {0.2 + (count/maxHosts) * 0.8}">
+								<span class="map-value">{((count/totalHosts)*100).toFixed(0)}%</span>
+							</div>
 						{/each}
-					</tbody>
-				</table>
+					</div>
+				</div>
+			</div>
+
+			<!-- Chart 3: Coverage Metrics -->
+			<div class="chart-container">
+				<h3 class="chart-title">COVERAGE METRICS</h3>
+				<div class="chart-content">
+					<div class="metric-list">
+						<div class="metric-item">
+							<span class="metric-name">Top Region</span>
+							<span class="metric-val">{topFive[0] ? topFive[0][0] : 'N/A'}</span>
+						</div>
+						<div class="metric-item">
+							<span class="metric-name">Top 3 Coverage</span>
+							<span class="metric-val">
+								{((topFive.slice(0, 3).reduce((sum, [_, c]) => sum + c, 0) / totalHosts * 100)).toFixed(1)}%
+							</span>
+						</div>
+						<div class="metric-item">
+							<span class="metric-name">Concentration</span>
+							<span class="metric-val">
+								{topFive[0] ? ((topFive[0][1] / totalHosts * 100)).toFixed(1) + '%' : '0%'}
+							</span>
+						</div>
+						<div class="metric-item">
+							<span class="metric-name">Active Regions</span>
+							<span class="metric-val">{regions.filter(([_, c]) => c > 1000).length}</span>
+						</div>
+					</div>
+				</div>
 			</div>
 		</div>
 	</div>
@@ -222,340 +275,373 @@
 
 <style>
 	.container {
+		width: 100%;
 		height: calc(100vh - 80px);
-		background: #000;
-		padding: 1rem;
-		display: flex;
-		flex-direction: column;
-		gap: 1rem;
-	}
-	
-	.metrics {
-		display: flex;
-		gap: 1rem;
-		background: rgba(255,255,255,0.02);
-		border: 1px solid rgba(139,233,253,0.1);
-		border-radius: 8px;
-		padding: 1rem 2rem;
-	}
-	
-	.metric {
-		flex: 1;
-		text-align: center;
-		border-right: 1px solid rgba(255,255,255,0.1);
-	}
-	
-	.metric:last-child {
-		border: none;
-	}
-	
-	.value {
-		font: 700 1.8rem/1 'SF Mono', monospace;
-		margin-bottom: 0.5rem;
-	}
-	
-	.label {
-		font: 600 0.7rem/1 system-ui;
-		color: rgba(255,255,255,0.5);
-		letter-spacing: 0.1em;
-	}
-	
-	.grid {
-		flex: 1;
-		display: grid;
-		grid-template-columns: 1fr 350px 300px;
-		gap: 1rem;
-		min-height: 0;
-	}
-	
-	.map-panel, .charts, .list-panel {
-		background: rgba(255,255,255,0.02);
-		border: 1px solid rgba(189,147,249,0.1);
-		border-radius: 8px;
+		background: #000000;
 		display: flex;
 		flex-direction: column;
 		overflow: hidden;
 	}
-	
+
 	.header {
+		border-bottom: 1px solid #1a1a1a;
+		padding: 1.5rem 2rem;
+	}
+
+	.header-content {
 		display: flex;
 		justify-content: space-between;
 		align-items: center;
-		padding: 1rem;
-		border-bottom: 1px solid rgba(255,255,255,0.1);
 	}
-	
-	.header h2, .header h3 {
+
+	.title {
+		font-size: 1.25rem;
+		font-weight: 200;
+		letter-spacing: 0.2em;
+		color: #FFFFFF;
 		margin: 0;
-		font: 300 0.9rem/1 system-ui;
-		color: #BD93F9;
-		letter-spacing: 0.1em;
 	}
-	
-	.search {
-		padding: 0.5rem 1rem;
-		background: rgba(0,0,0,0.5);
-		border: 1px solid rgba(139,233,253,0.3);
+
+	.header-controls {
+		display: flex;
+		align-items: center;
+		gap: 2rem;
+	}
+
+	.search-input {
+		background: #0a0a0a;
+		border: 1px solid #1a1a1a;
 		border-radius: 4px;
-		color: #fff;
-		font-size: 0.8rem;
-		width: 180px;
+		padding: 0.5rem 1rem;
+		color: #FFFFFF;
+		font-size: 0.875rem;
+		width: 250px;
+		transition: border-color 0.2s;
 	}
-	
-	.search:focus {
+
+	.search-input:focus {
 		outline: none;
 		border-color: #8BE9FD;
 	}
-	
-	.map {
-		flex: 1;
+
+	.metrics {
 		display: flex;
-		align-items: center;
-		justify-content: center;
-		padding: 2rem;
+		gap: 2rem;
 	}
-	
-	.map svg {
-		width: 100%;
-		height: 100%;
-	}
-	
-	.node {
-		cursor: pointer;
-		transition: transform 0.3s;
-	}
-	
-	.node:hover {
-		transform: scale(1.1);
-	}
-	
-	.chart-card {
-		padding: 1rem;
-	}
-	
-	.chart-card h3 {
-		margin: 0 0 1rem 0;
-		font: 300 0.8rem/1 system-ui;
-		color: #8BE9FD;
-		letter-spacing: 0.1em;
-	}
-	
-	.bars {
+
+	.metric {
 		display: flex;
 		flex-direction: column;
-		gap: 0.5rem;
-	}
-	
-	.bar-item {
-		display: grid;
-		grid-template-columns: 80px 1fr;
-		gap: 0.5rem;
 		align-items: center;
 	}
-	
-	.bar-label {
-		font: 400 0.7rem/1 system-ui;
-		color: rgba(255,255,255,0.7);
-		text-align: right;
+
+	.metric-value {
+		font-size: 1.25rem;
+		font-weight: 300;
+		color: #8BE9FD;
 	}
-	
-	.bar-track {
-		height: 20px;
-		background: rgba(255,255,255,0.05);
-		border-radius: 4px;
-		overflow: hidden;
+
+	.metric-label {
+		font-size: 0.75rem;
+		color: #666;
+		text-transform: uppercase;
+		letter-spacing: 0.1em;
+		margin-top: 0.25rem;
 	}
-	
-	.bar-fill {
-		height: 100%;
-		display: flex;
-		align-items: center;
-		justify-content: flex-end;
-		padding: 0 0.5rem;
-		transition: width 0.5s cubic-bezier(0.4,0,0.2,1);
-	}
-	
-	.bar-value {
-		font: 600 0.65rem/1 'SF Mono', monospace;
-		color: #fff;
-	}
-	
-	.count {
-		font: 600 0.8rem/1 'SF Mono', monospace;
-		color: rgba(255,255,255,0.5);
-	}
-	
-	.list {
+
+	.main-content {
 		flex: 1;
+		display: grid;
+		grid-template-columns: 1fr 320px;
+		min-height: 0;
+	}
+
+	.table-section {
+		border-right: 1px solid #1a1a1a;
 		overflow-y: auto;
 	}
-	
-	table {
+
+	.data-table {
 		width: 100%;
 		border-collapse: collapse;
 	}
-	
-	thead {
+
+	.data-table thead {
 		position: sticky;
 		top: 0;
-		background: rgba(0,0,0,0.9);
+		background: #000000;
+		border-bottom: 1px solid #1a1a1a;
 		z-index: 10;
 	}
-	
-	th {
-		padding: 0.75rem;
+
+	.data-table th {
+		padding: 1rem;
 		text-align: left;
-		font: 600 0.65rem/1 system-ui;
-		color: rgba(255,255,255,0.5);
+		font-size: 0.75rem;
+		font-weight: 400;
+		color: #666;
+		text-transform: uppercase;
 		letter-spacing: 0.1em;
-		border-bottom: 1px solid rgba(255,255,255,0.1);
 	}
-	
-	tbody tr {
+
+	.data-table th.sortable {
 		cursor: pointer;
-		transition: background 0.2s;
-		border-bottom: 1px solid rgba(255,255,255,0.05);
+		transition: color 0.2s;
 	}
-	
-	tbody tr:hover {
-		background: rgba(139,233,253,0.05);
+
+	.data-table th.sortable:hover {
+		color: #8BE9FD;
 	}
-	
-	td {
-		padding: 0.6rem 0.75rem;
-		font: 400 0.75rem/1 system-ui;
-		color: rgba(255,255,255,0.8);
+
+	.sort-indicator {
+		margin-left: 0.5rem;
+		color: #8BE9FD;
 	}
-	
-	.rank {
-		color: #BD93F9;
-		font-weight: 600;
+
+	.data-table tbody tr {
+		border-bottom: 1px solid #0a0a0a;
+		cursor: pointer;
+		transition: background-color 0.2s;
 	}
-	
-	.name {
+
+	.data-table tbody tr:hover {
+		background: #0a0a0a;
+	}
+
+	.data-table td {
+		padding: 1rem;
+		font-size: 0.875rem;
+		color: #FFFFFF;
+	}
+
+	.region-name {
+		font-weight: 300;
+	}
+
+	.mono {
+		font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Fira Code', monospace;
+		color: #8BE9FD;
+	}
+
+	.share {
+		display: flex;
+		align-items: center;
+		gap: 1rem;
+	}
+
+	.share-bar {
+		width: 100px;
+		height: 4px;
+		background: #1a1a1a;
+		border-radius: 2px;
+		overflow: hidden;
+	}
+
+	.share-fill {
+		height: 100%;
+		transition: width 0.3s;
+	}
+
+	.share-text {
+		font-size: 0.75rem;
+		color: #666;
+		min-width: 45px;
+		text-align: right;
+	}
+
+	.density-indicator {
 		display: flex;
 		align-items: center;
 		gap: 0.5rem;
 	}
-	
-	.dot {
-		width: 6px;
-		height: 6px;
+
+	.density-dot {
+		width: 8px;
+		height: 8px;
 		border-radius: 50%;
 	}
-	
-	.count {
-		font-family: 'SF Mono', monospace;
-		font-weight: 600;
+
+	.density-label {
+		font-size: 0.75rem;
+		color: #666;
+		letter-spacing: 0.05em;
 	}
-	
-	.percent {
-		color: rgba(255,255,255,0.5);
-		font-size: 0.7rem;
+
+	.status {
+		font-size: 0.875rem;
 	}
-	
-	.detail {
+
+	.status.active {
+		color: #50FA7B;
+	}
+
+	.charts-section {
+		background: #0a0a0a;
+		display: flex;
+		flex-direction: column;
+	}
+
+	.chart-container {
+		flex: 1;
+		border-bottom: 1px solid #1a1a1a;
+		padding: 1.5rem;
+		display: flex;
+		flex-direction: column;
+	}
+
+	.chart-container:last-child {
+		border-bottom: none;
+	}
+
+	.chart-title {
+		font-size: 0.75rem;
+		font-weight: 400;
+		color: #666;
+		letter-spacing: 0.1em;
+		margin: 0 0 1rem 0;
+	}
+
+	.chart-content {
 		flex: 1;
 		display: flex;
 		flex-direction: column;
-		padding: 1rem;
+		justify-content: center;
 	}
-	
+
+	.region-item {
+		margin-bottom: 0.75rem;
+	}
+
+	.region-info {
+		display: flex;
+		justify-content: space-between;
+		margin-bottom: 0.25rem;
+	}
+
+	.region-label {
+		font-size: 0.75rem;
+		color: #FFFFFF;
+	}
+
+	.region-count {
+		font-size: 0.75rem;
+		color: #8BE9FD;
+	}
+
+	.region-bar {
+		height: 16px;
+		background: #1a1a1a;
+		border-radius: 2px;
+		overflow: hidden;
+	}
+
+	.region-fill {
+		height: 100%;
+		transition: width 0.3s;
+	}
+
+	.map-grid {
+		display: grid;
+		grid-template-columns: repeat(4, 1fr);
+		grid-template-rows: repeat(3, 1fr);
+		gap: 4px;
+		height: 120px;
+	}
+
+	.map-cell {
+		border-radius: 2px;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		transition: opacity 0.3s;
+	}
+
+	.map-value {
+		font-size: 0.625rem;
+		color: #FFFFFF;
+		font-weight: 500;
+	}
+
+	.metric-list {
+		display: flex;
+		flex-direction: column;
+		gap: 1rem;
+	}
+
+	.metric-item {
+		display: flex;
+		justify-content: space-between;
+		align-items: center;
+		padding: 0.75rem;
+		background: #000000;
+		border: 1px solid #1a1a1a;
+		border-radius: 4px;
+	}
+
+	.metric-name {
+		font-size: 0.875rem;
+		color: #666;
+	}
+
+	.metric-val {
+		font-size: 1rem;
+		font-weight: 300;
+		color: #8BE9FD;
+	}
+
+	.detail-view {
+		padding: 1.5rem;
+	}
+
 	.detail-header {
 		display: flex;
 		justify-content: space-between;
-		margin-bottom: 1rem;
+		align-items: center;
+		margin-bottom: 1.5rem;
 	}
-	
-	.detail-header h3 {
-		margin: 0 0 0.25rem 0;
-		font: 600 1.1rem/1 system-ui;
-		color: #BD93F9;
+
+	.detail-header h2 {
+		font-size: 1.125rem;
+		font-weight: 300;
+		color: #8BE9FD;
+		margin: 0;
 	}
-	
-	.sub {
-		font: 400 0.75rem/1 system-ui;
-		color: rgba(255,255,255,0.6);
-	}
-	
-	.close {
-		background: rgba(255,255,255,0.1);
-		border: 1px solid rgba(255,255,255,0.2);
-		color: #fff;
+
+	.close-btn {
+		background: transparent;
+		border: 1px solid #1a1a1a;
+		color: #666;
 		width: 32px;
 		height: 32px;
 		border-radius: 4px;
-		font-size: 1.5rem;
+		font-size: 1.25rem;
 		cursor: pointer;
 		transition: all 0.2s;
-	}
-	
-	.close:hover {
-		background: rgba(189,147,249,0.2);
-		border-color: #BD93F9;
-		transform: scale(1.1);
-	}
-	
-	.table-wrap {
-		flex: 1;
-		overflow-y: auto;
-		background: rgba(0,0,0,0.3);
-		border-radius: 4px;
-		padding: 1rem;
-	}
-	
-	.mono {
-		font-family: 'SF Mono', monospace;
-		color: #8BE9FD;
-		font-size: 0.7rem;
-	}
-	
-	.status {
-		color: #FF5555;
-	}
-	
-	.status.ok {
-		color: #50FA7B;
-	}
-	
-	.loading {
-		flex: 1;
 		display: flex;
-		flex-direction: column;
 		align-items: center;
 		justify-content: center;
-		gap: 2rem;
 	}
-	
-	.spinner {
-		width: 48px;
-		height: 48px;
-		border: 3px solid rgba(189,147,249,0.2);
-		border-top-color: #BD93F9;
-		border-radius: 50%;
-		animation: spin 1s linear infinite;
+
+	.close-btn:hover {
+		border-color: #8BE9FD;
+		color: #8BE9FD;
 	}
-	
-	@keyframes spin {
-		to { transform: rotate(360deg); }
-	}
-	
-	.loading p {
-		color: rgba(255,255,255,0.5);
-		font: 400 0.8rem/1 system-ui;
-		letter-spacing: 0.2em;
-	}
-	
+
+	/* Scrollbar */
 	::-webkit-scrollbar {
-		width: 6px;
+		width: 8px;
 	}
-	
+
 	::-webkit-scrollbar-track {
-		background: rgba(0,0,0,0.5);
+		background: #0a0a0a;
 	}
-	
+
 	::-webkit-scrollbar-thumb {
-		background: rgba(189,147,249,0.3);
-		border-radius: 3px;
+		background: #1a1a1a;
+		border-radius: 4px;
+	}
+
+	::-webkit-scrollbar-thumb:hover {
+		background: #2a2a2a;
 	}
 </style>
