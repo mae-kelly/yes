@@ -1,46 +1,224 @@
-<!-- SourceTables.svelte - Premium Full-Screen Analysis -->
+<!-- SourceTables.svelte - Quantum Matrix Intelligence Interface -->
 <script>
-	import { onMount } from 'svelte';
+	import { onMount, onDestroy } from 'svelte';
 	
 	let data = {};
 	let loading = true;
 	let selectedSource = null;
 	let hostDetails = [];
 	let searchTerm = '';
-	let hoveredIndex = -1;
-
+	
+	// Quantum visualization states
+	let matrixNodes = [];
+	let dataFlows = [];
+	let quantumWaves = [];
+	let matrixGrid = [];
+	let pulsarNodes = [];
+	let signalStrength = 0;
+	let dataVelocity = 0;
+	let quantumCoherence = 0;
+	let sourceProfiles = new Map();
+	
+	// Animation controllers
+	let animationFrames = {
+		matrix: null,
+		pulsar: null,
+		quantum: null
+	};
+	
+	// Neon pastel colors
+	const neonColors = {
+		primary: '#FF79C6',    // Pink
+		secondary: '#8BE9FD',  // Cyan
+		tertiary: '#BD93F9',   // Purple
+		quaternary: '#50FA7B', // Green
+		warning: '#F1FA8C',    // Yellow
+		danger: '#FF5555',     // Red
+		accent: '#FFB86C'      // Orange
+	};
+	
 	onMount(async () => {
 		try {
 			let response = await fetch('http://localhost:5000/api/source_tables');
 			let result = await response.json();
 			data = result;
 			loading = false;
+			initializeQuantumMatrix();
+			startQuantumAnimation();
 		} catch (err) {
-			console.error('Source tables error:', err);
+			console.error('Matrix sync failed:', err);
 			loading = false;
 		}
 	});
-
+	
+	onDestroy(() => {
+		Object.values(animationFrames).forEach(frame => {
+			if (frame) cancelAnimationFrame(frame);
+		});
+	});
+	
+	function initializeQuantumMatrix() {
+		if (!data.source_intelligence) return;
+		
+		let sources = Object.entries(data.source_intelligence)
+			.sort((a, b) => b[1] - a[1])
+			.slice(0, 50);
+		
+		// Create matrix nodes in 3D space
+		sources.forEach(([source, frequency], i) => {
+			let angle = (i / sources.length) * Math.PI * 2;
+			let radius = 100 + Math.sin(i * 0.5) * 50;
+			
+			matrixNodes.push({
+				id: source,
+				frequency: frequency,
+				x: Math.cos(angle) * radius,
+				y: Math.sin(angle) * radius,
+				z: Math.sin(i * 0.3) * 50,
+				energy: Math.random(),
+				quantum: Math.random(),
+				resonance: Math.random(),
+				color: Object.values(neonColors)[i % 7],
+				connections: []
+			});
+			
+			sourceProfiles.set(source, {
+				signature: generateQuantumSignature(frequency),
+				metrics: {
+					power: frequency / sources[0][1] * 100,
+					stability: 50 + Math.random() * 50,
+					entanglement: Math.random() * 100,
+					coherence: Math.random()
+				}
+			});
+		});
+		
+		// Create data flow connections
+		matrixNodes.forEach((node, i) => {
+			let connections = Math.min(3, Math.floor(Math.random() * 5) + 1);
+			for (let j = 0; j < connections; j++) {
+				let target = Math.floor(Math.random() * matrixNodes.length);
+				if (target !== i) {
+					dataFlows.push({
+						source: i,
+						target: target,
+						strength: Math.random(),
+						particles: Array(5).fill().map(() => ({
+							position: Math.random(),
+							speed: 0.5 + Math.random() * 0.5
+						}))
+					});
+				}
+			}
+		});
+		
+		// Initialize quantum waves
+		for (let i = 0; i < 20; i++) {
+			quantumWaves.push({
+				amplitude: Math.random() * 50,
+				frequency: Math.random() * 0.1,
+				phase: Math.random() * Math.PI * 2,
+				color: Object.values(neonColors)[Math.floor(Math.random() * 7)]
+			});
+		}
+		
+		// Create matrix grid
+		for (let x = 0; x < 20; x++) {
+			matrixGrid[x] = [];
+			for (let y = 0; y < 20; y++) {
+				matrixGrid[x][y] = {
+					value: Math.random(),
+					active: Math.random() > 0.7,
+					pulse: Math.random() * Math.PI * 2
+				};
+			}
+		}
+		
+		// Initialize pulsar nodes for radar visualization
+		for (let i = 0; i < 8; i++) {
+			pulsarNodes.push({
+				angle: (i / 8) * Math.PI * 2,
+				radius: 50 + Math.random() * 100,
+				intensity: Math.random(),
+				frequency: Math.random() * 2
+			});
+		}
+	}
+	
+	function generateQuantumSignature(seed) {
+		let sig = 'QX-';
+		for (let i = 0; i < 16; i++) {
+			sig += ((seed * (i + 1) * 997) % 16).toString(16).toUpperCase();
+			if (i === 3 || i === 7 || i === 11) sig += '-';
+		}
+		return sig;
+	}
+	
+	function startQuantumAnimation() {
+		let time = 0;
+		
+		function animate() {
+			time += 0.016;
+			
+			// Update signal metrics
+			signalStrength = 50 + Math.sin(time * 0.5) * 30 + Math.sin(time * 1.7) * 20;
+			dataVelocity = 30 + Math.sin(time * 0.8) * 30;
+			quantumCoherence = 0.5 + Math.sin(time * 0.3) * 0.5;
+			
+			// Update matrix nodes
+			matrixNodes.forEach((node, i) => {
+				node.energy = 0.5 + Math.sin(time + i * 0.1) * 0.5;
+				node.quantum = 0.5 + Math.cos(time * 2 + i * 0.2) * 0.5;
+				node.resonance = Math.abs(Math.sin(time * 0.5 + i * 0.15));
+			});
+			
+			// Update data flows
+			dataFlows.forEach(flow => {
+				flow.particles.forEach(particle => {
+					particle.position = (particle.position + particle.speed * 0.01) % 1;
+				});
+			});
+			
+			// Update quantum waves
+			quantumWaves.forEach(wave => {
+				wave.phase += wave.frequency;
+			});
+			
+			// Update matrix grid
+			matrixGrid.forEach(row => {
+				row.forEach(cell => {
+					cell.value = 0.5 + Math.sin(time + cell.pulse) * 0.5;
+				});
+			});
+			
+			// Update pulsar nodes
+			pulsarNodes.forEach(node => {
+				node.intensity = 0.5 + Math.sin(time * node.frequency) * 0.5;
+			});
+			
+			animationFrames.matrix = requestAnimationFrame(animate);
+		}
+		animate();
+	}
+	
 	$: filteredSources = data.source_intelligence ? 
 		Object.entries(data.source_intelligence)
 			.filter(([source]) => source.toLowerCase().includes(searchTerm.toLowerCase()))
 			.sort((a, b) => b[1] - a[1]) : [];
 	
 	$: maxFreq = filteredSources.length > 0 ? Math.max(...filteredSources.map(([,f]) => f)) : 1;
-
-	function getPercentage(frequency) {
-		if (!data.total_mentions) return 0;
-		return ((frequency / data.total_mentions) * 100).toFixed(2);
+	
+	function getSourceClass(frequency) {
+		let normalized = frequency / maxFreq;
+		let percentile = normalized * 100;
+		
+		if (percentile >= 85) return { level: 'QUANTUM', color: neonColors.primary, symbol: '◈' };
+		if (percentile >= 65) return { level: 'MATRIX', color: neonColors.secondary, symbol: '◆' };
+		if (percentile >= 45) return { level: 'NEURAL', color: neonColors.tertiary, symbol: '▲' };
+		if (percentile >= 25) return { level: 'DATA', color: neonColors.quaternary, symbol: '●' };
+		return { level: 'SIGNAL', color: neonColors.warning, symbol: '○' };
 	}
-
-	function getThreatLevel(frequency) {
-		const percentage = (frequency / maxFreq) * 100;
-		if (percentage >= 75) return { level: 'CRITICAL', color: '#FF1744' };
-		if (percentage >= 50) return { level: 'HIGH', color: '#FFA726' };
-		if (percentage >= 25) return { level: 'MEDIUM', color: '#FFD600' };
-		return { level: 'LOW', color: '#00E5FF' };
-	}
-
+	
 	async function drillDownSource(source, frequency) {
 		selectedSource = { source, frequency };
 		loading = true;
@@ -51,100 +229,150 @@
 			hostDetails = result.hosts || [];
 			loading = false;
 		} catch (err) {
-			console.error('Host search error:', err);
+			console.error('Source scan failed:', err);
 			hostDetails = [];
 			loading = false;
 		}
 	}
-
+	
 	function closeDetails() {
 		selectedSource = null;
 		hostDetails = [];
 	}
 </script>
 
-<div class="dashboard-wrapper">
-	<div class="dashboard-container">
-		<!-- Left Panel: Main Table -->
-		<div class="main-panel">
-			<div class="panel-header">
-				<div class="header-top">
-					<h2 class="panel-title">
-						<span class="title-icon">◈</span>
-						SOURCE TABLE FREQUENCY ANALYSIS
-					</h2>
-					<div class="header-stats">
-						<div class="stat-badge">
-							<span class="stat-value">{filteredSources.length}</span>
-							<span class="stat-label">Sources</span>
+<div class="quantum-matrix-interface">
+	<!-- Background Matrix Effect -->
+	<div class="matrix-background">
+		<svg class="matrix-svg" viewBox="0 0 100 100">
+			{#each quantumWaves as wave}
+				<path d="M 0,{50 + Math.sin(wave.phase) * wave.amplitude} 
+						 Q 25,{50 + Math.sin(wave.phase + 1) * wave.amplitude} 
+						   50,{50 + Math.sin(wave.phase + 2) * wave.amplitude}
+						 T 100,{50 + Math.sin(wave.phase + 3) * wave.amplitude}"
+					  stroke={wave.color}
+					  stroke-width="0.2"
+					  fill="none"
+					  opacity="0.3"/>
+			{/each}
+		</svg>
+		
+		<!-- Matrix Grid -->
+		<div class="matrix-grid-container">
+			{#each matrixGrid as row, x}
+				{#each row as cell, y}
+					{#if cell.active}
+						<div class="grid-cell"
+							 style="left: {x * 5}%; top: {y * 5}%;
+									opacity: {cell.value * 0.5};
+									background: {Object.values(neonColors)[Math.floor(cell.value * 7)]}">
 						</div>
-						<div class="stat-badge">
-							<span class="stat-value">{(data.total_mentions || 0).toLocaleString()}</span>
-							<span class="stat-label">Mentions</span>
-						</div>
+					{/if}
+				{/each}
+			{/each}
+		</div>
+	</div>
+	
+	<div class="interface-container">
+		<!-- Header -->
+		<header class="quantum-header">
+			<div class="header-structure">
+				<div class="quantum-emblem">
+					<div class="emblem-rings">
+						<div class="ring ring-1" style="border-color: {neonColors.primary}"></div>
+						<div class="ring ring-2" style="border-color: {neonColors.secondary}"></div>
+						<div class="ring ring-3" style="border-color: {neonColors.tertiary}"></div>
 					</div>
+					<div class="emblem-core">◈</div>
 				</div>
-				<div class="search-bar">
-					<svg class="search-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-						<circle cx="11" cy="11" r="8"></circle>
-						<path d="m21 21-4.35-4.35"></path>
-					</svg>
-					<input 
-						type="text" 
-						bind:value={searchTerm}
-						placeholder="Search sources..."
-						class="search-input"
-					/>
+				<div class="header-info">
+					<h1 class="interface-title">SOURCE QUANTUM MATRIX</h1>
+					<div class="quantum-metrics">
+						<span class="metric">SIGNAL: {signalStrength.toFixed(0)}%</span>
+						<span class="metric">VELOCITY: {dataVelocity.toFixed(0)} Tb/s</span>
+						<span class="metric">COHERENCE: {(quantumCoherence * 100).toFixed(0)}%</span>
+					</div>
 				</div>
 			</div>
 			
+			<div class="search-module">
+				<input type="text"
+					   bind:value={searchTerm}
+					   placeholder="QUANTUM SEARCH..."
+					   class="quantum-search"/>
+				<div class="search-wave"></div>
+			</div>
+			
+			<div class="header-stats">
+				<div class="stat">
+					<div class="stat-value" style="color: {neonColors.primary}">{filteredSources.length}</div>
+					<div class="stat-label">SOURCES</div>
+				</div>
+				<div class="stat">
+					<div class="stat-value" style="color: {neonColors.secondary}">
+						{(data.total_mentions || 0).toLocaleString()}
+					</div>
+					<div class="stat-label">MENTIONS</div>
+				</div>
+			</div>
+		</header>
+		
+		<!-- Main Display -->
+		<div class="quantum-display">
 			{#if loading && !selectedSource}
 				<div class="loading-state">
-					<div class="loader">
-						<div class="loader-ring"></div>
-						<div class="loader-ring"></div>
+					<div class="quantum-loader">
+						<div class="loader-core">◈</div>
 						<div class="loader-ring"></div>
 					</div>
-					<p>Analyzing source matrices...</p>
+					<p>INITIALIZING QUANTUM MATRIX...</p>
 				</div>
 			{:else if selectedSource}
-				<div class="detail-view">
+				<!-- Detail View -->
+				<div class="source-detail-view">
 					<div class="detail-header">
-						<h3>{selectedSource.source.toUpperCase()}</h3>
-						<button class="close-btn" on:click={closeDetails}>
-							<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-								<line x1="18" y1="6" x2="6" y2="18"></line>
-								<line x1="6" y1="6" x2="18" y2="18"></line>
-							</svg>
-						</button>
+						<div class="source-identity">
+							<div class="identity-visual">
+								<div class="visual-core" style="background: {getSourceClass(selectedSource.frequency).color}">
+									{getSourceClass(selectedSource.frequency).symbol}
+								</div>
+								<div class="visual-rings">
+									{#each Array(3) as _, i}
+										<div class="v-ring" style="animation-delay: {i * 0.3}s"></div>
+									{/each}
+								</div>
+							</div>
+							<div class="identity-info">
+								<h2>{selectedSource.source.toUpperCase()}</h2>
+								<div class="quantum-signature">
+									{sourceProfiles.get(selectedSource.source)?.signature}
+								</div>
+							</div>
+						</div>
+						<button class="close-btn" on:click={closeDetails}>✕</button>
 					</div>
-					<div class="detail-content">
-						<table class="detail-table">
+					
+					<div class="detail-stream">
+						<table class="stream-table">
 							<thead>
 								<tr>
-									<th>HOST</th>
+									<th>NODE_ID</th>
 									<th>REGION</th>
 									<th>COUNTRY</th>
-									<th>INFRASTRUCTURE</th>
-									<th>CMDB</th>
-									<th>TANIUM</th>
+									<th>TYPE</th>
+									<th>SYNC</th>
 								</tr>
 							</thead>
 							<tbody>
-								{#each hostDetails as host}
+								{#each hostDetails.slice(0, 10) as host}
 									<tr>
-										<td class="host-cell">{host.host}</td>
-										<td>{host.region || 'Unknown'}</td>
-										<td>{host.country || 'Unknown'}</td>
-										<td>{host.infrastructure_type || 'Unknown'}</td>
+										<td class="node-id">{host.host.substring(0, 30)}</td>
+										<td>{host.region || 'UNKNOWN'}</td>
+										<td>{host.country || 'UNKNOWN'}</td>
+										<td>{host.infrastructure_type || 'QUANTUM'}</td>
 										<td>
-											<span class="badge {host.present_in_cmdb?.toLowerCase().includes('yes') ? 'success' : 'danger'}">
-												{host.present_in_cmdb?.toLowerCase().includes('yes') ? 'YES' : 'NO'}
-											</span>
-										</td>
-										<td>
-											<span class="badge {host.tanium_coverage?.toLowerCase().includes('tanium') ? 'success' : 'warning'}">
-												{host.tanium_coverage?.toLowerCase().includes('tanium') ? 'YES' : 'NO'}
+											<span class="sync-indicator {host.present_in_cmdb?.toLowerCase().includes('yes') ? 'active' : 'inactive'}">
+												{host.present_in_cmdb?.toLowerCase().includes('yes') ? '◈' : '○'}
 											</span>
 										</td>
 									</tr>
@@ -154,692 +382,658 @@
 					</div>
 				</div>
 			{:else}
-				<div class="table-container">
-					<table class="data-table">
-						<thead>
-							<tr>
-								<th>SOURCE TABLE</th>
-								<th>FREQUENCY</th>
-								<th>COVERAGE</th>
-								<th>THREAT LEVEL</th>
-								<th>VISIBILITY</th>
-							</tr>
-						</thead>
-						<tbody>
-							{#each filteredSources as [source, frequency], index}
-								{@const threat = getThreatLevel(frequency)}
-								<tr class="table-row {hoveredIndex === index ? 'hovered' : ''}"
-									on:click={() => drillDownSource(source, frequency)}
-									on:mouseenter={() => hoveredIndex = index}
-									on:mouseleave={() => hoveredIndex = -1}>
-									<td class="source-cell">
-										<div class="source-indicator" style="background: {threat.color}"></div>
-										<span>{source.toUpperCase()}</span>
-									</td>
-									<td class="numeric">{frequency.toLocaleString()}</td>
-									<td class="coverage-cell">
-										<div class="progress-bar">
-											<div class="progress-fill" style="width: {(frequency/maxFreq)*100}%; background: {threat.color}"></div>
-										</div>
-										<span class="percentage">{getPercentage(frequency)}%</span>
-									</td>
-									<td>
-										<span class="threat-badge" style="color: {threat.color}; border-color: {threat.color}">
-											{threat.level}
-										</span>
-									</td>
-									<td>
-										<div class="visibility-bars">
-											{#each Array(10) as _, i}
-												<div class="bar" style="opacity: {(frequency/maxFreq) > (i/10) ? 1 : 0.2}; background: {threat.color}"></div>
-											{/each}
-										</div>
-									</td>
+				<div class="visualization-container">
+					<!-- Left: 3D Node Network -->
+					<div class="network-visualization">
+						<div class="network-3d">
+							<svg viewBox="-200 -200 400 400">
+								<!-- Data flow connections -->
+								{#each dataFlows as flow}
+									{#if matrixNodes[flow.source] && matrixNodes[flow.target]}
+										<line x1="{matrixNodes[flow.source].x}"
+											  y1="{matrixNodes[flow.source].y}"
+											  x2="{matrixNodes[flow.target].x}"
+											  y2="{matrixNodes[flow.target].y}"
+											  stroke={neonColors.secondary}
+											  stroke-width="{flow.strength}"
+											  opacity="0.3">
+											<animate attributeName="stroke-opacity"
+													 values="0.2;0.5;0.2"
+													 dur="3s"
+													 repeatCount="indefinite"/>
+										</line>
+									{/if}
+								{/each}
+								
+								<!-- Matrix nodes -->
+								{#each matrixNodes.slice(0, 20) as node}
+									{@const sourceClass = getSourceClass(node.frequency)}
+									<g transform="translate({node.x}, {node.y})"
+									   on:click={() => drillDownSource(node.id, node.frequency)}>
+										<circle r="{8 + node.energy * 12}"
+												fill={sourceClass.color}
+												opacity="{node.energy * 0.3}"/>
+										<circle r="6"
+												fill={sourceClass.color}
+												opacity="0.8"/>
+										<text text-anchor="middle"
+											  dy="3"
+											  fill="#000000"
+											  font-size="8"
+											  font-weight="bold">
+											{sourceClass.symbol}
+										</text>
+									</g>
+								{/each}
+							</svg>
+						</div>
+						
+						<!-- Pulsar Radar -->
+						<div class="pulsar-radar">
+							<svg viewBox="-150 -150 300 300">
+								<defs>
+									<radialGradient id="radarGrad">
+										<stop offset="0%" style="stop-color:{neonColors.primary};stop-opacity:0.5"/>
+										<stop offset="100%" style="stop-color:{neonColors.primary};stop-opacity:0"/>
+									</radialGradient>
+								</defs>
+								
+								<!-- Radar rings -->
+								{#each [30, 60, 90, 120] as radius}
+									<circle cx="0" cy="0" r={radius}
+											fill="none"
+											stroke={neonColors.primary}
+											stroke-width="0.5"
+											opacity="0.2"/>
+								{/each}
+								
+								<!-- Radar sweep -->
+								<line x1="0" y1="0"
+									  x2="0" y2="-120"
+									  stroke={neonColors.quaternary}
+									  stroke-width="2"
+									  opacity="0.8"
+									  transform="rotate({Date.now() * 0.1 % 360})"/>
+								
+								<!-- Pulsar nodes -->
+								{#each pulsarNodes as node}
+									<circle cx="{Math.cos(node.angle) * node.radius}"
+											cy="{Math.sin(node.angle) * node.radius}"
+											r="{3 + node.intensity * 5}"
+											fill={neonColors.secondary}
+											opacity={node.intensity}>
+										<animate attributeName="r"
+												 values="{3 + node.intensity * 5};{5 + node.intensity * 8};{3 + node.intensity * 5}"
+												 dur="{2 / node.frequency}s"
+												 repeatCount="indefinite"/>
+									</circle>
+								{/each}
+							</svg>
+						</div>
+					</div>
+					
+					<!-- Right: Data Table -->
+					<div class="matrix-table-container">
+						<table class="quantum-table">
+							<thead>
+								<tr>
+									<th>RANK</th>
+									<th>SOURCE_ID</th>
+									<th>CLASS</th>
+									<th>FREQUENCY</th>
+									<th>POWER</th>
+									<th>SIGNATURE</th>
 								</tr>
-							{/each}
-						</tbody>
-					</table>
+							</thead>
+							<tbody>
+								{#each filteredSources.slice(0, 15) as [source, frequency], index}
+									{@const sourceClass = getSourceClass(frequency)}
+									{@const profile = sourceProfiles.get(source)}
+									<tr style="border-left: 2px solid {sourceClass.color}"
+										on:click={() => drillDownSource(source, frequency)}>
+										<td style="color: {sourceClass.color}">#{index + 1}</td>
+										<td>
+											<span style="color: {sourceClass.color}">{sourceClass.symbol}</span>
+											<span>{source.substring(0, 20).toUpperCase()}</span>
+										</td>
+										<td>
+											<span class="class-badge" style="background: {sourceClass.color}20; color: {sourceClass.color}">
+												{sourceClass.level}
+											</span>
+										</td>
+										<td style="color: {neonColors.secondary}">{frequency.toLocaleString()}</td>
+										<td>
+											<div class="power-bar">
+												<div class="power-fill" style="width: {profile?.metrics.power || 0}%; background: {sourceClass.color}"></div>
+											</div>
+										</td>
+										<td class="signature">{profile?.signature.substring(0, 8)}...</td>
+									</tr>
+								{/each}
+							</tbody>
+						</table>
+					</div>
 				</div>
 			{/if}
-		</div>
-
-		<!-- Right Panel: Analytics -->
-		<div class="analytics-panel">
-			<!-- Top Sources Card -->
-			<div class="card">
-				<h3 class="card-title">TOP SOURCES</h3>
-				<div class="top-sources">
-					{#each filteredSources.slice(0, 5) as [source, frequency], i}
-						{@const threat = getThreatLevel(frequency)}
-						<div class="top-source-item">
-							<span class="rank">#{i + 1}</span>
-							<div class="source-info">
-								<span class="source-name">{source.substring(0, 20).toUpperCase()}</span>
-								<div class="source-bar">
-									<div class="bar-fill" style="width: {(frequency/maxFreq)*100}%; background: {threat.color}"></div>
-								</div>
-							</div>
-							<span class="source-count" style="color: {threat.color}">{frequency}</span>
-						</div>
-					{/each}
-				</div>
-			</div>
-
-			<!-- Distribution Chart -->
-			<div class="card">
-				<h3 class="card-title">DISTRIBUTION ANALYSIS</h3>
-				<div class="distribution-chart">
-					<svg viewBox="0 0 200 150" class="chart-svg">
-						{#each filteredSources.slice(0, 8) as [source, frequency], i}
-							{@const x = (i % 4) * 50 + 25}
-							{@const y = Math.floor(i / 4) * 50 + 25}
-							{@const size = (frequency / maxFreq) * 15 + 5}
-							{@const threat = getThreatLevel(frequency)}
-							
-							<circle cx="{x}" cy="{y}" r="{size}" 
-									fill={threat.color} opacity="0.3"/>
-							<circle cx="{x}" cy="{y}" r="{size/2}" 
-									fill={threat.color} opacity="0.8"/>
-							<circle cx="{x}" cy="{y}" r="2" fill="#ffffff"/>
-						{/each}
-					</svg>
-				</div>
-			</div>
-
-			<!-- Metrics Grid -->
-			<div class="metrics-grid">
-				<div class="metric-card">
-					<div class="metric-value">{filteredSources.length}</div>
-					<div class="metric-label">Total Sources</div>
-				</div>
-				<div class="metric-card">
-					<div class="metric-value">{(data.total_mentions || 0).toLocaleString()}</div>
-					<div class="metric-label">Total Mentions</div>
-				</div>
-			</div>
 		</div>
 	</div>
 </div>
 
 <style>
-	.dashboard-wrapper {
+	.quantum-matrix-interface {
 		width: 100%;
-		height: 100%;
+		height: calc(100vh - 80px);
+		background: #000000;
+		position: relative;
+		overflow: hidden;
+	}
+	
+	/* Background Effects */
+	.matrix-background {
 		position: absolute;
-		top: 0;
-		left: 0;
-		padding: 0;
-		margin: 0;
-		overflow: hidden;
+		inset: 0;
+		pointer-events: none;
 	}
-
-	.dashboard-container {
-		height: 100%;
+	
+	.matrix-svg {
+		position: absolute;
 		width: 100%;
-		display: grid;
-		grid-template-columns: 1fr 400px;
-		gap: 1.5rem;
-		padding: 1.5rem;
-		background: transparent;
-		overflow: hidden;
+		height: 100%;
+		opacity: 0.5;
 	}
-
-	/* Main Panel */
-	.main-panel {
-		background: rgba(0, 0, 0, 0.6);
-		backdrop-filter: blur(20px);
-		border: 1px solid rgba(255, 255, 255, 0.1);
-		border-radius: 20px;
+	
+	.matrix-grid-container {
+		position: absolute;
+		width: 100%;
+		height: 100%;
+	}
+	
+	.grid-cell {
+		position: absolute;
+		width: 2px;
+		height: 2px;
+		border-radius: 50%;
+	}
+	
+	.interface-container {
+		position: relative;
+		z-index: 1;
+		height: 100%;
 		display: flex;
 		flex-direction: column;
-		overflow: hidden;
-		min-height: 0;
-	}
-
-	.panel-header {
 		padding: 1.5rem;
-		border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-		background: rgba(0, 0, 0, 0.3);
-		flex-shrink: 0;
+		gap: 1.5rem;
 	}
-
-	.header-top {
+	
+	/* Header */
+	.quantum-header {
 		display: flex;
 		justify-content: space-between;
 		align-items: center;
-		margin-bottom: 1rem;
-		flex-wrap: wrap;
-		gap: 1rem;
-	}
-
-	.panel-title {
-		margin: 0;
-		font-size: 1.1rem;
-		font-weight: 600;
-		color: #00E5FF;
-		display: flex;
-		align-items: center;
-		gap: 0.5rem;
-	}
-
-	.title-icon {
-		font-size: 1.5rem;
-		text-shadow: 0 0 20px rgba(0, 229, 255, 0.5);
-	}
-
-	.header-stats {
-		display: flex;
-		gap: 1rem;
-	}
-
-	.stat-badge {
-		background: rgba(0, 229, 255, 0.1);
-		border: 1px solid rgba(0, 229, 255, 0.3);
-		border-radius: 12px;
-		padding: 0.5rem 1rem;
-		display: flex;
-		flex-direction: column;
-		align-items: center;
-	}
-
-	.stat-value {
-		font-size: 1.25rem;
-		font-weight: 600;
-		color: #00E5FF;
-		line-height: 1;
-	}
-
-	.stat-label {
-		font-size: 0.7rem;
-		color: rgba(255, 255, 255, 0.5);
-		text-transform: uppercase;
-		line-height: 1;
-	}
-
-	/* Search Bar */
-	.search-bar {
-		position: relative;
-		width: 100%;
-	}
-
-	.search-icon {
-		position: absolute;
-		left: 1rem;
-		top: 50%;
-		transform: translateY(-50%);
-		color: rgba(255, 255, 255, 0.4);
-		pointer-events: none;
-	}
-
-	.search-input {
-		width: 100%;
-		padding: 0.75rem 1rem 0.75rem 3rem;
-		background: rgba(255, 255, 255, 0.05);
-		border: 1px solid rgba(255, 255, 255, 0.1);
-		border-radius: 12px;
-		color: #ffffff;
-		font-size: 0.9rem;
-		transition: all 0.3s ease;
-	}
-
-	.search-input:focus {
-		outline: none;
-		border-color: #00E5FF;
-		background: rgba(0, 229, 255, 0.05);
-	}
-
-	/* Table Container */
-	.table-container {
-		flex: 1;
-		overflow-y: auto;
-		overflow-x: hidden;
-		min-height: 0;
-	}
-
-	.data-table {
-		width: 100%;
-		border-collapse: collapse;
-	}
-
-	.data-table th {
-		background: rgba(0, 0, 0, 0.4);
-		color: rgba(255, 255, 255, 0.6);
-		padding: 1rem;
-		text-align: left;
-		font-size: 0.75rem;
-		font-weight: 600;
-		letter-spacing: 0.1em;
-		position: sticky;
-		top: 0;
-		z-index: 10;
-	}
-
-	.data-table td {
-		padding: 1rem;
-		border-bottom: 1px solid rgba(255, 255, 255, 0.05);
-		color: rgba(255, 255, 255, 0.8);
-		font-size: 0.85rem;
-	}
-
-	.table-row {
-		cursor: pointer;
-		transition: all 0.2s ease;
-	}
-
-	.table-row:hover {
-		background: rgba(0, 229, 255, 0.05);
-	}
-
-	.source-cell {
-		display: flex;
-		align-items: center;
-		gap: 0.75rem;
-		font-weight: 500;
-	}
-
-	.source-indicator {
-		width: 8px;
-		height: 8px;
-		border-radius: 50%;
-		flex-shrink: 0;
-	}
-
-	.numeric {
-		font-family: 'SF Mono', monospace;
-		color: #00E5FF;
-	}
-
-	.coverage-cell {
-		display: flex;
-		align-items: center;
-		gap: 0.75rem;
-	}
-
-	.progress-bar {
-		width: 80px;
-		height: 4px;
-		background: rgba(255, 255, 255, 0.1);
-		border-radius: 2px;
-		overflow: hidden;
-	}
-
-	.progress-fill {
-		height: 100%;
-		transition: width 0.3s ease;
-	}
-
-	.percentage {
-		font-size: 0.75rem;
-		color: rgba(255, 255, 255, 0.6);
-		min-width: 45px;
-		text-align: right;
-	}
-
-	.threat-badge {
-		padding: 0.25rem 0.5rem;
-		border: 1px solid;
-		border-radius: 6px;
-		font-size: 0.7rem;
-		font-weight: 600;
-		letter-spacing: 0.05em;
-	}
-
-	.visibility-bars {
-		display: flex;
-		gap: 2px;
-		height: 20px;
-		align-items: center;
-	}
-
-	.visibility-bars .bar {
-		width: 3px;
-		height: 100%;
-		border-radius: 1px;
-		transition: all 0.3s ease;
-	}
-
-	/* Analytics Panel */
-	.analytics-panel {
-		display: flex;
-		flex-direction: column;
-		gap: 1.5rem;
-		overflow-y: auto;
-		overflow-x: hidden;
-		min-height: 0;
-	}
-
-	.card {
-		background: rgba(0, 0, 0, 0.6);
-		backdrop-filter: blur(20px);
-		border: 1px solid rgba(255, 255, 255, 0.1);
-		border-radius: 16px;
 		padding: 1.5rem;
-		flex-shrink: 0;
+		background: rgba(0, 0, 0, 0.8);
+		border: 1px solid rgba(255, 121, 198, 0.2);
+		border-radius: 15px;
+		backdrop-filter: blur(20px);
 	}
-
-	.card-title {
-		margin: 0 0 1rem 0;
-		font-size: 0.85rem;
-		color: rgba(255, 255, 255, 0.6);
-		font-weight: 600;
-		letter-spacing: 0.1em;
-	}
-
-	/* Top Sources */
-	.top-sources {
-		display: flex;
-		flex-direction: column;
-		gap: 0.75rem;
-	}
-
-	.top-source-item {
+	
+	.header-structure {
 		display: flex;
 		align-items: center;
-		gap: 0.75rem;
-		padding: 0.5rem;
-		background: rgba(255, 255, 255, 0.03);
-		border-radius: 8px;
-	}
-
-	.rank {
-		font-weight: 600;
-		color: #00E5FF;
-		min-width: 30px;
-	}
-
-	.source-info {
-		flex: 1;
-		display: flex;
-		flex-direction: column;
-		gap: 0.25rem;
-		min-width: 0;
-	}
-
-	.source-name {
-		font-size: 0.8rem;
-		color: rgba(255, 255, 255, 0.8);
-		white-space: nowrap;
-		overflow: hidden;
-		text-overflow: ellipsis;
-	}
-
-	.source-bar {
-		height: 3px;
-		background: rgba(255, 255, 255, 0.1);
-		border-radius: 2px;
-		overflow: hidden;
-	}
-
-	.bar-fill {
-		height: 100%;
-		transition: width 0.3s ease;
-	}
-
-	.source-count {
-		font-size: 0.85rem;
-		font-weight: 600;
-		min-width: 50px;
-		text-align: right;
-	}
-
-	/* Distribution Chart */
-	.distribution-chart {
-		height: 150px;
-		display: flex;
-		align-items: center;
-		justify-content: center;
-	}
-
-	.chart-svg {
-		width: 100%;
-		height: 100%;
-	}
-
-	/* Metrics Grid */
-	.metrics-grid {
-		display: grid;
-		grid-template-columns: 1fr 1fr;
-		gap: 1rem;
-	}
-
-	.metric-card {
-		background: rgba(0, 229, 255, 0.05);
-		border: 1px solid rgba(0, 229, 255, 0.2);
-		border-radius: 12px;
-		padding: 1rem;
-		text-align: center;
-	}
-
-	.metric-value {
-		font-size: 1.5rem;
-		font-weight: 600;
-		color: #00E5FF;
-		margin-bottom: 0.25rem;
-	}
-
-	.metric-label {
-		font-size: 0.7rem;
-		color: rgba(255, 255, 255, 0.5);
-		text-transform: uppercase;
-		letter-spacing: 0.05em;
-	}
-
-	/* Loading State */
-	.loading-state {
-		flex: 1;
-		display: flex;
-		flex-direction: column;
-		align-items: center;
-		justify-content: center;
 		gap: 1.5rem;
 	}
-
-	.loader {
+	
+	.quantum-emblem {
 		position: relative;
 		width: 60px;
 		height: 60px;
+		display: flex;
+		align-items: center;
+		justify-content: center;
 	}
-
-	.loader-ring {
+	
+	.emblem-rings {
 		position: absolute;
-		width: 100%;
-		height: 100%;
-		border: 2px solid transparent;
-		border-top-color: #00E5FF;
+		inset: 0;
+	}
+	
+	.ring {
+		position: absolute;
+		border: 1px solid;
 		border-radius: 50%;
-		animation: spin 1s linear infinite;
+		animation: ringRotate 4s linear infinite;
 	}
-
-	.loader-ring:nth-child(2) {
-		width: 80%;
-		height: 80%;
-		top: 10%;
-		left: 10%;
-		animation-delay: 0.2s;
-	}
-
-	.loader-ring:nth-child(3) {
-		width: 60%;
-		height: 60%;
-		top: 20%;
-		left: 20%;
-		animation-delay: 0.4s;
-	}
-
-	@keyframes spin {
+	
+	.ring-1 { inset: 0; }
+	.ring-2 { inset: 8px; animation-direction: reverse; }
+	.ring-3 { inset: 16px; animation-duration: 6s; }
+	
+	@keyframes ringRotate {
+		from { transform: rotate(0deg); }
 		to { transform: rotate(360deg); }
 	}
-
-	/* Detail View */
-	.detail-view {
+	
+	.emblem-core {
+		font-size: 1.5rem;
+		color: #FF79C6;
+		text-shadow: 0 0 20px #FF79C6;
+		z-index: 1;
+	}
+	
+	.interface-title {
+		margin: 0;
+		font-size: 1.2rem;
+		font-weight: 200;
+		letter-spacing: 0.2em;
+		background: linear-gradient(90deg, #FF79C6, #8BE9FD, #BD93F9);
+		-webkit-background-clip: text;
+		-webkit-text-fill-color: transparent;
+		background-clip: text;
+	}
+	
+	.quantum-metrics {
+		display: flex;
+		gap: 1.5rem;
+		margin-top: 0.5rem;
+	}
+	
+	.metric {
+		font-size: 0.7rem;
+		color: rgba(255, 255, 255, 0.6);
+		letter-spacing: 0.1em;
+	}
+	
+	.search-module {
+		position: relative;
 		flex: 1;
+		max-width: 300px;
+	}
+	
+	.quantum-search {
+		width: 100%;
+		padding: 0.6rem 1rem;
+		background: rgba(0, 0, 0, 0.6);
+		border: 1px solid rgba(139, 233, 253, 0.3);
+		border-radius: 8px;
+		color: #8BE9FD;
+		font-family: monospace;
+		font-size: 0.85rem;
+		letter-spacing: 0.05em;
+	}
+	
+	.quantum-search:focus {
+		outline: none;
+		border-color: #8BE9FD;
+		box-shadow: 0 0 20px rgba(139, 233, 253, 0.3);
+	}
+	
+	.search-wave {
+		position: absolute;
+		bottom: 0;
+		left: 0;
+		right: 0;
+		height: 1px;
+		background: linear-gradient(90deg, transparent, #8BE9FD, transparent);
+		animation: waveFlow 2s linear infinite;
+	}
+	
+	@keyframes waveFlow {
+		from { transform: translateX(-100%); }
+		to { transform: translateX(100%); }
+	}
+	
+	.header-stats {
+		display: flex;
+		gap: 2rem;
+	}
+	
+	.stat {
+		text-align: center;
+	}
+	
+	.stat-value {
+		font-size: 1.5rem;
+		font-weight: 100;
+		font-family: monospace;
+	}
+	
+	.stat-label {
+		font-size: 0.65rem;
+		color: rgba(255, 255, 255, 0.4);
+		letter-spacing: 0.1em;
+	}
+	
+	/* Main Display */
+	.quantum-display {
+		flex: 1;
+		overflow: hidden;
+		background: rgba(0, 0, 0, 0.6);
+		border: 1px solid rgba(189, 147, 249, 0.1);
+		border-radius: 15px;
+		backdrop-filter: blur(10px);
+		padding: 1.5rem;
+	}
+	
+	.visualization-container {
+		height: 100%;
+		display: grid;
+		grid-template-columns: 1fr 1.2fr;
+		gap: 1.5rem;
+	}
+	
+	.network-visualization {
 		display: flex;
 		flex-direction: column;
-		overflow: hidden;
-		min-height: 0;
+		gap: 1rem;
 	}
-
+	
+	.network-3d {
+		flex: 1;
+		background: radial-gradient(circle, rgba(255, 121, 198, 0.02), transparent);
+		border: 1px solid rgba(255, 121, 198, 0.1);
+		border-radius: 10px;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		overflow: hidden;
+	}
+	
+	.network-3d svg {
+		width: 100%;
+		height: 100%;
+		max-height: 300px;
+	}
+	
+	.network-3d g {
+		cursor: pointer;
+		transition: transform 0.3s ease;
+	}
+	
+	.network-3d g:hover {
+		transform: scale(1.2);
+	}
+	
+	.pulsar-radar {
+		height: 200px;
+		background: rgba(0, 0, 0, 0.4);
+		border: 1px solid rgba(139, 233, 253, 0.1);
+		border-radius: 10px;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+	}
+	
+	.pulsar-radar svg {
+		width: 100%;
+		height: 100%;
+		max-width: 200px;
+	}
+	
+	/* Table */
+	.matrix-table-container {
+		overflow: hidden;
+		display: flex;
+		flex-direction: column;
+	}
+	
+	.quantum-table {
+		width: 100%;
+		border-collapse: collapse;
+		flex: 1;
+	}
+	
+	.quantum-table th {
+		background: rgba(0, 0, 0, 0.8);
+		color: #BD93F9;
+		padding: 0.8rem;
+		text-align: left;
+		font-size: 0.65rem;
+		font-weight: 300;
+		letter-spacing: 0.1em;
+		border-bottom: 1px solid rgba(189, 147, 249, 0.3);
+		position: sticky;
+		top: 0;
+	}
+	
+	.quantum-table tr {
+		cursor: pointer;
+		transition: all 0.2s ease;
+		border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+	}
+	
+	.quantum-table tr:hover {
+		background: rgba(255, 121, 198, 0.03);
+		transform: translateX(3px);
+	}
+	
+	.quantum-table td {
+		padding: 0.6rem 0.8rem;
+		font-size: 0.75rem;
+		color: rgba(255, 255, 255, 0.8);
+	}
+	
+	.class-badge {
+		padding: 0.2rem 0.4rem;
+		font-size: 0.6rem;
+		font-weight: 600;
+		letter-spacing: 0.05em;
+		border-radius: 4px;
+	}
+	
+	.power-bar {
+		width: 60px;
+		height: 3px;
+		background: rgba(255, 255, 255, 0.1);
+		overflow: hidden;
+	}
+	
+	.power-fill {
+		height: 100%;
+		transition: width 0.5s ease;
+	}
+	
+	.signature {
+		font-family: monospace;
+		font-size: 0.65rem;
+		color: rgba(139, 233, 253, 0.6);
+	}
+	
+	/* Loading State */
+	.loading-state {
+		height: 100%;
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		justify-content: center;
+		gap: 1rem;
+	}
+	
+	.quantum-loader {
+		position: relative;
+		width: 80px;
+		height: 80px;
+	}
+	
+	.loader-core {
+		position: absolute;
+		top: 50%;
+		left: 50%;
+		transform: translate(-50%, -50%);
+		font-size: 2rem;
+		color: #FF79C6;
+		text-shadow: 0 0 30px #FF79C6;
+		animation: pulsate 2s ease-in-out infinite;
+	}
+	
+	.loader-ring {
+		position: absolute;
+		inset: 0;
+		border: 2px solid #8BE9FD;
+		border-radius: 50%;
+		border-left-color: transparent;
+		animation: spin 1s linear infinite;
+	}
+	
+	@keyframes pulsate {
+		0%, 100% { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+		50% { opacity: 0.5; transform: translate(-50%, -50%) scale(0.9); }
+	}
+	
+	@keyframes spin {
+		from { transform: rotate(0deg); }
+		to { transform: rotate(360deg); }
+	}
+	
+	/* Detail View */
+	.source-detail-view {
+		height: 100%;
+		display: flex;
+		flex-direction: column;
+		gap: 1rem;
+	}
+	
 	.detail-header {
 		display: flex;
 		justify-content: space-between;
 		align-items: center;
-		padding: 1.5rem;
-		border-bottom: 1px solid rgba(0, 229, 255, 0.2);
-		background: rgba(0, 229, 255, 0.05);
-		flex-shrink: 0;
+		padding: 1rem;
+		background: linear-gradient(135deg, rgba(255, 121, 198, 0.1), transparent);
+		border-radius: 10px;
 	}
-
-	.detail-header h3 {
+	
+	.source-identity {
+		display: flex;
+		align-items: center;
+		gap: 1.5rem;
+	}
+	
+	.identity-visual {
+		position: relative;
+		width: 60px;
+		height: 60px;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+	}
+	
+	.visual-core {
+		width: 40px;
+		height: 40px;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		border-radius: 50%;
+		font-size: 1.2rem;
+		z-index: 1;
+	}
+	
+	.visual-rings {
+		position: absolute;
+		inset: -10px;
+	}
+	
+	.v-ring {
+		position: absolute;
+		border: 1px solid #8BE9FD;
+		border-radius: 50%;
+		opacity: 0.3;
+		animation: expandRing 3s ease-in-out infinite;
+	}
+	
+	.v-ring:nth-child(1) { inset: 0; }
+	.v-ring:nth-child(2) { inset: 5px; }
+	.v-ring:nth-child(3) { inset: 10px; }
+	
+	@keyframes expandRing {
+		0%, 100% { transform: scale(1); opacity: 0.3; }
+		50% { transform: scale(1.1); opacity: 0.6; }
+	}
+	
+	.identity-info h2 {
 		margin: 0;
-		color: #00E5FF;
 		font-size: 1.1rem;
+		color: #FF79C6;
+		font-weight: 200;
+		letter-spacing: 0.1em;
 	}
-
+	
+	.quantum-signature {
+		font-family: monospace;
+		font-size: 0.7rem;
+		color: rgba(255, 255, 255, 0.5);
+	}
+	
 	.close-btn {
-		background: rgba(255, 23, 68, 0.1);
-		border: 1px solid #FF1744;
-		color: #FF1744;
-		width: 36px;
-		height: 36px;
-		border-radius: 8px;
+		background: rgba(255, 85, 85, 0.1);
+		border: 1px solid #FF5555;
+		color: #FF5555;
+		width: 32px;
+		height: 32px;
+		border-radius: 50%;
 		cursor: pointer;
 		display: flex;
 		align-items: center;
 		justify-content: center;
-		transition: all 0.2s ease;
+		font-size: 1.2rem;
+		transition: all 0.3s ease;
 	}
-
+	
 	.close-btn:hover {
-		background: rgba(255, 23, 68, 0.2);
-		transform: scale(1.1);
+		background: rgba(255, 85, 85, 0.2);
+		transform: rotate(90deg);
 	}
-
-	.detail-content {
+	
+	.detail-stream {
 		flex: 1;
 		overflow: auto;
-		padding: 1rem;
-		min-height: 0;
 	}
-
-	.detail-table {
+	
+	.stream-table {
 		width: 100%;
 		border-collapse: collapse;
 	}
-
-	.detail-table th {
-		background: rgba(0, 0, 0, 0.4);
-		color: rgba(255, 255, 255, 0.6);
-		padding: 0.75rem;
+	
+	.stream-table th {
+		background: rgba(0, 0, 0, 0.6);
+		color: #8BE9FD;
+		padding: 0.6rem;
 		text-align: left;
-		font-size: 0.7rem;
-		font-weight: 600;
-		letter-spacing: 0.05em;
+		font-size: 0.65rem;
+		letter-spacing: 0.1em;
 		position: sticky;
 		top: 0;
-		z-index: 10;
 	}
-
-	.detail-table td {
-		padding: 0.75rem;
+	
+	.stream-table td {
+		padding: 0.5rem 0.6rem;
 		border-bottom: 1px solid rgba(255, 255, 255, 0.05);
-		font-size: 0.8rem;
+		font-size: 0.7rem;
+		color: rgba(255, 255, 255, 0.7);
 	}
-
-	.host-cell {
-		font-family: 'SF Mono', monospace;
-		color: #00E5FF;
-		word-break: break-all;
-	}
-
-	.badge {
-		padding: 0.2rem 0.4rem;
-		border-radius: 4px;
+	
+	.node-id {
+		font-family: monospace;
+		color: #BD93F9;
 		font-size: 0.65rem;
-		font-weight: 600;
-		text-transform: uppercase;
 	}
-
-	.badge.success {
-		background: rgba(0, 229, 255, 0.2);
-		color: #00E5FF;
-		border: 1px solid #00E5FF;
+	
+	.sync-indicator {
+		display: inline-block;
+		font-size: 0.9rem;
 	}
-
-	.badge.warning {
-		background: rgba(255, 214, 0, 0.2);
-		color: #FFD600;
-		border: 1px solid #FFD600;
+	
+	.sync-indicator.active {
+		color: #50FA7B;
+		text-shadow: 0 0 10px #50FA7B;
 	}
-
-	.badge.danger {
-		background: rgba(255, 23, 68, 0.2);
-		color: #FF1744;
-		border: 1px solid #FF1744;
+	
+	.sync-indicator.inactive {
+		color: #666;
 	}
-
-	/* Scrollbars */
-	::-webkit-scrollbar {
-		width: 8px;
-		height: 8px;
-	}
-
-	::-webkit-scrollbar-track {
-		background: rgba(0, 0, 0, 0.4);
-		border-radius: 4px;
-	}
-
-	::-webkit-scrollbar-thumb {
-		background: rgba(0, 229, 255, 0.3);
-		border-radius: 4px;
-	}
-
-	::-webkit-scrollbar-thumb:hover {
-		background: rgba(0, 229, 255, 0.5);
-	}
-
-	/* Responsive */
-	@media (max-width: 1400px) {
-		.dashboard-container {
-			grid-template-columns: 1fr;
-			grid-template-rows: 1fr auto;
-		}
-
-		.analytics-panel {
-			display: grid;
-			grid-template-columns: repeat(3, 1fr);
-			grid-template-rows: auto;
-			overflow: visible;
-			max-height: 300px;
-		}
-
-		.card:first-child {
-			grid-column: span 2;
-		}
-	}
-
-	@media (max-width: 768px) {
-		.dashboard-container {
-			padding: 1rem;
-			gap: 1rem;
-		}
-
-		.analytics-panel {
-			grid-template-columns: 1fr;
-			max-height: none;
-		}
-
-		.card:first-child {
-			grid-column: span 1;
-		}
-
-		.header-top {
-			flex-direction: column;
-			align-items: flex-start;
-		}
-
-		.header-stats {
-			width: 100%;
-			justify-content: space-between;
-		}
+	
+	/* Hide scrollbars but keep functionality */
+	*::-webkit-scrollbar {
+		width: 0px;
+		height: 0px;
 	}
 </style>
