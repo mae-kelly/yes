@@ -8,13 +8,15 @@
 	let sourceDetails = [];
 	let searchTerm = '';
 	
-	// Animation states
+	// Animation states for the city visualization
 	let animationFrame = null;
 	let rotationDegree = 0;
 	let synapticActivity = [];
 	let quantumWaves = [];
 	let dataNodes = [];
 	let energyPulse = 0;
+	let cityGrid = [];
+	let quantumLayers = [];
 	
 	onMount(async () => {
 		try {
@@ -24,6 +26,30 @@
 		} catch (err) {
 			console.error('Failed to load source tables:', err);
 			loading = false;
+		}
+		
+		// Initialize city grid like BusinessUnitMetrics
+		for (let x = 0; x < 20; x++) {
+			cityGrid[x] = [];
+			for (let z = 0; z < 20; z++) {
+				cityGrid[x][z] = {
+					elevation: Math.sin(x * 0.3) * Math.cos(z * 0.3) * 10,
+					energy: Math.random(),
+					active: Math.random() > 0.3,
+					pulse: Math.random() * Math.PI * 2
+				};
+			}
+		}
+		
+		// Create quantum layers (vertical slices through the architecture)
+		for (let i = 0; i < 10; i++) {
+			quantumLayers.push({
+				depth: i * 50,
+				opacity: 1 - (i * 0.08),
+				frequency: 50 + i * 50,
+				particles: generateQuantumParticles(30),
+				wave: []
+			});
 		}
 		
 		// Initialize animations
@@ -54,40 +80,55 @@
 		
 		// Start animations
 		const animate = () => {
+			const time = Date.now() * 0.001;
 			rotationDegree = (rotationDegree + 0.2) % 360;
 			energyPulse = (energyPulse + 0.05) % (Math.PI * 2);
 			
-			// Update synaptic activity with smooth waves
-			synapticActivity = synapticActivity.map((val, i) => {
-				const target = 50 + Math.sin(Date.now() * 0.001 + i * 0.15) * 25 + 
-							  Math.sin(Date.now() * 0.0007 + i * 0.3) * 15;
-				return val * 0.92 + target * 0.08;
+			// Update city grid cells
+			cityGrid.forEach((row, x) => {
+				row.forEach((cell, z) => {
+					cell.energy = 0.5 + Math.sin(time + cell.pulse) * 0.5;
+					cell.elevation = Math.sin(x * 0.3 + time * 0.2) * Math.cos(z * 0.3 + time * 0.1) * 10;
+				});
 			});
 			
-			// Update quantum waves
-			quantumWaves = quantumWaves.map(wave => ({
-				...wave,
-				phase: wave.phase + wave.frequency
-			}));
-			
-			// Update data nodes with 3D movement
-			dataNodes = dataNodes.map(node => {
-				node.x += node.vx;
-				node.y += node.vy;
-				node.z += node.vz;
-				node.pulse += 0.05;
+			// Update quantum layers
+			quantumLayers.forEach((layer, i) => {
+				layer.particles.forEach(p => {
+					p.x = (p.x + p.vx + 100) % 100;
+					p.y = (p.y + p.vy + 100) % 100;
+					p.z = (p.z + p.vz + 100) % 100;
+					p.energy = 0.5 + Math.sin(time * 2 + i) * 0.5;
+				});
 				
-				if (node.x < 0 || node.x > 100) node.vx *= -1;
-				if (node.y < 0 || node.y > 100) node.vy *= -1;
-				if (node.z < 0 || node.z > 50) node.vz *= -1;
-				
-				return node;
+				// Generate wave pattern
+				layer.wave = [];
+				for (let j = 0; j < 50; j++) {
+					layer.wave.push(Math.sin(time + j * 0.2 + i * 0.5) * 20);
+				}
 			});
 			
 			animationFrame = requestAnimationFrame(animate);
 		};
 		animate();
 	});
+	
+	function generateQuantumParticles(count) {
+		let particles = [];
+		for (let i = 0; i < count; i++) {
+			particles.push({
+				x: Math.random() * 100,
+				y: Math.random() * 100,
+				z: Math.random() * 100,
+				vx: (Math.random() - 0.5) * 0.5,
+				vy: (Math.random() - 0.5) * 0.5,
+				vz: (Math.random() - 0.5) * 0.5,
+				energy: Math.random(),
+				color: `hsl(${280 + Math.random() * 60}, 100%, ${60 + Math.random() * 20}%)`
+			});
+		}
+		return particles;
+	}
 	
 	onDestroy(() => {
 		if (animationFrame) cancelAnimationFrame(animationFrame);
@@ -153,49 +194,48 @@
 </script>
 
 <div class="source-interface">
-	<!-- Cool Animated Moving Bars Graph -->
-	<div class="animated-graph-container">
-		<div class="graph-grid">
-			{#each Array(20) as _, col}
-				<div class="graph-column">
-					{#each Array(10) as _, row}
-						{@const intensity = Math.abs(Math.sin(energyPulse + col * 0.2 + row * 0.1))}
-						{@const height = 20 + intensity * 60}
-						{@const color = intensity > 0.7 ? '#BD93F9' : intensity > 0.4 ? '#8BE9FD' : '#50FA7B'}
-						<div class="graph-bar"
-							 style="height: {height}%;
-									background: linear-gradient(180deg, {color}, transparent);
-									opacity: {0.3 + intensity * 0.7};
-									animation-delay: {col * 0.05 + row * 0.02}s;
-									box-shadow: 0 0 {intensity * 20}px {color};">
+	<!-- Quantum City Background like BusinessUnitMetrics -->
+	<div class="quantum-city">
+		<!-- City Grid Base -->
+		<div class="city-grid-base">
+			{#each cityGrid as row, x}
+				{#each row as cell, z}
+					{#if cell.active}
+						<div class="grid-cell"
+							 style="left: {x * 5}%; 
+									top: {z * 5}%;
+									height: {5 + cell.elevation}px;
+									background: linear-gradient(180deg, 
+										rgba(189, 147, 249, {cell.energy * 0.3}), 
+										rgba(139, 233, 253, {cell.energy * 0.1}));
+									box-shadow: 0 0 {10 * cell.energy}px rgba(189, 147, 249, {cell.energy * 0.5})">
 						</div>
-					{/each}
-				</div>
+					{/if}
+				{/each}
 			{/each}
-			
-			<!-- Floating data particles -->
-			{#each dataNodes as node}
-				<div class="data-particle"
-					 style="left: {node.x}%;
-							top: {node.y}%;
-							width: {node.size * 2}px;
-							height: {node.size * 2}px;
-							background: {node.color};
-							opacity: {0.6 + Math.sin(node.pulse) * 0.4};
-							box-shadow: 0 0 {10 + Math.sin(node.pulse) * 10}px {node.color};">
-				</div>
-			{/each}
-			
-			<!-- Wave overlay -->
-			<svg class="wave-overlay" viewBox="0 0 100 100" preserveAspectRatio="none">
-				<path d="M 0,50 Q 25,{50 + Math.sin(energyPulse) * 20} 50,50 T 100,50"
-					  stroke="#BD93F9" stroke-width="0.5" fill="none" opacity="0.6"/>
-				<path d="M 0,60 Q 25,{60 + Math.cos(energyPulse) * 15} 50,60 T 100,60"
-					  stroke="#8BE9FD" stroke-width="0.5" fill="none" opacity="0.5"/>
-				<path d="M 0,40 Q 25,{40 + Math.sin(energyPulse * 1.5) * 10} 50,40 T 100,40"
-					  stroke="#50FA7B" stroke-width="0.5" fill="none" opacity="0.4"/>
-			</svg>
 		</div>
+		
+		<!-- Quantum Layers -->
+		{#each quantumLayers as layer}
+			<div class="quantum-layer"
+				 style="transform: translateZ({layer.depth}px); opacity: {layer.opacity}">
+				<svg class="layer-waves" viewBox="0 0 100 100">
+					<path d="M 0,50 {layer.wave.map((y, i) => `L ${i * 2},${50 + y}`).join(' ')}"
+						  stroke="rgba(189, 147, 249, 0.3)"
+						  stroke-width="0.5"
+						  fill="none"/>
+				</svg>
+				{#each layer.particles as particle}
+					<div class="quantum-particle"
+						 style="left: {particle.x}%; 
+								top: {particle.y}%;
+								background: {particle.color};
+								opacity: {particle.energy};
+								box-shadow: 0 0 {5 * particle.energy}px {particle.color}">
+					</div>
+				{/each}
+			</div>
+		{/each}
 	</div>
 	
 	<!-- Top Metrics -->
@@ -506,70 +546,52 @@
 		position: relative;
 	}
 	
-	/* Animated Moving Bars Graph */
-	.animated-graph-container {
+	/* Quantum City Background */
+	.quantum-city {
 		position: absolute;
 		top: 0;
 		left: 0;
 		width: 100%;
 		height: 100%;
 		pointer-events: none;
-		z-index: 0;
-		overflow: hidden;
+		transform-style: preserve-3d;
 	}
 	
-	.graph-grid {
-		display: flex;
+	.city-grid-base {
+		position: absolute;
 		width: 100%;
 		height: 100%;
-		gap: 2px;
-		padding: 20px;
-		position: relative;
+		transform: rotateX(60deg) translateZ(-100px);
+		opacity: 0.3;
 	}
 	
-	.graph-column {
-		flex: 1;
-		display: flex;
-		flex-direction: column;
-		justify-content: flex-end;
-		gap: 2px;
-		align-items: center;
-	}
-	
-	.graph-bar {
-		width: 100%;
-		border-radius: 2px 2px 0 0;
-		transition: all 0.3s ease;
-		animation: barPulse 4s ease-in-out infinite;
-		position: relative;
-	}
-	
-	@keyframes barPulse {
-		0%, 100% { transform: scaleY(1); }
-		50% { transform: scaleY(1.1); }
-	}
-	
-	.data-particle {
+	.grid-cell {
 		position: absolute;
+		width: 4%;
+		border: 1px solid rgba(189, 147, 249, 0.1);
+	}
+	
+	.quantum-layer {
+		position: absolute;
+		top: 0;
+		left: 0;
+		width: 100%;
+		height: 100%;
+		transform-style: preserve-3d;
+	}
+	
+	.layer-waves {
+		position: absolute;
+		width: 100%;
+		height: 100%;
+		opacity: 0.3;
+	}
+	
+	.quantum-particle {
+		position: absolute;
+		width: 2px;
+		height: 2px;
 		border-radius: 50%;
-		animation: particleFloat 6s ease-in-out infinite;
-		pointer-events: none;
-	}
-	
-	@keyframes particleFloat {
-		0%, 100% { transform: translate(0, 0) scale(1); }
-		25% { transform: translate(10px, -10px) scale(1.2); }
-		50% { transform: translate(-5px, 5px) scale(0.8); }
-		75% { transform: translate(-10px, -5px) scale(1.1); }
-	}
-	
-	.wave-overlay {
-		position: absolute;
-		top: 0;
-		left: 0;
-		width: 100%;
-		height: 100%;
-		pointer-events: none;
 	}
 	
 	/* Metrics Header */
