@@ -956,5 +956,3 @@
 	::-webkit-scrollbar-thumb {
 		background: rgba(189, 147, 249, 0.3);
 		border-radius: 3px;
-	}
-</style>
