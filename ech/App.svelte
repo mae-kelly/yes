@@ -1,4 +1,4 @@
-<!-- App.svelte - Ultra Premium Command Center -->
+<!-- App.svelte - Fixed Command Center -->
 <script>
 	import { onMount, onDestroy } from 'svelte';
 	import SourceTables from './SourceTables.svelte';
@@ -26,58 +26,51 @@
 	}
 
 	// Update time every second
-	const interval = setInterval(() => {
-		time = new Date().toLocaleTimeString('en-US', { hour12: false });
-	}, 1000);
-
-	onDestroy(() => {
-		clearInterval(interval);
+	let timeInterval;
+	onMount(() => {
+		timeInterval = setInterval(() => {
+			time = new Date().toLocaleTimeString('en-US', { hour12: false });
+		}, 1000);
 	});
 
-	// Animation states
+	onDestroy(() => {
+		if (timeInterval) clearInterval(timeInterval);
+	});
+
+	// Subtle animation states
 	let scanPosition = 0;
-	let pulseIntensity = 0;
+	let animationFrame;
 	
-	const scanInterval = setInterval(() => {
-		scanPosition = (scanPosition + 0.5) % 100;
-		pulseIntensity = Math.sin(Date.now() * 0.001) * 0.5 + 0.5;
-	}, 50);
+	onMount(() => {
+		const animate = () => {
+			scanPosition = (scanPosition + 0.5) % 100;
+			animationFrame = requestAnimationFrame(animate);
+		};
+		animate();
+	});
 
 	onDestroy(() => {
-		clearInterval(scanInterval);
+		if (animationFrame) cancelAnimationFrame(animationFrame);
 	});
 </script>
 
 <main class="command-interface">
-	<!-- Premium Header -->
-	<header class="premium-header">
+	<!-- Clean Header -->
+	<header class="header">
 		<div class="header-container">
 			<!-- Logo Section -->
 			<div class="logo-section">
 				<div class="logo-wrapper">
 					<div class="logo-hex">
 						<svg viewBox="0 0 80 80" class="logo-svg">
-							<defs>
-								<linearGradient id="logoGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-									<stop offset="0%" style="stop-color:#00E5FF;stop-opacity:1" />
-									<stop offset="100%" style="stop-color:#7C4DFF;stop-opacity:1" />
-								</linearGradient>
-								<filter id="glow">
-									<feGaussianBlur stdDeviation="3" result="coloredBlur"/>
-									<feMerge>
-										<feMergeNode in="coloredBlur"/>
-										<feMergeNode in="SourceGraphic"/>
-									</feMerge>
-								</filter>
-							</defs>
 							<polygon points="40,10 65,22.5 65,57.5 40,70 15,57.5 15,22.5" 
-									fill="none" stroke="url(#logoGrad)" stroke-width="2" filter="url(#glow)"/>
-							<text x="40" y="45" text-anchor="middle" fill="#00E5FF" font-size="20" font-weight="bold">LL</text>
+									fill="none" stroke="#00E5FF" stroke-width="2"/>
+							<text x="40" y="45" text-anchor="middle" fill="#00E5FF" font-size="16" font-weight="bold">LL</text>
 						</svg>
 					</div>
 					<div class="logo-text">
 						<h1>LOG LENS</h1>
-						<span class="tagline">TACTICAL INTELLIGENCE</span>
+						<span class="tagline">INFRASTRUCTURE ANALYTICS</span>
 					</div>
 				</div>
 			</div>
@@ -91,9 +84,6 @@
 							on:click={() => switchView(module.id)}>
 							<span class="module-icon">{module.icon}</span>
 							<span class="module-name">{module.name}</span>
-							{#if currentView === module.id}
-								<div class="module-indicator"></div>
-							{/if}
 						</button>
 					{/each}
 				</div>
@@ -118,7 +108,7 @@
 			</div>
 		</div>
 
-		<!-- Scanning Line -->
+		<!-- Subtle Scanning Line -->
 		<div class="scan-line" style="left: {scanPosition}%"></div>
 	</header>
 
@@ -150,8 +140,8 @@
 	}
 
 	:global(body) {
-		font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', 'Inter', sans-serif;
-		background: #000000;
+		font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+		background: linear-gradient(135deg, #0a0a0a 0%, #1a1a1a 100%);
 		color: #ffffff;
 		overflow: hidden;
 		margin: 0;
@@ -171,21 +161,19 @@
 		height: 100vh;
 		display: flex;
 		flex-direction: column;
-		background: linear-gradient(135deg, #000000 0%, #0a0a14 100%);
 		position: fixed;
 		top: 0;
 		left: 0;
 		overflow: hidden;
 	}
 
-	/* Premium Header - Fixed Height */
-	.premium-header {
-		background: rgba(0, 0, 0, 0.9);
-		backdrop-filter: blur(20px);
+	/* Clean Header */
+	.header {
+		background: rgba(0, 0, 0, 0.95);
+		backdrop-filter: blur(10px);
 		border-bottom: 1px solid rgba(0, 229, 255, 0.2);
 		position: relative;
 		z-index: 100;
-		box-shadow: 0 4px 24px rgba(0, 0, 0, 0.8);
 		flex-shrink: 0;
 		height: 80px;
 	}
@@ -196,6 +184,8 @@
 		justify-content: space-between;
 		padding: 0 2rem;
 		height: 100%;
+		max-width: 1800px;
+		margin: 0 auto;
 	}
 
 	/* Logo Section */
@@ -210,34 +200,29 @@
 	}
 
 	.logo-hex {
-		width: 50px;
-		height: 50px;
-		position: relative;
+		width: 40px;
+		height: 40px;
 	}
 
 	.logo-svg {
 		width: 100%;
 		height: 100%;
-		filter: drop-shadow(0 0 20px rgba(0, 229, 255, 0.5));
 	}
 
 	.logo-text h1 {
 		margin: 0;
-		font-size: 1.5rem;
-		font-weight: 700;
-		background: linear-gradient(135deg, #00E5FF, #7C4DFF);
-		-webkit-background-clip: text;
-		-webkit-text-fill-color: transparent;
-		background-clip: text;
+		font-size: 1.3rem;
+		font-weight: 600;
+		color: #00E5FF;
 		letter-spacing: 0.1em;
 		line-height: 1;
 	}
 
 	.tagline {
 		font-size: 0.7rem;
-		color: rgba(255, 255, 255, 0.5);
+		color: rgba(255, 255, 255, 0.6);
 		letter-spacing: 0.2em;
-		font-weight: 500;
+		font-weight: 400;
 		line-height: 1;
 	}
 
@@ -252,34 +237,31 @@
 	.nav-modules {
 		display: flex;
 		gap: 0.5rem;
-		background: rgba(255, 255, 255, 0.03);
+		background: rgba(255, 255, 255, 0.05);
 		padding: 0.5rem;
-		border-radius: 16px;
+		border-radius: 12px;
 		border: 1px solid rgba(255, 255, 255, 0.1);
-		height: fit-content;
 	}
 
 	.nav-module {
 		position: relative;
-		padding: 0.75rem 1.5rem;
+		padding: 0.7rem 1.2rem;
 		background: transparent;
 		border: none;
-		color: rgba(255, 255, 255, 0.6);
-		font-size: 0.85rem;
+		color: rgba(255, 255, 255, 0.7);
+		font-size: 0.8rem;
 		font-weight: 500;
 		cursor: pointer;
-		border-radius: 12px;
-		transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+		border-radius: 8px;
+		transition: all 0.2s ease;
 		display: flex;
 		align-items: center;
 		gap: 0.5rem;
-		letter-spacing: 0.05em;
 		white-space: nowrap;
 	}
 
 	.module-icon {
-		font-size: 1.1rem;
-		filter: saturate(1.5);
+		font-size: 1rem;
 		line-height: 1;
 	}
 
@@ -291,29 +273,12 @@
 	.nav-module:hover {
 		background: rgba(0, 229, 255, 0.1);
 		color: #00E5FF;
-		transform: translateY(-1px);
 	}
 
 	.nav-module.active {
-		background: rgba(0, 229, 255, 0.15);
+		background: rgba(0, 229, 255, 0.2);
 		color: #00E5FF;
-		box-shadow: 0 0 20px rgba(0, 229, 255, 0.3);
-	}
-
-	.module-indicator {
-		position: absolute;
-		bottom: 4px;
-		left: 50%;
-		transform: translateX(-50%);
-		width: 30px;
-		height: 2px;
-		background: linear-gradient(90deg, transparent, #00E5FF, transparent);
-		animation: indicatorPulse 2s ease-in-out infinite;
-	}
-
-	@keyframes indicatorPulse {
-		0%, 100% { opacity: 1; }
-		50% { opacity: 0.5; }
+		box-shadow: 0 0 10px rgba(0, 229, 255, 0.3);
 	}
 
 	/* Status Section */
@@ -323,7 +288,7 @@
 
 	.status-grid {
 		display: flex;
-		gap: 2rem;
+		gap: 1.5rem;
 		align-items: center;
 	}
 
@@ -331,19 +296,20 @@
 		display: flex;
 		flex-direction: column;
 		gap: 0.25rem;
+		text-align: center;
 	}
 
 	.status-label {
 		font-size: 0.65rem;
-		color: rgba(255, 255, 255, 0.4);
+		color: rgba(255, 255, 255, 0.5);
 		letter-spacing: 0.1em;
-		font-weight: 600;
+		font-weight: 500;
 		line-height: 1;
 	}
 
 	.status-value {
-		font-size: 0.9rem;
-		color: rgba(255, 255, 255, 0.8);
+		font-size: 0.85rem;
+		color: rgba(255, 255, 255, 0.9);
 		font-weight: 500;
 		font-family: 'SF Mono', 'Monaco', monospace;
 		line-height: 1;
@@ -351,27 +317,27 @@
 
 	.status-value.online {
 		color: #00E5FF;
-		text-shadow: 0 0 10px rgba(0, 229, 255, 0.5);
 	}
 
-	/* Scan Line */
+	/* Subtle Scan Line */
 	.scan-line {
 		position: absolute;
 		bottom: 0;
 		height: 1px;
-		width: 100px;
+		width: 60px;
 		background: linear-gradient(90deg, transparent, #00E5FF, transparent);
-		transition: left 0.05s linear;
+		transition: left 0.1s linear;
 		pointer-events: none;
+		opacity: 0.6;
 	}
 
-	/* Content Viewport - Fills remaining space */
+	/* Content Viewport */
 	.content-viewport {
 		flex: 1;
 		position: relative;
 		overflow: hidden;
-		background: radial-gradient(ellipse at center, rgba(0, 229, 255, 0.01) 0%, transparent 70%);
-		min-height: 0; /* Important for flex child */
+		background: linear-gradient(135deg, rgba(0, 229, 255, 0.02) 0%, transparent 70%);
+		min-height: 0;
 	}
 
 	.content-container {
@@ -382,12 +348,16 @@
 		position: absolute;
 		top: 0;
 		left: 0;
+		max-width: 1800px;
+		margin: 0 auto;
+		left: 50%;
+		transform: translateX(-50%);
 	}
 
 	/* Responsive Design */
 	@media (max-width: 1400px) {
 		.nav-module {
-			padding: 0.75rem 1rem;
+			padding: 0.7rem 1rem;
 		}
 		
 		.module-name {
@@ -400,7 +370,7 @@
 	}
 
 	@media (max-width: 768px) {
-		.premium-header {
+		.header {
 			height: 70px;
 		}
 
@@ -409,7 +379,7 @@
 		}
 
 		.logo-text h1 {
-			font-size: 1.25rem;
+			font-size: 1.1rem;
 		}
 
 		.tagline {
@@ -426,7 +396,6 @@
 
 		.nav-modules {
 			padding: 0.4rem;
-			gap: 0.2rem;
 		}
 
 		.nav-module {
@@ -438,7 +407,7 @@
 		}
 	}
 
-	/* Ensure scrollbars don't appear on body */
+	/* Ensure no scrollbars */
 	:global(body::-webkit-scrollbar) {
 		display: none;
 	}
