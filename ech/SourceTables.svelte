@@ -1,4 +1,4 @@
-<!-- SourceTables.svelte - Enhanced with Moving Graph -->
+<!-- SourceTables.svelte - Enhanced with Quantum Wave Animation -->
 <script>
 	import { onMount, onDestroy } from 'svelte';
 	
@@ -12,6 +12,9 @@
 	let animationFrame = null;
 	let rotationDegree = 0;
 	let synapticActivity = [];
+	let quantumWaves = [];
+	let dataNodes = [];
+	let energyPulse = 0;
 	
 	onMount(async () => {
 		try {
@@ -23,19 +26,63 @@
 			loading = false;
 		}
 		
-		// Initialize synaptic activity
+		// Initialize animations
 		for (let i = 0; i < 50; i++) {
-			synapticActivity.push(0);
+			synapticActivity.push(50 + Math.random() * 30);
+			quantumWaves.push({
+				amplitude: 20 + Math.random() * 30,
+				frequency: 0.01 + Math.random() * 0.02,
+				phase: Math.random() * Math.PI * 2,
+				color: ['#BD93F9', '#8BE9FD', '#50FA7B'][Math.floor(Math.random() * 3)]
+			});
+		}
+		
+		// Initialize data nodes for 3D effect
+		for (let i = 0; i < 15; i++) {
+			dataNodes.push({
+				x: Math.random() * 100,
+				y: Math.random() * 100,
+				z: Math.random() * 50,
+				vx: (Math.random() - 0.5) * 0.5,
+				vy: (Math.random() - 0.5) * 0.5,
+				vz: (Math.random() - 0.5) * 0.3,
+				size: 2 + Math.random() * 4,
+				color: ['#BD93F9', '#8BE9FD', '#50FA7B', '#FFB86C'][Math.floor(Math.random() * 4)],
+				pulse: Math.random() * Math.PI * 2
+			});
 		}
 		
 		// Start animations
 		const animate = () => {
 			rotationDegree = (rotationDegree + 0.2) % 360;
+			energyPulse = (energyPulse + 0.05) % (Math.PI * 2);
 			
-			// Update synaptic activity
-			synapticActivity = Array(50).fill(0).map((_, i) => 
-				50 + Math.sin(Date.now() * 0.002 + i * 0.2) * 30 + Math.random() * 20
-			);
+			// Update synaptic activity with smooth waves
+			synapticActivity = synapticActivity.map((val, i) => {
+				const target = 50 + Math.sin(Date.now() * 0.001 + i * 0.15) * 25 + 
+							  Math.sin(Date.now() * 0.0007 + i * 0.3) * 15;
+				return val * 0.92 + target * 0.08;
+			});
+			
+			// Update quantum waves
+			quantumWaves = quantumWaves.map(wave => ({
+				...wave,
+				phase: wave.phase + wave.frequency
+			}));
+			
+			// Update data nodes with 3D movement
+			dataNodes = dataNodes.map(node => {
+				node.x += node.vx;
+				node.y += node.vy;
+				node.z += node.vz;
+				node.pulse += 0.05;
+				
+				if (node.x < 0 || node.x > 100) node.vx *= -1;
+				if (node.y < 0 || node.y > 100) node.vy *= -1;
+				if (node.z < 0 || node.z > 50) node.vz *= -1;
+				
+				return node;
+			});
 			
 			animationFrame = requestAnimationFrame(animate);
 		};
@@ -99,9 +146,104 @@
 		if (count > 100) return 'SMALL';
 		return 'MINIMAL';
 	}
+	
+	function formatNumber(num) {
+		return new Intl.NumberFormat('en-US').format(num);
+	}
 </script>
 
 <div class="source-interface">
+	<!-- Cool Animated Background Graph -->
+	<div class="quantum-graph-bg">
+		<svg viewBox="0 0 800 400" class="graph-svg">
+			<!-- Grid lines -->
+			<defs>
+				<linearGradient id="waveGradient1" x1="0%" y1="0%" x2="100%" y2="0%">
+					<stop offset="0%" style="stop-color:#BD93F9;stop-opacity:0" />
+					<stop offset="50%" style="stop-color:#BD93F9;stop-opacity:0.8" />
+					<stop offset="100%" style="stop-color:#BD93F9;stop-opacity:0" />
+				</linearGradient>
+				<linearGradient id="waveGradient2" x1="0%" y1="0%" x2="100%" y2="0%">
+					<stop offset="0%" style="stop-color:#8BE9FD;stop-opacity:0" />
+					<stop offset="50%" style="stop-color:#8BE9FD;stop-opacity:0.8" />
+					<stop offset="100%" style="stop-color:#8BE9FD;stop-opacity:0" />
+				</linearGradient>
+				<linearGradient id="waveGradient3" x1="0%" y1="0%" x2="100%" y2="0%">
+					<stop offset="0%" style="stop-color:#50FA7B;stop-opacity:0" />
+					<stop offset="50%" style="stop-color:#50FA7B;stop-opacity:0.8" />
+					<stop offset="100%" style="stop-color:#50FA7B;stop-opacity:0" />
+				</linearGradient>
+			</defs>
+			
+			<!-- Animated grid -->
+			{#each Array(20) as _, i}
+				<line x1="{i * 40}" y1="0" x2="{i * 40}" y2="400"
+					  stroke="rgba(139, 233, 253, 0.05)" stroke-width="1"
+					  opacity="{0.3 + Math.sin(energyPulse + i * 0.3) * 0.2}"/>
+				<line x1="0" y1="{i * 20}" x2="800" y2="{i * 20}"
+					  stroke="rgba(189, 147, 249, 0.05)" stroke-width="1"
+					  opacity="{0.3 + Math.cos(energyPulse + i * 0.3) * 0.2}"/>
+			{/each}
+			
+			<!-- Multiple quantum waves -->
+			{#each quantumWaves.slice(0, 3) as wave, waveIndex}
+				<path d="M 0,200 {synapticActivity.map((val, i) => 
+						`Q ${i * 16 + 8},${200 + wave.amplitude * Math.sin(wave.phase + i * 0.3)} ${i * 16},${200 + val * Math.sin(wave.phase + i * 0.2) - 25}`
+					).join(' ')}"
+					  fill="none" 
+					  stroke={wave.color}
+					  stroke-width="2"
+					  opacity="{0.3 + Math.sin(energyPulse + waveIndex) * 0.2}"/>
+			{/each}
+			
+			<!-- Data flow lines -->
+			{#each synapticActivity as val, i}
+				{#if i < synapticActivity.length - 1}
+					<line x1="{i * 16}" y1="{200 - val * 0.8}"
+						  x2="{(i + 1) * 16}" y2="{200 - synapticActivity[i + 1] * 0.8}"
+						  stroke="url(#waveGradient{(i % 3) + 1})"
+						  stroke-width="{1 + Math.sin(energyPulse + i * 0.1) * 0.5}"
+						  opacity="{0.6 + Math.sin(energyPulse + i * 0.05) * 0.3}"/>
+				{/if}
+			{/each}
+			
+			<!-- 3D Data nodes -->
+			{#each dataNodes as node}
+				<circle cx="{node.x * 8}" cy="{200 + node.y - 50}"
+						r="{node.size * (1 + node.z / 100)}"
+						fill={node.color}
+						opacity="{0.3 + Math.sin(node.pulse) * 0.3 + node.z / 100}">
+					<animate attributeName="r" 
+							 values="{node.size};{node.size * 1.5};{node.size}" 
+							 dur="3s" 
+							 repeatCount="indefinite"/>
+				</circle>
+				<!-- Connection lines between nearby nodes -->
+				{#each dataNodes as otherNode}
+					{#if Math.abs(node.x - otherNode.x) < 20 && Math.abs(node.y - otherNode.y) < 20 && node !== otherNode}
+						<line x1="{node.x * 8}" y1="{200 + node.y - 50}"
+							  x2="{otherNode.x * 8}" y2="{200 + otherNode.y - 50}"
+							  stroke={node.color}
+							  stroke-width="0.5"
+							  opacity="0.2"/>
+					{/if}
+				{/each}
+			{/each}
+			
+			<!-- Energy pulses -->
+			{#each Array(5) as _, i}
+				<circle cx="{400 + Math.cos(energyPulse + i) * 200}" 
+						cy="{200 + Math.sin(energyPulse + i) * 100}"
+						r="2"
+						fill="#FFB86C"
+						opacity="{0.8 - i * 0.15}">
+					<animate attributeName="r" values="2;8;2" dur="2s" repeatCount="indefinite"/>
+					<animate attributeName="opacity" values="0.8;0;0.8" dur="2s" repeatCount="indefinite"/>
+				</circle>
+			{/each}
+		</svg>
+	</div>
+	
 	<!-- Top Metrics -->
 	<div class="metrics-header">
 		<div class="metric-card">
@@ -114,7 +256,7 @@
 		<div class="metric-card">
 			<div class="metric-icon">💻</div>
 			<div class="metric-content">
-				<div class="metric-value" style="color: #8BE9FD">{totalHosts.toLocaleString()}</div>
+				<div class="metric-value" style="color: #8BE9FD">{formatNumber(totalHosts)}</div>
 				<div class="metric-label">TOTAL HOSTS</div>
 			</div>
 		</div>
@@ -137,7 +279,7 @@
 		<div class="metric-card">
 			<div class="metric-icon">⚖️</div>
 			<div class="metric-content">
-				<div class="metric-value" style="color: #FF79C6">{avgHostsPerSource.toLocaleString()}</div>
+				<div class="metric-value" style="color: #FF79C6">{formatNumber(avgHostsPerSource)}</div>
 				<div class="metric-label">AVG HOSTS/SRC</div>
 			</div>
 		</div>
@@ -171,7 +313,7 @@
 						<div>
 							<h3>{selectedSource.source.toUpperCase()}</h3>
 							<div class="source-stats">
-								<span>{selectedSource.count.toLocaleString()} HOSTS</span>
+								<span>{formatNumber(selectedSource.count)} HOSTS</span>
 								<span>•</span>
 								<span>{((selectedSource.count / totalHosts) * 100).toFixed(2)}% OF TOTAL</span>
 								<span>•</span>
@@ -225,7 +367,7 @@
 							<div class="root-node">
 								<div class="node-icon">📊</div>
 								<div class="node-label">SOURCE TABLES</div>
-								<div class="node-count">{totalHosts.toLocaleString()} HOSTS</div>
+								<div class="node-count">{formatNumber(totalHosts)} HOSTS</div>
 							</div>
 						</div>
 						<div class="tree-branches">
@@ -242,7 +384,7 @@
 											<div class="node-name">{source.substring(0, 20).toUpperCase()}</div>
 											<div class="node-metrics">
 												<span class="node-hosts" style="color: {getSourceStatus(count).color}">
-													{count.toLocaleString()}
+													{formatNumber(count)}
 												</span>
 												<span class="node-percent">{((count / totalHosts) * 100).toFixed(1)}%</span>
 											</div>
@@ -270,23 +412,11 @@
 									<text x="{50 + (i % 5) * 75}" y="{50 + Math.floor(i / 5) * 80}" 
 										  text-anchor="middle" 
 										  fill="#FFFFFF" font-size="9" font-weight="600">
-										{count.toLocaleString()}
+										{formatNumber(count)}
 									</text>
 								</g>
 							{/each}
 						</svg>
-					</div>
-					
-					<!-- Synaptic Activity Graph -->
-					<div class="synaptic-activity">
-						<svg viewBox="0 0 200 50">
-							<polyline points="{synapticActivity.map((val, i) => `${i * 4},${50 - val * 0.5}`).join(' ')}"
-									  fill="none" 
-									  stroke="#8BE9FD" 
-									  stroke-width="1"
-									  opacity="0.8"/>
-						</svg>
-						<div class="activity-label">SOURCE ACTIVITY</div>
 					</div>
 				</div>
 			{/if}
@@ -306,7 +436,7 @@
 								<div class="dist-fill" 
 									 style="width: {(count / maxHosts) * 100}%; 
 											background: linear-gradient(90deg, {getSourceStatus(count).color}40, {getSourceStatus(count).color})">
-									<span class="dist-value">{count.toLocaleString()}</span>
+									<span class="dist-value">{formatNumber(count)}</span>
 								</div>
 							</div>
 							<div class="dist-percent">{((count/totalHosts)*100).toFixed(1)}%</div>
@@ -388,7 +518,7 @@
 									{source.substring(0, 25).toUpperCase()}
 								</td>
 								<td class="host-count" style="color: {getSourceStatus(count).color}">
-									{count.toLocaleString()}
+									{formatNumber(count)}
 								</td>
 								<td>
 									<span class="size-badge" style="color: {getSourceStatus(count).color}">
@@ -419,12 +549,32 @@
 		padding: 1rem;
 		gap: 1rem;
 		overflow: hidden;
+		position: relative;
+	}
+	
+	/* Quantum Graph Background */
+	.quantum-graph-bg {
+		position: absolute;
+		top: 0;
+		left: 0;
+		width: 100%;
+		height: 100%;
+		pointer-events: none;
+		opacity: 0.15;
+		z-index: 0;
+	}
+	
+	.graph-svg {
+		width: 100%;
+		height: 100%;
 	}
 	
 	/* Metrics Header */
 	.metrics-header {
 		display: flex;
 		gap: 1rem;
+		position: relative;
+		z-index: 1;
 	}
 	
 	.metric-card {
@@ -436,6 +586,7 @@
 		display: flex;
 		gap: 1rem;
 		align-items: center;
+		backdrop-filter: blur(10px);
 	}
 	
 	.metric-icon {
@@ -467,6 +618,8 @@
 		grid-template-columns: 1fr 380px 320px;
 		gap: 1rem;
 		min-height: 0;
+		position: relative;
+		z-index: 1;
 	}
 	
 	/* Org Panel */
@@ -477,6 +630,7 @@
 		padding: 1rem;
 		display: flex;
 		flex-direction: column;
+		backdrop-filter: blur(10px);
 	}
 	
 	.panel-header {
@@ -664,31 +818,6 @@
 		transform: scale(1.1);
 	}
 	
-	/* Synaptic Activity */
-	.synaptic-activity {
-		position: relative;
-		height: 60px;
-		background: rgba(0, 0, 0, 0.8);
-		border: 1px solid rgba(139, 233, 253, 0.3);
-		padding: 5px;
-		border-radius: 10px;
-		margin-top: 1rem;
-	}
-	
-	.synaptic-activity svg {
-		width: 100%;
-		height: 100%;
-	}
-	
-	.activity-label {
-		position: absolute;
-		top: 5px;
-		left: 10px;
-		font-size: 0.6rem;
-		color: rgba(255, 255, 255, 0.5);
-		letter-spacing: 0.1em;
-	}
-	
 	/* Analytics Panel */
 	.analytics-panel {
 		display: flex;
@@ -704,6 +833,7 @@
 		padding: 1rem;
 		display: flex;
 		flex-direction: column;
+		backdrop-filter: blur(10px);
 	}
 	
 	.chart-box h3 {
@@ -851,6 +981,7 @@
 		display: flex;
 		flex-direction: column;
 		overflow: hidden;
+		backdrop-filter: blur(10px);
 	}
 	
 	.source-count {
@@ -1113,5 +1244,38 @@
 	::-webkit-scrollbar-thumb {
 		background: rgba(189, 147, 249, 0.3);
 		border-radius: 3px;
+	}
+	
+	/* Responsive */
+	@media (max-width: 1400px) {
+		.content-layout {
+			grid-template-columns: 1fr 300px 280px;
+		}
+	}
+	
+	@media (max-width: 1200px) {
+		.content-layout {
+			grid-template-columns: 1fr;
+			grid-template-rows: auto 1fr auto;
+		}
+		
+		.analytics-panel {
+			display: grid;
+			grid-template-columns: repeat(3, 1fr);
+		}
+	}
+	
+	@media (max-width: 768px) {
+		.metrics-header {
+			flex-wrap: wrap;
+		}
+		
+		.metric-card {
+			min-width: calc(50% - 0.5rem);
+		}
+		
+		.analytics-panel {
+			grid-template-columns: 1fr;
+		}
 	}
 </style>
