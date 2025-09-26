@@ -12,12 +12,12 @@
 	let date = new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }).toUpperCase();
 	
 	let modules = [
-		{ id: 'source_tables', name: 'SOURCES', code: 'SRC' },
-		{ id: 'region_metrics', name: 'REGIONS', code: 'REG' },
-		{ id: 'country_metrics', name: 'COUNTRIES', code: 'CTY' },
-		{ id: 'data_center', name: 'DATA CENTERS', code: 'DC' },
-		{ id: 'business_units', name: 'DIVISIONS', code: 'BU' },
-		{ id: 'cio_metrics', name: 'EXECUTIVES', code: 'CIO' }
+		{ id: 'source_tables', name: 'SOURCES', code: 'SRC', status: 'ACTIVE' },
+		{ id: 'region_metrics', name: 'REGIONS', code: 'REG', status: 'ACTIVE' },
+		{ id: 'country_metrics', name: 'COUNTRIES', code: 'CTY', status: 'ACTIVE' },
+		{ id: 'data_center', name: 'DATA CENTERS', code: 'DC', status: 'MONITORING' },
+		{ id: 'business_units', name: 'DIVISIONS', code: 'BU', status: 'ACTIVE' },
+		{ id: 'cio_metrics', name: 'EXECUTIVES', code: 'CIO', status: 'ACTIVE' }
 	];
 
 	function switchView(moduleId) {
@@ -58,9 +58,15 @@
 				<div class="logo-wrapper">
 					<div class="logo-hex">
 						<svg viewBox="0 0 80 80" class="logo-svg">
+							<defs>
+								<linearGradient id="logoGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+									<stop offset="0%" style="stop-color:#00FFFF;stop-opacity:1" />
+									<stop offset="100%" style="stop-color:#FF00FF;stop-opacity:1" />
+								</linearGradient>
+							</defs>
 							<polygon points="40,10 65,22.5 65,57.5 40,70 15,57.5 15,22.5" 
-									fill="none" stroke="#8DE5FF" stroke-width="2"/>
-							<text x="40" y="45" text-anchor="middle" fill="#8DE5FF" font-size="16" font-weight="bold" font-family="JetBrains Mono">LL</text>
+									fill="none" stroke="url(#logoGradient)" stroke-width="2"/>
+							<text x="40" y="45" text-anchor="middle" fill="url(#logoGradient)" font-size="16" font-weight="bold">LL</text>
 						</svg>
 					</div>
 					<div class="logo-text">
@@ -128,12 +134,12 @@
 		margin: 0;
 		padding: 0;
 		box-sizing: border-box;
-		font-family: 'JetBrains Mono', monospace;
 	}
 
 	:global(body) {
+		font-family: 'JetBrains Mono', monospace;
 		background: #000000;
-		color: #FFFFFF;
+		color: #ffffff;
 		overflow: hidden;
 		margin: 0;
 		padding: 0;
@@ -160,8 +166,9 @@
 	}
 
 	.header {
-		background: #000000;
-		border-bottom: 1px solid rgba(141, 229, 255, 0.2);
+		background: rgba(0, 0, 0, 0.95);
+		backdrop-filter: blur(10px);
+		border-bottom: 1px solid rgba(0, 255, 255, 0.2);
 		position: relative;
 		z-index: 100;
 		flex-shrink: 0;
@@ -202,7 +209,10 @@
 		margin: 0;
 		font-size: 1.3rem;
 		font-weight: 600;
-		color: #8DE5FF;
+		background: linear-gradient(90deg, #00FFFF, #FF00FF);
+		-webkit-background-clip: text;
+		-webkit-text-fill-color: transparent;
+		background-clip: text;
 		letter-spacing: 0.1em;
 		line-height: 1;
 		font-family: 'JetBrains Mono', monospace;
@@ -227,10 +237,10 @@
 	.nav-modules {
 		display: flex;
 		gap: 0.5rem;
-		background: rgba(141, 229, 255, 0.05);
+		background: rgba(255, 255, 255, 0.05);
 		padding: 0.5rem;
 		border-radius: 12px;
-		border: 1px solid rgba(141, 229, 255, 0.1);
+		border: 1px solid rgba(255, 255, 255, 0.1);
 	}
 
 	.nav-module {
@@ -252,9 +262,9 @@
 	}
 
 	.module-code {
-		color: #FF8DFF;
-		font-size: 0.75rem;
+		color: #00FFFF;
 		font-weight: 600;
+		font-size: 0.75rem;
 	}
 
 	.module-name {
@@ -263,14 +273,14 @@
 	}
 
 	.nav-module:hover {
-		background: rgba(141, 229, 255, 0.1);
-		color: #8DE5FF;
+		background: rgba(0, 255, 255, 0.1);
+		color: #00FFFF;
 	}
 
 	.nav-module.active {
-		background: rgba(141, 229, 255, 0.2);
-		color: #8DE5FF;
-		box-shadow: 0 0 10px rgba(141, 229, 255, 0.3);
+		background: linear-gradient(135deg, rgba(0, 255, 255, 0.2), rgba(255, 0, 255, 0.2));
+		color: #00FFFF;
+		box-shadow: 0 0 10px rgba(0, 255, 255, 0.3);
 	}
 
 	.status-section {
@@ -308,7 +318,8 @@
 	}
 
 	.status-value.online {
-		color: #8DE5FF;
+		color: #00FFFF;
+		text-shadow: 0 0 10px rgba(0, 255, 255, 0.5);
 	}
 
 	.scan-line {
@@ -316,7 +327,7 @@
 		bottom: 0;
 		height: 1px;
 		width: 60px;
-		background: linear-gradient(90deg, transparent, #8DE5FF, transparent);
+		background: linear-gradient(90deg, transparent, #00FFFF, transparent);
 		transition: left 0.1s linear;
 		pointer-events: none;
 		opacity: 0.6;
@@ -326,7 +337,7 @@
 		flex: 1;
 		position: relative;
 		overflow: hidden;
-		background: #000000;
+		background: linear-gradient(135deg, rgba(0, 255, 255, 0.02) 0%, transparent 70%);
 		min-height: 0;
 	}
 
