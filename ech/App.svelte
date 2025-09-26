@@ -61,18 +61,22 @@
 						<svg viewBox="0 0 80 80" class="logo-svg">
 							<defs>
 								<linearGradient id="logoGradient" x1="0%" y1="0%" x2="100%" y2="100%">
-									<stop offset="0%" style="stop-color:#00D4FF;stop-opacity:1" />
-									<stop offset="100%" style="stop-color:#BD93F9;stop-opacity:1" />
+									<stop offset="0%" style="stop-color:#00ffff;stop-opacity:1" />
+									<stop offset="50%" style="stop-color:#ff00ff;stop-opacity:1" />
+									<stop offset="100%" style="stop-color:#ff69b4;stop-opacity:1" />
 								</linearGradient>
+								<filter id="neonGlow">
+									<feGaussianBlur stdDeviation="3" result="coloredBlur"/>
+									<feMerge>
+										<feMergeNode in="coloredBlur"/>
+										<feMergeNode in="SourceGraphic"/>
+									</feMerge>
+								</filter>
 							</defs>
 							<polygon points="40,10 65,22.5 65,57.5 40,70 15,57.5 15,22.5" 
-									fill="none" stroke="url(#logoGradient)" stroke-width="2"/>
-							<text x="40" y="45" text-anchor="middle" fill="url(#logoGradient)" font-size="16" font-weight="bold">LL</text>
+									fill="none" stroke="url(#logoGradient)" stroke-width="2" filter="url(#neonGlow)"/>
+							<text x="40" y="45" text-anchor="middle" fill="#ffffff" font-size="14" font-weight="bold">NEXUS</text>
 						</svg>
-					</div>
-					<div class="logo-text">
-						<h1>LOG LENS</h1>
-						<span class="tagline">INFRASTRUCTURE ANALYTICS</span>
 					</div>
 				</div>
 			</div>
@@ -169,11 +173,12 @@
 	.header {
 		background: rgba(0, 0, 0, 0.95);
 		backdrop-filter: blur(10px);
-		border-bottom: 1px solid rgba(0, 212, 255, 0.2);
+		border-bottom: 2px solid #00ffff;
 		position: relative;
 		z-index: 100;
 		flex-shrink: 0;
 		height: 80px;
+		box-shadow: 0 0 40px rgba(0, 255, 255, 0.5);
 	}
 
 	.header-container {
@@ -197,35 +202,14 @@
 	}
 
 	.logo-hex {
-		width: 40px;
-		height: 40px;
+		width: 50px;
+		height: 50px;
+		filter: drop-shadow(0 0 20px #00ffff);
 	}
 
 	.logo-svg {
 		width: 100%;
 		height: 100%;
-	}
-
-	.logo-text h1 {
-		margin: 0;
-		font-size: 1.3rem;
-		font-weight: 600;
-		background: linear-gradient(90deg, #00D4FF, #BD93F9);
-		-webkit-background-clip: text;
-		-webkit-text-fill-color: transparent;
-		background-clip: text;
-		letter-spacing: 0.1em;
-		line-height: 1;
-		font-family: 'JetBrains Mono', monospace;
-	}
-
-	.tagline {
-		font-size: 0.7rem;
-		color: rgba(255, 255, 255, 0.6);
-		letter-spacing: 0.2em;
-		font-weight: 400;
-		line-height: 1;
-		font-family: 'JetBrains Mono', monospace;
 	}
 
 	.nav-section {
@@ -238,18 +222,19 @@
 	.nav-modules {
 		display: flex;
 		gap: 0.5rem;
-		background: rgba(255, 255, 255, 0.05);
+		background: rgba(0, 0, 0, 0.8);
 		padding: 0.5rem;
 		border-radius: 12px;
-		border: 1px solid rgba(255, 255, 255, 0.1);
+		border: 1px solid rgba(0, 255, 255, 0.3);
+		box-shadow: 0 0 20px rgba(0, 255, 255, 0.2);
 	}
 
 	.nav-module {
 		position: relative;
 		padding: 0.7rem 1.2rem;
 		background: transparent;
-		border: none;
-		color: rgba(255, 255, 255, 0.7);
+		border: 1px solid transparent;
+		color: rgba(255, 255, 255, 0.8);
 		font-size: 0.8rem;
 		font-weight: 500;
 		cursor: pointer;
@@ -263,9 +248,10 @@
 	}
 
 	.module-code {
-		color: #00D4FF;
-		font-weight: 600;
+		color: #00ffff;
+		font-weight: 700;
 		font-size: 0.75rem;
+		text-shadow: 0 0 10px currentColor;
 	}
 
 	.module-name {
@@ -274,14 +260,18 @@
 	}
 
 	.nav-module:hover {
-		background: rgba(0, 212, 255, 0.1);
-		color: #00D4FF;
+		background: rgba(0, 255, 255, 0.1);
+		color: #00ffff;
+		border-color: #00ffff;
+		box-shadow: 0 0 20px rgba(0, 255, 255, 0.4);
+		transform: translateY(-2px);
 	}
 
 	.nav-module.active {
-		background: linear-gradient(135deg, rgba(0, 212, 255, 0.2), rgba(189, 147, 249, 0.2));
-		color: #00D4FF;
-		box-shadow: 0 0 10px rgba(0, 212, 255, 0.3);
+		background: linear-gradient(135deg, rgba(0, 255, 255, 0.2), rgba(255, 0, 255, 0.2));
+		color: #ffffff;
+		border-color: #ff00ff;
+		box-shadow: 0 0 30px rgba(255, 0, 255, 0.5);
 	}
 
 	.status-section {
@@ -303,7 +293,7 @@
 
 	.status-label {
 		font-size: 0.65rem;
-		color: rgba(255, 255, 255, 0.5);
+		color: rgba(255, 255, 255, 0.6);
 		letter-spacing: 0.1em;
 		font-weight: 500;
 		line-height: 1;
@@ -311,34 +301,42 @@
 	}
 
 	.status-value {
-		font-size: 0.85rem;
-		color: rgba(255, 255, 255, 0.9);
-		font-weight: 500;
+		font-size: 0.9rem;
+		color: #ffffff;
+		font-weight: 600;
 		font-family: 'JetBrains Mono', monospace;
 		line-height: 1;
+		text-shadow: 0 0 10px currentColor;
 	}
 
 	.status-value.online {
-		color: #00D4FF;
-		text-shadow: 0 0 10px rgba(0, 212, 255, 0.5);
+		color: #00ffff;
+		text-shadow: 0 0 20px #00ffff;
+		animation: pulse 2s ease-in-out infinite;
+	}
+
+	@keyframes pulse {
+		0%, 100% { opacity: 1; }
+		50% { opacity: 0.7; }
 	}
 
 	.scan-line {
 		position: absolute;
 		bottom: 0;
-		height: 1px;
-		width: 60px;
-		background: linear-gradient(90deg, transparent, #00D4FF, transparent);
+		height: 2px;
+		width: 100px;
+		background: linear-gradient(90deg, transparent, #ff00ff, #00ffff, transparent);
 		transition: left 0.1s linear;
 		pointer-events: none;
-		opacity: 0.6;
+		filter: blur(1px);
+		box-shadow: 0 0 20px #00ffff;
 	}
 
 	.content-viewport {
 		flex: 1;
 		position: relative;
 		overflow: hidden;
-		background: linear-gradient(135deg, rgba(0, 212, 255, 0.02) 0%, transparent 70%);
+		background: #000000;
 		min-height: 0;
 	}
 
@@ -377,14 +375,6 @@
 
 		.header-container {
 			padding: 0 1rem;
-		}
-
-		.logo-text h1 {
-			font-size: 1.1rem;
-		}
-
-		.tagline {
-			display: none;
 		}
 
 		.status-grid {
