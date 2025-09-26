@@ -1,4 +1,4 @@
-<!-- App.svelte - Fixed Command Center -->
+<!-- App.svelte -->
 <script>
 	import { onMount, onDestroy } from 'svelte';
 	import SourceTables from './SourceTables.svelte';
@@ -13,19 +13,18 @@
 	let date = new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }).toUpperCase();
 	
 	let modules = [
-		{ id: 'source_tables', name: 'SOURCES', code: 'SRC', status: 'ACTIVE', icon: '◈' },
-		{ id: 'region_metrics', name: 'REGIONS', code: 'REG', status: 'ACTIVE', icon: '🌍' },
-		{ id: 'country_metrics', name: 'COUNTRIES', code: 'CTY', status: 'ACTIVE', icon: '🗺️' },
-		{ id: 'data_center', name: 'DATA CENTERS', code: 'DC', status: 'MONITORING', icon: '🏢' },
-		{ id: 'business_units', name: 'DIVISIONS', code: 'BU', status: 'ACTIVE', icon: '👥' },
-		{ id: 'cio_metrics', name: 'EXECUTIVES', code: 'CIO', status: 'ACTIVE', icon: '👔' }
+		{ id: 'source_tables', name: 'SOURCES', code: 'SRC', status: 'ACTIVE' },
+		{ id: 'region_metrics', name: 'REGIONS', code: 'REG', status: 'ACTIVE' },
+		{ id: 'country_metrics', name: 'COUNTRIES', code: 'CTY', status: 'ACTIVE' },
+		{ id: 'data_center', name: 'DATA_CENTERS', code: 'DC', status: 'MONITORING' },
+		{ id: 'business_units', name: 'DIVISIONS', code: 'BU', status: 'ACTIVE' },
+		{ id: 'cio_metrics', name: 'EXECUTIVES', code: 'CIO', status: 'ACTIVE' }
 	];
 
 	function switchView(moduleId) {
 		currentView = moduleId;
 	}
 
-	// Update time every second
 	let timeInterval;
 	onMount(() => {
 		timeInterval = setInterval(() => {
@@ -37,7 +36,6 @@
 		if (timeInterval) clearInterval(timeInterval);
 	});
 
-	// Subtle animation states
 	let scanPosition = 0;
 	let animationFrame;
 	
@@ -55,17 +53,15 @@
 </script>
 
 <main class="command-interface">
-	<!-- Clean Header -->
 	<header class="header">
 		<div class="header-container">
-			<!-- Logo Section -->
 			<div class="logo-section">
 				<div class="logo-wrapper">
 					<div class="logo-hex">
 						<svg viewBox="0 0 80 80" class="logo-svg">
 							<polygon points="40,10 65,22.5 65,57.5 40,70 15,57.5 15,22.5" 
-									fill="none" stroke="#00E5FF" stroke-width="2"/>
-							<text x="40" y="45" text-anchor="middle" fill="#00E5FF" font-size="16" font-weight="bold">LL</text>
+									fill="none" stroke="#B794F6" stroke-width="2"/>
+							<text x="40" y="45" text-anchor="middle" fill="#F6B5FC" font-size="16" font-weight="bold" font-family="JetBrains Mono">LL</text>
 						</svg>
 					</div>
 					<div class="logo-text">
@@ -75,21 +71,18 @@
 				</div>
 			</div>
 
-			<!-- Navigation -->
 			<nav class="nav-section">
 				<div class="nav-modules">
 					{#each modules as module}
 						<button 
 							class="nav-module {currentView === module.id ? 'active' : ''}"
 							on:click={() => switchView(module.id)}>
-							<span class="module-icon">{module.icon}</span>
 							<span class="module-name">{module.name}</span>
 						</button>
 					{/each}
 				</div>
 			</nav>
 
-			<!-- Status Section -->
 			<div class="status-section">
 				<div class="status-grid">
 					<div class="status-item">
@@ -108,11 +101,9 @@
 			</div>
 		</div>
 
-		<!-- Subtle Scanning Line -->
 		<div class="scan-line" style="left: {scanPosition}%"></div>
 	</header>
 
-	<!-- Main Content Area -->
 	<section class="content-viewport">
 		<div class="content-container">
 			{#if currentView === 'source_tables'}
@@ -140,9 +131,9 @@
 	}
 
 	:global(body) {
-		font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
-		background: linear-gradient(135deg, #0a0a0a 0%, #1a1a1a 100%);
-		color: #ffffff;
+		font-family: 'JetBrains Mono', monospace;
+		background: #000000;
+		color: #FFFFFF;
 		overflow: hidden;
 		margin: 0;
 		padding: 0;
@@ -165,13 +156,13 @@
 		top: 0;
 		left: 0;
 		overflow: hidden;
+		background: #000000;
 	}
 
-	/* Clean Header */
 	.header {
 		background: rgba(0, 0, 0, 0.95);
 		backdrop-filter: blur(10px);
-		border-bottom: 1px solid rgba(0, 229, 255, 0.2);
+		border-bottom: 1px solid rgba(183, 148, 246, 0.2);
 		position: relative;
 		z-index: 100;
 		flex-shrink: 0;
@@ -188,7 +179,6 @@
 		margin: 0 auto;
 	}
 
-	/* Logo Section */
 	.logo-section {
 		flex: 0 0 auto;
 	}
@@ -213,9 +203,10 @@
 		margin: 0;
 		font-size: 1.3rem;
 		font-weight: 600;
-		color: #00E5FF;
+		color: #F6B5FC;
 		letter-spacing: 0.1em;
 		line-height: 1;
+		font-family: 'JetBrains Mono', monospace;
 	}
 
 	.tagline {
@@ -224,9 +215,9 @@
 		letter-spacing: 0.2em;
 		font-weight: 400;
 		line-height: 1;
+		font-family: 'JetBrains Mono', monospace;
 	}
 
-	/* Navigation Section */
 	.nav-section {
 		flex: 1;
 		display: flex;
@@ -237,10 +228,10 @@
 	.nav-modules {
 		display: flex;
 		gap: 0.5rem;
-		background: rgba(255, 255, 255, 0.05);
+		background: rgba(0, 0, 0, 0.8);
 		padding: 0.5rem;
 		border-radius: 12px;
-		border: 1px solid rgba(255, 255, 255, 0.1);
+		border: 1px solid rgba(183, 148, 246, 0.1);
 	}
 
 	.nav-module {
@@ -258,11 +249,7 @@
 		align-items: center;
 		gap: 0.5rem;
 		white-space: nowrap;
-	}
-
-	.module-icon {
-		font-size: 1rem;
-		line-height: 1;
+		font-family: 'JetBrains Mono', monospace;
 	}
 
 	.module-name {
@@ -271,17 +258,16 @@
 	}
 
 	.nav-module:hover {
-		background: rgba(0, 229, 255, 0.1);
-		color: #00E5FF;
+		background: rgba(183, 148, 246, 0.1);
+		color: #B794F6;
 	}
 
 	.nav-module.active {
-		background: rgba(0, 229, 255, 0.2);
-		color: #00E5FF;
-		box-shadow: 0 0 10px rgba(0, 229, 255, 0.3);
+		background: rgba(183, 148, 246, 0.2);
+		color: #F6B5FC;
+		box-shadow: 0 0 10px rgba(183, 148, 246, 0.3);
 	}
 
-	/* Status Section */
 	.status-section {
 		flex: 0 0 auto;
 	}
@@ -305,38 +291,37 @@
 		letter-spacing: 0.1em;
 		font-weight: 500;
 		line-height: 1;
+		font-family: 'JetBrains Mono', monospace;
 	}
 
 	.status-value {
 		font-size: 0.85rem;
 		color: rgba(255, 255, 255, 0.9);
 		font-weight: 500;
-		font-family: 'SF Mono', 'Monaco', monospace;
+		font-family: 'JetBrains Mono', monospace;
 		line-height: 1;
 	}
 
 	.status-value.online {
-		color: #00E5FF;
+		color: #9BB5FF;
 	}
 
-	/* Subtle Scan Line */
 	.scan-line {
 		position: absolute;
 		bottom: 0;
 		height: 1px;
 		width: 60px;
-		background: linear-gradient(90deg, transparent, #00E5FF, transparent);
+		background: linear-gradient(90deg, transparent, #B794F6, transparent);
 		transition: left 0.1s linear;
 		pointer-events: none;
 		opacity: 0.6;
 	}
 
-	/* Content Viewport */
 	.content-viewport {
 		flex: 1;
 		position: relative;
 		overflow: hidden;
-		background: linear-gradient(135deg, rgba(0, 229, 255, 0.02) 0%, transparent 70%);
+		background: #000000;
 		min-height: 0;
 	}
 
@@ -354,14 +339,13 @@
 		transform: translateX(-50%);
 	}
 
-	/* Responsive Design */
 	@media (max-width: 1400px) {
 		.nav-module {
 			padding: 0.7rem 1rem;
 		}
 		
 		.module-name {
-			display: none;
+			font-size: 0.7rem;
 		}
 		
 		.nav-modules {
@@ -407,7 +391,6 @@
 		}
 	}
 
-	/* Ensure no scrollbars */
 	:global(body::-webkit-scrollbar) {
 		display: none;
 	}
