@@ -1,4 +1,3 @@
-<!-- App.svelte -->
 <script>
 	import { onMount, onDestroy } from 'svelte';
 	import SourceTables from './SourceTables.svelte';
@@ -13,12 +12,12 @@
 	let date = new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }).toUpperCase();
 	
 	let modules = [
-		{ id: 'source_tables', name: 'SOURCES', code: 'SRC', status: 'ACTIVE' },
-		{ id: 'region_metrics', name: 'REGIONS', code: 'REG', status: 'ACTIVE' },
-		{ id: 'country_metrics', name: 'COUNTRIES', code: 'CTY', status: 'ACTIVE' },
-		{ id: 'data_center', name: 'DATA_CENTERS', code: 'DC', status: 'MONITORING' },
-		{ id: 'business_units', name: 'DIVISIONS', code: 'BU', status: 'ACTIVE' },
-		{ id: 'cio_metrics', name: 'EXECUTIVES', code: 'CIO', status: 'ACTIVE' }
+		{ id: 'source_tables', name: 'SOURCES', code: 'SRC' },
+		{ id: 'region_metrics', name: 'REGIONS', code: 'REG' },
+		{ id: 'country_metrics', name: 'COUNTRIES', code: 'CTY' },
+		{ id: 'data_center', name: 'DATA CENTERS', code: 'DC' },
+		{ id: 'business_units', name: 'DIVISIONS', code: 'BU' },
+		{ id: 'cio_metrics', name: 'EXECUTIVES', code: 'CIO' }
 	];
 
 	function switchView(moduleId) {
@@ -60,8 +59,8 @@
 					<div class="logo-hex">
 						<svg viewBox="0 0 80 80" class="logo-svg">
 							<polygon points="40,10 65,22.5 65,57.5 40,70 15,57.5 15,22.5" 
-									fill="none" stroke="#B794F6" stroke-width="2"/>
-							<text x="40" y="45" text-anchor="middle" fill="#F6B5FC" font-size="16" font-weight="bold" font-family="JetBrains Mono">LL</text>
+									fill="none" stroke="#8DE5FF" stroke-width="2"/>
+							<text x="40" y="45" text-anchor="middle" fill="#8DE5FF" font-size="16" font-weight="bold" font-family="JetBrains Mono">LL</text>
 						</svg>
 					</div>
 					<div class="logo-text">
@@ -77,6 +76,7 @@
 						<button 
 							class="nav-module {currentView === module.id ? 'active' : ''}"
 							on:click={() => switchView(module.id)}>
+							<span class="module-code">{module.code}</span>
 							<span class="module-name">{module.name}</span>
 						</button>
 					{/each}
@@ -128,10 +128,10 @@
 		margin: 0;
 		padding: 0;
 		box-sizing: border-box;
+		font-family: 'JetBrains Mono', monospace;
 	}
 
 	:global(body) {
-		font-family: 'JetBrains Mono', monospace;
 		background: #000000;
 		color: #FFFFFF;
 		overflow: hidden;
@@ -160,9 +160,8 @@
 	}
 
 	.header {
-		background: rgba(0, 0, 0, 0.95);
-		backdrop-filter: blur(10px);
-		border-bottom: 1px solid rgba(183, 148, 246, 0.2);
+		background: #000000;
+		border-bottom: 1px solid rgba(141, 229, 255, 0.2);
 		position: relative;
 		z-index: 100;
 		flex-shrink: 0;
@@ -203,7 +202,7 @@
 		margin: 0;
 		font-size: 1.3rem;
 		font-weight: 600;
-		color: #F6B5FC;
+		color: #8DE5FF;
 		letter-spacing: 0.1em;
 		line-height: 1;
 		font-family: 'JetBrains Mono', monospace;
@@ -228,10 +227,10 @@
 	.nav-modules {
 		display: flex;
 		gap: 0.5rem;
-		background: rgba(0, 0, 0, 0.8);
+		background: rgba(141, 229, 255, 0.05);
 		padding: 0.5rem;
 		border-radius: 12px;
-		border: 1px solid rgba(183, 148, 246, 0.1);
+		border: 1px solid rgba(141, 229, 255, 0.1);
 	}
 
 	.nav-module {
@@ -252,20 +251,26 @@
 		font-family: 'JetBrains Mono', monospace;
 	}
 
+	.module-code {
+		color: #FF8DFF;
+		font-size: 0.75rem;
+		font-weight: 600;
+	}
+
 	.module-name {
 		font-size: 0.75rem;
 		line-height: 1;
 	}
 
 	.nav-module:hover {
-		background: rgba(183, 148, 246, 0.1);
-		color: #B794F6;
+		background: rgba(141, 229, 255, 0.1);
+		color: #8DE5FF;
 	}
 
 	.nav-module.active {
-		background: rgba(183, 148, 246, 0.2);
-		color: #F6B5FC;
-		box-shadow: 0 0 10px rgba(183, 148, 246, 0.3);
+		background: rgba(141, 229, 255, 0.2);
+		color: #8DE5FF;
+		box-shadow: 0 0 10px rgba(141, 229, 255, 0.3);
 	}
 
 	.status-section {
@@ -303,7 +308,7 @@
 	}
 
 	.status-value.online {
-		color: #9BB5FF;
+		color: #8DE5FF;
 	}
 
 	.scan-line {
@@ -311,7 +316,7 @@
 		bottom: 0;
 		height: 1px;
 		width: 60px;
-		background: linear-gradient(90deg, transparent, #B794F6, transparent);
+		background: linear-gradient(90deg, transparent, #8DE5FF, transparent);
 		transition: left 0.1s linear;
 		pointer-events: none;
 		opacity: 0.6;
@@ -345,7 +350,7 @@
 		}
 		
 		.module-name {
-			font-size: 0.7rem;
+			display: none;
 		}
 		
 		.nav-modules {
