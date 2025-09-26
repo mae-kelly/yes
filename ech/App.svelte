@@ -1,3 +1,4 @@
+<!-- ech/App.svelte -->
 <script>
 	import { onMount, onDestroy } from 'svelte';
 	import SourceTables from './SourceTables.svelte';
@@ -60,8 +61,8 @@
 						<svg viewBox="0 0 80 80" class="logo-svg">
 							<defs>
 								<linearGradient id="logoGradient" x1="0%" y1="0%" x2="100%" y2="100%">
-									<stop offset="0%" style="stop-color:#00FFFF;stop-opacity:1" />
-									<stop offset="100%" style="stop-color:#FF00FF;stop-opacity:1" />
+									<stop offset="0%" style="stop-color:#00D4FF;stop-opacity:1" />
+									<stop offset="100%" style="stop-color:#BD93F9;stop-opacity:1" />
 								</linearGradient>
 							</defs>
 							<polygon points="40,10 65,22.5 65,57.5 40,70 15,57.5 15,22.5" 
@@ -168,7 +169,7 @@
 	.header {
 		background: rgba(0, 0, 0, 0.95);
 		backdrop-filter: blur(10px);
-		border-bottom: 1px solid rgba(0, 255, 255, 0.2);
+		border-bottom: 1px solid rgba(0, 212, 255, 0.2);
 		position: relative;
 		z-index: 100;
 		flex-shrink: 0;
@@ -209,7 +210,7 @@
 		margin: 0;
 		font-size: 1.3rem;
 		font-weight: 600;
-		background: linear-gradient(90deg, #00FFFF, #FF00FF);
+		background: linear-gradient(90deg, #00D4FF, #BD93F9);
 		-webkit-background-clip: text;
 		-webkit-text-fill-color: transparent;
 		background-clip: text;
@@ -262,7 +263,7 @@
 	}
 
 	.module-code {
-		color: #00FFFF;
+		color: #00D4FF;
 		font-weight: 600;
 		font-size: 0.75rem;
 	}
@@ -273,14 +274,14 @@
 	}
 
 	.nav-module:hover {
-		background: rgba(0, 255, 255, 0.1);
-		color: #00FFFF;
+		background: rgba(0, 212, 255, 0.1);
+		color: #00D4FF;
 	}
 
 	.nav-module.active {
-		background: linear-gradient(135deg, rgba(0, 255, 255, 0.2), rgba(255, 0, 255, 0.2));
-		color: #00FFFF;
-		box-shadow: 0 0 10px rgba(0, 255, 255, 0.3);
+		background: linear-gradient(135deg, rgba(0, 212, 255, 0.2), rgba(189, 147, 249, 0.2));
+		color: #00D4FF;
+		box-shadow: 0 0 10px rgba(0, 212, 255, 0.3);
 	}
 
 	.status-section {
@@ -318,8 +319,8 @@
 	}
 
 	.status-value.online {
-		color: #00FFFF;
-		text-shadow: 0 0 10px rgba(0, 255, 255, 0.5);
+		color: #00D4FF;
+		text-shadow: 0 0 10px rgba(0, 212, 255, 0.5);
 	}
 
 	.scan-line {
@@ -327,7 +328,7 @@
 		bottom: 0;
 		height: 1px;
 		width: 60px;
-		background: linear-gradient(90deg, transparent, #00FFFF, transparent);
+		background: linear-gradient(90deg, transparent, #00D4FF, transparent);
 		transition: left 0.1s linear;
 		pointer-events: none;
 		opacity: 0.6;
@@ -337,7 +338,7 @@
 		flex: 1;
 		position: relative;
 		overflow: hidden;
-		background: linear-gradient(135deg, rgba(0, 255, 255, 0.02) 0%, transparent 70%);
+		background: linear-gradient(135deg, rgba(0, 212, 255, 0.02) 0%, transparent 70%);
 		min-height: 0;
 	}
 
