@@ -1,442 +1,605 @@
-#!/usr/bin/env python3
-"""
-Ultimate CMDB Builder App
-Creates a comprehensive CMDB by aggregating and normalizing host data 
-from all tables listed in reviewed_labeled_columns.json
-
-Key Features:
-- Normalizes hostnames (removes domains, dashes, converts to lowercase)
-- Aggregates data for each unique host from multiple tables
-- Creates standardized CMDB with predefined columns
-- Tracks which tables each host appears in
-"""
-
-import json
-import logging
-import sys
-import os
-from pathlib import Path
-from datetime import datetime
-from collections import defaultdict, Counter
-from typing import Dict, List, Any, Set, Optional
+import dataiku
 import pandas as pd
+import numpy as np
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.preprocessing import StandardScaler
+import re
 
-# Add the project path to find gcp.client
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+# Input/output datasets
+input_dataset_names = ['table1', 'table2', 'table3', 'table4']
+output_dataset = dataiku.Dataset("output_table")
 
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
-logger = logging.getLogger(__name__)
+# Keywords to search for
+EMAIL_KEYWORDS = ['email', 'e-mail', 'mail', 'electronic mail']
+TEXT_KEYWORDS = ['text', 'sms', 'message', 'messaging', 'txt']
+GENERAL_KEYWORDS = ['e communication', 'ecommunication', 'e-communication', 'electronic communication']
 
-class UltimateCMDBBuilder:
-    def __init__(self, labels_file: str = 'reviewed_labeled_columns.json'):
-        self.labels_file = Path(labels_file)
-        self.output_file = Path('ultimate_cmdb.json')
-        self.csv_output = Path('ultimate_cmdb.csv')
-        
-        # Load column mappings
-        self.column_mappings = self._load_column_mappings()
-        
-        # Initialize BigQuery clients
-        self.client_managers = {}
-        self._initialize_bigquery_clients()
-        
-        # Define the standard CMDB columns
-        self.cmdb_columns = [
-            'host',
-            'apm', 
-            'app_class',
-            'business_unit',
-            'cio',
-            'cloud_region', 
-            'country',
-            'data_center',
-            'domain',
-            'edr_coverage',
-            'infrastructure_type',
-            'region',
-            'system_classification',
-            'tanium_coverage',
-            'featured_in_these_tables'
-        ]
-        
-        # Map column types from labels to CMDB columns
-        self.column_type_mapping = {
-            'host': 'host',
-            'apm': 'apm',
-            'app_class': 'app_class', 
-            'business_unit': 'business_unit',
-            'cio': 'cio',
-            'cloud_region': 'cloud_region',
-            'country': 'country',
-            'data_center': 'data_center',
-            'domain': 'domain',
-            'edr_coverage': 'edr_coverage',
-            'infrastructure_type': 'infrastructure_type',
-            'region': 'region',
-            'system_classification': 'system_classification',
-            'tanium_coverage': 'tanium_coverage'
-        }
-        
-        # Storage for CMDB data
-        self.cmdb_data = {}  # normalized_host -> {column: [values], tables: [table_names]}
-        
-    def _load_column_mappings(self) -> Dict[str, Dict[str, str]]:
-        """Load the reviewed labeled columns"""
-        if not self.labels_file.exists():
-            logger.error(f"Labels file {self.labels_file} not found!")
-            return {}
-        
-        try:
-            with open(self.labels_file, 'r') as f:
-                data = json.load(f)
-                columns = data.get('columns', {})
-                logger.info(f"Loaded column mappings from {self.labels_file}")
-                logger.info(f"Found {len(columns)} tables with labeled columns")
-                return columns
-        except Exception as e:
-            logger.error(f"Failed to load {self.labels_file}: {e}")
-            return {}
+# Comprehensive training data covering diverse real-world scenarios
+POSITIVE_EXAMPLES = [
+    # Direct capability statements
+    "email opt-in preference", "can receive text messages", "subscribed to email communications",
+    "consent for sms notifications", "email delivery enabled", "text message capability available",
+    "authorized email contact", "accepts electronic communications", "prefers email method",
+    "messaging channel active", "email address on file", "mobile number for texting",
     
-    def _initialize_bigquery_clients(self):
-        """Initialize BigQuery clients for all projects"""
-        try:
-            from gcp.client import BigQueryClientManager
-        except ImportError:
-            logger.error("BigQuery client not available. Cannot proceed.")
-            sys.exit(1)
+    # Permission and consent language
+    "agrees to receive emails", "opted in for text alerts", "permission granted for messaging",
+    "consented to email marketing", "allows text notifications", "approved for sms contact",
+    "accepts promotional emails", "subscribes to text updates", "email communications permitted",
+    "messaging opt-in confirmed", "authorized to send emails", "can text customer",
+    
+    # Preference and channel selection
+    "email is preferred contact method", "text messaging preferred", "chose email communication",
+    "selected sms as notification channel", "email preferred over mail", "wants text reminders",
+    "email communication channel selected", "text message option enabled", "prefers electronic mail",
+    "messaging is primary contact", "email for notifications", "text for urgent alerts",
+    
+    # Active status indicators
+    "email actively monitored", "text messaging active", "email account verified",
+    "phone number validated for sms", "email reachable", "text delivery successful",
+    "email engagement high", "responds to text messages", "email opens tracked",
+    "text message delivered", "email bounces none", "sms active subscriber",
+    
+    # Business/formal contexts
+    "email address provided for correspondence", "text number on record", "email contact information",
+    "sms capability confirmed", "email communication established", "text messaging available",
+    "email registered in system", "mobile contact for texting", "email on customer profile",
+    "text alerts enabled in account", "email notification settings active", "sms delivery channel open",
+    
+    # Implicit capability indicators
+    "check your email for updates", "we'll text you when ready", "sent via email",
+    "text message sent", "email confirmation received", "sms code delivered",
+    "email newsletter subscriber", "text alert recipient", "receives email invoices",
+    "gets text appointment reminders", "email statements delivered", "sms verification enabled",
+    
+    # Technical/system contexts
+    "email gateway configured", "text api enabled", "email server accessible",
+    "sms provider active", "email routing established", "text service provisioned",
+    "email protocol supported", "messaging infrastructure ready", "email capability verified",
+    "text platform integrated", "email system operational", "sms gateway connected",
+    
+    # Variation in phrasing
+    "has email", "can email", "email available", "text ok", "texting allowed",
+    "email works", "texts accepted", "email good", "sms yes", "email valid",
+    "text capable", "email functional", "messaging on", "email accessible", "text ready",
+    
+    # Double-opt-in and verification
+    "email verified and confirmed", "text opt-in double confirmed", "email validation complete",
+    "sms confirmation received", "email double opt-in", "text subscription verified",
+    
+    # Frequency and cadence
+    "receives weekly emails", "daily text updates", "monthly email newsletter",
+    "real-time text alerts", "periodic email communications", "regular sms notifications",
+    
+    # Context with other channels
+    "prefers email over phone", "text instead of mail", "email rather than call",
+    "sms preferred to postal", "email more than fax", "text not phone call"
+]
+
+NEGATIVE_EXAMPLES = [
+    # Direct rejection
+    "no email preference", "opted out of text", "email declined", "unsubscribed from messages",
+    "text not available", "email prohibited", "cannot send sms", "messaging disabled",
+    "do not email", "rejected text communications", "email blocked", "text messaging off",
+    
+    # Opt-out language
+    "unsubscribed from emails", "opted out of texts", "removed from email list",
+    "text opt-out confirmed", "email preference removed", "sms unsubscribe",
+    "no longer receives emails", "text alerts disabled", "email communications stopped",
+    "messaging opt-out", "declined email marketing", "refused text notifications",
+    
+    # Explicit refusal
+    "does not want emails", "refuses text messages", "no email contact",
+    "rejects sms notifications", "email not permitted", "text messages unwanted",
+    "email contact denied", "messaging not allowed", "no email authorization",
+    "text delivery blocked", "email not authorized", "sms not approved",
+    
+    # Invalid or missing information
+    "email address missing", "no phone number for text", "email invalid",
+    "text number unavailable", "email not provided", "mobile number unknown",
+    "email bounced permanently", "text undeliverable", "email does not exist",
+    "phone disconnected for sms", "email hard bounce", "text number invalid",
+    
+    # Inactive status
+    "email account closed", "text messaging inactive", "email suspended",
+    "sms service terminated", "email deactivated", "text capability removed",
+    "email no longer monitored", "text line disconnected", "email abandoned",
+    "messaging service cancelled", "email unreachable", "text delivery failed",
+    
+    # Privacy and restriction
+    "email privacy settings block", "text restricted by carrier", "email spam filtered",
+    "sms blocked by user", "email suppressed", "text number on dnc list",
+    "email blacklisted", "messaging restricted", "email quarantined",
+    "text suppression active", "email do not contact", "sms opt-out list",
+    
+    # Past tense (capability no longer exists)
+    "previously had email", "used to text", "formerly email subscriber",
+    "past text recipient", "email was active", "text messaging was enabled",
+    "old email address", "previous mobile number", "expired email contact",
+    "outdated text number", "historical email preference", "legacy messaging contact",
+    
+    # Negative with absolutes
+    "never email", "never text", "absolutely no email", "definitely no texts",
+    "under no circumstances email", "will not accept sms", "refuses all email",
+    "blocks all texts", "no email whatsoever", "zero text messages",
+    
+    # Legal/compliance restrictions
+    "email restricted by law", "text forbidden by regulation", "email prohibited by policy",
+    "sms not compliant", "email violates terms", "text not legal",
+    "email against guidelines", "messaging non-compliant", "email restricted account",
+    
+    # System/technical blocks
+    "email filtering all messages", "text gateway blocked", "email server rejects",
+    "sms carrier blocking", "email firewall blocking", "text service unavailable",
+    "email system down", "messaging platform offline", "email delivery impossible",
+    
+    # Conditional negatives
+    "email only if emergency", "text not for marketing", "email restricted use only",
+    "sms for security only", "email prohibited for promotions", "text limited to alerts",
+    
+    # Variation in phrasing
+    "no email", "cant email", "email unavailable", "text not ok", "texting not allowed",
+    "email doesnt work", "texts rejected", "email bad", "sms no", "email invalid",
+    "text not capable", "email nonfunctional", "messaging off", "email inaccessible", "text not ready",
+    
+    # Ambiguous negatives
+    "email unknown", "text unclear", "email status pending", "text unconfirmed",
+    "email not verified", "text awaiting confirmation"
+]
+
+# Additional contextual patterns for feature engineering
+CAPABILITY_INDICATORS = [
+    'opt', 'prefer', 'consent', 'agree', 'subscribe', 'allow', 'enable', 'accept',
+    'permission', 'authorized', 'can', 'able', 'capability', 'available', 'method',
+    'channel', 'contact', 'communicate', 'send', 'receive', 'deliver', 'notification',
+    'alert', 'yes', 'approved', 'confirmed', 'verified', 'active', 'on', 'ok',
+    'permitted', 'granted', 'allowed', 'ready', 'functional', 'working', 'operational',
+    'valid', 'registered', 'enrolled', 'signed up', 'monitored', 'reachable'
+]
+
+NON_CAPABILITY_INDICATORS = [
+    'no', 'not', 'never', 'none', 'denied', 'reject', 'refuse', 'decline',
+    'opt out', 'opt-out', 'optout', 'unsubscribe', 'disable', 'block', 'prohibit',
+    'restrict', 'ban', 'forbidden', 'cannot', 'unable', 'invalid', 'missing',
+    'unavailable', 'closed', 'suspended', 'deactivated', 'terminated', 'removed',
+    'blocked', 'suppressed', 'blacklisted', 'restricted', 'quarantined', 'bounced',
+    'failed', 'disconnected', 'off', 'inactive', 'cancelled', 'expired', 'old',
+    'previous', 'former', 'past', 'historical', 'legacy', 'outdated', 'bad'
+]
+
+class AdvancedNeuralNet:
+    """Advanced feedforward neural network with dropout and batch normalization concepts"""
+    
+    def __init__(self, input_size, hidden_sizes=[32, 16], learning_rate=0.01, dropout_rate=0.2):
+        self.layers = []
+        self.learning_rate = learning_rate
+        self.dropout_rate = dropout_rate
         
-        # Extract project IDs from the column mappings
-        project_ids = set()
-        for table_path in self.column_mappings.keys():
-            parts = table_path.split('.')
-            if len(parts) >= 1:
-                project_ids.add(parts[0])
+        # Initialize multi-layer architecture
+        layer_sizes = [input_size] + hidden_sizes + [1]
         
-        logger.info(f"Initializing BigQuery clients for {len(project_ids)} projects...")
+        for i in range(len(layer_sizes) - 1):
+            # Xavier/He initialization
+            scale = np.sqrt(2.0 / layer_sizes[i])
+            W = np.random.randn(layer_sizes[i], layer_sizes[i+1]) * scale
+            b = np.zeros((1, layer_sizes[i+1]))
+            self.layers.append({'W': W, 'b': b, 'A': None, 'Z': None})
+    
+    def relu(self, Z):
+        """ReLU activation with numerical stability"""
+        return np.maximum(0, Z)
+    
+    def leaky_relu(self, Z, alpha=0.01):
+        """Leaky ReLU to prevent dying neurons"""
+        return np.where(Z > 0, Z, alpha * Z)
+    
+    def relu_derivative(self, Z):
+        """Derivative of ReLU"""
+        return (Z > 0).astype(float)
+    
+    def leaky_relu_derivative(self, Z, alpha=0.01):
+        """Derivative of Leaky ReLU"""
+        return np.where(Z > 0, 1, alpha)
+    
+    def sigmoid(self, Z):
+        """Sigmoid with numerical stability"""
+        return 1 / (1 + np.exp(-np.clip(Z, -500, 500)))
+    
+    def forward(self, X, training=True):
+        """Forward propagation through all layers"""
+        A = X
         
-        # Initialize clients for each project
-        for project_id in project_ids:
-            try:
-                manager = BigQueryClientManager(project_id)
-                if manager.test_connection():
-                    self.client_managers[project_id] = manager
-                    logger.info(f"✅ Connected to project: {project_id}")
+        for i, layer in enumerate(self.layers):
+            Z = np.dot(A, layer['W']) + layer['b']
+            layer['Z'] = Z
+            
+            # Apply activation
+            if i < len(self.layers) - 1:
+                # Hidden layers use Leaky ReLU
+                A = self.leaky_relu(Z)
+                
+                # Apply dropout during training
+                if training and self.dropout_rate > 0:
+                    dropout_mask = np.random.binomial(1, 1 - self.dropout_rate, size=A.shape)
+                    A = A * dropout_mask / (1 - self.dropout_rate)
+            else:
+                # Output layer uses sigmoid
+                A = self.sigmoid(Z)
+            
+            layer['A'] = A
+        
+        return A
+    
+    def backward(self, X, y):
+        """Backward propagation with gradient clipping"""
+        m = X.shape[0]
+        
+        # Start with output layer gradient
+        dA = self.layers[-1]['A'] - y
+        
+        # Backpropagate through layers
+        for i in range(len(self.layers) - 1, -1, -1):
+            layer = self.layers[i]
+            
+            if i < len(self.layers) - 1:
+                # Hidden layers
+                dZ = dA * self.leaky_relu_derivative(layer['Z'])
+            else:
+                # Output layer
+                dZ = dA
+            
+            # Get input to this layer
+            A_prev = X if i == 0 else self.layers[i-1]['A']
+            
+            # Compute gradients
+            dW = np.dot(A_prev.T, dZ) / m
+            db = np.sum(dZ, axis=0, keepdims=True) / m
+            
+            # Gradient clipping to prevent exploding gradients
+            dW = np.clip(dW, -5, 5)
+            db = np.clip(db, -5, 5)
+            
+            # Update parameters
+            layer['W'] -= self.learning_rate * dW
+            layer['b'] -= self.learning_rate * db
+            
+            # Prepare gradient for previous layer
+            if i > 0:
+                dA = np.dot(dZ, layer['W'].T)
+    
+    def train(self, X, y, epochs=500, batch_size=16, validation_split=0.2):
+        """Train with mini-batch gradient descent and validation"""
+        # Split into train/validation
+        split_idx = int(len(X) * (1 - validation_split))
+        X_train, X_val = X[:split_idx], X[split_idx:]
+        y_train, y_val = y[:split_idx], y[split_idx:]
+        
+        best_val_loss = float('inf')
+        patience = 50
+        patience_counter = 0
+        
+        for epoch in range(epochs):
+            # Shuffle training data
+            indices = np.random.permutation(len(X_train))
+            X_shuffled = X_train[indices]
+            y_shuffled = y_train[indices]
+            
+            # Mini-batch training
+            for i in range(0, len(X_train), batch_size):
+                X_batch = X_shuffled[i:i+batch_size]
+                y_batch = y_shuffled[i:i+batch_size]
+                
+                # Forward and backward pass
+                self.forward(X_batch, training=True)
+                self.backward(X_batch, y_batch)
+            
+            # Validation and early stopping
+            if epoch % 10 == 0:
+                train_output = self.forward(X_train, training=False)
+                val_output = self.forward(X_val, training=False)
+                
+                train_loss = -np.mean(y_train * np.log(train_output + 1e-8) + 
+                                     (1 - y_train) * np.log(1 - train_output + 1e-8))
+                val_loss = -np.mean(y_val * np.log(val_output + 1e-8) + 
+                                   (1 - y_val) * np.log(1 - val_output + 1e-8))
+                
+                # Calculate accuracy
+                train_acc = np.mean((train_output > 0.5) == y_train)
+                val_acc = np.mean((val_output > 0.5) == y_val)
+                
+                print(f"Epoch {epoch}: Train Loss={train_loss:.4f}, Val Loss={val_loss:.4f}, "
+                      f"Train Acc={train_acc:.3f}, Val Acc={val_acc:.3f}")
+                
+                # Early stopping
+                if val_loss < best_val_loss:
+                    best_val_loss = val_loss
+                    patience_counter = 0
                 else:
-                    logger.warning(f"⚠️ Failed to connect to project: {project_id}")
-            except Exception as e:
-                logger.warning(f"❌ Could not connect to {project_id}: {e}")
-        
-        if not self.client_managers:
-            logger.error("No BigQuery connections available. Cannot proceed.")
-            sys.exit(1)
-        
-        logger.info(f"Successfully connected to {len(self.client_managers)} projects")
-    
-    def normalize_hostname(self, hostname: str) -> str:
-        """
-        Normalize hostname by:
-        1. Converting to lowercase
-        2. Removing everything after first dot (domain)
-        3. Removing all dashes
-        """
-        if not hostname or pd.isna(hostname):
-            return ""
-        
-        hostname = str(hostname).strip().lower()
-        
-        # Remove domain (everything after first dot)
-        if '.' in hostname:
-            hostname = hostname.split('.')[0]
-        
-        # Remove all dashes
-        hostname = hostname.replace('-', '')
-        
-        return hostname
-    
-    def build_cmdb(self):
-        """Main method to build the ultimate CMDB"""
-        if not self.column_mappings:
-            logger.error("No column mappings available!")
-            return
-        
-        logger.info("🚀 Starting Ultimate CMDB build process...")
-        
-        # Process each table
-        total_tables = len(self.column_mappings)
-        for i, (table_path, table_columns) in enumerate(self.column_mappings.items(), 1):
-            logger.info(f"Processing table {i}/{total_tables}: {table_path}")
-            self._process_table(table_path, table_columns)
-        
-        # Generate final CMDB
-        final_cmdb = self._generate_final_cmdb()
-        
-        # Save results
-        self._save_results(final_cmdb)
-        
-        # Show statistics
-        self._show_statistics(final_cmdb)
-    
-    def _process_table(self, table_path: str, table_columns: Dict[str, str]):
-        """Process a single table and extract relevant data"""
-        # Find host columns and other relevant columns
-        host_columns = [col for col, col_type in table_columns.items() if col_type == 'host']
-        other_columns = {col: col_type for col, col_type in table_columns.items() 
-                        if col_type in self.column_type_mapping and col_type != 'host'}
-        
-        if not host_columns:
-            logger.debug(f"No host columns found in {table_path}, skipping")
-            return
-        
-        # Get project ID for BigQuery client
-        parts = table_path.split('.')
-        if len(parts) < 3:
-            logger.warning(f"Invalid table path format: {table_path}")
-            return
-        
-        project_id = parts[0]
-        client_manager = self.client_managers.get(project_id)
-        
-        if not client_manager:
-            logger.warning(f"No BigQuery client for project {project_id}")
-            return
-        
-        try:
-            # Build query to get data
-            query = self._build_table_query(table_path, host_columns, other_columns)
-            
-            # Execute query
-            with client_manager.get_client() as client:
-                logger.debug(f"Executing query for {table_path}")
-                query_job = client.query(query)
-                results = query_job.result(timeout=300)  # 5 minute timeout
+                    patience_counter += 1
                 
-                # Process results
-                row_count = 0
-                for row in results:
-                    self._process_row(row, table_path, host_columns, other_columns)
-                    row_count += 1
-                
-                logger.info(f"  Processed {row_count:,} rows from {table_path}")
-                
-        except Exception as e:
-            logger.error(f"Failed to process {table_path}: {e}")
+                if patience_counter >= patience:
+                    print(f"Early stopping at epoch {epoch}")
+                    break
     
-    def _build_table_query(self, table_path: str, host_columns: List[str], 
-                          other_columns: Dict[str, str]) -> str:
-        """Build SQL query to extract data from a table"""
-        # Select all host columns and other relevant columns
-        select_columns = []
-        
-        # Add host columns
-        for col in host_columns:
-            select_columns.append(f"`{col}` as host_{col}")
-        
-        # Add other columns  
-        for col, col_type in other_columns.items():
-            select_columns.append(f"`{col}` as {col_type}_{col}")
-        
-        # Build WHERE clause to filter out nulls and empty values
-        where_conditions = []
-        for col in host_columns:
-            where_conditions.append(f"(`{col}` IS NOT NULL AND `{col}` != '' AND `{col}` != 'null')")
-        
-        where_clause = " OR ".join(where_conditions) if where_conditions else "1=1"
-        
-        query = f"""
-        SELECT {', '.join(select_columns)}
-        FROM `{table_path}`
-        WHERE {where_clause}
-        """
-        
-        return query
-    
-    def _process_row(self, row, table_path: str, host_columns: List[str], 
-                    other_columns: Dict[str, str]):
-        """Process a single row from BigQuery results"""
-        # Extract and normalize hostnames
-        hostnames = []
-        for col in host_columns:
-            hostname_value = getattr(row, f'host_{col}', None)
-            if hostname_value:
-                normalized = self.normalize_hostname(hostname_value)
-                if normalized:
-                    hostnames.append(normalized)
-        
-        # Process each unique normalized hostname
-        for normalized_host in set(hostnames):
-            if not normalized_host:
-                continue
-                
-            # Initialize host entry if not exists
-            if normalized_host not in self.cmdb_data:
-                self.cmdb_data[normalized_host] = {
-                    'tables': set(),
-                    'data': defaultdict(set)
-                }
-            
-            # Add table to host's table list
-            self.cmdb_data[normalized_host]['tables'].add(table_path)
-            
-            # Add other column data
-            for col, col_type in other_columns.items():
-                value = getattr(row, f'{col_type}_{col}', None)
-                if value and str(value).strip() and str(value).lower() not in ['null', 'none', '']:
-                    cmdb_column = self.column_type_mapping.get(col_type)
-                    if cmdb_column:
-                        self.cmdb_data[normalized_host]['data'][cmdb_column].add(str(value).strip())
-    
-    def _generate_final_cmdb(self) -> List[Dict[str, Any]]:
-        """Generate the final CMDB with standardized columns"""
-        logger.info(f"Generating final CMDB for {len(self.cmdb_data):,} unique hosts...")
-        
-        final_cmdb = []
-        
-        for normalized_host, host_data in self.cmdb_data.items():
-            # Create record for this host
-            record = {'host': normalized_host}
-            
-            # Add all CMDB columns
-            for column in self.cmdb_columns[1:-1]:  # Skip 'host' and 'featured_in_these_tables'
-                values = list(host_data['data'].get(column, set()))
-                
-                if not values:
-                    record[column] = None
-                elif len(values) == 1:
-                    record[column] = values[0]
-                else:
-                    # Multiple values - join with pipe separator
-                    record[column] = ' | '.join(sorted(values))
-            
-            # Add featured tables
-            record['featured_in_these_tables'] = ' | '.join(sorted(host_data['tables']))
-            
-            final_cmdb.append(record)
-        
-        # Sort by hostname
-        final_cmdb.sort(key=lambda x: x['host'])
-        
-        return final_cmdb
-    
-    def _save_results(self, final_cmdb: List[Dict[str, Any]]):
-        """Save the CMDB results to JSON and CSV"""
-        # Prepare metadata
-        metadata = {
-            'creation_timestamp': datetime.now().isoformat(),
-            'source_file': str(self.labels_file),
-            'total_unique_hosts': len(final_cmdb),
-            'total_tables_processed': len(self.column_mappings),
-            'cmdb_columns': self.cmdb_columns,
-            'normalization_rules': [
-                'Convert to lowercase',
-                'Remove domain (everything after first dot)',
-                'Remove all dashes'
-            ]
-        }
-        
-        # Save JSON
-        output_data = {
-            'metadata': metadata,
-            'cmdb_data': final_cmdb
-        }
-        
-        with open(self.output_file, 'w') as f:
-            json.dump(output_data, f, indent=2, default=str)
-        
-        logger.info(f"💾 Saved JSON results to {self.output_file}")
-        
-        # Save CSV
-        if final_cmdb:
-            df = pd.DataFrame(final_cmdb)
-            df.to_csv(self.csv_output, index=False)
-            logger.info(f"💾 Saved CSV results to {self.csv_output}")
-        
-    def _show_statistics(self, final_cmdb: List[Dict[str, Any]]):
-        """Show statistics about the generated CMDB"""
-        print("\n" + "="*60)
-        print("ULTIMATE CMDB GENERATION COMPLETE")
-        print("="*60)
-        
-        print(f"📊 Summary:")
-        print(f"  Total unique hosts: {len(final_cmdb):,}")
-        print(f"  Tables processed: {len(self.column_mappings):,}")
-        print(f"  BigQuery projects: {len(self.client_managers)}")
-        
-        # Column population statistics
-        if final_cmdb:
-            print(f"\n📈 Column Population:")
-            for column in self.cmdb_columns:
-                populated = sum(1 for record in final_cmdb if record.get(column))
-                percentage = (populated / len(final_cmdb)) * 100
-                print(f"  {column:25} {populated:6,} ({percentage:5.1f}%)")
-        
-        # Table distribution
-        table_counts = Counter()
-        for record in final_cmdb:
-            tables = record.get('featured_in_these_tables', '')
-            if tables:
-                table_list = [t.strip() for t in tables.split('|')]
-                table_counts.update(table_list)
-        
-        print(f"\n🏆 Top Tables by Host Count:")
-        for table, count in table_counts.most_common(10):
-            print(f"  {table:50} {count:6,} hosts")
-        
-        # Multi-table hosts
-        multi_table_hosts = sum(1 for record in final_cmdb 
-                               if '|' in record.get('featured_in_these_tables', ''))
-        
-        print(f"\n🔗 Host Distribution:")
-        print(f"  Hosts in multiple tables: {multi_table_hosts:,}")
-        print(f"  Hosts in single table: {len(final_cmdb) - multi_table_hosts:,}")
-        
-        print(f"\n📁 Output Files:")
-        print(f"  JSON: {self.output_file}")
-        print(f"  CSV:  {self.csv_output}")
-        print("="*60)
+    def predict(self, X):
+        """Make predictions"""
+        return self.forward(X, training=False)
 
-def main():
-    """Main entry point"""
-    import argparse
+def extract_advanced_features(text):
+    """Extract hand-crafted features for better understanding"""
+    if pd.isna(text) or not text:
+        return np.zeros(10)
     
-    parser = argparse.ArgumentParser(
-        description='Build Ultimate CMDB from reviewed labeled columns'
-    )
-    parser.add_argument(
-        '--labels',
-        default='reviewed_labeled_columns.json',
-        help='Input file with reviewed column labels (default: reviewed_labeled_columns.json)'
-    )
-    parser.add_argument(
-        '--output',
-        default='ultimate_cmdb.json',
-        help='Output JSON file (default: ultimate_cmdb.json)'
-    )
-    parser.add_argument(
-        '--csv-output', 
-        default='ultimate_cmdb.csv',
-        help='Output CSV file (default: ultimate_cmdb.csv)'
-    )
+    text_lower = str(text).lower()
     
-    args = parser.parse_args()
+    features = []
     
-    # Create CMDB builder
-    builder = UltimateCMDBBuilder(labels_file=args.labels)
+    # Feature 1: Count of positive capability indicators
+    positive_count = sum(1 for word in CAPABILITY_INDICATORS if word in text_lower)
+    features.append(min(positive_count / 5, 1))  # Normalize
     
-    # Override output paths if specified
-    if args.output != 'ultimate_cmdb.json':
-        builder.output_file = Path(args.output)
-    if args.csv_output != 'ultimate_cmdb.csv':
-        builder.csv_output = Path(args.csv_output)
+    # Feature 2: Count of negative indicators
+    negative_count = sum(1 for word in NON_CAPABILITY_INDICATORS if word in text_lower)
+    features.append(min(negative_count / 5, 1))
     
-    # Build the CMDB
+    # Feature 3: Presence of strong positive words
+    strong_positive = ['yes', 'active', 'enabled', 'confirmed', 'verified', 'ok']
+    features.append(1 if any(word in text_lower for word in strong_positive) else 0)
+    
+    # Feature 4: Presence of strong negative words
+    strong_negative = ['no', 'not', 'never', 'blocked', 'unsubscribed', 'opt-out', 'declined']
+    features.append(1 if any(word in text_lower for word in strong_negative) else 0)
+    
+    # Feature 5: Text length (normalized)
+    features.append(min(len(text_lower) / 200, 1))
+    
+    # Feature 6: Word count (normalized)
+    features.append(min(len(text_lower.split()) / 20, 1))
+    
+    # Feature 7: Presence of negation pattern "not/no + positive word"
+    negation_pattern = any(re.search(rf'\b(no|not|never)\s+{word}', text_lower) 
+                          for word in CAPABILITY_INDICATORS[:10])
+    features.append(1 if negation_pattern else 0)
+    
+    # Feature 8: Presence of permission/consent words
+    permission_words = ['consent', 'permission', 'authorized', 'opt-in', 'subscribe']
+    features.append(1 if any(word in text_lower for word in permission_words) else 0)
+    
+    # Feature 9: Ratio of positive to negative words
+    if negative_count > 0:
+        features.append(positive_count / (positive_count + negative_count))
+    else:
+        features.append(1 if positive_count > 0 else 0.5)
+    
+    # Feature 10: Contains both email/text keyword AND capability language
+    has_comm_keyword = any(kw in text_lower for kw in 
+                          ['email', 'text', 'sms', 'message', 'mail', 'messaging'])
+    has_capability = any(kw in text_lower for kw in CAPABILITY_INDICATORS[:15])
+    features.append(1 if (has_comm_keyword and has_capability) else 0)
+    
+    return np.array(features)
+
+# Prepare comprehensive training data
+print("="*60)
+print("TRAINING ADVANCED NEURAL NETWORK MODEL")
+print("="*60)
+
+all_examples = POSITIVE_EXAMPLES + NEGATIVE_EXAMPLES
+labels = np.array([1] * len(POSITIVE_EXAMPLES) + [0] * len(NEGATIVE_EXAMPLES)).reshape(-1, 1)
+
+print(f"Training examples: {len(POSITIVE_EXAMPLES)} positive, {len(NEGATIVE_EXAMPLES)} negative")
+
+# Create TF-IDF features (capture word importance)
+vectorizer = TfidfVectorizer(
+    max_features=100,
+    ngram_range=(1, 3),  # Capture 1-3 word phrases
+    min_df=1,
+    sublinear_tf=True
+)
+X_tfidf = vectorizer.fit_transform(all_examples).toarray()
+
+# Extract hand-crafted features
+X_features = np.array([extract_advanced_features(text) for text in all_examples])
+
+# Combine TF-IDF and hand-crafted features
+X_combined = np.hstack([X_tfidf, X_features])
+
+# Standardize
+scaler = StandardScaler()
+X_train = scaler.fit_transform(X_combined)
+
+print(f"Feature dimensionality: {X_train.shape[1]}")
+print(f"TF-IDF features: {X_tfidf.shape[1]}, Hand-crafted features: {X_features.shape[1]}")
+
+# Initialize and train advanced neural network
+print("\nInitializing neural network architecture...")
+print("Architecture: Input -> 32 neurons -> 16 neurons -> Output")
+print("Activation: Leaky ReLU (hidden), Sigmoid (output)")
+print("Regularization: Dropout (20%)")
+print("Optimization: Mini-batch gradient descent with early stopping\n")
+
+nn = AdvancedNeuralNet(
+    input_size=X_train.shape[1],
+    hidden_sizes=[32, 16],
+    learning_rate=0.01,
+    dropout_rate=0.2
+)
+
+nn.train(X_train, labels, epochs=500, batch_size=16, validation_split=0.2)
+
+print("\n✅ Model training complete!\n")
+
+def extract_context(text, keyword, window=150):
+    """Extract broader context around keyword"""
+    text_lower = str(text).lower()
+    match = re.search(rf'.{{0,{window}}}{re.escape(keyword)}.{{0,{window}}}', text_lower)
+    return match.group(0) if match else text_lower[:300]
+
+def predict_capability(text):
+    """Use trained neural network to predict capability"""
+    if pd.isna(text) or not text:
+        return 0.0
+    
+    text_str = str(text).lower()
+    
+    # Get TF-IDF features
+    X_tfidf = vectorizer.transform([text_str]).toarray()
+    
+    # Get hand-crafted features
+    X_features = extract_advanced_features(text_str).reshape(1, -1)
+    
+    # Combine and scale
+    X_combined = np.hstack([X_tfidf, X_features])
+    X = scaler.transform(X_combined)
+    
+    # Get prediction
+    prediction = nn.predict(X)[0][0]
+    
+    return float(prediction)
+
+# Process datasets
+print("="*60)
+print("PROCESSING DATASETS")
+print("="*60)
+
+results = {}
+
+for dataset_name in input_dataset_names:
+    print(f"\n📊 Processing {dataset_name}...")
+    
     try:
-        builder.build_cmdb()
-        print("\n✅ Ultimate CMDB generation completed successfully!")
-    except KeyboardInterrupt:
-        print("\n⚠️ Process interrupted by user")
-    except Exception as e:
-        logger.error(f"❌ Failed to build CMDB: {e}")
-        raise
+        df = dataiku.Dataset(dataset_name).get_dataframe()
+    except:
+        print(f"⚠️  Could not load {dataset_name}")
+        continue
+    
+    if 'idn_eon' not in df.columns:
+        print(f"⚠️  Skipping {dataset_name} - no idn_eon column")
+        continue
+    
+    unique_idns = df['idn_eon'].dropna().unique()
+    print(f"   Found {len(unique_idns)} unique idn_eon values")
+    
+    for idx, idn_eon in enumerate(unique_idns):
+        if idx % 100 == 0 and idx > 0:
+            print(f"   Processed {idx}/{len(unique_idns)} IDNs...")
+        
+        if idn_eon not in results:
+            results[idn_eon] = {
+                'idn_eon': idn_eon,
+                'data_sources': set(),
+                'email_findings': [],
+                'text_findings': []
+            }
+        
+        results[idn_eon]['data_sources'].add(dataset_name)
+        idn_rows = df[df['idn_eon'] == idn_eon]
+        
+        # Check all columns
+        for col in df.columns:
+            if col == 'idn_eon':
+                continue
+            
+            for value in idn_rows[col]:
+                if pd.isna(value):
+                    continue
+                
+                value_str = str(value).lower()
+                
+                # Check for email keywords
+                for keyword in EMAIL_KEYWORDS:
+                    if keyword in value_str:
+                        context = extract_context(value, keyword)
+                        confidence = predict_capability(context)
+                        
+                        # Threshold: only add if confidence > 0.5
+                        if confidence > 0.5:
+                            results[idn_eon]['email_findings'].append({
+                                'location': f"{col} [{dataset_name}]",
+                                'confidence': confidence,
+                                'context': context[:100]
+                            })
+                        break
+                
+                # Check for text keywords
+                for keyword in TEXT_KEYWORDS:
+                    if keyword in value_str:
+                        context = extract_context(value, keyword)
+                        confidence = predict_capability(context)
+                        
+                        if confidence > 0.5:
+                            results[idn_eon]['text_findings'].append({
+                                'location': f"{col} [{dataset_name}]",
+                                'confidence': confidence,
+                                'context': context[:100]
+                            })
+                        break
+                
+                # Check for general e-communication keywords
+                for keyword in GENERAL_KEYWORDS:
+                    if keyword in value_str:
+                        context = extract_context(value, keyword)
+                        confidence = predict_capability(context)
+                        
+                        if confidence > 0.5:
+                            # E-communication could be both
+                            results[idn_eon]['email_findings'].append({
+                                'location': f"{col} [{dataset_name}]",
+                                'confidence': confidence,
+                                'context': context[:100]
+                            })
+                            results[idn_eon]['text_findings'].append({
+                                'location': f"{col} [{dataset_name}]",
+                                'confidence': confidence,
+                                'context': context[:100]
+                            })
+                        break
 
-if __name__ == "__main__":
-    main()
+# Build output
+print("\n📝 Building output dataset...")
+output_data = []
+
+for idn_eon, data in results.items():
+    has_email = len(data['email_findings']) > 0
+    has_text = len(data['text_findings']) > 0
+    
+    if has_email or has_text:
+        comm_type = []
+        if has_email:
+            comm_type.append('Email')
+        if has_text:
+            comm_type.append('Text')
+        
+        # Get highest confidence for each type
+        email_confidence = max([f['confidence'] for f in data['email_findings']], default=0.0)
+        text_confidence = max([f['confidence'] for f in data['text_findings']], default=0.0)
+        
+        # Deduplicate locations
+        email_locations = list(set([f['location'] for f in data['email_findings']]))
+        text_locations = list(set([f['location'] for f in data['text_findings']]))
+        
+        output_data.append({
+            'idn_eon': idn_eon,
+            'data_source': ', '.join(sorted(data['data_sources'])),
+            'communication_type': ', '.join(comm_type),
+            'email_found_in': ', '.join(sorted(email_locations)) if email_locations else '',
+            'email_confidence': round(email_confidence, 3) if has_email else '',
+            'text_found_in': ', '.join(sorted(text_locations)) if text_locations else '',
+            'text_confidence': round(text_confidence, 3) if has_text else ''
+        })
+
+output_df = pd.DataFrame(output_data).sort_values('idn_eon').reset_index(drop=True)
+output_dataset.write_with_schema(output_df)
+
+# Final summary
+print("\n" + "="*60)
+print("✅ PROCESSING COMPLETE")
+print("="*60)
+print(f"Total unique idn_eon processed: {len(results)}")
+print(f"IDNs with communication capabilities: {len(output_df)}")
+print(f"\nConfidence Distribution:")
+print(f"  High confidence (>0.8): {len(output_df[(output_df['email_confidence'] > 0.8) | (output_df['text_confidence'] > 0.8)])}")
+print(f"  Medium confidence (0.6-0.8): {len(output_df[((output_df['email_confidence'] >= 0.6) & (output_df['email_confidence'] <= 0.8)) | ((output_df['text_confidence'] >= 0.6) & (output_df['text_confidence'] <= 0.8))])}")
+print(f"  Lower confidence (0.5-0.6): {len(output_df[((output_df['email_confidence'] >= 0.5) & (output_df['email_confidence'] < 0.6)) | ((output_df['text_confidence'] >= 0.5) & (output_df['text_confidence'] < 0.6))])}")
+print(f"\nOutput written to: {output_dataset.name}")
+print("="*60)
