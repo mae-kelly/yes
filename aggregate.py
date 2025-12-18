@@ -408,28 +408,22 @@ def extract_semantic_features(text):
     text_lower = text_str.lower()
     features = []
     
-    # Feature 1: Definitive communication phrases
     has_def_comm = any(phrase in text_lower for phrase in DEFINITIVE_COMMUNICATION_PHRASES)
     features.append(1 if has_def_comm else 0)
     
-    # Feature 2: Definitive collection phrases
     has_def_collection = any(phrase in text_lower for phrase in DEFINITIVE_DATA_COLLECTION_PHRASES)
     features.append(1 if has_def_collection else 0)
     
-    # Feature 3: E-communication
     has_ecomm = any(word in text_lower for word in ['e-communication', 'ecommunication', 'e-communications'])
     features.append(1 if has_ecomm else 0)
     
-    # Feature 4: Capability language
     capability_language = ['provides ability', 'ability to send', 'allows users', 'enables users']
     features.append(1 if any(phrase in text_lower for phrase in capability_language) else 0)
     
-    # Feature 5: List format
     list_patterns = [r'email\s*,\s*phone', r'phone\s*,\s*email']
     has_list_format = any(re.search(pattern, text_lower) for pattern in list_patterns)
     features.append(1 if has_list_format else 0)
     
-    # Features 6-30: Additional semantic indicators
     active_sending = ['send', 'deliver', 'dispatch', 'transmit', 'push']
     features.append(1 if any(verb in text_lower for verb in active_sending) else 0)
     
@@ -491,7 +485,6 @@ def extract_semantic_features(text):
     
     features.extend([0.5, 0.5, 0.5, 0.5])
     
-    # Combined score
     score = 0
     if has_def_comm: score += 5
     if has_ecomm: score += 4
@@ -510,12 +503,7 @@ all_examples = POSITIVE_EXAMPLES + NEGATIVE_EXAMPLES
 labels = np.array([1] * len(POSITIVE_EXAMPLES) + [0] * len(NEGATIVE_EXAMPLES)).reshape(-1, 1)
 
 print("\nStep 1: TF-IDF feature extraction...")
-vectorizer = TfidfVectorizer(
-    max_features=150,
-    ngram_range=(1, 5),
-    min_df=1,
-    sublinear_tf=True
-)
+vectorizer = TfidfVectorizer(max_features=150, ngram_range=(1, 5), min_df=1, sublinear_tf=True)
 X_tfidf = vectorizer.fit_transform(all_examples).toarray()
 
 print("Step 2: Semantic feature extraction...")
@@ -538,14 +526,11 @@ nn = ImprovedNeuralNetwork(
 
 training_results = nn.train(X_train, labels, epochs=1000, batch_size=16, validation_split=0.2)
 
-# Evaluate
 y_pred_proba = nn.predict(X_train)
 y_pred = (y_pred_proba > 0.5).astype(int)
 
 accuracy = np.mean(y_pred == labels)
-precision, recall, f1, _ = precision_recall_fscore_support(
-    labels, y_pred, average='binary', zero_division=0
-)
+precision, recall, f1, _ = precision_recall_fscore_support(labels, y_pred, average='binary', zero_division=0)
 
 print("\n" + "="*80)
 print("MODEL PERFORMANCE")
@@ -563,7 +548,6 @@ def predict_communication_capability(text):
     
     text_lower = text_str.lower()
     
-    # Hard disqualifiers
     hard_disqualifiers = [
         'email, phone', 'phone, email', 'plaintext', 'text field',
         'japanese text', 'chinese text', 'email stored in database',
@@ -574,7 +558,6 @@ def predict_communication_capability(text):
         if disqualifier in text_lower:
             return 0.0
     
-    # Hard qualifiers
     hard_qualifiers = [
         'e-communication', 'ecommunication', 'provides ability to send email',
         'provides ability to send text', 'email notification system'
@@ -602,12 +585,12 @@ def predict_communication_capability(text):
     except:
         return 0.0
 
-# PROCESS DATASETS - FIRST JUST COUNT ALL IDN_EON
+# STEP 1: GET ALL UNIQUE IDN_EON FIRST (NO FILTERING)
 print("\n" + "="*80)
-print("STEP 1: COUNTING ALL UNIQUE IDN_EON IN DATA")
+print("STEP 1: COLLECTING ALL UNIQUE IDN_EON (NO FILTERING)")
 print("="*80)
 
-all_idn_eons = set()
+all_unique_idn_eons = set()
 
 for dataset_name in input_dataset_names:
     print(f"\nScanning {dataset_name}...")
@@ -628,24 +611,44 @@ for dataset_name in input_dataset_names:
         print(f"  No IDN_EON column found")
         continue
     
-    # Get all unique IDN_EON from this table
-    unique_in_table = set(df[idn_col].astype(str).unique())
-    unique_in_table.discard('nan')  # Remove NaN
-    unique_in_table.discard('')  # Remove empty strings
+    # Get ALL unique IDN_EON values - NO filtering
+    unique_in_table = df[idn_col].astype(str).unique()
     
-    print(f"  Found {len(unique_in_table)} unique IDN_EON in this table")
-    all_idn_eons.update(unique_in_table)
+    # Only remove actual NaN/empty, don't filter for communication
+    valid_idns = set()
+    for idn in unique_in_table:
+        idn_str = safe_str(idn)
+        if idn_str and idn_str != 'nan':
+            valid_idns.add(idn_str)
+    
+    print(f"  Found {len(valid_idns)} unique IDN_EON")
+    all_unique_idn_eons.update(valid_idns)
 
 print(f"\n{'='*80}")
-print(f"TOTAL UNIQUE IDN_EON ACROSS ALL TABLES: {len(all_idn_eons)}")
+print(f"TOTAL UNIQUE IDN_EON ACROSS ALL TABLES: {len(all_unique_idn_eons)}")
 print(f"{'='*80}")
 
-# STEP 2: NOW PROCESS EACH IDN_EON
+# STEP 2: INITIALIZE RESULTS FOR ALL IDN_EON (BEFORE ANY FILTERING)
 print("\n" + "="*80)
-print("STEP 2: ANALYZING EACH IDN_EON FOR COMMUNICATION CAPABILITY")
+print("STEP 2: INITIALIZING RESULTS FOR ALL IDN_EON")
 print("="*80)
 
 results = {}
+for idn in all_unique_idn_eons:
+    results[idn] = {
+        'IDN_EON': idn,
+        'data_sources': set(),
+        'email_findings': [],
+        'text_findings': []
+    }
+
+print(f"Initialized {len(results)} IDN_EON records")
+
+# STEP 3: NOW CHECK EACH IDN_EON FOR COMMUNICATION CAPABILITY
+print("\n" + "="*80)
+print("STEP 3: ANALYZING COMMUNICATION CAPABILITIES")
+print("="*80)
+
 processed_count = 0
 
 for dataset_name in input_dataset_names:
@@ -654,7 +657,6 @@ for dataset_name in input_dataset_names:
     try:
         df = dataiku.Dataset(dataset_name).get_dataframe(limit=None, infer_with_pandas=False)
     except Exception as e:
-        print(f"  Could not load: {e}")
         continue
     
     idn_col = None
@@ -666,7 +668,7 @@ for dataset_name in input_dataset_names:
     if idn_col is None:
         continue
     
-    # Get unique IDN_EON in this table
+    # Process each unique IDN_EON in this table
     unique_idns = df[idn_col].astype(str).unique()
     
     for idx, IDN_EON in enumerate(unique_idns):
@@ -676,28 +678,19 @@ for dataset_name in input_dataset_names:
         
         processed_count += 1
         if processed_count % 500 == 0:
-            print(f"  Processed {processed_count}/{len(all_idn_eons)} IDN_EON...")
+            print(f"  Analyzed {processed_count}/{len(all_unique_idn_eons)} IDN_EON...")
         
-        # Initialize if first time seeing this IDN_EON
-        if IDN_EON_str not in results:
-            results[IDN_EON_str] = {
-                'IDN_EON': IDN_EON_str,
-                'data_sources': set(),
-                'email_findings': [],
-                'text_findings': []
-            }
-        
+        # Add data source (this IDN_EON exists in this table)
         results[IDN_EON_str]['data_sources'].add(dataset_name)
         
         # Get all rows for this IDN_EON
         idn_rows = df[df[idn_col].astype(str) == IDN_EON_str]
         
-        # Check every column in these rows
+        # Check every column
         for col in df.columns:
             if col.upper() == 'IDN_EON':
                 continue
             
-            # Get all values in this column for this IDN_EON
             for value in idn_rows[col]:
                 original_value = safe_str(value)
                 if not original_value:
@@ -715,7 +708,7 @@ for dataset_name in input_dataset_names:
                     except:
                         confidence = 0.0
                     
-                    # Use 0.55 threshold - pretty lenient to catch more
+                    # Lower threshold to 0.55 to catch more
                     if confidence > 0.55:
                         if has_email_mention:
                             results[IDN_EON_str]['email_findings'].append({
@@ -731,55 +724,68 @@ for dataset_name in input_dataset_names:
                                 'cell_content': original_value
                             })
 
-print(f"\nTotal IDN_EON processed: {processed_count}")
-print(f"Total IDN_EON in results dict: {len(results)}")
+print(f"\nAnalysis complete for {processed_count} IDN_EON")
 
-# BUILD OUTPUT
-print("\nBuilding output dataset...")
+# STEP 4: BUILD OUTPUT - INCLUDE ALL IDN_EON, MARK WHICH HAVE COMMUNICATION
+print("\n" + "="*80)
+print("STEP 4: BUILDING OUTPUT (ALL IDN_EON)")
+print("="*80)
+
 output_data = []
 
 for IDN_EON, data in results.items():
     has_email = len(data['email_findings']) > 0
     has_text = len(data['text_findings']) > 0
     
-    if has_email or has_text:
-        comm_type = []
-        if has_email:
-            comm_type.append('Email')
-        if has_text:
-            comm_type.append('Text')
-        
-        email_confidence = max([f['confidence'] for f in data['email_findings']], default=0.0)
-        text_confidence = max([f['confidence'] for f in data['text_findings']], default=0.0)
-        
-        email_locations = list(set([f['location'] for f in data['email_findings']]))
-        text_locations = list(set([f['location'] for f in data['text_findings']]))
-        
-        email_cell_contents = list(set([f['cell_content'] for f in data['email_findings']]))
-        text_cell_contents = list(set([f['cell_content'] for f in data['text_findings']]))
-        
-        output_data.append({
-            'IDN_EON': IDN_EON,
-            'data_source': ', '.join(sorted(data['data_sources'])),
-            'communication_type': ', '.join(comm_type),
-            'email_found_in': ', '.join(sorted(email_locations)) if email_locations else '',
-            'email_cell_content': ' | '.join(email_cell_contents) if email_cell_contents else '',
-            'email_confidence': round(email_confidence, 3) if has_email else '',
-            'text_found_in': ', '.join(sorted(text_locations)) if text_locations else '',
-            'text_cell_content': ' | '.join(text_cell_contents) if text_cell_contents else '',
-            'text_confidence': round(text_confidence, 3) if has_text else ''
-        })
+    # Build communication type
+    comm_type = []
+    if has_email:
+        comm_type.append('Email')
+    if has_text:
+        comm_type.append('Text')
+    
+    # Calculate confidence scores
+    email_confidence = max([f['confidence'] for f in data['email_findings']], default=0.0)
+    text_confidence = max([f['confidence'] for f in data['text_findings']], default=0.0)
+    
+    # Get locations and cell contents
+    email_locations = list(set([f['location'] for f in data['email_findings']]))
+    text_locations = list(set([f['location'] for f in data['text_findings']]))
+    
+    email_cell_contents = list(set([f['cell_content'] for f in data['email_findings']]))
+    text_cell_contents = list(set([f['cell_content'] for f in data['text_findings']]))
+    
+    # ADD EVERY IDN_EON TO OUTPUT, even if no communication found
+    output_data.append({
+        'IDN_EON': IDN_EON,
+        'data_source': ', '.join(sorted(data['data_sources'])) if data['data_sources'] else '',
+        'communication_type': ', '.join(comm_type) if comm_type else 'None',
+        'email_found_in': ', '.join(sorted(email_locations)) if email_locations else '',
+        'email_cell_content': ' | '.join(email_cell_contents) if email_cell_contents else '',
+        'email_confidence': round(email_confidence, 3) if has_email else 0.0,
+        'text_found_in': ', '.join(sorted(text_locations)) if text_locations else '',
+        'text_cell_content': ' | '.join(text_cell_contents) if text_cell_contents else '',
+        'text_confidence': round(text_confidence, 3) if has_text else 0.0
+    })
 
 output_df = pd.DataFrame(output_data).sort_values('IDN_EON').reset_index(drop=True)
 output_dataset.write_with_schema(output_df)
 
+# Calculate statistics
+idn_with_comm = len([row for row in output_data if row['communication_type'] != 'None'])
+idn_with_email = len([row for row in output_data if 'Email' in row['communication_type']])
+idn_with_text = len([row for row in output_data if 'Text' in row['communication_type']])
+
 print("\n" + "="*80)
-print("COMPLETE")
+print("FINAL RESULTS")
 print("="*80)
-print(f"Total unique IDN_EON in all data: {len(all_idn_eons)}")
-print(f"IDN_EON analyzed: {len(results)}")
-print(f"IDN_EON with communication capabilities: {len(output_df)}")
-print(f"Percentage flagged: {len(output_df)/len(all_idn_eons)*100:.1f}%")
-print(f"Model F1: {f1:.3f}")
+print(f"Total unique IDN_EON in data: {len(all_unique_idn_eons)}")
+print(f"IDN_EON in output: {len(output_df)}")
+print(f"IDN_EON with communication: {idn_with_comm}")
+print(f"  - With Email: {idn_with_email}")
+print(f"  - With Text: {idn_with_text}")
+print(f"IDN_EON without communication: {len(output_df) - idn_with_comm}")
+print(f"Percentage with communication: {idn_with_comm/len(output_df)*100:.1f}%")
+print(f"\nModel F1: {f1:.3f}")
 print(f"Confidence threshold: 0.55")
 print("="*80)
