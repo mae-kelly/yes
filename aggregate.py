@@ -522,6 +522,19 @@ class DeepSemanticNeuralNet:
         """Make predictions without dropout"""
         return self.forward(X, training=False)
 
+def safe_str(value):
+    """
+    Safely convert any value to string, handling None, NaN, and other types
+    """
+    if value is None:
+        return ""
+    if pd.isna(value):
+        return ""
+    try:
+        return str(value)
+    except:
+        return ""
+
 def extract_deep_semantic_features(text):
     """
     Extract 25 deep semantic features that capture MEANING, not just keywords
@@ -532,10 +545,12 @@ def extract_deep_semantic_features(text):
     - What CONTEXT surrounds the keywords (notification vs database)
     - What ROLE the email/text plays (communication vs identifier)
     """
-    if pd.isna(text) or not text:
+    # Handle None and NaN
+    text_str = safe_str(text)
+    if not text_str or text_str.strip() == "":
         return np.zeros(25)
     
-    text_lower = str(text).lower()
+    text_lower = text_str.lower()
     features = []
     
     # FEATURE 1-2: Action verb analysis
@@ -640,10 +655,14 @@ def extract_deep_semantic_features(text):
     
     # FEATURE 23: Sentence structure - "app/system/platform VERB email/text"
     # This pattern suggests the app is DOING something with email/text
-    app_action_pattern = any(
-        re.search(rf'\b(app|system|platform|service|software|tool)\s+\w*\s*(send|deliver|push|notify)', text_lower)
-    )
-    features.append(1 if app_action_pattern else 0)
+    try:
+        app_action_pattern = bool(re.search(
+            r'\b(app|system|platform|service|software|tool)\s+\w*\s*(send|deliver|push|notify)',
+            text_lower
+        ))
+        features.append(1 if app_action_pattern else 0)
+    except:
+        features.append(0)
     
     # FEATURE 24: Display/show/render context (UI, not communication)
     display_words = ['display', 'show', 'render', 'visible', 'appears', 'shown']
@@ -747,10 +766,12 @@ def predict_communication_capability(text):
     This uses both the deep neural network and additional semantic rules
     to ensure we truly understand the meaning.
     """
-    if pd.isna(text) or not text:
+    # Handle None and NaN
+    text_str = safe_str(text)
+    if not text_str or text_str.strip() == "":
         return 0.0
     
-    text_lower = str(text).lower()
+    text_lower = text_str.lower()
     
     # IMMEDIATE DISQUALIFIERS - these are NEVER about communication
     hard_disqualifiers = [
@@ -779,22 +800,27 @@ def predict_communication_capability(text):
     for qualifier in hard_qualifiers:
         if qualifier in text_lower:
             # Still run through model but boost score
-            X_tfidf = vectorizer.transform([text_lower]).toarray()
-            X_features = extract_deep_semantic_features(text_lower).reshape(1, -1)
-            X_combined = np.hstack([X_tfidf, X_features])
-            X = scaler.transform(X_combined)
-            prediction = nn.predict(X)[0][0]
-            return min(1.0, float(prediction) + 0.2)  # Boost by 0.2
+            try:
+                X_tfidf = vectorizer.transform([text_lower]).toarray()
+                X_features = extract_deep_semantic_features(text_str).reshape(1, -1)
+                X_combined = np.hstack([X_tfidf, X_features])
+                X = scaler.transform(X_combined)
+                prediction = nn.predict(X)[0][0]
+                return min(1.0, float(prediction) + 0.2)  # Boost by 0.2
+            except:
+                return 0.9  # High confidence fallback
     
     # Standard prediction through neural network
-    X_tfidf = vectorizer.transform([text_lower]).toarray()
-    X_features = extract_deep_semantic_features(text_lower).reshape(1, -1)
-    X_combined = np.hstack([X_tfidf, X_features])
-    X = scaler.transform(X_combined)
-    
-    prediction = nn.predict(X)[0][0]
-    
-    return float(prediction)
+    try:
+        X_tfidf = vectorizer.transform([text_lower]).toarray()
+        X_features = extract_deep_semantic_features(text_str).reshape(1, -1)
+        X_combined = np.hstack([X_tfidf, X_features])
+        X = scaler.transform(X_combined)
+        prediction = nn.predict(X)[0][0]
+        return float(prediction)
+    except Exception as e:
+        # If prediction fails for any reason, return 0
+        return 0.0
 
 # PROCESS DATASETS
 print("\n" + "="*80)
@@ -808,8 +834,8 @@ for dataset_name in input_dataset_names:
     
     try:
         df = dataiku.Dataset(dataset_name).get_dataframe()
-    except:
-        print(f"  Warning: Could not load {dataset_name}")
+    except Exception as e:
+        print(f"  Warning: Could not load {dataset_name}: {e}")
         continue
     
     # Find IDN_EON column (case insensitive)
@@ -823,7 +849,10 @@ for dataset_name in input_dataset_names:
         print(f"  Warning: No IDN_EON column found")
         continue
     
-    df[idn_col] = df[idn_col].astype(str)
+    # Convert to string and handle None/NaN
+    df[idn_col] = df[idn_col].apply(safe_str)
+    df = df[df[idn_col].str.strip() != ""]  # Remove empty values
+    
     unique_idns = df[idn_col].dropna().unique()
     print(f"  Found {len(unique_idns)} unique IDN_EON values")
     
@@ -831,7 +860,9 @@ for dataset_name in input_dataset_names:
         if idx % 100 == 0 and idx > 0:
             print(f"    Processed {idx}/{len(unique_idns)} IDNs...")
         
-        IDN_EON_str = str(IDN_EON)
+        IDN_EON_str = safe_str(IDN_EON)
+        if not IDN_EON_str or IDN_EON_str.strip() == "":
+            continue
         
         if IDN_EON_str not in results:
             results[IDN_EON_str] = {
@@ -849,11 +880,12 @@ for dataset_name in input_dataset_names:
                 continue
             
             for value in idn_rows[col]:
-                if pd.isna(value):
+                # Handle None and NaN
+                original_value = safe_str(value)
+                if not original_value or original_value.strip() == "":
                     continue
                 
-                original_value = str(value)
-                value_lower = str(value).lower()
+                value_lower = original_value.lower()
                 
                 # Only check cells that mention email or text/sms
                 has_email_mention = any(word in value_lower for word in ['email', 'e-mail', 'mail'])
@@ -861,7 +893,10 @@ for dataset_name in input_dataset_names:
                 
                 if has_email_mention or has_text_mention:
                     # Use deep semantic analysis
-                    confidence = predict_communication_capability(original_value)
+                    try:
+                        confidence = predict_communication_capability(original_value)
+                    except Exception as e:
+                        confidence = 0.0
                     
                     # High threshold - only flag if we're very confident
                     if confidence > 0.75:
