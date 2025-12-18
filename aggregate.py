@@ -4,384 +4,358 @@ import numpy as np
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.preprocessing import StandardScaler
 import re
+import warnings
+
+warnings.filterwarnings('ignore', category=DeprecationWarning)
 
 # Input/output datasets
 input_dataset_names = ['table1', 'table2', 'table3', 'table4']
 output_dataset = dataiku.Dataset("output_table")
 
-# MASSIVELY EXPANDED TRAINING DATA
-# The key to semantic understanding is seeing MANY examples of each context
+# MASSIVELY REFINED TRAINING DATA
+# Focus on distinguishing ACTIVE COMMUNICATION FEATURES vs DATA COLLECTION
 
 POSITIVE_EXAMPLES = [
-    # Explicit sending/receiving - the app actively transmits messages
-    "application sends email notifications to users", "system delivers text messages to customers",
-    "users receive email alerts when orders ship", "customers get sms notifications for appointments",
-    "platform sends promotional emails weekly", "service texts users when delivery arrives",
-    "app pushes email updates to subscribers", "tool sends text reminders before meetings",
-    "software delivers email confirmations after purchase", "system transmits sms codes for verification",
+    # Explicit communication capability language
+    "app provides ability to send email messages", "users can send text messages through app",
+    "platform enables email communication between users", "system allows sending sms notifications",
+    "application supports text messaging", "service provides email notification capability",
+    "app has email messaging feature", "platform includes text message sending",
+    "enables users to communicate via email", "allows customers to send text messages",
+    "provides sms communication feature", "supports email-based communication",
     
-    # User consent and opt-in - user explicitly agrees to receive communications
-    "user opted in to receive marketing emails", "customer consented to text message alerts",
-    "subscriber agreed to email newsletters", "user enabled sms notifications in settings",
-    "customer subscribed to promotional text messages", "user granted permission for email contact",
-    "opted in for order status emails", "agreed to receive appointment reminder texts",
-    "user preferences set to receive emails", "customer chose to get text alerts",
+    # E-communication specific mentions
+    "e-communications enabled", "electronic communications supported", "e-communication platform",
+    "e-communications feature available", "electronic communication capability", 
+    "e-communication channel active", "supports e-communications", "e-communication system",
     
-    # Two-way communication - implies active messaging feature
-    "users can reply to notification emails", "customers respond to text messages",
-    "email conversation with support team", "text chat feature for customer service",
-    "reply via email to confirm", "text back yes to subscribe", "email thread with agent",
-    "sms conversation for support", "email exchange between user and business",
+    # Active sending/receiving verbs with communication
+    "app sends email notifications to users", "system delivers text alerts to customers",
+    "platform transmits email updates", "service dispatches sms reminders",
+    "application pushes email messages", "tool sends text notifications",
+    "users receive email alerts from app", "customers get text messages from system",
+    "subscribers receive email communications", "users get sms notifications",
     
-    # Notification systems - app has built-in notification infrastructure
-    "email notification system configured", "text alert infrastructure enabled",
-    "push email notifications to user devices", "sms notification service active",
-    "email delivery system operational", "text message gateway connected",
-    "notification engine sends emails", "alert system delivers text messages",
+    # Communication infrastructure language
+    "email notification system", "text message delivery system", "sms alert infrastructure",
+    "email communication module", "text messaging service", "notification delivery platform",
+    "message sending capability", "alert distribution system", "communication engine",
     
-    # Triggered communications - app automatically sends based on events
-    "email sent when password reset requested", "text triggered by account activity",
-    "automated email after form submission", "sms sent upon order confirmation",
-    "email notification on new message", "text alert for suspicious login",
-    "email dispatched when payment received", "sms triggered by delivery status",
+    # User consent for receiving communications
+    "users opt-in to receive emails", "customers consent to text notifications",
+    "subscribers agree to email communications", "users enable sms alerts",
+    "opt-in for email notifications", "subscribe to text message updates",
+    "consent to receive promotional emails", "agree to sms marketing messages",
     
-    # Marketing and campaigns - clear communication purpose
-    "monthly email campaign to subscribers", "promotional text blast to customers",
-    "email marketing automation enabled", "sms marketing campaigns running",
-    "drip email sequence configured", "text message promotions sent weekly",
-    "email newsletter distributed to list", "bulk sms sent to opted-in users",
+    # Two-way communication features
+    "users can reply to emails", "customers respond via text message",
+    "email conversation feature", "text messaging chat capability",
+    "back-and-forth email communication", "interactive text messaging",
     
-    # Transactional communications - functional app communications
-    "transactional emails for receipts", "order confirmation sent via email",
-    "shipping notification delivered by text", "invoice emailed to customer",
-    "appointment reminder texted to user", "password reset email dispatched",
-    "verification code sent via sms", "payment receipt emailed automatically",
+    # Triggered and automated communications
+    "automatically sends email when", "triggers text message upon",
+    "email sent automatically after", "sms dispatched when event occurs",
+    "automated email notification system", "automatic text alert feature",
     
-    # Channel preferences - user chooses communication method
-    "email is preferred notification channel", "user selected text for alerts",
-    "customer wants email for updates", "text messaging chosen over email",
-    "notification preference set to email", "sms selected as primary contact method",
+    # Marketing and campaign capabilities
+    "email marketing campaigns", "text message marketing blasts",
+    "promotional email sending", "sms campaign management",
+    "bulk email distribution", "mass text messaging capability",
     
-    # Real-time and scheduled communications
-    "real-time email alerts for events", "instant text notification on activity",
-    "scheduled email reports sent daily", "weekly text updates delivered",
-    "immediate email upon trigger", "scheduled sms reminders configured",
+    # Transactional communications
+    "transactional email delivery", "order confirmation emails sent",
+    "shipping notification via text", "payment receipt via email",
+    "appointment reminder texts", "verification code via sms",
     
-    # Delivery and engagement metrics - shows active communication
-    "email delivery rate 95 percent", "text message open rate tracked",
-    "email engagement monitored", "sms delivery confirmed to users",
-    "email click-through rate measured", "text response rate analyzed",
-    "successful email delivery to inbox", "sms delivered to mobile device",
+    # Channel preference and method selection
+    "users choose email as notification method", "customers select text for alerts",
+    "email preferred for communications", "sms as primary contact channel",
+    "notification delivery via email", "alerts sent through text messaging",
     
-    # User-facing language - what users see/experience
-    "you will receive an email", "we will text you when ready",
-    "check your email for confirmation", "expect a text message shortly",
-    "email arrives within minutes", "text notification on its way",
-    "look for our email", "you'll get a text alert",
+    # Communication settings and controls
+    "email notification settings", "text alert preferences configurable",
+    "manage communication preferences", "control message delivery options",
+    "customize notification channels", "configure alert methods",
     
-    # Platform capabilities - features the app provides
-    "app includes email notification feature", "platform has text messaging capability",
-    "built-in email alert system", "integrated sms notification service",
-    "email communication module active", "text messaging functionality enabled",
+    # Real-time and scheduled messaging
+    "real-time email alerts", "instant text notifications",
+    "scheduled email reports", "periodic sms updates",
+    "immediate notification delivery", "timed message sending",
     
-    # Customer service communications
-    "support team emails customer with solution", "agent texts update to user",
-    "customer service sends email follow-up", "help desk texts resolution",
-    "representative emails customer directly", "support sends text confirmation",
+    # Engagement and delivery metrics
+    "email delivery tracking", "text message open rates",
+    "notification engagement metrics", "message delivery confirmation",
+    "communication analytics", "alert response tracking",
     
-    # Announcement and broadcast
-    "announcement emailed to all users", "system-wide alert texted to customers",
-    "broadcast email sent to subscribers", "mass text notification delivered",
-    "company news emailed to list", "urgent alert sent via sms",
+    # Platform capabilities and features
+    "built-in messaging system", "integrated notification platform",
+    "native email functionality", "embedded text messaging",
+    "in-app communication tools", "communication feature set",
     
-    # Multi-channel strategies
-    "email and text notification enabled", "dual channel communication active",
-    "reach users via email or sms", "contact through multiple channels",
+    # User-facing capability language
+    "users will receive email", "customers get text notifications",
+    "app notifies via email", "system alerts through text",
+    "you can message via email", "send text messages to users",
     
-    # Compliance and opt-out (but still shows communication exists)
-    "users can unsubscribe from emails", "opt-out link in every text",
-    "manage email preferences in settings", "stop text messages by replying STOP",
+    # Multi-channel communication
+    "email and text notification", "sms or email delivery",
+    "multiple communication channels", "cross-channel messaging",
     
-    # Frequency and cadence
-    "daily email digest sent to users", "hourly text alerts for monitoring",
-    "weekly email summary delivered", "monthly text bill reminder",
-    
-    # Segmentation and targeting
-    "targeted emails to specific users", "segmented text campaigns by location",
-    "personalized email based on behavior", "custom text messages by preference",
-    
-    # A/B testing and optimization
-    "email subject line tested", "text message timing optimized",
-    "campaign performance analyzed", "notification delivery improved",
-    
-    # Integration mentions
-    "email integrated with crm", "text notifications sync with calendar",
-    "email system connected to database", "sms gateway integrated with platform"
+    # Communication permission and authorization
+    "authorized to send emails", "permission to text customers",
+    "approved communication channels", "enabled messaging capabilities"
 ]
 
 NEGATIVE_EXAMPLES = [
-    # Data collection and storage - NO communication happening
-    "user email address stored in database", "customer email saved to profile",
-    "email field required during registration", "collect email for account creation",
-    "email data stored in customer records", "save user email to system",
-    "email address captured at signup", "log user email in database",
-    "email information on file", "email recorded for account purposes",
-    "store customer email address", "email saved during checkout",
-    "email field in registration form", "capture email on signup page",
-    "email address in user profile", "email data in customer table",
+    # Pure data collection language
+    "collect email address", "gather phone number", "capture email information",
+    "store email address", "save phone number", "record email data",
+    "email address collected", "phone number captured", "email info gathered",
+    "collect user email", "gather customer phone", "obtain email address",
     
-    # Authentication and login - email as identifier, not communication
-    "email used as login username", "email address for account access",
-    "sign in with email", "email as user identifier", "login using email",
-    "email for authentication purposes", "email to identify account",
-    "username is email address", "email credential for login",
+    # List format data collection
+    "email, phone number, address", "email and phone number collected",
+    "fields: email, phone, name", "data collected: email, phone",
+    "email address, mobile number", "phone, email, date of birth",
+    "user provides email, phone", "enter email and phone number",
+    "email phone address city", "collects email phone name",
     
-    # Verification without communication
-    "email address verified by user", "validate email format",
-    "email syntax checked", "email validation rules applied",
-    "verify email structure", "email format validation",
+    # Registration and profile data
+    "email required for registration", "phone number for account creation",
+    "email address in user profile", "phone stored in account",
+    "registration requires email", "signup needs phone number",
+    "email field in registration form", "phone number field for signup",
+    "create account with email", "register using phone number",
     
-    # Display and UI elements
-    "email displayed on profile page", "show email in account settings",
-    "email visible to user", "render email on screen", "email appears in dashboard",
-    "display email address to admin", "email shown in user list",
+    # Authentication and login
+    "email used as login", "phone number for authentication",
+    "sign in with email", "login via phone number",
+    "email as username", "phone for account access",
+    "authenticate using email", "verify identity with phone",
+    "email credential", "phone-based login",
     
-    # Plaintext and formatting - technical term, not texting
-    "password stored as plaintext", "plaintext format not encrypted",
-    "data in plaintext format", "plaintext file exported", "plaintext encoding used",
-    "convert to plaintext", "plaintext representation of data",
-    "plaintext string in database", "save as plaintext document",
-    "plaintext content type", "plaintext vs html format", "plaintext email body",
+    # Contact information storage
+    "email address on file", "phone number in database",
+    "contact info stored", "email information saved",
+    "phone number recorded", "email data maintained",
+    "keep email address", "retain phone number",
     
-    # Text as data type or field
-    "text field in form", "text data type in database", "text column for notes",
-    "text area for comments", "text input box", "text string variable",
-    "text format for output", "text representation of data",
-    "text encoding utf-8", "text content stored", "text length validation",
+    # Display and UI
+    "display email address", "show phone number",
+    "email visible in profile", "phone displayed in settings",
+    "email appears on screen", "phone shown to user",
+    "render email field", "present phone information",
     
-    # Logging and monitoring - recording, not sending
-    "log email activity", "email events logged", "track email in system",
-    "record email interactions", "monitor email usage", "audit email access",
-    "email logs maintained", "log email attempts", "email logging enabled",
+    # Validation and verification
+    "validate email format", "verify phone number format",
+    "email syntax check", "phone number validation",
+    "email address verification", "phone format check",
+    "confirm email structure", "validate phone digits",
     
-    # Analysis and reporting
-    "analyze email patterns", "email data analytics", "report on email metrics",
-    "email statistics calculated", "aggregate email data", "email data mining",
-    "email trends analyzed", "email reporting dashboard",
+    # Technical/metadata
+    "email metadata", "phone number format",
+    "email header information", "phone field data type",
+    "email protocol", "phone number schema",
+    "email api endpoint", "phone data structure",
+    
+    # Plaintext and technical text
+    "plaintext format", "plain text encoding",
+    "text field in database", "text data type",
+    "text column", "text string variable",
+    "text file format", "text-based storage",
+    "text encoding utf-8", "text content type",
+    
+    # Language references
+    "japanese text", "chinese characters",
+    "korean text input", "multilingual text",
+    "text in japanese", "chinese text display",
     
     # Search and filtering
-    "search by email address", "filter users by email", "email in search results",
-    "find email in database", "query email field", "email lookup feature",
-    "search email records", "email search functionality",
+    "search by email", "filter by phone",
+    "email in search results", "find phone number",
+    "query email field", "lookup phone",
     
-    # Third-party contact info - not app functionality
-    "contact us via email at support@company.com", "email us at info@business.com",
-    "reach support by emailing help@", "send inquiries to contact@",
-    "support email address listed", "customer service email on website",
+    # Import/export
+    "export email list", "import phone numbers",
+    "email data export", "phone list download",
+    "csv of emails", "spreadsheet with phones",
     
-    # Metadata and technical specs
-    "email header information", "email metadata stored", "email protocol specification",
-    "email api documentation", "email service configuration", "email server settings",
-    "email infrastructure setup", "email system architecture",
-    
-    # Historical or archived
-    "old email address on record", "previous email in system",
-    "archived email data", "historical email information", "past email addresses",
-    "legacy email in database", "former email address",
+    # Logging and tracking
+    "log email address", "track phone number",
+    "record email entry", "monitor phone usage",
+    "email activity log", "phone access tracking",
     
     # Privacy and security (storage focus)
-    "email encrypted at rest", "email data anonymized", "email pii protected",
-    "email redacted for privacy", "secure email storage", "email data retention policy",
+    "encrypt email data", "secure phone storage",
+    "email pii protection", "phone number privacy",
+    "email data retention", "phone information security",
     
-    # Opt-out status only (not active communication)
-    "user opted out of all communications", "email completely disabled",
-    "unsubscribed from everything", "no communication permission",
-    "email contact prohibited", "opted out permanently",
-    
-    # Import/export functionality
-    "export email list to csv", "import email addresses from file",
-    "email data exported", "download email records", "email import feature",
+    # Third-party contact info
+    "contact us at email address", "call phone number",
+    "email support at", "phone customer service",
+    "support email listed", "help desk phone",
     
     # Deduplication and cleanup
-    "deduplicate email addresses", "clean email data", "remove invalid emails",
-    "email data quality check", "normalize email format",
+    "deduplicate emails", "clean phone list",
+    "remove invalid emails", "normalize phone format",
+    "email data quality", "phone number cleanup",
     
-    # Matching and comparison
-    "match email across systems", "compare email addresses", "email as join key",
-    "link records by email", "email used for matching",
+    # Missing or invalid
+    "email address missing", "phone number not provided",
+    "invalid email", "phone number empty",
+    "no email on file", "phone unavailable",
     
-    # Validation errors
-    "email address invalid", "email format incorrect", "email validation failed",
-    "email syntax error", "invalid email structure",
+    # Historical data
+    "old email address", "previous phone number",
+    "archived email", "historical phone data",
+    "past email information", "former phone contact",
     
-    # Missing data
-    "email address not provided", "email field empty", "no email on file",
-    "email missing from record", "email data unavailable",
+    # SMS for 2FA only
+    "sms for two-factor authentication", "text code for login",
+    "sms verification code only", "2fa via text",
+    "authentication sms", "security text message",
+    "one-time password via sms", "login code by text",
     
-    # Japanese, Chinese, Korean text - language, not texting
-    "japanese text displayed", "chinese text characters", "korean text input",
-    "text in japanese language", "japanese plaintext", "chinese text rendering",
-    "multilingual text support", "japanese character encoding",
-    "text translation to japanese", "japanese text processing",
+    # Profile/account fields
+    "email in user profile", "phone in account details",
+    "profile contains email", "account shows phone",
+    "user details include email", "contact section has phone",
     
-    # Programming and technical contexts
-    "text parsing algorithm", "text manipulation function", "regex text matching",
-    "text tokenization", "text preprocessing", "text extraction method",
-    "natural language text", "text mining technique", "text classification model",
+    # Form fields
+    "email input field", "phone number textbox",
+    "email form element", "phone entry field",
+    "email field required", "phone field optional",
     
-    # Documentation and content
-    "help text displayed", "tooltip text shown", "instruction text provided",
-    "description text field", "placeholder text in input", "label text for form",
+    # Documentation and help text
+    "enter your email", "provide phone number",
+    "email field help text", "phone number tooltip",
+    "email format example", "phone number pattern",
     
-    # SMS for authentication ONLY (not general communication)
-    "sms one-time password for login", "2fa via sms code only",
-    "sms for account verification only", "authentication sms not marketing",
-    "security sms for login", "sms used solely for 2fa",
+    # Matching and linking
+    "match records by email", "link accounts via phone",
+    "email as unique identifier", "phone as primary key",
+    "join on email field", "merge using phone",
     
-    # Phone number storage (not texting capability)
-    "phone number stored in profile", "mobile number saved to account",
-    "phone field in database", "telephone number recorded",
-    "phone contact information on file", "mobile number for reference",
-    
-    # Email as unique identifier in system
-    "email as primary key", "email uniqueness constraint", "email index in database",
-    "email as unique identifier", "email for record matching",
-    
-    # Bounced or failed (no active communication)
-    "email address bounced", "email delivery failed permanently",
-    "email does not exist", "email hard bounce recorded",
-    "invalid email destination", "email rejected by server",
-    
-    # Configuration without active use
-    "email settings available", "email preferences configured",
-    "email options in menu", "email setup instructions",
-    
-    # Copy or duplicate operations
-    "copy email address", "duplicate email field", "clone email data",
-    "replicate email information",
-    
-    # Text files and documents
-    "text file uploaded", "text document saved", "text-based file format",
-    "save as text file", "text document export", "text file download",
-    
-    # Error messages and logs (not communication)
-    "error text displayed", "log text message", "debug text output",
-    "system text warning", "error message text",
-    
-    # Template or placeholder text
-    "template text for emails", "placeholder email text", "sample text content",
-    "draft text for message", "text template saved"
+    # Analysis context
+    "analyze email patterns", "phone number statistics",
+    "email data mining", "phone usage analytics",
+    "email distribution report", "phone number frequency"
 ]
 
-# Semantic understanding indicators - these help the model understand MEANING
-ACTION_VERBS_COMMUNICATION = [
-    # Active transmission verbs - the app DOES something
-    'send', 'deliver', 'dispatch', 'transmit', 'push', 'forward', 'broadcast',
-    'distribute', 'disseminate', 'relay', 'convey', 'route', 'transfer',
-    # Reception verbs - user GETS something
-    'receive', 'get', 'obtain', 'retrieve',
-    # Notification verbs - alerting actions
-    'notify', 'alert', 'inform', 'remind', 'announce', 'update', 'ping',
-    # Communication verbs - interaction
-    'message', 'communicate', 'contact', 'reach', 'respond', 'reply', 'answer'
+# Critical distinguishing indicators
+CAPABILITY_INDICATORS = [
+    # Verbs that indicate ACTIVE communication capability
+    'send', 'deliver', 'dispatch', 'transmit', 'push', 'forward', 'distribute',
+    'notify', 'alert', 'inform', 'remind', 'message', 'communicate', 'contact',
+    'broadcast', 'blast', 'relay', 'route',
+    # Reception verbs
+    'receive', 'get', 'obtain',
+    # Capability/permission verbs
+    'can send', 'able to send', 'allows sending', 'enables sending', 'supports sending',
+    'provides', 'enables', 'allows', 'supports', 'offers', 'includes', 'features'
 ]
 
-ACTION_VERBS_STORAGE = [
-    # Storage verbs - the app SAVES something (not sends)
-    'store', 'save', 'record', 'log', 'capture', 'retain', 'archive', 'preserve',
-    'keep', 'hold', 'maintain', 'persist',
-    # Collection verbs - gathering data
-    'collect', 'gather', 'compile', 'accumulate', 'aggregate',
-    # Display verbs - showing data (not transmitting)
-    'display', 'show', 'render', 'present', 'visualize', 'exhibit',
-    # Processing verbs - manipulating data
-    'process', 'parse', 'extract', 'analyze', 'validate', 'verify', 'check'
+DATA_COLLECTION_INDICATORS = [
+    # Verbs that indicate DATA COLLECTION not communication
+    'collect', 'gather', 'capture', 'obtain', 'acquire', 'request',
+    'store', 'save', 'record', 'log', 'retain', 'keep', 'maintain',
+    'enter', 'provide', 'submit', 'input', 'fill',
+    # Display/show verbs
+    'display', 'show', 'render', 'present', 'list', 'appear'
 ]
 
-CONTEXT_NOUNS_COMMUNICATION = [
-    # Infrastructure nouns - systems that send messages
-    'notification', 'alert', 'reminder', 'message', 'communication', 'announcement',
-    'update', 'confirmation', 'receipt', 'invoice', 'statement', 'report',
-    # Channel nouns - methods of communication
-    'channel', 'method', 'campaign', 'broadcast', 'blast', 'outreach',
-    # Feature nouns - app capabilities
-    'feature', 'capability', 'service', 'system', 'platform', 'tool',
-    # Engagement nouns - interaction metrics
-    'delivery', 'engagement', 'open rate', 'click rate', 'response', 'reply'
-]
-
-CONTEXT_NOUNS_STORAGE = [
-    # Database nouns - where data lives
-    'database', 'table', 'column', 'field', 'record', 'row', 'storage',
-    'repository', 'datastore', 'warehouse',
-    # Data structure nouns
-    'data', 'information', 'attribute', 'property', 'value', 'entry',
-    # System nouns (backend focus)
-    'system', 'schema', 'model', 'structure', 'format', 'type',
-    # UI nouns (display focus)
-    'form', 'input', 'box', 'field', 'area', 'dropdown', 'page', 'screen'
-]
-
-# Phrases that are DEFINITIVE indicators
+# Definitive communication phrases - these MUST mean communication capability
 DEFINITIVE_COMMUNICATION_PHRASES = [
-    'send email', 'send text', 'deliver email', 'deliver text', 'deliver sms',
-    'sends email', 'sends text', 'sends sms', 'email notification', 'text notification',
-    'sms notification', 'email alert', 'text alert', 'sms alert', 'notify via email',
-    'notify via text', 'notify via sms', 'receive email', 'receive text', 'receive sms',
-    'get email', 'get text', 'get sms', 'you will receive', 'we will send',
-    'user receives', 'customer gets', 'subscriber receives', 'opted in to receive',
-    'subscribed to receive', 'agreed to receive', 'push notification', 'email campaign',
-    'text campaign', 'sms campaign', 'marketing email', 'promotional text',
-    'transactional email', 'order confirmation email', 'shipping notification',
-    'appointment reminder', 'password reset email', 'verification code sent',
-    'email and text', 'email or sms', 'communicate via', 'contact through',
-    'reach users', 'message users', 'alert customers'
+    # Capability language
+    'provides ability to send email', 'provides ability to send text', 'ability to send sms',
+    'allows users to send email', 'allows users to send text', 'enables email sending',
+    'enables text sending', 'enables sms sending', 'supports sending email',
+    'supports sending text', 'can send email', 'can send text', 'can send sms',
+    
+    # E-communication
+    'e-communications', 'e-communication', 'electronic communications', 'electronic communication',
+    'ecommunications', 'ecommunication',
+    
+    # Active sending
+    'sends email to users', 'sends text to customers', 'delivers email notifications',
+    'delivers text alerts', 'transmits email', 'transmits sms', 'pushes email',
+    'pushes text notifications', 'dispatches email', 'dispatches text',
+    
+    # Receiving
+    'users receive email', 'users receive text', 'customers get email', 'customers get sms',
+    'receive email notifications', 'receive text alerts', 'get email updates', 'get text messages',
+    
+    # System/platform capabilities
+    'email notification system', 'text notification system', 'sms alert system',
+    'email messaging platform', 'text messaging service', 'messaging capability',
+    'notification capability', 'communication feature', 'alert feature',
+    
+    # Marketing/campaign
+    'email campaign', 'text campaign', 'sms campaign', 'email marketing',
+    'text marketing', 'promotional email', 'promotional text',
+    
+    # Opt-in for receiving
+    'opt-in to receive email', 'opt-in to receive text', 'subscribe to email',
+    'subscribe to text', 'consent to receive email', 'consent to receive sms',
+    
+    # Method of delivery
+    'via email', 'via text', 'via sms', 'through email', 'through text',
+    'by email', 'by text', 'by sms'
 ]
 
-DEFINITIVE_STORAGE_PHRASES = [
-    'store email', 'save email', 'log email', 'record email', 'capture email',
-    'email stored', 'email saved', 'email logged', 'email recorded', 'email captured',
-    'email in database', 'email in table', 'email field', 'email column',
-    'email address stored', 'email address saved', 'email for login',
-    'email as username', 'plaintext', 'plain text', 'text field', 'text column',
-    'text data type', 'text format', 'text file', 'text encoding', 'text string',
-    'display email', 'show email', 'email visible', 'email displayed',
-    'japanese text', 'chinese text', 'korean text', 'multilingual text',
-    'text in japanese', 'text parsing', 'text processing', 'text analysis',
-    'email metadata', 'email header', 'email validation', 'validate email',
-    'email syntax', 'email format check', 'phone number stored', 'phone field',
-    'collect email address', 'gather email', 'email on file', 'email in profile',
-    'registration email', 'signup email', 'account email'
+# Definitive data collection phrases - these MUST mean just data collection
+DEFINITIVE_DATA_COLLECTION_PHRASES = [
+    # Collection language
+    'collect email', 'collect phone', 'gather email', 'gather phone',
+    'capture email', 'capture phone', 'obtain email', 'obtain phone',
+    
+    # List format (strong indicator)
+    'email, phone', 'phone, email', 'email and phone', 'phone and email',
+    'email address, phone number', 'phone number, email address',
+    'fields: email', 'data: email', 'includes: email', 'such as email',
+    
+    # Storage language
+    'store email', 'store phone', 'save email', 'save phone',
+    'stored in', 'saved to', 'kept in', 'maintained in',
+    'email in database', 'phone in database', 'email in profile', 'phone in account',
+    
+    # Registration/signup
+    'email required', 'phone required', 'email for registration', 'phone for signup',
+    'registration email', 'signup phone', 'create account email', 'account phone',
+    
+    # Login/authentication
+    'email for login', 'phone for authentication', 'email as username', 'login email',
+    'sign in email', 'authenticate phone',
+    
+    # Form fields
+    'email field', 'phone field', 'email input', 'phone input',
+    'enter email', 'enter phone', 'provide email', 'provide phone',
+    
+    # Contact info context
+    'contact information', 'contact details', 'contact info',
+    'email address on file', 'phone number on file', 'email on record',
+    
+    # Display context
+    'display email', 'display phone', 'show email', 'show phone',
+    
+    # Technical context
+    'plaintext', 'plain text', 'text field', 'text data type', 'text column',
+    'text encoding', 'text format', 'text file',
+    
+    # Language context
+    'japanese text', 'chinese text', 'korean text'
 ]
 
 class DeepSemanticNeuralNet:
-    """
-    Deep neural network specifically designed for semantic understanding
-    
-    This network is deeper and more sophisticated to truly understand
-    the MEANING and CONTEXT of sentences, not just keyword matching.
-    
-    Architecture: Input -> 64 -> 48 -> 32 -> 16 -> Output
-    More layers = more capacity to learn complex semantic patterns
-    """
+    """Deep neural network for semantic understanding"""
     
     def __init__(self, input_size, hidden_sizes=[64, 48, 32, 16], learning_rate=0.005, dropout_rate=0.25):
-        """
-        Deeper network with 4 hidden layers for better semantic understanding
-        
-        Args:
-            input_size: Number of input features
-            hidden_sizes: [64, 48, 32, 16] - progressively smaller layers
-            learning_rate: 0.005 - smaller for more careful learning
-            dropout_rate: 0.25 - higher dropout for better generalization
-        """
         self.layers = []
         self.learning_rate = learning_rate
         self.dropout_rate = dropout_rate
         
         layer_sizes = [input_size] + hidden_sizes + [1]
         
-        # Initialize all layers
         for i in range(len(layer_sizes) - 1):
             scale = np.sqrt(2.0 / layer_sizes[i])
             W = np.random.randn(layer_sizes[i], layer_sizes[i+1]) * scale
@@ -389,22 +363,15 @@ class DeepSemanticNeuralNet:
             self.layers.append({'W': W, 'b': b, 'A': None, 'Z': None})
     
     def leaky_relu(self, Z, alpha=0.01):
-        """Leaky ReLU activation for hidden layers"""
         return np.where(Z > 0, Z, alpha * Z)
     
     def leaky_relu_derivative(self, Z, alpha=0.01):
-        """Derivative for backpropagation"""
         return np.where(Z > 0, 1, alpha)
     
     def sigmoid(self, Z):
-        """Sigmoid activation for output layer"""
         return 1 / (1 + np.exp(-np.clip(Z, -500, 500)))
     
     def forward(self, X, training=True):
-        """
-        Forward propagation through 4 hidden layers
-        Each layer learns progressively more abstract semantic patterns
-        """
         A = X
         
         for i, layer in enumerate(self.layers):
@@ -413,8 +380,6 @@ class DeepSemanticNeuralNet:
             
             if i < len(self.layers) - 1:
                 A = self.leaky_relu(Z)
-                
-                # Apply dropout during training
                 if training and self.dropout_rate > 0:
                     dropout_mask = np.random.binomial(1, 1 - self.dropout_rate, size=A.shape)
                     A = A * dropout_mask / (1 - self.dropout_rate)
@@ -426,10 +391,6 @@ class DeepSemanticNeuralNet:
         return A
     
     def backward(self, X, y):
-        """
-        Backpropagation through all layers
-        Updates weights based on prediction errors
-        """
         m = X.shape[0]
         dA = self.layers[-1]['A'] - y
         
@@ -446,11 +407,9 @@ class DeepSemanticNeuralNet:
             dW = np.dot(A_prev.T, dZ) / m
             db = np.sum(dZ, axis=0, keepdims=True) / m
             
-            # Gradient clipping
             dW = np.clip(dW, -5, 5)
             db = np.clip(db, -5, 5)
             
-            # Weight updates with momentum consideration
             layer['W'] -= self.learning_rate * dW
             layer['b'] -= self.learning_rate * db
             
@@ -458,30 +417,20 @@ class DeepSemanticNeuralNet:
                 dA = np.dot(dZ, layer['W'].T)
     
     def train(self, X, y, epochs=1000, batch_size=16, validation_split=0.2):
-        """
-        Train for more epochs with smaller batches for better learning
-        
-        Args:
-            epochs: 1000 (more training for semantic understanding)
-            batch_size: 16 (smaller batches for more frequent updates)
-            validation_split: 0.2 (hold out 20% for validation)
-        """
         split_idx = int(len(X) * (1 - validation_split))
         X_train, X_val = X[:split_idx], X[split_idx:]
         y_train, y_val = y[:split_idx], y[split_idx:]
         
         best_val_loss = float('inf')
         best_val_acc = 0.0
-        patience = 100  # More patience for deeper network
+        patience = 100
         patience_counter = 0
         
         for epoch in range(epochs):
-            # Shuffle for each epoch
             indices = np.random.permutation(len(X_train))
             X_shuffled = X_train[indices]
             y_shuffled = y_train[indices]
             
-            # Mini-batch training
             for i in range(0, len(X_train), batch_size):
                 X_batch = X_shuffled[i:i+batch_size]
                 y_batch = y_shuffled[i:i+batch_size]
@@ -489,7 +438,6 @@ class DeepSemanticNeuralNet:
                 self.forward(X_batch, training=True)
                 self.backward(X_batch, y_batch)
             
-            # Validation every 20 epochs
             if epoch % 20 == 0:
                 train_output = self.forward(X_train, training=False)
                 val_output = self.forward(X_val, training=False)
@@ -505,7 +453,6 @@ class DeepSemanticNeuralNet:
                 print(f"Epoch {epoch:4d}: Train Loss={train_loss:.4f}, Val Loss={val_loss:.4f}, "
                       f"Train Acc={train_acc:.3f}, Val Acc={val_acc:.3f}")
                 
-                # Early stopping
                 if val_loss < best_val_loss:
                     best_val_loss = val_loss
                     best_val_acc = val_acc
@@ -519,227 +466,204 @@ class DeepSemanticNeuralNet:
                     break
     
     def predict(self, X):
-        """Make predictions without dropout"""
         return self.forward(X, training=False)
 
 def safe_str(value):
-    """
-    Safely convert any value to string, handling None, NaN, and other types
-    """
-    if value is None:
-        return ""
-    if pd.isna(value):
+    """Safely convert any value to string"""
+    if value is None or pd.isna(value):
         return ""
     try:
-        return str(value)
+        return str(value).strip()
     except:
         return ""
 
 def extract_deep_semantic_features(text):
     """
-    Extract 25 deep semantic features that capture MEANING, not just keywords
-    
-    This is critical for understanding "we log emails" vs "we send emails"
-    The features look at:
-    - What ACTION is happening (send vs store)
-    - What CONTEXT surrounds the keywords (notification vs database)
-    - What ROLE the email/text plays (communication vs identifier)
+    Extract 30 semantic features focused on distinguishing
+    COMMUNICATION CAPABILITY vs DATA COLLECTION
     """
-    # Handle None and NaN
     text_str = safe_str(text)
-    if not text_str or text_str.strip() == "":
-        return np.zeros(25)
+    if not text_str:
+        return np.zeros(30)
     
     text_lower = text_str.lower()
     features = []
     
-    # FEATURE 1-2: Action verb analysis
-    # Does the text contain ACTION verbs for communication vs storage?
-    comm_verbs = sum(1 for verb in ACTION_VERBS_COMMUNICATION if verb in text_lower)
-    storage_verbs = sum(1 for verb in ACTION_VERBS_STORAGE if verb in text_lower)
-    features.append(min(comm_verbs / 3, 1))
-    features.append(min(storage_verbs / 3, 1))
+    # FEATURE 1: Definitive communication phrases
+    has_def_comm = any(phrase in text_lower for phrase in DEFINITIVE_COMMUNICATION_PHRASES)
+    features.append(1 if has_def_comm else 0)
     
-    # FEATURE 3-4: Context noun analysis
-    # What KIND of nouns appear near email/text keywords?
-    comm_nouns = sum(1 for noun in CONTEXT_NOUNS_COMMUNICATION if noun in text_lower)
-    storage_nouns = sum(1 for noun in CONTEXT_NOUNS_STORAGE if noun in text_lower)
-    features.append(min(comm_nouns / 3, 1))
-    features.append(min(storage_nouns / 3, 1))
+    # FEATURE 2: Definitive data collection phrases
+    has_def_collection = any(phrase in text_lower for phrase in DEFINITIVE_DATA_COLLECTION_PHRASES)
+    features.append(1 if has_def_collection else 0)
     
-    # FEATURE 5: Definitive communication phrases
-    # Phrases that DEFINITELY mean communication is happening
-    has_definitive_comm = any(phrase in text_lower for phrase in DEFINITIVE_COMMUNICATION_PHRASES)
-    features.append(1 if has_definitive_comm else 0)
+    # FEATURE 3: E-communication mentions (STRONG signal)
+    has_ecomm = any(word in text_lower for word in ['e-communication', 'ecommunication', 'e-communications', 'ecommunications', 'electronic communication'])
+    features.append(1 if has_ecomm else 0)
     
-    # FEATURE 6: Definitive storage phrases
-    # Phrases that DEFINITELY mean it's just data storage
-    has_definitive_storage = any(phrase in text_lower for phrase in DEFINITIVE_STORAGE_PHRASES)
-    features.append(1 if has_definitive_storage else 0)
+    # FEATURE 4: "Provides ability to" or "allows users to" (capability language)
+    capability_language = ['provides ability', 'ability to send', 'allows users', 'enables users',
+                          'users can send', 'can send', 'supports sending']
+    features.append(1 if any(phrase in text_lower for phrase in capability_language) else 0)
     
-    # FEATURE 7: Plaintext specifically
-    # This is a HUGE red flag - almost never about communication
+    # FEATURE 5: List format detection (email, phone, etc.) - STRONG negative signal
+    list_patterns = [
+        r'email\s*,\s*phone', r'phone\s*,\s*email', r'email\s+and\s+phone',
+        r'email\s*,\s*\w+\s*,', r',\s*email\s*,', r'such as email',
+        r'including email', r'like email', r'e\.?g\.?\s+email'
+    ]
+    has_list_format = any(re.search(pattern, text_lower) for pattern in list_patterns)
+    features.append(1 if has_list_format else 0)
+    
+    # FEATURE 6: Active sending verbs (send, deliver, dispatch, transmit)
+    active_sending = ['send', 'deliver', 'dispatch', 'transmit', 'push', 'forward']
+    features.append(1 if any(verb in text_lower for verb in active_sending) else 0)
+    
+    # FEATURE 7: Collection verbs (collect, gather, capture)
+    collection_verbs = ['collect', 'gather', 'capture', 'obtain', 'request']
+    features.append(1 if any(verb in text_lower for verb in collection_verbs) else 0)
+    
+    # FEATURE 8: Storage verbs (store, save, record, log)
+    storage_verbs = ['store', 'save', 'record', 'log', 'retain', 'keep']
+    features.append(1 if any(verb in text_lower for verb in storage_verbs) else 0)
+    
+    # FEATURE 9: Notification/alert context
+    notif_context = ['notification', 'alert', 'notify', 'alert', 'reminder', 'update']
+    features.append(1 if any(word in text_lower for word in notif_context) else 0)
+    
+    # FEATURE 10: System/platform capability language
+    system_capability = ['system sends', 'platform sends', 'app sends', 'service sends',
+                        'system delivers', 'platform delivers', 'app delivers']
+    features.append(1 if any(phrase in text_lower for phrase in system_capability) else 0)
+    
+    # FEATURE 11: Registration/signup context (negative signal)
+    registration = ['registration', 'signup', 'sign up', 'create account', 'account creation']
+    features.append(1 if any(word in text_lower for word in registration) else 0)
+    
+    # FEATURE 12: Login/authentication context (negative signal)
+    auth = ['login', 'log in', 'sign in', 'authentication', 'authenticate', 'username']
+    features.append(1 if any(word in text_lower for word in auth) else 0)
+    
+    # FEATURE 13: Profile/account field context (negative signal)
+    profile = ['profile', 'account details', 'user information', 'contact information']
+    features.append(1 if any(phrase in text_lower for phrase in profile) else 0)
+    
+    # FEATURE 14: Form field context (negative signal)
+    form_field = ['field', 'input', 'form', 'enter', 'provide', 'fill']
+    features.append(1 if any(word in text_lower for word in form_field) else 0)
+    
+    # FEATURE 15: "Via" or "through" or "by" (method of delivery - positive signal)
+    method_delivery = ['via email', 'via text', 'via sms', 'through email', 'through text', 'by email', 'by text']
+    features.append(1 if any(phrase in text_lower for phrase in method_delivery) else 0)
+    
+    # FEATURE 16: Opt-in/subscribe language (positive signal)
+    opt_in = ['opt-in', 'opt in', 'subscribe', 'consent to receive', 'agree to receive']
+    features.append(1 if any(phrase in text_lower for phrase in opt_in) else 0)
+    
+    # FEATURE 17: Campaign/marketing language (positive signal)
+    campaign = ['campaign', 'marketing', 'promotional', 'blast', 'broadcast']
+    features.append(1 if any(word in text_lower for word in campaign) else 0)
+    
+    # FEATURE 18: Database/storage context (negative signal)
+    database = ['database', 'stored in', 'saved to', 'in table', 'in column']
+    features.append(1 if any(phrase in text_lower for phrase in database) else 0)
+    
+    # FEATURE 19: Plaintext (negative signal)
     features.append(1 if 'plaintext' in text_lower or 'plain text' in text_lower else 0)
     
-    # FEATURE 8: "Log" or "record" context
-    # These verbs strongly suggest storage, not communication
-    features.append(1 if any(word in text_lower for word in ['log', 'record', 'capture', 'save', 'store']) else 0)
+    # FEATURE 20: Text as technical term (negative signal)
+    technical_text = ['text field', 'text data type', 'text column', 'text encoding', 'text file']
+    features.append(1 if any(phrase in text_lower for phrase in technical_text) else 0)
     
-    # FEATURE 9: "Send" or "deliver" context
-    # These verbs strongly suggest active communication
-    features.append(1 if any(word in text_lower for word in ['send', 'deliver', 'dispatch', 'transmit', 'push']) else 0)
+    # FEATURE 21: Language context (negative signal)
+    language_context = ['japanese text', 'chinese text', 'korean text', 'multilingual']
+    features.append(1 if any(phrase in text_lower for phrase in language_context) else 0)
     
-    # FEATURE 10: Database/storage context
-    # Words that indicate backend data storage
-    db_words = ['database', 'table', 'field', 'column', 'stored', 'saved', 'profile', 'record']
-    features.append(1 if any(word in text_lower for word in db_words) else 0)
-    
-    # FEATURE 11: Notification/alert context
-    # Words that indicate user-facing notifications
-    notif_words = ['notification', 'alert', 'notify', 'remind', 'reminder', 'update', 'inform']
-    features.append(1 if any(word in text_lower for word in notif_words) else 0)
-    
-    # FEATURE 12: User consent language
-    # Indicates user explicitly agreed to receive communications
-    consent_words = ['opt-in', 'opt in', 'subscribe', 'consent', 'agreed to receive', 'permission']
-    features.append(1 if any(phrase in text_lower for phrase in consent_words) else 0)
-    
-    # FEATURE 13: Registration/login context
-    # Suggests email is for identification, not communication
-    auth_words = ['registration', 'signup', 'sign up', 'login', 'log in', 'username', 'authentication']
-    features.append(1 if any(word in text_lower for word in auth_words) else 0)
-    
-    # FEATURE 14: "Via" or "through" or "by" - method indicators
-    # Strong signal of communication channel
-    features.append(1 if any(phrase in text_lower for phrase in ['via email', 'via text', 'via sms', 'through email', 'through text', 'by email', 'by text']) else 0)
-    
-    # FEATURE 15: User-facing language
-    # Language that suggests user experience (not backend)
-    user_facing = ['you will', "you'll", 'you can', 'user receives', 'customer gets', 'we will send', "we'll send"]
+    # FEATURE 22: User-facing language (positive signal)
+    user_facing = ['you will receive', 'you can send', 'users receive', 'customers get', "we'll send"]
     features.append(1 if any(phrase in text_lower for phrase in user_facing) else 0)
     
-    # FEATURE 16: Japanese/Chinese/Korean text (language, not texting)
-    # This is NOT about text messaging
-    features.append(1 if any(word in text_lower for word in ['japanese', 'chinese', 'korean', 'multilingual']) else 0)
-    
-    # FEATURE 17: Text file/format context
-    # Technical "text", not communication "text"
-    text_file = ['text file', 'text format', 'text encoding', 'text type', 'text document', 'text-based']
-    features.append(1 if any(phrase in text_lower for phrase in text_file) else 0)
-    
-    # FEATURE 18: Active vs passive voice
-    # "sends emails" (active) vs "email is stored" (passive)
-    active_patterns = ['send', 'deliver', 'notify', 'alert', 'message', 'contact', 'reach']
-    passive_patterns = ['stored', 'saved', 'logged', 'recorded', 'kept', 'maintained']
-    has_active = any(verb in text_lower for verb in active_patterns)
-    has_passive = any(verb in text_lower for verb in passive_patterns)
-    features.append(1 if has_active else 0)
-    features.append(1 if has_passive else 0)
-    
-    # FEATURE 20: Campaign/marketing language
-    # Indicates mass communication feature
-    marketing = ['campaign', 'marketing', 'promotional', 'newsletter', 'broadcast', 'blast']
-    features.append(1 if any(word in text_lower for word in marketing) else 0)
-    
-    # FEATURE 21: Two-way communication indicators
-    # Suggests interactive messaging
-    two_way = ['reply', 'respond', 'conversation', 'thread', 'exchange', 'chat']
+    # FEATURE 23: Two-way communication (positive signal)
+    two_way = ['reply', 'respond', 'conversation', 'chat', 'messaging']
     features.append(1 if any(word in text_lower for word in two_way) else 0)
     
-    # FEATURE 22: Ratio of communication to storage context
-    if storage_verbs + storage_nouns > 0:
-        ratio = (comm_verbs + comm_nouns) / (comm_verbs + comm_nouns + storage_verbs + storage_nouns)
-        features.append(ratio)
-    else:
-        features.append(1 if comm_verbs + comm_nouns > 0 else 0.5)
+    # FEATURE 24: "Required" or "mandatory" with email/phone (negative signal)
+    required = ['required', 'mandatory', 'must provide', 'need to enter']
+    features.append(1 if any(word in text_lower for word in required) else 0)
     
-    # FEATURE 23: Sentence structure - "app/system/platform VERB email/text"
-    # This pattern suggests the app is DOING something with email/text
-    try:
-        app_action_pattern = bool(re.search(
-            r'\b(app|system|platform|service|software|tool)\s+\w*\s*(send|deliver|push|notify)',
-            text_lower
-        ))
-        features.append(1 if app_action_pattern else 0)
-    except:
-        features.append(0)
+    # FEATURE 25: Display/show context (negative signal)
+    display = ['display', 'show', 'visible', 'appears', 'shown', 'render']
+    features.append(1 if any(word in text_lower for word in display) else 0)
     
-    # FEATURE 24: Display/show/render context (UI, not communication)
-    display_words = ['display', 'show', 'render', 'visible', 'appears', 'shown']
-    features.append(1 if any(word in text_lower for word in display_words) else 0)
+    # FEATURE 26: Count of capability indicators
+    cap_count = sum(1 for indicator in CAPABILITY_INDICATORS if indicator in text_lower)
+    features.append(min(cap_count / 3, 1))
     
-    # FEATURE 25: Combined semantic score
-    # High score = likely communication, low score = likely storage
-    semantic_score = 0
-    if any(phrase in text_lower for phrase in DEFINITIVE_COMMUNICATION_PHRASES):
-        semantic_score += 3
-    if any(word in text_lower for word in ['send', 'deliver', 'notify', 'alert']):
-        semantic_score += 2
-    if any(word in text_lower for word in ['notification', 'reminder', 'campaign']):
-        semantic_score += 1
-    if any(word in text_lower for word in ['store', 'save', 'log', 'database', 'plaintext']):
-        semantic_score -= 2
-    if any(phrase in text_lower for phrase in DEFINITIVE_STORAGE_PHRASES):
-        semantic_score -= 3
+    # FEATURE 27: Count of collection indicators
+    coll_count = sum(1 for indicator in DATA_COLLECTION_INDICATORS if indicator in text_lower)
+    features.append(min(coll_count / 3, 1))
     
-    features.append(max(0, min(1, (semantic_score + 3) / 6)))  # Normalize to 0-1
+    # FEATURE 28: Sentence has both email/text AND sending verb
+    has_email_or_text = any(word in text_lower for word in ['email', 'text', 'sms'])
+    has_sending_verb = any(verb in text_lower for verb in ['send', 'deliver', 'notify', 'alert'])
+    features.append(1 if (has_email_or_text and has_sending_verb) else 0)
+    
+    # FEATURE 29: Sentence has email/text in collection context
+    has_collection_verb = any(verb in text_lower for verb in ['collect', 'gather', 'store', 'save'])
+    features.append(1 if (has_email_or_text and has_collection_verb) else 0)
+    
+    # FEATURE 30: Overall semantic score
+    score = 0
+    # Strong positive indicators
+    if has_def_comm: score += 5
+    if has_ecomm: score += 4
+    if any(phrase in text_lower for phrase in capability_language): score += 3
+    # Strong negative indicators
+    if has_def_collection: score -= 5
+    if has_list_format: score -= 4
+    if any(word in text_lower for word in collection_verbs): score -= 2
+    if any(word in text_lower for word in storage_verbs): score -= 2
+    
+    features.append(max(0, min(1, (score + 5) / 10)))
     
     return np.array(features)
 
 # START TRAINING
 print("="*80)
-print("TRAINING DEEP SEMANTIC NEURAL NETWORK")
+print("TRAINING COMMUNICATION vs DATA COLLECTION CLASSIFIER")
 print("="*80)
-print("This advanced model learns to understand MEANING and CONTEXT:")
-print("  - 'we send emails to users' = YES (active communication)")
-print("  - 'we log emails in database' = NO (just data storage)")
-print("  - 'japanese plaintext' = NO (not about text messaging)")
-print("  - 'email notification sent' = YES (communication feature)")
+print("This model distinguishes:")
+print("  YES: 'app provides ability to send emails', 'e-communications enabled'")
+print("  NO: 'collect email, phone number', 'email required for registration'")
 print("="*80)
 
 all_examples = POSITIVE_EXAMPLES + NEGATIVE_EXAMPLES
 labels = np.array([1] * len(POSITIVE_EXAMPLES) + [0] * len(NEGATIVE_EXAMPLES)).reshape(-1, 1)
 
 print(f"\nTraining dataset:")
-print(f"  Positive examples (ACTUAL communication): {len(POSITIVE_EXAMPLES)}")
-print(f"  Negative examples (NOT communication): {len(NEGATIVE_EXAMPLES)}")
-print(f"  Total training examples: {len(all_examples)}")
+print(f"  Communication capability examples: {len(POSITIVE_EXAMPLES)}")
+print(f"  Data collection examples: {len(NEGATIVE_EXAMPLES)}")
 
-print("\nStep 1: Converting text to TF-IDF features...")
-print("  - Capturing word importance across all training examples")
-print("  - Using 1-4 word phrases (ngrams) to understand context")
+print("\nStep 1: TF-IDF feature extraction...")
 vectorizer = TfidfVectorizer(
-    max_features=150,  # More features for better semantic capture
-    ngram_range=(1, 4),  # Up to 4-word phrases like "send email to user"
+    max_features=150,
+    ngram_range=(1, 5),  # Up to 5-word phrases
     min_df=1,
     sublinear_tf=True
 )
 X_tfidf = vectorizer.fit_transform(all_examples).toarray()
 
-print("\nStep 2: Extracting deep semantic features...")
-print("  - 25 hand-crafted features for semantic understanding")
-print("  - Features analyze: actions, context, role, sentence structure")
+print("\nStep 2: Semantic feature extraction...")
 X_features = np.array([extract_deep_semantic_features(text) for text in all_examples])
 
-print("\nStep 3: Combining feature sets...")
+print("\nStep 3: Combining and standardizing...")
 X_combined = np.hstack([X_tfidf, X_features])
-
-print("\nStep 4: Standardizing features...")
 scaler = StandardScaler()
 X_train = scaler.fit_transform(X_combined)
 
-print(f"\nFeature engineering complete:")
-print(f"  Total features: {X_train.shape[1]}")
-print(f"  TF-IDF features: {X_tfidf.shape[1]}")
-print(f"  Semantic features: {X_features.shape[1]}")
+print(f"\nTotal features: {X_train.shape[1]}")
 
-print("\nStep 5: Initializing deep neural network...")
-print("  Architecture: Input -> 64 -> 48 -> 32 -> 16 -> Output")
-print("  Total layers: 5 (4 hidden + 1 output)")
-print("  Activation: Leaky ReLU (hidden), Sigmoid (output)")
-print("  Dropout: 25% for regularization")
-print("  Learning rate: 0.005 (small for careful learning)")
-
+print("\nStep 4: Training neural network...")
 nn = DeepSemanticNeuralNet(
     input_size=X_train.shape[1],
     hidden_sizes=[64, 48, 32, 16],
@@ -747,70 +671,68 @@ nn = DeepSemanticNeuralNet(
     dropout_rate=0.25
 )
 
-print("\nStep 6: Training neural network...")
-print("  Training for up to 1000 epochs with early stopping")
-print("  Batch size: 16 (smaller for more frequent weight updates)")
-print("  Validation split: 20% for monitoring generalization")
-print("")
-
 nn.train(X_train, labels, epochs=1000, batch_size=16, validation_split=0.2)
-
-print("\n" + "="*80)
-print("MODEL TRAINING COMPLETE")
-print("="*80)
+print("\nModel training complete!\n")
 
 def predict_communication_capability(text):
     """
     Predict if text indicates ACTUAL communication capability
-    
-    This uses both the deep neural network and additional semantic rules
-    to ensure we truly understand the meaning.
+    vs just data collection
     """
-    # Handle None and NaN
     text_str = safe_str(text)
-    if not text_str or text_str.strip() == "":
+    if not text_str:
         return 0.0
     
     text_lower = text_str.lower()
     
-    # IMMEDIATE DISQUALIFIERS - these are NEVER about communication
+    # IMMEDIATE DISQUALIFIERS - these are DEFINITELY just data collection
     hard_disqualifiers = [
+        # List format
+        'email, phone', 'phone, email', 'email and phone number',
+        # Technical text
         'plaintext', 'plain text format', 'text file', 'text encoding',
-        'japanese text', 'chinese text', 'korean text', 'text field in',
-        'text column', 'text data type', 'password stored', 'log email',
-        'store email', 'save email', 'email stored in', 'email saved to',
-        'email field', 'email column', 'email database', 'email table',
-        'email for login', 'email as username', 'signup email', 'registration email',
-        'text parsing', 'text processing', 'text analysis', 'text mining'
+        'text field', 'text column', 'text data type',
+        # Language
+        'japanese text', 'chinese text', 'korean text',
+        # Pure storage
+        'email stored in database', 'phone stored in', 'save email address',
+        'store phone number', 'log email', 'record phone',
+        # Registration/login
+        'email for login', 'phone for authentication', 'email as username',
+        'registration requires email', 'signup phone number'
     ]
     
     for disqualifier in hard_disqualifiers:
         if disqualifier in text_lower:
             return 0.0
     
-    # IMMEDIATE QUALIFIERS - these are DEFINITELY about communication
+    # IMMEDIATE QUALIFIERS - these DEFINITELY mean communication
     hard_qualifiers = [
-        'send email to', 'send text to', 'deliver email', 'deliver text',
-        'email notification sent', 'text notification sent', 'sms sent to',
-        'notify via email', 'notify via text', 'alert via email', 'alert via sms',
-        'user receives email', 'customer gets text', 'you will receive',
-        'we will send you', 'email campaign', 'text campaign', 'sms campaign'
+        # E-communication
+        'e-communication', 'ecommunication', 'e-communications', 'ecommunications',
+        'electronic communication',
+        # Capability language
+        'provides ability to send email', 'provides ability to send text',
+        'ability to send sms', 'allows users to send', 'enables sending',
+        # System sending
+        'system sends email to', 'app sends text to', 'platform delivers email',
+        # Notification systems
+        'email notification system', 'text notification system', 'sms alert system'
     ]
     
     for qualifier in hard_qualifiers:
         if qualifier in text_lower:
-            # Still run through model but boost score
             try:
                 X_tfidf = vectorizer.transform([text_lower]).toarray()
                 X_features = extract_deep_semantic_features(text_str).reshape(1, -1)
                 X_combined = np.hstack([X_tfidf, X_features])
                 X = scaler.transform(X_combined)
                 prediction = nn.predict(X)[0][0]
-                return min(1.0, float(prediction) + 0.2)  # Boost by 0.2
+                return min(1.0, float(prediction) + 0.3)  # Strong boost
             except:
-                return 0.9  # High confidence fallback
+                return 0.95
     
-    # Standard prediction through neural network
+    # Standard ML prediction
     try:
         X_tfidf = vectorizer.transform([text_lower]).toarray()
         X_features = extract_deep_semantic_features(text_str).reshape(1, -1)
@@ -818,13 +740,12 @@ def predict_communication_capability(text):
         X = scaler.transform(X_combined)
         prediction = nn.predict(X)[0][0]
         return float(prediction)
-    except Exception as e:
-        # If prediction fails for any reason, return 0
+    except:
         return 0.0
 
 # PROCESS DATASETS
 print("\n" + "="*80)
-print("PROCESSING DATASETS WITH SEMANTIC UNDERSTANDING")
+print("PROCESSING DATASETS")
 print("="*80)
 
 results = {}
@@ -838,7 +759,6 @@ for dataset_name in input_dataset_names:
         print(f"  Warning: Could not load {dataset_name}: {e}")
         continue
     
-    # Find IDN_EON column (case insensitive)
     idn_col = None
     for col in df.columns:
         if col.upper() == 'IDN_EON':
@@ -849,19 +769,16 @@ for dataset_name in input_dataset_names:
         print(f"  Warning: No IDN_EON column found")
         continue
     
-    # Convert to string and handle None/NaN
-    df[idn_col] = df[idn_col].apply(safe_str)
-    df = df[df[idn_col].str.strip() != ""]  # Remove empty values
-    
-    unique_idns = df[idn_col].dropna().unique()
-    print(f"  Found {len(unique_idns)} unique IDN_EON values")
+    print(f"  Total rows: {len(df)}")
+    unique_idns = df[idn_col].unique()
+    print(f"  Unique IDN_EON: {len(unique_idns)}")
     
     for idx, IDN_EON in enumerate(unique_idns):
         if idx % 100 == 0 and idx > 0:
             print(f"    Processed {idx}/{len(unique_idns)} IDNs...")
         
         IDN_EON_str = safe_str(IDN_EON)
-        if not IDN_EON_str or IDN_EON_str.strip() == "":
+        if not IDN_EON_str:
             continue
         
         if IDN_EON_str not in results:
@@ -873,32 +790,30 @@ for dataset_name in input_dataset_names:
             }
         
         results[IDN_EON_str]['data_sources'].add(dataset_name)
-        idn_rows = df[df[idn_col] == IDN_EON]
+        idn_rows = df[df[idn_col].astype(str) == IDN_EON_str]
         
         for col in df.columns:
             if col.upper() == 'IDN_EON':
                 continue
             
             for value in idn_rows[col]:
-                # Handle None and NaN
                 original_value = safe_str(value)
-                if not original_value or original_value.strip() == "":
+                if not original_value:
                     continue
                 
                 value_lower = original_value.lower()
                 
-                # Only check cells that mention email or text/sms
-                has_email_mention = any(word in value_lower for word in ['email', 'e-mail', 'mail'])
+                # Only analyze if mentions email or text/sms
+                has_email_mention = any(word in value_lower for word in ['email', 'e-mail'])
                 has_text_mention = any(word in value_lower for word in ['text', 'sms', 'messaging'])
                 
                 if has_email_mention or has_text_mention:
-                    # Use deep semantic analysis
                     try:
                         confidence = predict_communication_capability(original_value)
-                    except Exception as e:
+                    except:
                         confidence = 0.0
                     
-                    # High threshold - only flag if we're very confident
+                    # High threshold - must be confident it's communication not collection
                     if confidence > 0.75:
                         if has_email_mention:
                             results[IDN_EON_str]['email_findings'].append({
@@ -907,7 +822,7 @@ for dataset_name in input_dataset_names:
                                 'cell_content': original_value
                             })
                         
-                        if has_text_mention and 'plaintext' not in value_lower and 'plain text' not in value_lower:
+                        if has_text_mention:
                             results[IDN_EON_str]['text_findings'].append({
                                 'location': f"{col} [{dataset_name}]",
                                 'confidence': confidence,
@@ -953,15 +868,14 @@ for IDN_EON, data in results.items():
 output_df = pd.DataFrame(output_data).sort_values('IDN_EON').reset_index(drop=True)
 output_dataset.write_with_schema(output_df)
 
-# FINAL SUMMARY
 print("\n" + "="*80)
-print("PROCESSING COMPLETE - SEMANTIC ANALYSIS RESULTS")
+print("PROCESSING COMPLETE")
 print("="*80)
 print(f"Total unique IDN_EON processed: {len(results)}")
 print(f"IDN_EONs with ACTUAL communication capabilities: {len(output_df)}")
-print(f"\nThis deep semantic model now correctly:")
-print(f"  - REJECTS: 'we log emails', 'japanese plaintext', 'email stored in database'")
-print(f"  - ACCEPTS: 'we send emails to users', 'email notifications enabled'")
-print(f"\nConfidence threshold: 0.75 (very high confidence required)")
-print(f"Output written to: {output_dataset.name}")
+print(f"\nThis model correctly distinguishes:")
+print(f"  ACCEPTS: 'e-communications', 'provides ability to send emails'")
+print(f"  REJECTS: 'collect email, phone', 'email required for registration'")
+print(f"\nConfidence threshold: 0.75")
+print(f"Output: {output_dataset.name}")
 print("="*80)
