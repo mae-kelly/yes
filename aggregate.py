@@ -1,1023 +1,1507 @@
+# -*- coding: utf-8 -*-
 """
-TRUE SEMANTIC E-COMMUNICATION DETECTOR v3.0
-============================================
-This version ACTUALLY understands sentence meaning by:
-1. Using sentence embeddings with carefully constructed contrastive examples
-2. Analyzing grammatical structure (subject-verb-object relationships)
-3. Understanding context and intent, not just keyword presence
-4. Using a neural classifier trained on meaning, not pattern matching
+================================================================================
+E-COMMUNICATION CAPABILITY DETECTION - LOCAL SCRIPT WITH DATAIKU API
+================================================================================
 
-The key insight: "email" appearing in text means NOTHING.
-What matters is: WHO does WHAT with email, and in WHAT DIRECTION?
+PURPOSE:
+    Detect applications with e-communication capabilities (ability to SEND emails,
+    texts, SMS, video calls, voice calls, instant messages, push notifications, etc.)
+    by semantically analyzing text data across multiple database tables in Dataiku.
 
-Examples that should be DETECTED (app/user SENDS communications):
-- "The application sends email notifications to users" → App sends TO users
-- "Users can message each other through the platform" → Users send TO each other
-- "Push notifications are delivered to customer devices" → System sends TO customers
+CRITICAL DISTINCTION:
+    ✅ DETECT: Apps that LET USERS SEND communications
+    ❌ DO NOT DETECT: Apps that just COLLECT/STORE communication data
 
-Examples that should be REJECTED (data collection/storage):
-- "Email address is collected during registration" → Collecting FROM users
-- "User's phone number is stored in the database" → Storing, not sending
-- "Login requires email and password" → Using email as identifier, not communication
+USAGE:
+    1. Install requirements: pip install dataiku-api-client sentence-transformers pandas numpy
+    2. Configure your Dataiku connection settings below
+    3. Run: python ecomm_detection_local.py
+
+REQUIREMENTS:
+    - dataiku-api-client (pip install dataiku-api-client)
+    - sentence-transformers (pip install sentence-transformers)
+    - pandas
+    - numpy
+
+AUTHOR: Generated for Dataiku Integration
+VERSION: 4.0.0 (Local Execution with Sentence-Transformers)
+================================================================================
 """
 
-import dataiku
-import pandas as pd
-import numpy as np
-import re
-from typing import Dict, List, Tuple, Optional, Set
-from collections import defaultdict
-import warnings
+import os
 import sys
-import subprocess
+import re
+import warnings
+from collections import defaultdict
+from typing import List, Dict, Tuple, Optional, Set, Any
+from datetime import datetime
 
+# Suppress warnings for cleaner output
 warnings.filterwarnings('ignore')
 
-print("=" * 80)
-print("TRUE SEMANTIC E-COMMUNICATION DETECTOR v3.0")
-print("=" * 80)
+# ================================================================================
+# STEP 1: INSTALL AND IMPORT DEPENDENCIES
+# ================================================================================
 
-# ============================================================================
-# CONFIGURATION
-# ============================================================================
-SEMANTIC_THRESHOLD = 0.55  # Score above this = e-communication detected
-MIN_FINDINGS_REQUIRED = 1
-BATCH_SIZE = 32  # For efficient embedding computation
-
-input_dataset_names = ['table1', 'table2', 'table3', 'table4']
-output_dataset = dataiku.Dataset("output_table")
-
-# ============================================================================
-# INSTALL AND LOAD SENTENCE TRANSFORMERS
-# ============================================================================
-print("\n" + "=" * 80)
-print("LOADING SEMANTIC MODEL")
-print("=" * 80)
-
-MODEL_AVAILABLE = False
-model = None
-
-def install_and_load_model():
-    """Attempt to install and load sentence-transformers."""
-    global MODEL_AVAILABLE, model
-    
+def install_package(package_name: str) -> bool:
+    """Attempt to install a package using pip."""
+    import subprocess
     try:
-        from sentence_transformers import SentenceTransformer
-        print("✓ sentence-transformers already installed")
-        
-        print("Loading all-MiniLM-L6-v2 model...")
-        model = SentenceTransformer('sentence-transformers/all-MiniLM-L6-v2')
-        print("✓ Model loaded successfully")
-        MODEL_AVAILABLE = True
+        subprocess.check_call([sys.executable, '-m', 'pip', 'install', package_name, '-q'])
         return True
-        
-    except ImportError:
-        print("⚠ sentence-transformers not found, installing...")
-        try:
-            subprocess.check_call([
-                sys.executable, "-m", "pip", "install", 
-                "sentence-transformers", "--break-system-packages", "-q"
-            ])
-            print("✓ Installation complete")
-            
-            from sentence_transformers import SentenceTransformer
-            print("Loading all-MiniLM-L6-v2 model...")
-            model = SentenceTransformer('sentence-transformers/all-MiniLM-L6-v2')
-            print("✓ Model loaded successfully")
-            MODEL_AVAILABLE = True
-            return True
-            
-        except Exception as e:
-            print(f"✗ Failed to install: {e}")
-            print("  Will use advanced rule-based fallback")
-            return False
-    except Exception as e:
-        print(f"✗ Error loading model: {e}")
+    except subprocess.CalledProcessError:
         return False
 
-install_and_load_model()
-
-# ============================================================================
-# SEMANTIC TRAINING DATA
-# ============================================================================
-# These examples are carefully crafted to teach the model the DIFFERENCE
-# between sending capabilities and data collection.
-# 
-# KEY PRINCIPLE: The examples must be semantically diverse but clearly
-# distinguish between the two categories based on MEANING, not keywords.
-
-# CATEGORY 1: E-COMMUNICATION SENDING CAPABILITIES
-# These describe apps/systems that SEND or ENABLE SENDING of communications
-SENDING_EXAMPLES = [
-    # === SYSTEM/APP SENDS TO USERS ===
-    "the application sends email notifications to users",
-    "system delivers text messages to customers",
-    "app transmits SMS alerts to subscribers",
-    "platform sends push notifications to devices",
-    "service emails order confirmations to buyers",
-    "application dispatches automated alerts",
-    "system broadcasts notifications to all users",
-    "app pushes real-time updates to mobile devices",
-    "platform delivers instant alerts to subscribers",
-    "service transmits promotional messages to customers",
-    "application sends appointment reminders via text",
-    "system notifies users through email",
-    "app alerts customers via SMS",
-    "platform communicates updates to subscribers",
-    "automated emails are sent to customers",
-    "push notifications delivered to user devices",
-    "text message alerts sent to phone numbers",
-    "email campaigns delivered to subscriber list",
-    "transactional emails sent after purchase",
-    "SMS notifications dispatched automatically",
-    
-    # === USER-TO-USER COMMUNICATION ===
-    "users can send messages to each other",
-    "platform enables direct messaging between users",
-    "allows customers to email each other",
-    "users can text other members",
-    "enables video calling between participants",
-    "supports voice calls between users",
-    "instant messaging between team members",
-    "chat functionality for user communication",
-    "allows sending messages to contacts",
-    "users can communicate via the app",
-    "peer-to-peer messaging capability",
-    "enables real-time chat between users",
-    "supports group messaging features",
-    "allows users to start video chats",
-    "voice calling feature for members",
-    
-    # === COMMUNICATION PLATFORM DESCRIPTIONS ===
-    "email sending capability",
-    "SMS delivery service",
-    "push notification system",
-    "messaging platform features",
-    "communication delivery infrastructure",
-    "notification dispatch system",
-    "email marketing platform",
-    "text message gateway",
-    "real-time messaging service",
-    "video conferencing platform",
-    "voice communication service",
-    "chat application features",
-    "instant messaging infrastructure",
-    "alert delivery mechanism",
-    "notification broadcasting system",
-    
-    # === CAPABILITY DESCRIPTIONS ===
-    "enables sending of electronic communications",
-    "provides email transmission capabilities",
-    "supports outbound SMS messaging",
-    "facilitates push notification delivery",
-    "allows transmission of text messages",
-    "capable of sending automated emails",
-    "equipped with messaging functionality",
-    "includes video calling features",
-    "offers voice communication options",
-    "provides chat capabilities",
-    "supports real-time notifications",
-    "enables bulk email sending",
-    "allows scheduled message delivery",
-    "supports triggered notifications",
-    "provides communication tools",
-    
-    # === E-COMMUNICATION EXPLICIT ===
-    "e-communication capabilities enabled",
-    "electronic communication features",
-    "e-communication platform",
-    "electronic messaging service",
-    "e-communication delivery system",
-    "electronic notification capabilities",
-    "e-communication infrastructure",
-    "digital communication platform",
-    "electronic alert system",
-    "e-communication enabled application",
-]
-
-# CATEGORY 2: DATA COLLECTION/STORAGE (NOT SENDING)
-# These describe collecting, storing, or using communication data as identifiers
-COLLECTION_EXAMPLES = [
-    # === COLLECTING EMAIL/PHONE AS DATA ===
-    "collects email addresses from users",
-    "gathers customer phone numbers",
-    "captures user email during registration",
-    "obtains contact information from customers",
-    "requests email address for signup",
-    "asks users for phone number",
-    "collects subscriber email addresses",
-    "gathers member contact details",
-    "captures email for newsletter signup",
-    "obtains phone for account verification",
-    "collects user contact information",
-    "gathers email and phone data",
-    "requests contact details during checkout",
-    "asks for email to create account",
-    "collects phone number for records",
-    
-    # === STORING COMMUNICATION DATA ===
-    "stores email addresses in database",
-    "saves phone numbers to user profile",
-    "keeps email on file for records",
-    "retains contact information",
-    "maintains email address records",
-    "archives customer phone numbers",
-    "stores contact data securely",
-    "saves user email to account",
-    "keeps phone number in system",
-    "retains subscriber email addresses",
-    "stores member contact details",
-    "maintains database of emails",
-    "archives contact information",
-    "saves email for future reference",
-    "stores phone for account recovery",
-    
-    # === EMAIL/PHONE AS IDENTIFIER ===
-    "email address used for login",
-    "phone number for authentication",
-    "email serves as username",
-    "login with email and password",
-    "sign in using phone number",
-    "email required for account access",
-    "authenticate using email address",
-    "phone number as account identifier",
-    "email for user identification",
-    "login credentials include email",
-    "email based authentication",
-    "phone verification for login",
-    "email as unique identifier",
-    "account tied to email address",
-    "phone linked to user account",
-    
-    # === DATA FIELD DESCRIPTIONS ===
-    "email field in registration form",
-    "phone number input field",
-    "contact information form fields",
-    "email address text box",
-    "phone number entry field",
-    "user provides email address",
-    "customer enters phone number",
-    "email input on signup page",
-    "phone field required",
-    "email address field validation",
-    "contact form with email field",
-    "phone number text input",
-    "email and phone form fields",
-    "user information includes email",
-    "profile contains phone number",
-    
-    # === DATABASE/SCHEMA DESCRIPTIONS ===
-    "email column in user table",
-    "phone number data field",
-    "contact information schema",
-    "email data type varchar",
-    "phone stored as string",
-    "email address database column",
-    "user table contains email",
-    "phone field in customer record",
-    "email as plaintext field",
-    "contact data structure",
-    "email in user schema",
-    "phone number database entry",
-    "email and phone columns",
-    "contact information table",
-    "user data includes email",
-    
-    # === LIST FORMAT (STRONG INDICATOR) ===
-    "fields: email, phone, address",
-    "collects: name, email, phone",
-    "data: email, phone number, address",
-    "information: email and phone",
-    "email, phone, mailing address",
-    "contact: email, phone",
-    "user data: email, phone, name",
-    "profile: email, phone, address",
-    "required: email, phone number",
-    "includes email and phone number",
-    
-    # === VERIFICATION CODES (NOT COMMUNICATION) ===
-    "SMS verification code sent",
-    "email verification link",
-    "phone verification for 2FA",
-    "one-time password via SMS",
-    "verification code to email",
-    "2FA code sent to phone",
-    "email confirmation link",
-    "SMS OTP for authentication",
-    "verify phone with code",
-    "email verification required",
-    
-    # === DISPLAY/RENDERING ===
-    "displays user email address",
-    "shows phone number in profile",
-    "renders contact information",
-    "email visible on account page",
-    "phone displayed in settings",
-    "shows email in user details",
-    "contact info shown on profile",
-    "displays customer phone",
-    "renders email address field",
-    "shows contact details",
-    
-    # === VALIDATION/FORMAT ===
-    "validates email format",
-    "checks phone number format",
-    "email format validation",
-    "verifies valid email address",
-    "phone number format check",
-    "validates contact information",
-    "email syntax validation",
-    "checks valid phone format",
-    "validates email domain",
-    "phone format verification",
-    
-    # === UNRELATED TEXT MENTIONS ===
-    "Japanese text support",
-    "Chinese text encoding",
-    "plaintext format",
-    "text field data type",
-    "text column in database",
-    "rich text editor",
-    "text formatting options",
-    "plain text content",
-    "text data storage",
-    "text input processing",
-]
-
-print(f"\nTraining data: {len(SENDING_EXAMPLES)} sending examples, {len(COLLECTION_EXAMPLES)} collection examples")
-
-# ============================================================================
-# COMPUTE SEMANTIC EMBEDDINGS
-# ============================================================================
-
-sending_embeddings = None
-collection_embeddings = None
-sending_centroid = None
-collection_centroid = None
-
-if MODEL_AVAILABLE and model is not None:
-    print("\nComputing semantic embeddings for training data...")
-    
-    # Encode all examples
-    sending_embeddings = model.encode(SENDING_EXAMPLES, normalize_embeddings=True, show_progress_bar=False)
-    collection_embeddings = model.encode(COLLECTION_EXAMPLES, normalize_embeddings=True, show_progress_bar=False)
-    
-    # Compute centroids (mean embeddings)
-    sending_centroid = np.mean(sending_embeddings, axis=0)
-    sending_centroid = sending_centroid / np.linalg.norm(sending_centroid)
-    
-    collection_centroid = np.mean(collection_embeddings, axis=0)
-    collection_centroid = collection_centroid / np.linalg.norm(collection_centroid)
-    
-    print(f"✓ Encoded {len(SENDING_EXAMPLES)} sending examples")
-    print(f"✓ Encoded {len(COLLECTION_EXAMPLES)} collection examples")
-    print(f"✓ Computed category centroids")
-
-# ============================================================================
-# HARD RULES (Override semantic classification in clear cases)
-# ============================================================================
-
-# Patterns that DEFINITELY indicate e-communication sending
-DEFINITE_SENDING_PATTERNS = [
-    # Explicit e-communication terms
-    r'\be-?communications?\s+(capabilit|feature|platform|service|enabled|system)',
-    r'\belectronic\s+communications?\s+(capabilit|feature|platform|service)',
-    
-    # Clear sending patterns with recipients
-    r'\b(sends?|delivers?|transmits?|dispatches?)\s+(emails?|texts?|sms|messages?|notifications?|alerts?)\s+(to|for)\s+(users?|customers?|subscribers?|members?|devices?)',
-    
-    # Platform/app as sender
-    r'\b(app|application|system|platform|service)\s+(sends?|delivers?|transmits?)\s+(emails?|texts?|sms|notifications?)',
-    
-    # User-to-user communication
-    r'\busers?\s+(can|may|could)\s+(send|message|email|text|call|chat)',
-    r'\b(messaging|calling|chatting)\s+between\s+users?',
-    r'\buser[\s-]to[\s-]user\s+(messaging|communication|chat)',
-    
-    # Communication features
-    r'\b(video|voice)\s+(call|calling|chat|conferencing)\s+(feature|capabilit|between|with)',
-    r'\binstant\s+messaging\s+(feature|capabilit|platform|between)',
-    r'\breal[\s-]time\s+(messaging|chat|communication)',
-    r'\bpush\s+notifications?\s+(to|for|delivered|sent)',
-    
-    # Marketing/bulk sending
-    r'\b(email|sms|text)\s+marketing',
-    r'\bbulk\s+(email|sms|text|message)',
-    r'\bmass\s+(email|sms|text|message)',
-    r'\btransactional\s+(email|sms)',
-    r'\bautomated\s+(email|sms|text|notification)',
-]
-
-# Patterns that DEFINITELY indicate data collection (not sending)
-DEFINITE_COLLECTION_PATTERNS = [
-    # List format (email, phone, etc.)
-    r'\bemail\s*[,&]\s*(phone|address|name)',
-    r'\b(phone|name)\s*[,&]\s*email',
-    r'\bfields?\s*[:\-]?\s*(email|phone)',
-    r'\b(data|information|details)\s*[:\-]?\s*(email|phone)',
-    
-    # Collecting/storing verbs with email/phone
-    r'\b(collects?|gathers?|captures?|obtains?|stores?|saves?|retains?|maintains?|archives?)\s+(users?\'?s?\s+)?(email|phone|contact)',
-    r'\b(email|phone)\s+(address\s+)?(collected|gathered|stored|saved|retained)',
-    
-    # Login/authentication
-    r'\b(login|sign\s*in|authenticate)\s+(with|using|via)\s+email',
-    r'\bemail\s+(for|as)\s+(login|username|authentication|identifier)',
-    r'\bemail\s+and\s+password',
-    r'\bemail\s+required\s+for\s+(registration|signup|account|login)',
-    
-    # Database/schema terms
-    r'\bemail\s+(column|field|table|data\s*type)',
-    r'\b(plaintext|varchar|string)\s+(email|field)',
-    r'\bemail\s+in\s+(database|table|schema|record|profile)',
-    
-    # Form fields
-    r'\bemail\s+(input|text\s*box|form)\s*field',
-    r'\benter\s+(your\s+)?email\s+address',
-    r'\bprovide\s+(your\s+)?email',
-    r'\bemail\s+address\s+field',
-    
-    # Verification (not communication)
-    r'\b(sms|text|email)\s+verification\s+(code|link)',
-    r'\b(2fa|two[\s-]factor)\s+(via|using|through)\s+(sms|text|email)',
-    r'\b(otp|one[\s-]time\s+password)\s+(via|sent|to)',
-    r'\bverification\s+(code|link)\s+(sent|to|via)',
-    
-    # Unrelated "text" references
-    r'\b(japanese|chinese|korean|arabic|hebrew)\s+text',
-    r'\bplaintext\s+format',
-    r'\btext\s+(field|column|data\s*type)',
-    r'\brich\s+text\s+editor',
-]
-
-# Compile patterns
-SENDING_REGEX = [re.compile(p, re.IGNORECASE) for p in DEFINITE_SENDING_PATTERNS]
-COLLECTION_REGEX = [re.compile(p, re.IGNORECASE) for p in DEFINITE_COLLECTION_PATTERNS]
-
-# ============================================================================
-# SEMANTIC CLASSIFICATION FUNCTION
-# ============================================================================
-
-def compute_semantic_similarity(text: str) -> Tuple[float, float, List[str]]:
-    """
-    Compute semantic similarity of text to sending vs collection categories.
-    
-    Returns:
-        (sending_score, collection_score, top_matches)
-    """
-    if not MODEL_AVAILABLE or model is None:
-        return 0.5, 0.5, []
-    
-    try:
-        from sklearn.metrics.pairwise import cosine_similarity
-        
-        # Encode the input text
-        text_embedding = model.encode([text], normalize_embeddings=True)[0]
-        
-        # 1. Similarity to centroids
-        centroid_sending = float(np.dot(text_embedding, sending_centroid))
-        centroid_collection = float(np.dot(text_embedding, collection_centroid))
-        
-        # 2. Max similarity to individual examples
-        sending_sims = cosine_similarity(text_embedding.reshape(1, -1), sending_embeddings)[0]
-        collection_sims = cosine_similarity(text_embedding.reshape(1, -1), collection_embeddings)[0]
-        
-        max_sending = float(np.max(sending_sims))
-        max_collection = float(np.max(collection_sims))
-        
-        # 3. Top-5 average (more robust than max alone)
-        top5_sending = float(np.mean(sorted(sending_sims, reverse=True)[:5]))
-        top5_collection = float(np.mean(sorted(collection_sims, reverse=True)[:5]))
-        
-        # 4. 90th percentile
-        p90_sending = float(np.percentile(sending_sims, 90))
-        p90_collection = float(np.percentile(collection_sims, 90))
-        
-        # Weighted combination
-        # Weight towards max and top-5 as they're more discriminative
-        sending_score = (
-            0.2 * centroid_sending +
-            0.35 * max_sending +
-            0.30 * top5_sending +
-            0.15 * p90_sending
-        )
-        
-        collection_score = (
-            0.2 * centroid_collection +
-            0.35 * max_collection +
-            0.30 * top5_collection +
-            0.15 * p90_collection
-        )
-        
-        # Find top matching examples for explainability
-        top_sending_idx = np.argsort(sending_sims)[-3:][::-1]
-        top_matches = [SENDING_EXAMPLES[i] for i in top_sending_idx]
-        
-        return sending_score, collection_score, top_matches
-        
-    except Exception as e:
-        print(f"Semantic computation error: {e}")
-        return 0.5, 0.5, []
-
-
-def classify_text(text: str) -> Dict:
-    """
-    Classify text as e-communication sending capability or not.
-    
-    This uses a multi-stage approach:
-    1. Check hard rules first (definite patterns)
-    2. Use semantic similarity for ambiguous cases
-    3. Combine signals for final decision
-    
-    Returns:
-        Dict with: is_ecomm, confidence, method, details
-    """
-    # Handle empty/invalid text
-    if not text or pd.isna(text):
-        return {
-            'is_ecomm': False,
-            'confidence': 0.0,
-            'method': 'empty',
-            'details': {}
-        }
-    
-    text_str = str(text).strip()
-    if not text_str or len(text_str) < 10:
-        return {
-            'is_ecomm': False,
-            'confidence': 0.0,
-            'method': 'too_short',
-            'details': {}
-        }
-    
-    text_lower = text_str.lower()
-    
-    # Skip text that has no communication-related terms at all
-    comm_terms = [
-        'email', 'e-mail', 'mail', 'text', 'sms', 'mms', 'message', 'messag',
-        'call', 'video', 'voice', 'chat', 'notification', 'notify', 'alert',
-        'communication', 'communicat', 'send', 'deliver', 'transmit', 'push',
-        'broadcast', 'dispatch'
-    ]
-    if not any(term in text_lower for term in comm_terms):
-        return {
-            'is_ecomm': False,
-            'confidence': 0.0,
-            'method': 'no_comm_terms',
-            'details': {}
-        }
-    
-    details = {}
-    
-    # ========== STAGE 1: Check definite collection patterns (disqualifiers) ==========
-    collection_matches = []
-    for pattern in COLLECTION_REGEX:
-        match = pattern.search(text_str)
-        if match:
-            collection_matches.append(match.group())
-    
-    if collection_matches:
-        details['collection_patterns'] = collection_matches
-        return {
-            'is_ecomm': False,
-            'confidence': 0.95,
-            'method': 'definite_collection_pattern',
-            'details': details,
-            'matched_patterns': collection_matches
-        }
-    
-    # ========== STAGE 2: Check definite sending patterns (qualifiers) ==========
-    sending_matches = []
-    for pattern in SENDING_REGEX:
-        match = pattern.search(text_str)
-        if match:
-            sending_matches.append(match.group())
-    
-    if sending_matches:
-        details['sending_patterns'] = sending_matches
-        return {
-            'is_ecomm': True,
-            'confidence': 0.95,
-            'method': 'definite_sending_pattern',
-            'details': details,
-            'matched_patterns': sending_matches
-        }
-    
-    # ========== STAGE 3: Semantic classification for ambiguous cases ==========
-    if MODEL_AVAILABLE and model is not None:
-        sending_score, collection_score, top_matches = compute_semantic_similarity(text_str)
-        
-        details['sending_score'] = round(sending_score, 4)
-        details['collection_score'] = round(collection_score, 4)
-        details['top_similar_sending'] = top_matches[:2]
-        
-        # Normalize to get a probability-like score
-        total = sending_score + collection_score
-        if total > 0:
-            normalized_sending = sending_score / total
-        else:
-            normalized_sending = 0.5
-        
-        details['normalized_score'] = round(normalized_sending, 4)
-        
-        # Decision
-        is_ecomm = normalized_sending > SEMANTIC_THRESHOLD
-        confidence = normalized_sending if is_ecomm else (1 - normalized_sending)
-        
-        return {
-            'is_ecomm': is_ecomm,
-            'confidence': round(confidence, 3),
-            'method': 'semantic',
-            'details': details,
-            'sending_score': round(normalized_sending, 3)
-        }
-    
-    # ========== FALLBACK: Advanced keyword analysis ==========
-    # If no semantic model, use linguistic analysis
-    return fallback_classification(text_str)
-
-
-def fallback_classification(text: str) -> Dict:
-    """
-    Fallback classification using linguistic patterns when semantic model unavailable.
-    """
-    text_lower = text.lower()
-    details = {}
-    
-    # Transmission verbs (sending)
-    transmission_verbs = {
-        'send', 'sends', 'sending', 'sent',
-        'deliver', 'delivers', 'delivering', 'delivered',
-        'transmit', 'transmits', 'transmitting', 'transmitted',
-        'dispatch', 'dispatches', 'dispatching',
-        'push', 'pushes', 'pushing',
-        'broadcast', 'broadcasts',
-        'notify', 'notifies', 'notifying',
-        'alert', 'alerts', 'alerting'
-    }
-    
-    # Collection verbs
-    collection_verbs = {
-        'collect', 'collects', 'collecting', 'collected',
-        'store', 'stores', 'storing', 'stored',
-        'save', 'saves', 'saving', 'saved',
-        'gather', 'gathers', 'gathering', 'gathered',
-        'capture', 'captures', 'capturing', 'captured',
-        'obtain', 'obtains', 'obtaining', 'obtained',
-        'retain', 'retains', 'retaining', 'retained',
-        'require', 'requires', 'requiring', 'required',
-        'request', 'requests', 'requesting',
-        'input', 'inputs', 'enter', 'enters',
-        'provide', 'provides', 'providing',
-        'display', 'displays', 'show', 'shows'
-    }
-    
-    # Communication objects
-    comm_objects = ['email', 'text', 'sms', 'message', 'notification', 'alert', 'call', 'chat']
-    
-    # Find verbs in text
-    words = set(re.findall(r'\b\w+\b', text_lower))
-    
-    found_transmission = words & transmission_verbs
-    found_collection = words & collection_verbs
-    found_comm = [obj for obj in comm_objects if obj in text_lower]
-    
-    details['transmission_verbs'] = list(found_transmission)
-    details['collection_verbs'] = list(found_collection)
-    details['comm_objects'] = found_comm
-    
-    # Recipient indicators (suggests sending TO someone)
-    recipient_patterns = ['to user', 'to customer', 'to subscriber', 'to device', 'to member']
-    has_recipient = any(rp in text_lower for rp in recipient_patterns)
-    details['has_recipient'] = has_recipient
-    
-    # Scoring
-    sending_score = 0.0
-    
-    if found_transmission and found_comm:
-        sending_score += 0.4
-    if has_recipient:
-        sending_score += 0.3
-    if found_collection and found_comm:
-        sending_score -= 0.4
-    if 'capability' in text_lower or 'feature' in text_lower or 'platform' in text_lower:
-        if found_comm:
-            sending_score += 0.2
-    
-    # Normalize
-    sending_score = max(0.0, min(1.0, sending_score + 0.5))
-    
-    is_ecomm = sending_score > 0.6
-    confidence = sending_score if is_ecomm else (1 - sending_score)
-    
-    return {
-        'is_ecomm': is_ecomm,
-        'confidence': round(confidence, 3),
-        'method': 'fallback_linguistic',
-        'details': details,
-        'sending_score': round(sending_score, 3)
-    }
-
-
-# ============================================================================
-# TESTING THE CLASSIFIER
-# ============================================================================
-print("\n" + "=" * 80)
-print("TESTING CLASSIFIER")
-print("=" * 80)
-
-test_cases = [
-    # === SHOULD DETECT (True) - Clear sending capabilities ===
-    ("users can send emails through the app", True),
-    ("app sends push notifications to users", True),
-    ("video calling between users", True),
-    ("instant messaging capability", True),
-    ("the platform delivers SMS alerts to customers", True),
-    ("enables real-time chat between team members", True),
-    ("automated email notifications sent to subscribers", True),
-    ("users can message each other directly", True),
-    ("push notifications are delivered to mobile devices", True),
-    ("e-communication capabilities enabled", True),
-    ("voice calling feature for members", True),
-    ("bulk email marketing platform", True),
-    ("transactional SMS sent after purchase", True),
-    ("app broadcasts alerts to all users", True),
-    ("peer-to-peer messaging between customers", True),
-    
-    # === SHOULD REJECT (False) - Data collection/storage ===
-    ("collects email addresses", False),
-    ("email address for registration", False),
-    ("email, phone, address collected", False),
-    ("login with email", False),
-    ("stores user phone numbers in database", False),
-    ("email field in registration form", False),
-    ("user provides email and phone", False),
-    ("email required for account creation", False),
-    ("email used as username for login", False),
-    ("phone number stored in user profile", False),
-    ("validates email format", False),
-    ("email column in user table", False),
-    ("contact information: email, phone, address", False),
-    ("SMS verification code for 2FA", False),
-    ("email verification link sent", False),
-    ("Japanese text support", False),
-    ("plaintext format", False),
-    ("displays user email address", False),
-    ("enter your email address", False),
-    ("fields: name, email, phone", False),
-]
-
-print(f"\nRunning {len(test_cases)} test cases...\n")
-print("-" * 80)
-
-correct = 0
-incorrect_cases = []
-
-for text, expected in test_cases:
-    result = classify_text(text)
-    actual = result['is_ecomm']
-    is_correct = actual == expected
-    
-    if is_correct:
-        correct += 1
-        status = "✓"
-    else:
-        status = "✗"
-        incorrect_cases.append((text, expected, result))
-    
-    conf_score = result.get('sending_score', result['confidence'])
-    print(f"{status} [{conf_score:.3f}] Expected={expected}, Got={actual}")
-    print(f"    Text: \"{text}\"")
-    print(f"    Method: {result['method']}")
-    
-    if not is_correct:
-        print(f"    Details: {result.get('details', {})}")
-    print()
-
-accuracy = correct / len(test_cases) * 100
-print("-" * 80)
-print(f"\nACCURACY: {accuracy:.1f}% ({correct}/{len(test_cases)})")
-
-if accuracy >= 90:
-    print("✓ Classifier meets 90% accuracy threshold")
-else:
-    print(f"⚠ Classifier below 90% threshold")
-    print(f"\nIncorrect cases:")
-    for text, expected, result in incorrect_cases:
-        print(f"  - \"{text}\"")
-        print(f"    Expected: {expected}, Got: {result['is_ecomm']}")
-
-# ============================================================================
-# PROCESS DATA
-# ============================================================================
-print("\n" + "=" * 80)
-print("PROCESSING DATA")
-print("=" * 80)
-
-# Step 1: Find all unique IDN_EON values across all tables
-print("\n[STEP 1] Finding all unique IDN_EON values...")
-
-all_idn_eons: Set[str] = set()
-table_data: Dict[str, pd.DataFrame] = {}
-
-for dataset_name in input_dataset_names:
-    print(f"\n  Loading {dataset_name}...")
-    
-    try:
-        df = dataiku.Dataset(dataset_name).get_dataframe(limit=None)
-        print(f"    Loaded {len(df):,} rows, {len(df.columns)} columns")
-        
-        # Convert all columns to string
-        for col in df.columns:
-            df[col] = df[col].astype(str)
-        
-        table_data[dataset_name] = df
-        
-        # Find IDN_EON column (case-insensitive)
-        idn_col = None
-        for col in df.columns:
-            if col.upper() == 'IDN_EON':
-                idn_col = col
-                break
-        
-        if idn_col is None:
-            print(f"    ⚠ No IDN_EON column found, skipping")
-            continue
-        
-        # Extract unique IDN_EON values
-        invalid_values = {'nan', 'none', '', 'null', 'n/a', 'na'}
-        unique_vals = set()
-        for val in df[idn_col].unique():
-            val_str = str(val).strip()
-            if val_str.lower() not in invalid_values:
-                unique_vals.add(val_str)
-        
-        print(f"    Found {len(unique_vals):,} unique IDN_EON values")
-        all_idn_eons.update(unique_vals)
-        
-    except Exception as e:
-        print(f"    ✗ Error loading: {e}")
-        continue
-
-print(f"\n{'='*60}")
-print(f"TOTAL UNIQUE IDN_EON: {len(all_idn_eons):,}")
-print(f"{'='*60}")
-
-# Step 2: Analyze each IDN_EON for e-communication capabilities
-print("\n[STEP 2] Analyzing each IDN_EON for e-communication capabilities...")
-
-# Initialize inventory
-inventory: Dict[str, Dict] = {
-    idn: {
-        'IDN_EON': idn,
-        'sources': set(),
-        'findings': [],
-        'cells_analyzed': 0
-    }
-    for idn in all_idn_eons
+# Check and install required packages
+required_packages = {
+    'dataiku': 'dataiku-api-client',
+    'sentence_transformers': 'sentence-transformers',
+    'pandas': 'pandas',
+    'numpy': 'numpy',
 }
 
-processed_count = 0
-total_cells_analyzed = 0
+for module_name, pip_name in required_packages.items():
+    try:
+        __import__(module_name)
+    except ImportError:
+        print(f"Installing {pip_name}...")
+        if not install_package(pip_name):
+            print(f"ERROR: Failed to install {pip_name}. Please install manually:")
+            print(f"  pip install {pip_name}")
+            sys.exit(1)
 
-for dataset_name, df in table_data.items():
-    print(f"\n  Processing {dataset_name}...")
+# Now import all required packages
+import pandas as pd
+import numpy as np
+import dataiku
+from sentence_transformers import SentenceTransformer
+
+# ================================================================================
+# CONFIGURATION - MODIFY THESE SETTINGS
+# ================================================================================
+
+# Dataiku Connection Settings
+DATAIKU_URL = "https://your-dataiku-instance.com"  # Your Dataiku DSS URL
+DATAIKU_API_KEY = "your-api-key-here"              # Your API key
+PROJECT_KEY = "YOUR_PROJECT_KEY"                    # Your project key
+
+# Alternatively, use environment variables (recommended for security):
+# DATAIKU_URL = os.environ.get('DKU_DSS_URL', 'https://your-dataiku-instance.com')
+# DATAIKU_API_KEY = os.environ.get('DKU_API_KEY', 'your-api-key-here')
+# PROJECT_KEY = os.environ.get('DKU_PROJECT_KEY', 'YOUR_PROJECT_KEY')
+
+# Input table names to scan
+INPUT_TABLES = ['table1', 'table2', 'table3', 'table4']
+
+# Output dataset name (will be created if it doesn't exist)
+OUTPUT_DATASET = "ecomm_detection_results"
+
+# Sentence-Transformers model to use
+# Options: 'all-MiniLM-L6-v2' (fast), 'all-mpnet-base-v2' (more accurate)
+EMBEDDING_MODEL = 'sentence-transformers/all-MiniLM-L6-v2'
+
+# Classification threshold (0.0 to 1.0)
+# Lower = more lenient (catches more, may have false positives)
+# Higher = more strict (fewer results, higher precision)
+SEMANTIC_THRESHOLD = 0.55
+
+# Minimum evidence pieces required to flag an IDN_EON
+MIN_FINDINGS_REQUIRED = 1
+
+# Progress reporting interval
+PROGRESS_INTERVAL = 100
+
+# Maximum sample content examples to store per IDN_EON
+MAX_SAMPLE_CONTENT = 3
+
+# Invalid IDN_EON values to exclude
+INVALID_VALUES = {'nan', 'none', '', 'null', 'n/a', 'na', 'n.a.', '-', '--', 'unknown', ' '}
+
+# Batch size for embedding (adjust based on available memory)
+EMBEDDING_BATCH_SIZE = 64
+
+# ================================================================================
+# TRAINING DATA - E-COMMUNICATION SENDING EXAMPLES (200+)
+# ================================================================================
+
+ECOMM_SENDING_EXAMPLES = [
+    # EMAIL SENDING
+    "users can send emails through the app",
+    "app sends email notifications to users",
+    "email delivery capability enabled",
+    "transmits emails to users automatically",
+    "email messaging platform for users",
+    "send order confirmation emails",
+    "sends promotional emails to customers",
+    "email sending feature available",
+    "users send emails within the platform",
+    "application delivers emails",
+    "email dispatch functionality",
+    "automatic email sending system",
+    "email transmission service",
+    "send transactional emails",
+    "email alerts sent to users",
+    "delivers email communications",
+    "email outbound capability",
+    "sends emails on behalf of users",
+    "email broadcast feature",
+    "mass email sending capability",
+    "bulk email delivery system",
+    "email campaign sending",
+    "automated email sender",
+    "sends welcome emails",
+    "sends reminder emails",
+    "email notification delivery",
+    "users can compose and send emails",
+    "in-app email sending",
+    "email messaging enabled",
+    "sends password reset emails",
+    "email communication system",
+    "outgoing email functionality",
+    "email send capability",
+    "can dispatch emails",
+    "email delivery service",
+    "sends confirmation emails automatically",
+    "email sending integrated",
+    "users email each other",
+    "send emails to contacts",
+    "email recipients receive messages",
+    "email sending workflow",
     
-    # Find IDN_EON column
-    idn_col = None
+    # TEXT/SMS SENDING
+    "users can send texts through the app",
+    "app sends SMS alerts to users",
+    "text message delivery system",
+    "SMS notification system enabled",
+    "send appointment reminder texts",
+    "text messaging capability",
+    "SMS sending feature",
+    "sends text notifications",
+    "text message alerts",
+    "SMS delivery platform",
+    "users send text messages",
+    "mobile text messaging",
+    "SMS communication enabled",
+    "text sending functionality",
+    "sends SMS reminders",
+    "text alert system",
+    "SMS broadcast capability",
+    "bulk SMS sending",
+    "automated text messages",
+    "SMS outbound service",
+    "text message transmission",
+    "sends texts automatically",
+    "SMS messaging platform",
+    "text notification delivery",
+    "SMS alerts delivered",
+    "sends promotional texts",
+    "text messaging service",
+    "SMS enabled application",
+    "text delivery system",
+    "sends order updates via text",
+    "SMS communication capability",
+    "text message sender",
+    "mobile SMS alerts",
+    "text messaging enabled",
+    "SMS dispatch functionality",
+    "sends transactional SMS",
+    "text messaging feature",
+    "SMS notification delivery",
+    "sends confirmation texts",
+    "text alert capability",
+    
+    # VIDEO CALLING
+    "users can make video calls",
+    "video calling feature enabled",
+    "video conferencing capability",
+    "video chat between users",
+    "video call functionality",
+    "supports video calling",
+    "video communication platform",
+    "video call feature",
+    "make video calls in app",
+    "video calling service",
+    "video chat capability",
+    "video conferencing enabled",
+    "video call support",
+    "real-time video calling",
+    "video communication feature",
+    "video calls between users",
+    "video meeting capability",
+    "video calling platform",
+    "HD video calls",
+    "video call system",
+    "group video calling",
+    "one-on-one video calls",
+    "video calling enabled",
+    "video chat service",
+    "video conference calls",
+    "video call integration",
+    "face-to-face video calls",
+    "video calling application",
+    "video communication service",
+    "video call experience",
+    
+    # VOICE CALLING
+    "users can make voice calls",
+    "voice calling platform enabled",
+    "VoIP capability available",
+    "phone call feature in app",
+    "voice communication enabled",
+    "voice call functionality",
+    "make phone calls through app",
+    "voice calling service",
+    "VoIP calling feature",
+    "voice call capability",
+    "internet calling enabled",
+    "voice calls between users",
+    "phone calling platform",
+    "voice communication feature",
+    "audio calling capability",
+    "voice call support",
+    "make calls via app",
+    "voice calling enabled",
+    "phone call capability",
+    "VoIP phone service",
+    "voice call feature",
+    "calling functionality",
+    "voice communication system",
+    "audio calls supported",
+    "voice calling application",
+    "telephone capability",
+    "call users directly",
+    "voice chat feature",
+    "audio communication",
+    "voice calling system",
+    
+    # INSTANT MESSAGING
+    "users can send messages",
+    "instant messaging capability",
+    "chat feature enabled",
+    "messaging between users",
+    "direct messaging platform",
+    "in-app messaging",
+    "real-time messaging",
+    "instant chat feature",
+    "message sending capability",
+    "users message each other",
+    "chat functionality",
+    "messaging system enabled",
+    "send direct messages",
+    "instant message feature",
+    "chat platform",
+    "messaging service",
+    "user-to-user messaging",
+    "chat messaging enabled",
+    "message delivery system",
+    "send chat messages",
+    "messaging feature available",
+    "instant communication",
+    "chat capability",
+    "messaging enabled",
+    "direct chat feature",
+    "real-time chat",
+    "message each other",
+    "chat between users",
+    "messaging platform",
+    "instant messaging service",
+    "chat system",
+    "send instant messages",
+    "messaging functionality",
+    "chat communication",
+    "user messaging feature",
+    
+    # PUSH NOTIFICATIONS
+    "sends push notifications to users",
+    "delivers push notifications",
+    "mobile push alerts enabled",
+    "push notification system",
+    "push message delivery",
+    "sends app notifications",
+    "push alerts to users",
+    "notification delivery system",
+    "mobile notifications enabled",
+    "push notification capability",
+    "sends mobile alerts",
+    "app push notifications",
+    "real-time push alerts",
+    "push notification feature",
+    "delivers mobile notifications",
+    "notification push service",
+    "sends in-app notifications",
+    "push messaging enabled",
+    "notification delivery capability",
+    "mobile push capability",
+    "sends notification alerts",
+    "push notification delivery",
+    "app notifications sent",
+    "push alert system",
+    "notification sending feature",
+    "delivers app alerts",
+    "push notifications enabled",
+    "mobile alert system",
+    "notification dispatch",
+    "sends push alerts",
+    
+    # E-COMMUNICATIONS EXPLICIT
+    "e-communication enabled",
+    "e-communications platform",
+    "e-communication services",
+    "electronic communication capability",
+    "e-communication feature",
+    "electronic messaging enabled",
+    "e-communication system",
+    "digital communication platform",
+    "e-communication capability",
+    "electronic communication services",
+    "e-comms enabled",
+    "e-communication functionality",
+    "electronic communication feature",
+    "e-communication support",
+    "digital messaging capability",
+    
+    # GENERAL COMMUNICATION SENDING
+    "notification delivery system",
+    "alert sending feature",
+    "communication capability enabled",
+    "messaging service active",
+    "sends alerts to users",
+    "notification sending capability",
+    "delivers communications",
+    "communication sending feature",
+    "alert delivery system",
+    "sends user notifications",
+    "communication platform enabled",
+    "delivers alerts automatically",
+    "notification capability",
+    "sends communications",
+    "message delivery service",
+    "alert notification system",
+    "communication delivery feature",
+    "sends alerts automatically",
+    "notification service enabled",
+    "communication dispatch",
+]
+
+# ================================================================================
+# TRAINING DATA - DATA COLLECTION EXAMPLES (200+)
+# ================================================================================
+
+DATA_COLLECTION_EXAMPLES = [
+    # EMAIL COLLECTION
+    "collects email addresses",
+    "gathers email from users",
+    "stores email addresses in database",
+    "email address collection form",
+    "captures email for marketing",
+    "email captured during signup",
+    "collects user email",
+    "email collection field",
+    "gathers email addresses",
+    "stores email data",
+    "email address gathered",
+    "collects emails for records",
+    "email data collection",
+    "captures user email address",
+    "email collection process",
+    "gathers customer emails",
+    "stores user email addresses",
+    "email collected from users",
+    "collects contact email",
+    "email address captured",
+    "gathers email information",
+    "email storage system",
+    "collects email for contact",
+    "email data gathered",
+    "captures email addresses",
+    
+    # STORAGE
+    "saves email in database",
+    "email on file for records",
+    "retains email address",
+    "email records stored",
+    "maintains email addresses",
+    "email stored in system",
+    "preserves email data",
+    "email retained in database",
+    "stores email permanently",
+    "email saved for reference",
+    "keeps email on record",
+    "email archived in database",
+    "stores user emails",
+    "email data preserved",
+    "maintains email records",
+    "email address retained",
+    "stores contact emails",
+    "email kept in system",
+    "saves user email",
+    "email data stored",
+    "retains user email",
+    "email maintained in database",
+    "stores email information",
+    "email preserved in records",
+    "keeps email addresses",
+    
+    # REGISTRATION/LOGIN
+    "email required for registration",
+    "email for account creation",
+    "login with email",
+    "email as username",
+    "sign in with email",
+    "email needed for signup",
+    "register with email",
+    "email login required",
+    "email for authentication",
+    "sign up using email",
+    "email address for login",
+    "account email required",
+    "login using email address",
+    "email for user registration",
+    "email-based login",
+    "register using email",
+    "email for account setup",
+    "email required to register",
+    "sign in using email",
+    "email authentication required",
+    "login email address",
+    "email for signup process",
+    "account creation email",
+    "email needed for login",
+    "register email address",
+    
+    # FORMS
+    "email field in form",
+    "email input field",
+    "enter email address",
+    "provide email in form",
+    "email form field",
+    "email text box",
+    "input email address",
+    "email entry field",
+    "fill in email",
+    "email input required",
+    "form email field",
+    "email address input",
+    "type email address",
+    "email field required",
+    "enter your email",
+    "email input box",
+    "form requires email",
+    "email text field",
+    "input field for email",
+    "email address field",
+    "provide your email",
+    "email entry required",
+    "fill email field",
+    "email input area",
+    "email form input",
+    
+    # VALIDATION
+    "validates email format",
+    "verifies email address",
+    "checks email syntax",
+    "email format validation",
+    "email validation check",
+    "verify email format",
+    "email syntax check",
+    "validates user email",
+    "email address verification",
+    "check email format",
+    "email validation required",
+    "verifies email format",
+    "email format check",
+    "validates email address",
+    "email verification process",
+    "checks email validity",
+    "email format verified",
+    "validates email input",
+    "email syntax validation",
+    "verify email address",
+    
+    # DATABASE/TECHNICAL
+    "email field in database",
+    "email column in table",
+    "email data type",
+    "email table column",
+    "plaintext email field",
+    "text field for email",
+    "text column email",
+    "varchar email field",
+    "email database column",
+    "string field email",
+    "text data type email",
+    "email varchar column",
+    "database email field",
+    "email stored as text",
+    "plaintext email storage",
+    "text field stores email",
+    "email text column",
+    "varchar email storage",
+    "database column email",
+    "email string field",
+    "text type email",
+    "email column varchar",
+    "field type text email",
+    "email plaintext field",
+    "text storage email",
+    
+    # LIST FORMAT (MAJOR REJECTION INDICATOR)
+    "email, phone",
+    "phone, email",
+    "email and phone number",
+    "email, phone, address",
+    "fields: email, phone",
+    "email phone address",
+    "contact: email, phone",
+    "email, phone collected",
+    "stores email, phone",
+    "email, mobile, address",
+    "name, email, phone",
+    "email phone fields",
+    "email, telephone",
+    "phone and email",
+    "email, phone, fax",
+    "email phone number",
+    "collects email phone",
+    "email, cell phone",
+    "email, phone stored",
+    "email, phone required",
+    "fields email phone",
+    "email phone collected",
+    "email, phone data",
+    "email, phone information",
+    "email and phone fields",
+    
+    # PHONE COLLECTION
+    "collects phone numbers",
+    "stores phone numbers",
+    "gathers mobile numbers",
+    "phone number field",
+    "collects telephone numbers",
+    "phone number collected",
+    "stores mobile numbers",
+    "phone field in form",
+    "gathers phone data",
+    "collects cell phone",
+    "phone number storage",
+    "captures phone number",
+    "phone data collected",
+    "stores telephone number",
+    "phone number gathered",
+    "collects contact phone",
+    "mobile number field",
+    "phone number input",
+    "gathers user phone",
+    "collects mobile phone",
+    
+    # PROFILE
+    "email in user profile",
+    "profile contains email",
+    "account email address",
+    "user profile email",
+    "email on profile",
+    "profile email field",
+    "user account email",
+    "email stored in profile",
+    "profile shows email",
+    "account profile email",
+    "user email in profile",
+    "profile email address",
+    "email displayed in profile",
+    "account contains email",
+    "profile stores email",
+    "user profile stores email",
+    "email in account",
+    "profile email storage",
+    "account email field",
+    "profile with email",
+    
+    # DISPLAY
+    "displays email address",
+    "shows email to user",
+    "email visible in profile",
+    "renders email field",
+    "email shown on screen",
+    "displays user email",
+    "shows email address",
+    "email displayed on page",
+    "renders email address",
+    "email visible to users",
+    "displays contact email",
+    "shows stored email",
+    "email rendered on screen",
+    "displays email data",
+    "shows email in profile",
+    "email address shown",
+    "displays account email",
+    "shows email field",
+    "email visible on screen",
+    "renders stored email",
+    
+    # 2FA ONLY
+    "SMS verification code",
+    "text verification code",
+    "2FA via SMS",
+    "one-time password text",
+    "SMS OTP code",
+    "text-based 2FA",
+    "verification SMS",
+    "SMS authentication code",
+    "text message OTP",
+    "2FA text message",
+    "SMS security code",
+    "verification text",
+    "OTP via SMS",
+    "text-based verification",
+    "SMS one-time code",
+    "authentication SMS",
+    "verification code text",
+    "SMS 2FA code",
+    "text authentication",
+    "OTP text message",
+    
+    # ADDITIONAL REJECTION PATTERNS
+    "Japanese text",
+    "Chinese text",
+    "Korean text",
+    "unicode text",
+    "rich text field",
+    "plain text format",
+    "text encoding",
+    "text representation",
+    "text content type",
+    "text blob field",
+    "text area input",
+    "multiline text",
+    "text paragraph",
+    "text document",
+    "text string",
+    "email optional",
+    "email not required",
+    "email can be blank",
+    "email may be empty",
+    "no email needed",
+]
+
+# ================================================================================
+# HARD PATTERN MATCHING
+# ================================================================================
+
+# Patterns that automatically DISQUALIFY (return 0.0 confidence)
+HARD_DISQUALIFIER_PATTERNS = [
+    r'email\s*,\s*phone',
+    r'phone\s*,\s*email',
+    r'collects?\s+email',
+    r'stores?\s+email',
+    r'gathers?\s+email',
+    r'email\s+for\s+login',
+    r'email\s+as\s+username',
+    r'email\s+required\s+for',
+    r'email\s+needed\s+for',
+    r'plaintext',
+    r'text\s+field',
+    r'text\s+data\s+type',
+    r'text\s+column',
+    r'varchar',
+    r'japanese\s+text',
+    r'chinese\s+text',
+    r'korean\s+text',
+    r'email\s+field',
+    r'phone\s+field',
+    r'login\s+with\s+email',
+    r'sign\s+in\s+with\s+email',
+    r'email\s+for\s+registration',
+    r'email\s+for\s+account',
+    r'email\s+validation',
+    r'validates?\s+email',
+    r'verif(?:y|ies)\s+email',
+    r'email\s+input',
+    r'enter\s+email',
+    r'provide\s+email',
+    r'email\s+address\s+field',
+    r'email\s+form',
+    r'form\s+email',
+    r'email\s+in\s+database',
+    r'database\s+email',
+    r'email\s+column',
+    r'collects?\s+phone',
+    r'stores?\s+phone',
+    r'phone\s+number\s+field',
+    r'2fa\s+via\s+sms',
+    r'sms\s+verification',
+    r'verification\s+code',
+    r'otp\s+(?:via\s+)?(?:sms|text)',
+    r'text\s+(?:based\s+)?verification',
+    r'one[- ]time\s+password',
+    r'email\s*,\s*(?:phone|mobile|address)',
+    r'(?:phone|mobile)\s*,\s*email',
+    r'fields?\s*:\s*email',
+    r'name\s*,\s*email',
+    r'contact\s*:\s*email',
+    r'stored\s+as\s+text',
+    r'text\s+type',
+    r'string\s+field',
+    r'data\s+type\s*:\s*text',
+    r'email\s+optional',
+    r'email\s+can\s+be\s+blank',
+]
+
+# Patterns that automatically QUALIFY (return 0.95 confidence)
+HARD_QUALIFIER_PATTERNS = [
+    r'e[-\s]?communication',
+    r'e[-\s]?communications',
+    r'electronic\s+communication',
+    r'can\s+send\s+email',
+    r'can\s+send\s+text',
+    r'can\s+send\s+message',
+    r'can\s+send\s+sms',
+    r'users?\s+send\s+email',
+    r'users?\s+send\s+text',
+    r'users?\s+send\s+message',
+    r'app\s+sends?\s+email',
+    r'app\s+sends?\s+notification',
+    r'app\s+sends?\s+text',
+    r'app\s+sends?\s+sms',
+    r'app\s+sends?\s+alert',
+    r'video\s+call(?:ing)?',
+    r'voice\s+call(?:ing)?',
+    r'video\s+chat',
+    r'voice\s+chat',
+    r'instant\s+messaging',
+    r'messaging\s+platform',
+    r'messaging\s+capability',
+    r'messaging\s+feature',
+    r'messaging\s+enabled',
+    r'sends?\s+push\s+notification',
+    r'push\s+notification\s+(?:system|capability|feature)',
+    r'delivers?\s+push\s+notification',
+    r'delivers?\s+notification',
+    r'notification\s+delivery',
+    r'sends?\s+(?:sms|text)\s+(?:alert|notification|message)',
+    r'sends?\s+email\s+(?:alert|notification)',
+    r'email\s+(?:sending|delivery)\s+(?:capability|feature|system)',
+    r'sms\s+(?:sending|delivery)\s+(?:capability|feature|system)',
+    r'text\s+(?:sending|delivery)\s+(?:capability|feature|system)',
+    r'video\s+conferencing',
+    r'voip\s+(?:capability|calling|feature)',
+    r'real[- ]?time\s+(?:messaging|chat|communication)',
+    r'direct\s+messaging',
+    r'in[- ]?app\s+messaging',
+    r'chat\s+(?:feature|capability|platform)',
+    r'users?\s+(?:can\s+)?message\s+each\s+other',
+    r'message\s+(?:sending|delivery)',
+    r'communication\s+(?:platform|capability|feature)',
+    r'alert\s+(?:sending|delivery)',
+]
+
+# ================================================================================
+# SEMANTIC CLASSIFIER CLASS
+# ================================================================================
+
+class ECommSemanticClassifier:
+    """
+    Semantic classifier for detecting e-communication capabilities
+    using sentence-transformers embeddings.
+    """
+    
+    def __init__(self, model_name: str = EMBEDDING_MODEL):
+        """Initialize the classifier with the specified model."""
+        print("\n" + "=" * 80)
+        print("INITIALIZING SEMANTIC CLASSIFIER")
+        print("=" * 80)
+        
+        # Load the sentence transformer model
+        print(f"Loading model: {model_name}")
+        self.model = SentenceTransformer(model_name)
+        print(f"✓ Model loaded successfully!")
+        
+        # Compile regex patterns
+        self.disqualifier_patterns = [
+            re.compile(p, re.IGNORECASE) for p in HARD_DISQUALIFIER_PATTERNS
+        ]
+        self.qualifier_patterns = [
+            re.compile(p, re.IGNORECASE) for p in HARD_QUALIFIER_PATTERNS
+        ]
+        
+        # Generate embeddings for training examples
+        self._generate_training_embeddings()
+    
+    def _generate_training_embeddings(self):
+        """Generate embeddings for all training examples."""
+        print("\nGenerating embeddings for training data...")
+        
+        # E-communication examples
+        print(f"  Encoding {len(ECOMM_SENDING_EXAMPLES)} e-communication examples...")
+        self.ecomm_embeddings = self.model.encode(
+            ECOMM_SENDING_EXAMPLES,
+            convert_to_numpy=True,
+            show_progress_bar=False,
+            batch_size=EMBEDDING_BATCH_SIZE
+        )
+        
+        # Data collection examples
+        print(f"  Encoding {len(DATA_COLLECTION_EXAMPLES)} data collection examples...")
+        self.datacoll_embeddings = self.model.encode(
+            DATA_COLLECTION_EXAMPLES,
+            convert_to_numpy=True,
+            show_progress_bar=False,
+            batch_size=EMBEDDING_BATCH_SIZE
+        )
+        
+        # Calculate centroids (mean of each category)
+        self.ecomm_centroid = np.mean(self.ecomm_embeddings, axis=0)
+        self.datacoll_centroid = np.mean(self.datacoll_embeddings, axis=0)
+        
+        print("✓ Training embeddings generated!")
+        print(f"  E-comm embedding shape: {self.ecomm_embeddings.shape}")
+        print(f"  Data collection embedding shape: {self.datacoll_embeddings.shape}")
+    
+    def _cosine_similarity(self, vec1: np.ndarray, vec2: np.ndarray) -> float:
+        """Calculate cosine similarity between two vectors."""
+        norm1 = np.linalg.norm(vec1)
+        norm2 = np.linalg.norm(vec2)
+        if norm1 == 0 or norm2 == 0:
+            return 0.0
+        return float(np.dot(vec1, vec2) / (norm1 * norm2))
+    
+    def _check_hard_patterns(self, text: str) -> Tuple[Optional[float], Optional[str]]:
+        """
+        Check for hard patterns that immediately determine classification.
+        
+        Returns:
+            Tuple of (confidence, detection_method) or (None, None) if no match
+        """
+        text_lower = text.lower()
+        
+        # Check disqualifiers first
+        for pattern in self.disqualifier_patterns:
+            if pattern.search(text_lower):
+                return (0.0, "hard_disqualifier")
+        
+        # Check qualifiers
+        for pattern in self.qualifier_patterns:
+            if pattern.search(text_lower):
+                return (0.95, "hard_qualifier")
+        
+        return (None, None)
+    
+    def classify(self, text: str) -> Tuple[float, str]:
+        """
+        Classify text to determine if it describes e-communication capability.
+        
+        Args:
+            text: The text to classify
+            
+        Returns:
+            Tuple of (confidence, detection_method)
+        """
+        if not text or not isinstance(text, str) or len(text.strip()) < 3:
+            return (0.0, "invalid_input")
+        
+        text = text.strip()
+        
+        # Step 1: Check hard patterns first
+        hard_result = self._check_hard_patterns(text)
+        if hard_result[0] is not None:
+            return hard_result
+        
+        # Step 2: Semantic classification
+        try:
+            # Encode the input text
+            text_embedding = self.model.encode([text], convert_to_numpy=True)[0]
+            
+            # Calculate similarity to centroids
+            ecomm_centroid_sim = self._cosine_similarity(text_embedding, self.ecomm_centroid)
+            datacoll_centroid_sim = self._cosine_similarity(text_embedding, self.datacoll_centroid)
+            
+            # Calculate max similarity to individual examples
+            ecomm_sims = np.array([
+                self._cosine_similarity(text_embedding, emb) 
+                for emb in self.ecomm_embeddings
+            ])
+            datacoll_sims = np.array([
+                self._cosine_similarity(text_embedding, emb) 
+                for emb in self.datacoll_embeddings
+            ])
+            
+            ecomm_max_sim = np.max(ecomm_sims)
+            datacoll_max_sim = np.max(datacoll_sims)
+            
+            # Calculate 90th percentile similarity
+            ecomm_p90_sim = np.percentile(ecomm_sims, 90)
+            datacoll_p90_sim = np.percentile(datacoll_sims, 90)
+            
+            # Average the three scores for each category
+            avg_ecomm = (ecomm_centroid_sim + ecomm_max_sim + ecomm_p90_sim) / 3
+            avg_datacoll = (datacoll_centroid_sim + datacoll_max_sim + datacoll_p90_sim) / 3
+            
+            # Calculate final score
+            total = avg_ecomm + avg_datacoll
+            if total == 0:
+                confidence = 0.5
+            else:
+                confidence = avg_ecomm / total
+            
+            return (confidence, "semantic_embedding")
+            
+        except Exception as e:
+            print(f"    Warning: Semantic classification failed: {e}")
+            return (0.0, "classification_error")
+    
+    def classify_batch(self, texts: List[str]) -> List[Tuple[float, str]]:
+        """
+        Classify multiple texts in batch for efficiency.
+        
+        Args:
+            texts: List of texts to classify
+            
+        Returns:
+            List of (confidence, detection_method) tuples
+        """
+        results = []
+        
+        # First, check hard patterns for all texts
+        hard_pattern_results = {}
+        texts_for_semantic = []
+        text_indices = []
+        
+        for i, text in enumerate(texts):
+            if not text or not isinstance(text, str) or len(str(text).strip()) < 3:
+                hard_pattern_results[i] = (0.0, "invalid_input")
+            else:
+                hard_result = self._check_hard_patterns(str(text))
+                if hard_result[0] is not None:
+                    hard_pattern_results[i] = hard_result
+                else:
+                    texts_for_semantic.append(str(text).strip())
+                    text_indices.append(i)
+        
+        # Batch encode texts that need semantic classification
+        if texts_for_semantic:
+            text_embeddings = self.model.encode(
+                texts_for_semantic,
+                convert_to_numpy=True,
+                show_progress_bar=False,
+                batch_size=EMBEDDING_BATCH_SIZE
+            )
+            
+            for j, embedding in enumerate(text_embeddings):
+                # Calculate similarities
+                ecomm_centroid_sim = self._cosine_similarity(embedding, self.ecomm_centroid)
+                datacoll_centroid_sim = self._cosine_similarity(embedding, self.datacoll_centroid)
+                
+                ecomm_sims = np.array([
+                    self._cosine_similarity(embedding, emb) 
+                    for emb in self.ecomm_embeddings
+                ])
+                datacoll_sims = np.array([
+                    self._cosine_similarity(embedding, emb) 
+                    for emb in self.datacoll_embeddings
+                ])
+                
+                ecomm_max_sim = np.max(ecomm_sims)
+                datacoll_max_sim = np.max(datacoll_sims)
+                ecomm_p90_sim = np.percentile(ecomm_sims, 90)
+                datacoll_p90_sim = np.percentile(datacoll_sims, 90)
+                
+                avg_ecomm = (ecomm_centroid_sim + ecomm_max_sim + ecomm_p90_sim) / 3
+                avg_datacoll = (datacoll_centroid_sim + datacoll_max_sim + datacoll_p90_sim) / 3
+                
+                total = avg_ecomm + avg_datacoll
+                confidence = avg_ecomm / total if total > 0 else 0.5
+                
+                hard_pattern_results[text_indices[j]] = (confidence, "semantic_embedding")
+        
+        # Compile results in order
+        for i in range(len(texts)):
+            results.append(hard_pattern_results.get(i, (0.0, "unknown")))
+        
+        return results
+
+# ================================================================================
+# DATAIKU CONNECTION AND DATA FUNCTIONS
+# ================================================================================
+
+def connect_to_dataiku() -> Tuple[Any, Any]:
+    """
+    Connect to Dataiku and return client and project handles.
+    
+    Returns:
+        Tuple of (client, project)
+    """
+    print("\n" + "=" * 80)
+    print("CONNECTING TO DATAIKU")
+    print("=" * 80)
+    
+    try:
+        # Set up remote connection
+        dataiku.set_remote_dss(DATAIKU_URL, DATAIKU_API_KEY)
+        client = dataiku.api_client()
+        
+        # Test connection
+        projects = client.list_project_keys()
+        print(f"✓ Connected to Dataiku at {DATAIKU_URL}")
+        print(f"  Available projects: {len(projects)}")
+        
+        # Get the project
+        project = client.get_project(PROJECT_KEY)
+        print(f"✓ Connected to project: {PROJECT_KEY}")
+        
+        return client, project
+        
+    except Exception as e:
+        print(f"✗ Failed to connect to Dataiku: {e}")
+        print("\nPlease check:")
+        print("  1. DATAIKU_URL is correct")
+        print("  2. DATAIKU_API_KEY is valid")
+        print("  3. PROJECT_KEY exists and you have access")
+        raise
+
+def load_datasets(project) -> Dict[str, pd.DataFrame]:
+    """
+    Load all input datasets from Dataiku.
+    
+    Args:
+        project: Dataiku project handle
+        
+    Returns:
+        Dictionary mapping table names to DataFrames
+    """
+    print("\n" + "=" * 80)
+    print("LOADING INPUT DATASETS")
+    print("=" * 80)
+    
+    tables = {}
+    
+    for table_name in INPUT_TABLES:
+        try:
+            print(f"  Loading '{table_name}'...")
+            dataset = project.get_dataset(table_name)
+            df = dataset.get_dataframe()
+            
+            # Convert all columns to string for consistent processing
+            for col in df.columns:
+                df[col] = df[col].astype(str)
+            
+            tables[table_name] = df
+            print(f"    ✓ Loaded {len(df):,} rows, {len(df.columns)} columns")
+            
+        except Exception as e:
+            print(f"    ✗ Failed to load '{table_name}': {e}")
+    
+    if not tables:
+        raise ValueError("No tables could be loaded!")
+    
+    return tables
+
+def find_idn_eon_column(df: pd.DataFrame) -> Optional[str]:
+    """Find the IDN_EON column (case-insensitive)."""
     for col in df.columns:
         if col.upper() == 'IDN_EON':
-            idn_col = col
-            break
+            return col
+    return None
+
+def is_valid_idn_eon(value: Any) -> bool:
+    """Check if an IDN_EON value is valid."""
+    if value is None:
+        return False
+    str_value = str(value).strip().lower()
+    return str_value not in INVALID_VALUES and len(str_value) > 0
+
+def extract_unique_idn_eons(tables: Dict[str, pd.DataFrame]) -> Set[str]:
+    """Extract all unique IDN_EON values across all tables."""
+    print("\n" + "=" * 80)
+    print("EXTRACTING UNIQUE IDN_EON VALUES")
+    print("=" * 80)
     
-    if idn_col is None:
-        continue
+    all_idn_eons = set()
     
-    # Get list of other columns to analyze
-    other_cols = [col for col in df.columns if col.upper() != 'IDN_EON']
-    
-    # Process each unique IDN_EON in this table
-    unique_idns_in_table = set(df[idn_col].unique())
-    
-    for idn_val in unique_idns_in_table:
-        idn_str = str(idn_val).strip()
-        if idn_str.lower() in {'nan', 'none', '', 'null', 'n/a', 'na'}:
+    for table_name, df in tables.items():
+        idn_col = find_idn_eon_column(df)
+        
+        if idn_col is None:
+            print(f"  ⚠ Table '{table_name}': No IDN_EON column found - skipping")
             continue
         
-        if idn_str not in inventory:
+        values = df[idn_col].dropna().unique()
+        valid_count = 0
+        
+        for val in values:
+            if is_valid_idn_eon(val):
+                all_idn_eons.add(str(val).strip())
+                valid_count += 1
+        
+        print(f"  ✓ Table '{table_name}': Found {valid_count:,} valid IDN_EON values")
+    
+    total = len(all_idn_eons)
+    print(f"\n{'=' * 80}")
+    print(f"TOTAL UNIQUE IDN_EON: {total:,}")
+    print(f"{'=' * 80}")
+    
+    return all_idn_eons
+
+def contains_communication_keyword(text: str) -> bool:
+    """Quick check if text contains any communication-related keywords."""
+    if not text or not isinstance(text, str):
+        return False
+    
+    text_lower = text.lower()
+    
+    keywords = [
+        'email', 'e-mail', 'mail',
+        'text', 'sms',
+        'message', 'messaging',
+        'call', 'calling',
+        'video', 'voice', 'audio',
+        'chat', 'chatting',
+        'notification', 'notify',
+        'alert',
+        'push',
+        'communicat',
+        'voip', 'telephon',
+    ]
+    
+    return any(kw in text_lower for kw in keywords)
+
+def analyze_idn_eon(
+    idn_eon: str,
+    tables: Dict[str, pd.DataFrame],
+    classifier: ECommSemanticClassifier
+) -> Optional[Dict[str, Any]]:
+    """
+    Analyze a single IDN_EON for e-communication capabilities.
+    
+    Args:
+        idn_eon: The IDN_EON value to analyze
+        tables: Dictionary of table DataFrames
+        classifier: The semantic classifier
+        
+    Returns:
+        Dictionary with findings if e-communication detected, None otherwise
+    """
+    findings = []
+    found_in_tables = set()
+    found_in_columns = set()
+    sample_contents = []
+    texts_to_classify = []
+    text_metadata = []
+    
+    # Collect all text that needs classification
+    for table_name, df in tables.items():
+        idn_col = find_idn_eon_column(df)
+        if idn_col is None:
             continue
         
-        inventory[idn_str]['sources'].add(dataset_name)
+        # Find rows with this IDN_EON
+        mask = df[idn_col].astype(str).str.strip() == idn_eon
+        matching_rows = df[mask]
         
-        # Get all rows for this IDN_EON
-        idn_rows = df[df[idn_col] == idn_val]
+        if matching_rows.empty:
+            continue
         
-        # Analyze each cell in each row
-        for _, row in idn_rows.iterrows():
-            for col in other_cols:
-                cell_value = row[col]
-                cell_str = str(cell_value).strip()
-                
-                # Skip empty/invalid cells
-                if not cell_str or cell_str.lower() in {'nan', 'none', '', 'null'}:
+        found_in_tables.add(table_name)
+        
+        # Collect text from each column
+        for col in df.columns:
+            if col == idn_col:
+                continue
+            
+            for idx, value in matching_rows[col].items():
+                try:
+                    text = str(value).strip()
+                except:
                     continue
                 
-                inventory[idn_str]['cells_analyzed'] += 1
-                total_cells_analyzed += 1
+                if len(text) < 5:
+                    continue
                 
-                # Classify the cell
-                result = classify_text(cell_str)
+                # Quick keyword check for efficiency
+                if not contains_communication_keyword(text):
+                    continue
                 
-                if result['is_ecomm']:
-                    inventory[idn_str]['findings'].append({
-                        'location': f"{col} [{dataset_name}]",
-                        'confidence': result['confidence'],
-                        'method': result['method'],
-                        'content': cell_str[:500],
-                        'matched_patterns': result.get('matched_patterns', []),
-                        'sending_score': result.get('sending_score', result['confidence'])
-                    })
+                texts_to_classify.append(text)
+                text_metadata.append({
+                    'column': col,
+                    'table': table_name,
+                    'text': text[:500]
+                })
+    
+    # Batch classify all texts
+    if texts_to_classify:
+        results = classifier.classify_batch(texts_to_classify)
         
-        processed_count += 1
-        if processed_count % 500 == 0:
-            print(f"    Progress: {processed_count:,}/{len(all_idn_eons):,} IDN_EON processed")
+        for i, (confidence, method) in enumerate(results):
+            if confidence > SEMANTIC_THRESHOLD:
+                meta = text_metadata[i]
+                findings.append({
+                    'column': meta['column'],
+                    'table': meta['table'],
+                    'confidence': confidence,
+                    'method': method,
+                    'text': meta['text']
+                })
+                found_in_columns.add(meta['column'])
+                
+                if len(sample_contents) < MAX_SAMPLE_CONTENT:
+                    sample_contents.append(meta['text'][:200])
+    
+    # Return None if no findings meet minimum requirement
+    if len(findings) < MIN_FINDINGS_REQUIRED:
+        return None
+    
+    # Calculate aggregate confidence
+    confidences = [f['confidence'] for f in findings]
+    max_confidence = max(confidences)
+    avg_confidence = sum(confidences) / len(confidences)
+    
+    # Use weighted confidence (max * 0.7 + avg * 0.3)
+    final_confidence = max_confidence * 0.7 + avg_confidence * 0.3
+    
+    # Determine primary detection method
+    methods = [f['method'] for f in findings]
+    primary_method = max(set(methods), key=methods.count)
+    
+    return {
+        'IDN_EON': idn_eon,
+        'data_source': ', '.join(sorted(found_in_tables)),
+        'ecomm_confidence': round(final_confidence, 4),
+        'detection_method': primary_method,
+        'found_in': ', '.join(sorted(found_in_columns)),
+        'sample_content': ' | '.join(sample_contents),
+        'total_findings': len(findings),
+    }
 
-print(f"\n  Total cells analyzed: {total_cells_analyzed:,}")
-
-# Step 3: Build output with only IDN_EON that have e-communication capabilities
-print("\n[STEP 3] Building output...")
-
-output_rows = []
-
-for idn, data in inventory.items():
-    if len(data['findings']) >= MIN_FINDINGS_REQUIRED:
-        # Calculate aggregate statistics
-        max_confidence = max(f['sending_score'] for f in data['findings'])
-        methods = list(set(f['method'] for f in data['findings']))
-        locations = list(set(f['location'] for f in data['findings']))
+def write_results_to_dataiku(project, results: List[Dict], output_name: str):
+    """
+    Write results back to Dataiku as a new dataset.
+    
+    Args:
+        project: Dataiku project handle
+        results: List of result dictionaries
+        output_name: Name for the output dataset
+    """
+    print("\n" + "=" * 80)
+    print("WRITING RESULTS TO DATAIKU")
+    print("=" * 80)
+    
+    # Create DataFrame from results
+    if results:
+        output_df = pd.DataFrame(results)
+        output_df = output_df.sort_values('ecomm_confidence', ascending=False)
+    else:
+        output_df = pd.DataFrame(columns=[
+            'IDN_EON', 'data_source', 'ecomm_confidence', 'detection_method',
+            'found_in', 'sample_content', 'total_findings'
+        ])
+    
+    try:
+        # Get or create the output dataset
+        try:
+            dataset = project.get_dataset(output_name)
+            print(f"  Using existing dataset: {output_name}")
+        except:
+            # Create new dataset if it doesn't exist
+            builder = project.new_managed_dataset(output_name)
+            builder.with_store_into("filesystem_managed")  # Adjust connection as needed
+            dataset = builder.create()
+            print(f"  Created new dataset: {output_name}")
         
-        # Get sample content (up to 3 examples)
-        sample_contents = []
-        seen_contents = set()
-        for f in sorted(data['findings'], key=lambda x: x['sending_score'], reverse=True):
-            content = f['content']
-            if content not in seen_contents:
-                sample_contents.append(content)
-                seen_contents.add(content)
-            if len(sample_contents) >= 3:
-                break
+        # Write the data
+        with dataset.get_writer() as writer:
+            # Write schema
+            schema = [
+                {'name': 'IDN_EON', 'type': 'string'},
+                {'name': 'data_source', 'type': 'string'},
+                {'name': 'ecomm_confidence', 'type': 'double'},
+                {'name': 'detection_method', 'type': 'string'},
+                {'name': 'found_in', 'type': 'string'},
+                {'name': 'sample_content', 'type': 'string'},
+                {'name': 'total_findings', 'type': 'bigint'},
+            ]
+            dataset.write_schema(schema)
+            
+            # Write rows
+            for _, row in output_df.iterrows():
+                writer.write_row_dict(row.to_dict())
         
-        # Collect matched patterns
-        all_patterns = []
-        for f in data['findings']:
-            all_patterns.extend(f.get('matched_patterns', []))
-        unique_patterns = list(set(all_patterns))[:5]
+        print(f"  ✓ Successfully wrote {len(output_df):,} rows to '{output_name}'")
         
-        output_rows.append({
-            'IDN_EON': idn,
-            'data_source': ', '.join(sorted(data['sources'])),
-            'ecomm_confidence': round(max_confidence, 3),
-            'detection_method': ', '.join(methods),
-            'found_in': ', '.join(sorted(locations)),
-            'sample_content': ' | '.join(sample_contents),
-            'total_findings': len(data['findings']),
-            '_sort_key': max_confidence  # For sorting, will be removed
-        })
+    except Exception as e:
+        print(f"  ✗ Failed to write to Dataiku: {e}")
+        print("  Saving results locally instead...")
+        
+        # Save locally as fallback
+        local_filename = f"ecomm_results_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
+        output_df.to_csv(local_filename, index=False)
+        print(f"  ✓ Saved to local file: {local_filename}")
 
-# Create output DataFrame, sorted by confidence
-output_df = pd.DataFrame(output_rows)
+def run_tests(classifier: ECommSemanticClassifier) -> float:
+    """Run tests to validate classifier accuracy."""
+    print("\n" + "=" * 80)
+    print("RUNNING CLASSIFIER TESTS")
+    print("=" * 80)
+    
+    test_cases = [
+        # Should DETECT (True positives)
+        ("users can send emails through the app", True, "email sending"),
+        ("app sends push notifications to users", True, "push notifications"),
+        ("video calling between users", True, "video calling"),
+        ("instant messaging capability", True, "instant messaging"),
+        ("platform enables text messaging", True, "text messaging"),
+        ("app sends SMS alerts", True, "SMS alerts"),
+        ("voice calling feature enabled", True, "voice calling"),
+        ("e-communication services enabled", True, "e-communication"),
+        ("delivers email notifications automatically", True, "email delivery"),
+        ("real-time chat between users", True, "real-time chat"),
+        
+        # Should REJECT (True negatives)
+        ("collects email addresses", False, "email collection"),
+        ("email address for registration", False, "email registration"),
+        ("email, phone, address collected", False, "list format"),
+        ("login with email", False, "email login"),
+        ("stores phone numbers in database", False, "phone storage"),
+        ("email field in form", False, "form field"),
+        ("validates email format", False, "validation"),
+        ("plaintext email field", False, "database field"),
+        ("SMS verification code for 2FA", False, "2FA only"),
+        ("email, phone required for signup", False, "collection list"),
+    ]
+    
+    correct = 0
+    total = len(test_cases)
+    
+    for text, expected, description in test_cases:
+        confidence, method = classifier.classify(text)
+        predicted = confidence > SEMANTIC_THRESHOLD
+        
+        status = "✓" if predicted == expected else "✗"
+        correct += 1 if predicted == expected else 0
+        
+        expected_str = "DETECT" if expected else "REJECT"
+        actual_str = "DETECT" if predicted else "REJECT"
+        
+        print(f"  {status} [{description}] Expected: {expected_str}, Got: {actual_str} (conf: {confidence:.3f})")
+    
+    accuracy = (correct / total) * 100
+    
+    print(f"\n{'=' * 80}")
+    print(f"TEST ACCURACY: {accuracy:.1f}% ({correct}/{total})")
+    print(f"{'=' * 80}")
+    
+    if accuracy >= 90:
+        print("✓ Classifier PASSED accuracy threshold (90%+)")
+    else:
+        print("⚠ Classifier BELOW accuracy threshold (90%+)")
+    
+    return accuracy
 
-if len(output_df) > 0:
-    output_df = output_df.sort_values('_sort_key', ascending=False).reset_index(drop=True)
-    output_df = output_df.drop('_sort_key', axis=1)
+# ================================================================================
+# MAIN EXECUTION
+# ================================================================================
 
-# Write to output dataset
-print("\nWriting to output dataset...")
-output_dataset.write_with_schema(output_df)
+def main():
+    """Main execution function."""
+    start_time = datetime.now()
+    
+    print("\n" + "=" * 80)
+    print("E-COMMUNICATION CAPABILITY DETECTION")
+    print("Local Execution with Dataiku API + Sentence-Transformers")
+    print("=" * 80)
+    print(f"Started at: {start_time.strftime('%Y-%m-%d %H:%M:%S')}")
+    print(f"Dataiku URL: {DATAIKU_URL}")
+    print(f"Project: {PROJECT_KEY}")
+    print(f"Input Tables: {INPUT_TABLES}")
+    print(f"Output Dataset: {OUTPUT_DATASET}")
+    print(f"Embedding Model: {EMBEDDING_MODEL}")
+    print(f"Threshold: {SEMANTIC_THRESHOLD}")
+    
+    # Initialize classifier
+    classifier = ECommSemanticClassifier(EMBEDDING_MODEL)
+    
+    # Run tests
+    test_accuracy = run_tests(classifier)
+    
+    if test_accuracy < 80:
+        print("\n⚠ WARNING: Classifier accuracy is below 80%. Results may be unreliable.")
+    
+    # Connect to Dataiku
+    client, project = connect_to_dataiku()
+    
+    # Load datasets
+    tables = load_datasets(project)
+    
+    # Extract unique IDN_EON values
+    all_idn_eons = extract_unique_idn_eons(tables)
+    
+    if not all_idn_eons:
+        print("\n✗ ERROR: No valid IDN_EON values found. Exiting.")
+        return
+    
+    # Analyze each IDN_EON
+    print("\n" + "=" * 80)
+    print("ANALYZING IDN_EON FOR E-COMMUNICATION CAPABILITIES")
+    print("=" * 80)
+    
+    results = []
+    processed = 0
+    total_idn_eons = len(all_idn_eons)
+    
+    for idn_eon in sorted(all_idn_eons):
+        processed += 1
+        
+        # Progress update
+        if processed % PROGRESS_INTERVAL == 0 or processed == total_idn_eons:
+            pct = processed * 100 / total_idn_eons
+            print(f"  Progress: {processed:,}/{total_idn_eons:,} ({pct:.1f}%) - Found {len(results):,} with e-comm")
+        
+        try:
+            result = analyze_idn_eon(idn_eon, tables, classifier)
+            if result:
+                results.append(result)
+        except Exception as e:
+            print(f"    ⚠ Error analyzing IDN_EON '{idn_eon}': {e}")
+    
+    # Print summary
+    print("\n" + "=" * 80)
+    print("SUMMARY STATISTICS")
+    print("=" * 80)
+    print(f"  Total Unique IDN_EON Found: {total_idn_eons:,}")
+    print(f"  IDN_EON with E-Communication: {len(results):,}")
+    print(f"  Percentage with E-Communication: {len(results)*100/total_idn_eons:.2f}%")
+    print(f"  Detection Mode: Semantic (Sentence-Transformers)")
+    print(f"  Model: {EMBEDDING_MODEL}")
+    print(f"  Threshold: {SEMANTIC_THRESHOLD}")
+    
+    if results:
+        confidences = [r['ecomm_confidence'] for r in results]
+        print(f"\n  Confidence Distribution:")
+        print(f"    Max: {max(confidences):.4f}")
+        print(f"    Min: {min(confidences):.4f}")
+        print(f"    Mean: {sum(confidences)/len(confidences):.4f}")
+        
+        print(f"\n  Top 10 Results by Confidence:")
+        sorted_results = sorted(results, key=lambda x: x['ecomm_confidence'], reverse=True)
+        for i, r in enumerate(sorted_results[:10]):
+            print(f"    {i+1}. {r['IDN_EON']} (conf: {r['ecomm_confidence']:.4f}) - {r['detection_method']}")
+    
+    # Write results to Dataiku
+    write_results_to_dataiku(project, results, OUTPUT_DATASET)
+    
+    # Final timing
+    end_time = datetime.now()
+    duration = end_time - start_time
+    
+    print("\n" + "=" * 80)
+    print("SCRIPT COMPLETED SUCCESSFULLY")
+    print("=" * 80)
+    print(f"  Started: {start_time.strftime('%Y-%m-%d %H:%M:%S')}")
+    print(f"  Ended: {end_time.strftime('%Y-%m-%d %H:%M:%S')}")
+    print(f"  Duration: {duration}")
 
-# ============================================================================
-# FINAL STATISTICS
-# ============================================================================
-print("\n" + "=" * 80)
-print("FINAL RESULTS")
-print("=" * 80)
+# ================================================================================
+# ENTRY POINT
+# ================================================================================
 
-print(f"\nTotal unique IDN_EON found:           {len(all_idn_eons):,}")
-print(f"Total with e-communication detected:  {len(output_df):,}")
-
-if len(all_idn_eons) > 0:
-    pct = len(output_df) / len(all_idn_eons) * 100
-    print(f"Percentage with e-communication:      {pct:.2f}%")
-
-print(f"\nTotal cells analyzed:                 {total_cells_analyzed:,}")
-print(f"Mode used:                            {'Semantic (sentence-transformers)' if MODEL_AVAILABLE else 'Rule-based fallback'}")
-
-if len(output_df) > 0:
-    print(f"\nTop 10 highest confidence detections:")
-    print("-" * 60)
-    for i, row in output_df.head(10).iterrows():
-        print(f"  {row['IDN_EON']}: {row['ecomm_confidence']:.3f} ({row['detection_method']})")
-
-print("\n" + "=" * 80)
-print("PROCESSING COMPLETE")
-print("=" * 80)
+if __name__ == "__main__":
+    main()
