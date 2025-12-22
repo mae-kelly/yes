@@ -374,6 +374,28 @@ def analyze_dataset_columns(input_dataset_name, output_dataset_name):
     
     print(f"Analysis complete! Found {len(results_df)} columns with matching keywords")
     
+    # Print summary
+    print("\n" + "="*60)
+    print("ANALYSIS SUMMARY")
+    print("="*60)
+    print(f"Total columns in dataset: {len(df.columns)}")
+    print(f"Columns with matches: {len(results_df)}")
+    
+    if len(results_df) > 0:
+        total_cell_matches = results_df['total_cell_value_occurrences'].sum()
+        print(f"Total cell value occurrences containing keywords: {total_cell_matches}")
+        
+        print("\nTop 10 columns by cell content occurrences (most to least):")
+        top_cols = results_df[['column_name', 'total_cell_value_occurrences', 'unique_matched_cell_values', 'all_cell_keywords']].head(10)
+        print(top_cols.to_string(index=False))
+        
+        print("\nCategory breakdown:")
+        for category in KEYWORD_CATEGORIES.keys():
+            col_count = (results_df[f'{category}_matched'] == 'Yes').sum()
+            if col_count > 0:
+                total_occurrences = results_df[f'{category}_total_cell_occurrences'].sum()
+                print(f"  {category}: {col_count} columns, {total_occurrences} total cell occurrences")
+    
     return results_df
 
 
@@ -385,25 +407,3 @@ if __name__ == "__main__":
     
     # Run the analysis
     results = analyze_dataset_columns(INPUT_DATASET, OUTPUT_DATASET)
-    
-    # Print summary
-    print("\n" + "="*60)
-    print("ANALYSIS SUMMARY")
-    print("="*60)
-    print(f"Total columns in dataset: {len(df.columns)}")
-    print(f"Columns with matches: {len(results)}")
-    
-    if len(results) > 0:
-        total_cell_matches = results['total_cell_value_occurrences'].sum()
-        print(f"Total cell value occurrences containing keywords: {total_cell_matches}")
-        
-        print("\nTop 10 columns by cell content occurrences (most to least):")
-        top_cols = results[['column_name', 'total_cell_value_occurrences', 'unique_matched_cell_values', 'all_cell_keywords']].head(10)
-        print(top_cols.to_string(index=False))
-        
-        print("\nCategory breakdown:")
-        for category in KEYWORD_CATEGORIES.keys():
-            col_count = (results[f'{category}_matched'] == 'Yes').sum()
-            if col_count > 0:
-                total_occurrences = results[f'{category}_total_cell_occurrences'].sum()
-                print(f"  {category}: {col_count} columns, {total_occurrences} total cell occurrences")
