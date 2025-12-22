@@ -12,6 +12,14 @@ INPUT_TABLE_5 = 'table5'
 OUTPUT_TABLE = 'ecomm_detection_results'
 
 # ================================================================================
+# detection settings
+# ================================================================================
+
+# tfidf confidence threshold (0.0 to 1.0)
+# lower = more lenient, higher = stricter
+CONFIDENCE_THRESHOLD = 0.52
+
+# ================================================================================
 # false positives - strings incorrectly flagged (add as you find them)
 # ================================================================================
 
@@ -31,294 +39,425 @@ FALSE_NEGATIVES = [
 
 import dataiku
 import pandas as pd
+import numpy as np
 import re
 from collections import defaultdict
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.metrics.pairwise import cosine_similarity
 
 # ================================================================================
-# positive signals - any of these suggest e-comm capability
-# these are intentionally broad to catch more
+# training data: e-communication capability examples
+# these describe apps that CAN send/facilitate communication
 # ================================================================================
 
-POSITIVE_PATTERNS = [
-    # sending actions (broad)
-    r'sends?\s+(?:an?\s+)?(?:email|e-mail|message|text|sms|mms|notification|alert)',
-    r'(?:email|message|text|sms|notification|alert)s?\s+(?:are\s+)?sent',
-    r'(?:deliver|transmit|dispatch|push)(?:es|s|ing)?\s+(?:email|message|notification|alert)',
-    r'(?:email|message|notification|alert)\s+delivery',
-    r'outbound\s+(?:email|message|sms|communication)',
-    r'outgoing\s+(?:email|message|call)',
+ECOMM_EXAMPLES = [
+    # email sending
+    "users can send emails to each other",
+    "app sends email notifications to customers",
+    "email delivery system for marketing campaigns",
+    "sends automated email alerts",
+    "customers receive order confirmation emails",
+    "newsletter sent to subscribers",
+    "bulk email capability",
+    "transactional emails are delivered",
+    "email blast feature",
+    "compose and send email messages",
+    "outbound email system",
+    "email communication platform",
+    "drip email campaigns",
+    "sends welcome emails to new users",
+    "promotional emails delivered to inbox",
+    "reply to customer emails",
+    "email correspondence with clients",
+    "automated email responses",
+    "email marketing platform",
+    "sends reminder emails",
     
-    # user communication actions
-    r'(?:user|customer|member)s?\s+(?:can\s+)?(?:send|message|contact|reach|chat|call)',
-    r'(?:send|compose|write|draft|reply|forward)\s+(?:a\s+)?(?:message|email|text)',
-    r'(?:message|email|chat|call)\s+(?:other\s+)?(?:user|customer|member|people)',
-    r'(?:contact|reach|message)\s+(?:us|support|customer\s+service)',
+    # sms and text
+    "sends sms messages to users",
+    "text message alerts",
+    "sms notification system",
+    "customers receive text updates",
+    "bulk sms capability",
+    "sends appointment reminders via text",
+    "sms marketing campaigns",
+    "text messaging platform",
+    "mobile text alerts",
+    "sends shipping notifications via sms",
+    "two-way sms communication",
+    "text message broadcasting",
+    "sms gateway integration",
+    "sends promotional texts",
+    "mms messaging support",
     
-    # messaging and chat
-    r'\bmessaging\b',
-    r'\bchat\b',
-    r'\bchatting\b',
-    r'\bim\b',
-    r'\bdirect\s+message',
-    r'\binstant\s+message',
-    r'\bprivate\s+message',
-    r'\bin-app\s+messag',
-    r'\breal-time\s+messag',
-    r'\blive\s+chat\b',
+    # video and voice calls
+    "video calling feature",
+    "users can make video calls",
+    "voice call capability",
+    "video conferencing platform",
+    "voip phone system",
+    "make phone calls through the app",
+    "video chat between users",
+    "audio calling feature",
+    "conference call capability",
+    "screen sharing with video",
+    "one-on-one video calls",
+    "group video meetings",
+    "webrtc video communication",
+    "sip calling support",
+    "telephone integration",
+    "caller can reach support",
+    "dial customers directly",
+    "voice communication platform",
     
-    # calling
-    r'\bvideo\s+call',
-    r'\bvoice\s+call',
-    r'\bphone\s+call',
-    r'\baudio\s+call',
-    r'\bvideo\s+chat\b',
-    r'\bvoip\b',
-    r'\bsip\s+call',
-    r'\bwebrtc\b',
-    r'\bconference\s+call',
-    r'\bvideo\s+conference',
-    r'\btelephone\b',
-    r'\bcaller\b',
-    r'\bcalling\s+feature',
-    r'\bmake\s+(?:a\s+)?call',
-    r'\bplace\s+(?:a\s+)?call',
+    # instant messaging and chat
+    "instant messaging between users",
+    "real-time chat feature",
+    "users can message each other",
+    "direct messaging capability",
+    "in-app chat system",
+    "private messaging",
+    "group chat functionality",
+    "live chat support",
+    "chat with customer service",
+    "messaging platform",
+    "send and receive messages",
+    "conversation threads",
+    "chat rooms",
+    "peer to peer messaging",
+    "team messaging",
+    "chat widget",
+    "chatbot responds to users",
+    "dialogue with customers",
+    "correspondence through app",
+    "communicate with other users",
     
-    # inbox/outbox (strong signal)
-    r'\binbox\b',
-    r'\boutbox\b',
-    r'\bsent\s+(?:folder|items|mail|messages)',
-    r'\bdrafts?\b',
-    r'\bmailbox\b',
+    # push notifications
+    "sends push notifications",
+    "mobile push alerts",
+    "app notifications delivered",
+    "push notification system",
+    "real-time alerts to devices",
+    "notifies users of updates",
+    "push messages to mobile",
+    "notification delivery platform",
+    "alerts sent to users",
+    "broadcast notifications",
     
-    # compose/write
-    r'\bcompose\b',
-    r'\bcomposer\b',
-    r'\breply\b',
-    r'\bforward\b',
-    r'\brespond\b',
+    # general communication
+    "e-communication capability",
+    "electronic communication platform",
+    "unified communications",
+    "omnichannel messaging",
+    "multi-channel communication",
+    "customer outreach platform",
+    "facilitates communication between parties",
+    "enables users to reach out",
+    "contact customers directly",
+    "communication hub",
+    "outbound communication system",
+    "lets users connect and communicate",
+    "platform for client correspondence",
+    "users can ping each other",
+    "reach out to customers",
+    "broadcast updates to subscribers",
+    "announcement system",
+    "bulletin distribution",
+    "mass communication feature",
+    "customer engagement platform",
     
-    # recipients
-    r'\brecipient',
-    r'\baddressee',
-    r'\bto:\s*field',
-    r'\bcc:\b',
-    r'\bbcc:\b',
-    
-    # notifications (app sending to users)
-    r'push\s+notification',
-    r'mobile\s+notification',
-    r'app\s+notification',
-    r'(?:send|push|deliver).*notification',
-    r'notification.*(?:sent|delivered|pushed)',
-    r'notifies?\s+(?:user|customer)',
-    r'alerts?\s+(?:user|customer)',
-    
-    # sms/text specific
-    r'\bsms\b',
-    r'\bmms\b',
-    r'\btext\s+message',
-    r'\btext\s+alert',
-    r'\bsms\s+gateway',
-    r'\btwilio\b',
-    r'\bsendgrid\b',
-    r'\bmailchimp\b',
-    r'\bmailgun\b',
-    
-    # email specific (sending context)
-    r'email\s+(?:campaign|blast|newsletter|marketing)',
-    r'(?:send|deliver)\s+email',
-    r'email\s+(?:notification|alert|reminder)',
-    r'transactional\s+email',
-    r'automated\s+email',
-    r'bulk\s+email',
-    r'mass\s+email',
-    
-    # communication features
-    r'(?:communication|messaging|chat|calling)\s+(?:feature|capability|platform|system|module)',
-    r'(?:e-?comm(?:unication)?)\b',
-    r'electronic\s+communication',
-    r'unified\s+communication',
-    r'omnichannel',
-    r'multi-?channel\s+(?:communication|messaging)',
-    
-    # conversation/thread
-    r'\bconversation\b',
-    r'\bthread\b',
-    r'\bdialogue\b',
-    r'\bcorrespondence\b',
-    
-    # broadcast
-    r'\bbroadcast\b',
-    r'\bannouncement\b',
-    r'\bbulletin\b',
-    
-    # customer communication
-    r'customer\s+(?:communication|contact|outreach|engagement)',
-    r'(?:contact|reach)\s+customer',
-    r'user\s+communication',
+    # inbox/compose features
+    "inbox for messages",
+    "outbox shows sent items",
+    "compose new message",
+    "reply to messages",
+    "forward emails",
+    "message drafts",
+    "sent folder",
+    "mailbox feature",
+    "recipient selection",
+    "address book for contacts",
 ]
 
 # ================================================================================
-# negative signals - these indicate data storage, not e-comm capability
-# only reject if these match AND no strong positive signal
+# training data: not e-communication (just data/storage/display)
 # ================================================================================
 
-NEGATIVE_PATTERNS = [
-    # field/data lists (very strong negative)
-    r'(?:email|phone|name|address)\s*[,;/&]\s*(?:email|phone|name|address)',
-    r'fields?\s*:\s*.*(?:email|phone)',
-    r'(?:email|phone)\s*:\s*$',
+NOT_ECOMM_EXAMPLES = [
+    # data collection
+    "collects email addresses",
+    "stores phone numbers",
+    "gathers contact information",
+    "email field in database",
+    "captures user email",
+    "saves email for records",
+    "phone number storage",
+    "email data collection",
+    "retains email addresses",
+    "logs contact details",
+    "email is recorded",
+    "stores customer phone",
+    "contact information saved",
+    "email kept on file",
+    "maintains email list",
     
-    # storage verbs
-    r'(?:collect|gather|capture|store|save|record|retain|log)s?\s+(?:the\s+)?(?:user.?s?\s+)?(?:email|phone)',
-    r'(?:email|phone)\s+(?:is\s+)?(?:stored|saved|collected|recorded|logged)',
+    # form fields
+    "email input field",
+    "enter your email address",
+    "phone number textbox",
+    "email form field",
+    "provide your email",
+    "fill in email",
+    "email is required",
+    "phone field optional",
+    "type your email",
+    "submit email address",
+    "email entry form",
+    "input phone number",
     
-    # form/input
-    r'(?:enter|input|type|provide|fill)\s+(?:your\s+)?(?:email|phone)',
-    r'(?:email|phone)\s+(?:field|input|textbox|form)',
-    r'(?:email|phone)\s+(?:is\s+)?(?:required|optional|mandatory)',
+    # database schema
+    "email varchar column",
+    "phone number table",
+    "email field type string",
+    "contact column in database",
+    "email primary key",
+    "phone data type",
+    "email schema definition",
+    "text field for email",
+    "email column index",
+    "phone number format",
     
-    # database/schema
-    r'(?:varchar|nvarchar|char|text|string|int)\s*\(?\d*\)?\s*(?:email|phone)',
-    r'(?:email|phone)\s+(?:column|table|schema|database)',
-    r'(?:create|alter|insert|update|select)\s+.*(?:email|phone)',
+    # authentication
+    "login with email",
+    "email as username",
+    "sign in using email",
+    "register with email",
+    "email for account creation",
+    "phone verification",
+    "email authentication",
+    "signin requires email",
+    "account email address",
+    "email used for login",
     
-    # auth/login
-    r'(?:login|signin|register|signup)\s+(?:with|using)\s+(?:email|phone)',
-    r'(?:email|phone)\s+(?:as|for)\s+(?:username|login|account)',
-    r'(?:forgot|reset)\s+password',
-    
-    # 2fa/otp
-    r'(?:2fa|two-?factor|mfa|otp|one-?time)',
-    r'verification\s+code',
+    # verification codes
+    "sms verification code",
+    "email confirmation code",
+    "two factor authentication",
+    "otp sent via text",
+    "verification pin",
+    "2fa code",
+    "mfa via sms",
+    "one time password",
+    "security code via email",
+    "confirm email address",
     
     # validation
-    r'(?:validate|verify|check)\s+(?:email|phone)',
-    r'(?:email|phone)\s+(?:validation|verification|format)',
-    r'(?:valid|invalid)\s+(?:email|phone)',
+    "validates email format",
+    "checks phone number",
+    "email syntax validation",
+    "verify email address",
+    "phone format check",
+    "valid email required",
+    "email regex pattern",
+    "phone validation rule",
+    "invalid email error",
+    "malformed email address",
     
     # display only
-    r'(?:display|show|view)s?\s+(?:the\s+)?(?:email|phone)',
-    r'(?:email|phone)\s+(?:displayed|shown|visible)',
+    "displays user email",
+    "shows phone number",
+    "email visible in profile",
+    "contact info displayed",
+    "view email address",
+    "phone shown on screen",
+    "email in account settings",
+    "displays contact details",
+    "email appears in header",
+    "shows customer phone",
     
-    # settings/preferences
-    r'notification\s+(?:setting|preference|option)',
-    r'(?:enable|disable)\s+notification',
-    r'(?:opt-?in|opt-?out|unsubscribe)',
+    # settings and preferences
+    "email notification settings",
+    "phone preferences",
+    "opt out of emails",
+    "unsubscribe from notifications",
+    "email frequency settings",
+    "notification preferences",
+    "disable email alerts",
+    "manage phone settings",
+    "opt in to texts",
+    "email subscription options",
+    
+    # logs and history
+    "email audit log",
+    "call history records",
+    "message log table",
+    "notification history",
+    "email delivery log",
+    "phone call records",
+    "communication log",
+    "message archive",
+    "email trail",
+    "contact history",
     
     # templates
-    r'(?:email|message)\s+template',
+    "email template",
+    "message template",
+    "notification template",
+    "sms template",
+    "email format template",
+    "standard email template",
+    "template for messages",
+    
+    # errors
+    "email bounce",
+    "failed delivery",
+    "invalid phone",
+    "email error",
+    "undeliverable message",
+    "phone not found",
+    "email rejected",
+    "spam filter",
+    "blocked email",
+    
+    # technical
+    "smtp server",
+    "email protocol",
+    "pop3 configuration",
+    "imap settings",
+    "mail server",
+    "mx record",
+    "email routing",
+    "phone carrier",
+    "sip trunk",
 ]
 
 # ================================================================================
-# simple keyword check - must have at least one
+# fast pre-filter keywords - must have at least one to be a candidate
 # ================================================================================
 
-KEYWORDS = [
+PREFILTER_KEYWORDS = [
     'email', 'e-mail', 'mail',
     'sms', 'mms', 'text',
-    'message', 'messaging',
-    'call', 'calling', 'caller', 'phone', 'telephone',
-    'video', 'voice', 'voip',
+    'message', 'messaging', 'msg',
+    'call', 'calling', 'caller', 'phone', 'telephone', 'dial',
+    'video', 'voice', 'voip', 'audio',
     'chat', 'chatting',
     'notification', 'notify', 'alert',
     'push',
-    'communication', 'communicate',
-    'inbox', 'outbox', 'compose', 'reply',
-    'conversation', 'thread',
-    'conference',
-    'broadcast',
-    'twilio', 'sendgrid', 'mailchimp',
+    'communication', 'communicate', 'contact', 'reach',
+    'inbox', 'outbox', 'compose', 'reply', 'forward', 'draft',
+    'conversation', 'thread', 'dialogue', 'correspondence',
+    'conference', 'meeting',
+    'broadcast', 'announcement', 'bulletin',
+    'subscriber', 'recipient',
+    'twilio', 'sendgrid', 'mailchimp', 'mailgun',
+    'webrtc', 'sip',
 ]
 
 INVALID_IDN = {'nan', 'none', '', 'null', 'n/a', 'na', '-', 'unknown', ' ', 'undefined', 'test', 'example'}
 
-# compile patterns
-POSITIVE_RE = [re.compile(p, re.IGNORECASE) for p in POSITIVE_PATTERNS]
-NEGATIVE_RE = [re.compile(p, re.IGNORECASE) for p in NEGATIVE_PATTERNS]
+# learned patterns
 FALSE_POS_SET = set(x.lower().strip() for x in FALSE_POSITIVES if x and x.strip())
 FALSE_NEG_SET = set(x.lower().strip() for x in FALSE_NEGATIVES if x and x.strip())
 
+# ================================================================================
+# tfidf classifier
+# ================================================================================
+
+class SemanticClassifier:
+    def __init__(self):
+        print("building semantic classifier...")
+        
+        # combine training data
+        all_texts = ECOMM_EXAMPLES + NOT_ECOMM_EXAMPLES
+        
+        # create labels (1 = ecomm, 0 = not ecomm)
+        self.labels = [1] * len(ECOMM_EXAMPLES) + [0] * len(NOT_ECOMM_EXAMPLES)
+        
+        # build tfidf vectorizer
+        self.vectorizer = TfidfVectorizer(
+            ngram_range=(1, 3),
+            max_features=5000,
+            min_df=1,
+            max_df=0.95,
+            stop_words='english',
+            sublinear_tf=True,
+        )
+        
+        # fit and transform training data
+        self.train_vectors = self.vectorizer.fit_transform(all_texts)
+        
+        # pre-compute centroids for each class
+        ecomm_vectors = self.train_vectors[:len(ECOMM_EXAMPLES)]
+        not_ecomm_vectors = self.train_vectors[len(ECOMM_EXAMPLES):]
+        
+        self.ecomm_centroid = np.asarray(ecomm_vectors.mean(axis=0)).flatten()
+        self.not_ecomm_centroid = np.asarray(not_ecomm_vectors.mean(axis=0)).flatten()
+        
+        print(f"  vocabulary size: {len(self.vectorizer.vocabulary_)}")
+        print(f"  ecomm examples: {len(ECOMM_EXAMPLES)}")
+        print(f"  not ecomm examples: {len(NOT_ECOMM_EXAMPLES)}")
+    
+    def get_confidence(self, text):
+        """
+        get confidence score that text indicates e-comm capability.
+        returns float from 0 to 1.
+        """
+        if not text or len(text) < 10:
+            return 0.0
+        
+        # transform text
+        text_vector = self.vectorizer.transform([text])
+        text_arr = np.asarray(text_vector.toarray()).flatten()
+        
+        # compute similarity to each centroid
+        ecomm_sim = self._cosine_sim(text_arr, self.ecomm_centroid)
+        not_ecomm_sim = self._cosine_sim(text_arr, self.not_ecomm_centroid)
+        
+        # also compute max similarity to individual examples
+        all_sims = cosine_similarity(text_vector, self.train_vectors).flatten()
+        
+        # get top similarities for each class
+        ecomm_sims = all_sims[:len(ECOMM_EXAMPLES)]
+        not_ecomm_sims = all_sims[len(ECOMM_EXAMPLES):]
+        
+        ecomm_max = np.max(ecomm_sims) if len(ecomm_sims) > 0 else 0
+        not_ecomm_max = np.max(not_ecomm_sims) if len(not_ecomm_sims) > 0 else 0
+        
+        ecomm_top3 = np.mean(sorted(ecomm_sims, reverse=True)[:3])
+        not_ecomm_top3 = np.mean(sorted(not_ecomm_sims, reverse=True)[:3])
+        
+        # combine scores
+        ecomm_score = 0.3 * ecomm_sim + 0.4 * ecomm_max + 0.3 * ecomm_top3
+        not_ecomm_score = 0.3 * not_ecomm_sim + 0.4 * not_ecomm_max + 0.3 * not_ecomm_top3
+        
+        # normalize to probability
+        total = ecomm_score + not_ecomm_score
+        if total == 0:
+            return 0.5
+        
+        return ecomm_score / total
+    
+    def _cosine_sim(self, v1, v2):
+        norm1 = np.linalg.norm(v1)
+        norm2 = np.linalg.norm(v2)
+        if norm1 == 0 or norm2 == 0:
+            return 0.0
+        return float(np.dot(v1, v2) / (norm1 * norm2))
+
+# ================================================================================
+# helper functions
+# ================================================================================
+
 def has_keyword(text_lower):
-    for kw in KEYWORDS:
+    """fast check if text has any communication keyword."""
+    for kw in PREFILTER_KEYWORDS:
         if kw in text_lower:
             return True
     return False
 
-def count_positive_matches(text_lower):
-    count = 0
-    for pattern in POSITIVE_RE:
-        if pattern.search(text_lower):
-            count += 1
-    return count
-
-def count_negative_matches(text_lower):
-    count = 0
-    for pattern in NEGATIVE_RE:
-        if pattern.search(text_lower):
-            count += 1
-    return count
-
-def is_ecomm(text):
-    """
-    determine if text indicates e-communication capability.
-    
-    logic:
-    1. check learned patterns first
-    2. must have at least one keyword
-    3. count positive and negative matches
-    4. if more positive than negative, or any strong positive -> e-comm
-    5. if only negative matches -> not e-comm
-    """
-    if not text or len(text) < 10:
-        return False
-    
-    text_lower = text.lower()
-    
-    # learned false positives - always reject
-    for fp in FALSE_POS_SET:
-        if fp and fp in text_lower:
-            return False
-    
-    # learned false negatives - always accept
-    for fn in FALSE_NEG_SET:
-        if fn and fn in text_lower:
-            return True
-    
-    # must have keyword
-    if not has_keyword(text_lower):
-        return False
-    
-    # count matches
-    pos_count = count_positive_matches(text_lower)
-    neg_count = count_negative_matches(text_lower)
-    
-    # if any positive match and not overwhelmed by negatives -> e-comm
-    if pos_count > 0 and pos_count >= neg_count:
-        return True
-    
-    # if only negatives -> not e-comm
-    if neg_count > 0 and pos_count == 0:
-        return False
-    
-    # edge case: has keyword but no pattern matches
-    # check for very simple signals that patterns might miss
-    simple_signals = [
-        'sends email', 'sends text', 'sends sms', 'sends message',
-        'send email', 'send text', 'send sms', 'send message',
-        'email sent', 'text sent', 'sms sent', 'message sent',
-        'can email', 'can text', 'can message', 'can call',
-        'video call', 'voice call', 'phone call',
-        'live chat', 'chat with', 'message to',
-        'inbox', 'outbox', 'compose',
-    ]
-    for signal in simple_signals:
-        if signal in text_lower:
-            return True
-    
-    return False
-
 def find_idn_col(df):
+    """find idn_eon column case-insensitively."""
     for col in df.columns:
         normalized = col.upper().replace(' ', '_').replace('-', '_')
         if 'IDN_EON' in normalized:
@@ -331,9 +470,11 @@ def find_idn_col(df):
 
 print("=" * 60)
 print("e-communication capability detection")
+print("hybrid: fast keyword filter + tfidf semantic analysis")
 print("=" * 60)
-print(f"positive patterns: {len(POSITIVE_PATTERNS)}")
-print(f"negative patterns: {len(NEGATIVE_PATTERNS)}")
+
+# initialize classifier
+classifier = SemanticClassifier()
 
 # load tables
 tables = {}
@@ -350,12 +491,13 @@ for name in [INPUT_TABLE_1, INPUT_TABLE_2, INPUT_TABLE_3, INPUT_TABLE_4, INPUT_T
 if not tables:
     raise ValueError("no tables loaded")
 
-# process
-print("\nprocessing...")
+# process tables
+print("\nprocessing (keyword filter -> tfidf on candidates)...")
 
 idn_sources = defaultdict(set)
 idn_ecomm = defaultdict(list)
 total_rows = 0
+candidates_analyzed = 0
 
 for tname, df in tables.items():
     idn_col = find_idn_col(df)
@@ -365,11 +507,12 @@ for tname, df in tables.items():
     
     other_cols = [c for c in df.columns if c != idn_col]
     ecomm_count = 0
+    table_candidates = 0
     
     for idx, row in df.iterrows():
         total_rows += 1
         if total_rows % 5000 == 0:
-            print(f"  {total_rows:,} rows...")
+            print(f"  {total_rows:,} rows, {candidates_analyzed:,} candidates analyzed...")
         
         idn_val = str(row[idn_col]).strip()
         if idn_val.lower() in INVALID_IDN:
@@ -379,13 +522,52 @@ for tname, df in tables.items():
         
         for col in other_cols:
             txt = str(row[col]).strip()
-            if is_ecomm(txt):
+            txt_lower = txt.lower()
+            
+            # check learned false positives first
+            skip = False
+            for fp in FALSE_POS_SET:
+                if fp and fp in txt_lower:
+                    skip = True
+                    break
+            if skip:
+                continue
+            
+            # check learned false negatives (always accept)
+            force_accept = False
+            for fn in FALSE_NEG_SET:
+                if fn and fn in txt_lower:
+                    force_accept = True
+                    break
+            
+            if force_accept:
+                loc = f"{tname}.{col}"
+                if (txt, loc) not in idn_ecomm[idn_val]:
+                    idn_ecomm[idn_val].append((txt, loc))
+                    ecomm_count += 1
+                continue
+            
+            # fast keyword filter
+            if not has_keyword(txt_lower):
+                continue
+            
+            # passed keyword filter - run tfidf analysis
+            table_candidates += 1
+            candidates_analyzed += 1
+            
+            confidence = classifier.get_confidence(txt)
+            
+            if confidence >= CONFIDENCE_THRESHOLD:
                 loc = f"{tname}.{col}"
                 if (txt, loc) not in idn_ecomm[idn_val]:
                     idn_ecomm[idn_val].append((txt, loc))
                     ecomm_count += 1
     
-    print(f"  [ok] {tname}: {ecomm_count:,} e-comm found")
+    print(f"  [ok] {tname}: {table_candidates:,} candidates, {ecomm_count:,} e-comm found")
+
+print(f"\ntotal rows: {total_rows:,}")
+print(f"candidates analyzed with tfidf: {candidates_analyzed:,}")
+print(f"tfidf ran on {100*candidates_analyzed/total_rows:.1f}% of rows")
 
 # build output
 print("\nbuilding output...")
