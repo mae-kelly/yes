@@ -16,7 +16,6 @@ OUTPUT_TABLE = 'ecomm_detection_results'  # Output table name
 
 ECOMM_THRESHOLD = 0.55  # Classification threshold (0.0 to 1.0)
 MIN_TEXT_LENGTH = 5     # Minimum text length to analyze
-MAX_EVIDENCE_SAMPLES = 3  # Max evidence samples per IDN_EON
 
 # ================================================================================
 # FALSE POSITIVES - Add strings that INCORRECTLY trigger e-comm detection
@@ -39,22 +38,8 @@ FALSE_NEGATIVES = [
 ]
 
 # ================================================================================
-# END OF CONFIGURATION - DO NOT MODIFY BELOW UNLESS YOU KNOW WHAT YOU'RE DOING
+# END OF CONFIGURATION
 # ================================================================================
-
-"""
-E-COMMUNICATION CAPABILITY DETECTION - DATAIKU PYTHON RECIPE
-
-WHAT THIS DOES:
-    1. Reads IDN_EON from all 4 input tables
-    2. Creates unique list with source table tracking
-    3. Analyzes each IDN_EON for e-communication capabilities
-    4. Outputs results with YES/NO classification
-
-SEMANTIC UNDERSTANDING:
-    Uses TF-IDF (scikit-learn) to compare text against training examples
-    No external APIs or LLM services required
-"""
 
 import dataiku
 import pandas as pd
@@ -69,7 +54,6 @@ from sklearn.metrics.pairwise import cosine_similarity
 # ================================================================================
 
 ECOMM_SENDING_EXAMPLES = [
-    # Email sending
     "users can send emails through the app",
     "app sends email notifications to users",
     "email delivery capability enabled",
@@ -87,8 +71,6 @@ ECOMM_SENDING_EXAMPLES = [
     "sends reminder emails",
     "email notification delivery",
     "outgoing email functionality",
-    
-    # SMS/Text sending
     "users can send texts through the app",
     "app sends SMS alerts to users",
     "text message delivery system",
@@ -101,8 +83,6 @@ ECOMM_SENDING_EXAMPLES = [
     "automated text messages",
     "SMS messaging platform",
     "sends promotional texts",
-    
-    # Video/Voice calling
     "users can make video calls",
     "video calling feature enabled",
     "video conferencing capability",
@@ -112,8 +92,6 @@ ECOMM_SENDING_EXAMPLES = [
     "make phone calls through app",
     "real-time video calling",
     "voice calls between users",
-    
-    # Instant messaging
     "users can send messages",
     "instant messaging capability",
     "chat feature enabled",
@@ -125,8 +103,6 @@ ECOMM_SENDING_EXAMPLES = [
     "send direct messages",
     "chat functionality",
     "real-time chat",
-    
-    # Push notifications
     "sends push notifications to users",
     "delivers push notifications",
     "mobile push alerts enabled",
@@ -135,8 +111,6 @@ ECOMM_SENDING_EXAMPLES = [
     "notification delivery system",
     "push notification capability",
     "sends mobile alerts",
-    
-    # E-communications explicit
     "e-communication enabled",
     "e-communications platform",
     "electronic communication capability",
@@ -148,7 +122,6 @@ ECOMM_SENDING_EXAMPLES = [
 # ================================================================================
 
 DATA_COLLECTION_EXAMPLES = [
-    # Email collection
     "collects email addresses",
     "gathers email from users",
     "stores email addresses in database",
@@ -156,57 +129,41 @@ DATA_COLLECTION_EXAMPLES = [
     "captures email for marketing",
     "collects user email",
     "stores email data",
-    
-    # Storage
     "saves email in database",
     "retains email address",
     "email records stored",
     "maintains email addresses",
     "email stored in system",
     "keeps email on record",
-    
-    # Registration/Login
     "email required for registration",
     "login with email",
     "email as username",
     "sign in with email",
     "register with email",
     "email for authentication",
-    
-    # Forms
     "email field in form",
     "email input field",
     "enter email address",
     "email form field",
     "email text box",
     "email entry field",
-    
-    # Validation
     "validates email format",
     "verifies email address",
     "email format validation",
     "email validation check",
-    
-    # Database/Technical
     "email field in database",
     "email column in table",
     "varchar email field",
     "email database column",
     "plaintext email field",
-    
-    # List format
     "email, phone",
     "phone, email",
     "email, phone, address",
     "name, email, phone",
     "fields: email, phone",
-    
-    # Phone collection
     "collects phone numbers",
     "stores phone numbers",
     "phone number field",
-    
-    # 2FA only
     "SMS verification code",
     "2FA via SMS",
     "one-time password text",
@@ -280,28 +237,28 @@ class ECommClassifier:
     
     def classify(self, text):
         if not text or len(str(text).strip()) < MIN_TEXT_LENGTH:
-            return (0.0, "invalid")
+            return 0.0
         
         text = str(text).strip()
         text_lower = text.lower()
         
         # Check learned patterns
         if any(fp in text_lower for fp in self.false_pos if fp):
-            return (0.0, "learned_false_positive")
+            return 0.0
         if any(fn in text_lower for fn in self.false_neg if fn):
-            return (0.95, "learned_false_negative")
+            return 0.95
         
         # Must have keyword
         if not any(kw in text_lower for kw in COMMUNICATION_KEYWORDS):
-            return (0.0, "no_keyword")
+            return 0.0
         
         # Hard patterns
         for p in self.disqualifiers:
             if p.search(text_lower):
-                return (0.0, "hard_disqualifier")
+                return 0.0
         for p in self.qualifiers:
             if p.search(text_lower):
-                return (0.95, "hard_qualifier")
+                return 0.95
         
         # TF-IDF semantic
         vec = self.vectorizer.transform([text])
@@ -314,8 +271,7 @@ class ECommClassifier:
         avg_datacoll = (self._cosine(arr, self.datacoll_centroid) + np.max(datacoll_sims) + np.percentile(datacoll_sims, 90)) / 3
         
         total = avg_ecomm + avg_datacoll
-        confidence = avg_ecomm / total if total > 0 else 0.5
-        return (confidence, "tfidf_semantic")
+        return avg_ecomm / total if total > 0 else 0.5
 
 # ================================================================================
 # HELPER FUNCTIONS
@@ -363,7 +319,7 @@ print("\nBuilding semantic classifier...")
 classifier = ECommClassifier()
 print("✓ Classifier ready")
 
-# Step 1: Collect unique IDN_EON
+# Step 1: Collect unique IDN_EON and their source tables
 print("\n" + "-" * 60)
 print("STEP 1: Collecting unique IDN_EON")
 print("-" * 60)
@@ -383,9 +339,9 @@ for tname, df in tables.items():
 
 print(f"\nTotal unique IDN_EON: {len(idn_sources):,}")
 
-# Step 2: Analyze e-comm capabilities
+# Step 2: Find e-comm strings for each IDN_EON
 print("\n" + "-" * 60)
-print("STEP 2: Analyzing e-communication capabilities")
+print("STEP 2: Finding e-communication strings")
 print("-" * 60)
 
 results = []
@@ -394,13 +350,11 @@ ecomm_count = 0
 
 for idx, (idn_eon, sources) in enumerate(idn_sources.items()):
     if (idx + 1) % 500 == 0 or (idx + 1) == total:
-        print(f"  Progress: {idx+1:,}/{total:,} | E-comm: {ecomm_count:,}")
+        print(f"  Progress: {idx+1:,}/{total:,} | E-comm found: {ecomm_count:,}")
     
-    best_conf = 0.0
-    best_method = "no_evidence"
-    evidence = []
-    evidence_cols = set()
+    ecomm_strings = []  # List of (string, table.column)
     
+    # Search all tables for this IDN_EON
     for tname, df in tables.items():
         col = find_idn_col(df)
         if not col:
@@ -409,6 +363,7 @@ for idx, (idn_eon, sources) in enumerate(idn_sources.items()):
         if rows.empty:
             continue
         
+        # Check each column
         for c in df.columns:
             if c == col:
                 continue
@@ -416,40 +371,44 @@ for idx, (idn_eon, sources) in enumerate(idn_sources.items()):
                 txt = str(val).strip() if val else ""
                 if len(txt) < MIN_TEXT_LENGTH:
                     continue
-                conf, method = classifier.classify(txt)
-                if conf > best_conf:
-                    best_conf = conf
-                    best_method = method
-                if conf > ECOMM_THRESHOLD:
-                    evidence_cols.add(f"{tname}.{c}")
-                    if len(evidence) < MAX_EVIDENCE_SAMPLES:
-                        evidence.append(txt[:200])
+                
+                confidence = classifier.classify(txt)
+                if confidence > ECOMM_THRESHOLD:
+                    ecomm_strings.append((txt, f"{tname}.{c}"))
     
-    has_ecomm = best_conf > ECOMM_THRESHOLD
-    if has_ecomm:
+    # Add to results
+    if ecomm_strings:
         ecomm_count += 1
+        # Combine all e-comm strings and their locations
+        strings = ' | '.join([s[0] for s in ecomm_strings])
+        locations = ' | '.join([s[1] for s in ecomm_strings])
+    else:
+        strings = ''
+        locations = ''
     
     results.append({
         'IDN_EON': idn_eon,
         'source_tables': ', '.join(sorted(sources)),
-        'has_ecomm_capability': 'YES' if has_ecomm else 'NO',
-        'ecomm_confidence': round(best_conf, 4),
-        'ecomm_evidence': ' | '.join(evidence),
-        'detection_details': ', '.join(sorted(evidence_cols)) if evidence_cols else best_method,
+        'ecomm_string': strings,
+        'string_location': locations,
     })
 
 # Create output
 output_df = pd.DataFrame(results)
-output_df = output_df.sort_values(['has_ecomm_capability', 'ecomm_confidence'], ascending=[False, False])
+
+# Sort: those with e-comm strings first
+output_df['has_ecomm'] = output_df['ecomm_string'].apply(lambda x: 1 if x else 0)
+output_df = output_df.sort_values('has_ecomm', ascending=False).drop(columns=['has_ecomm'])
+output_df = output_df.reset_index(drop=True)
 
 # Summary
 print("\n" + "-" * 60)
 print("SUMMARY")
 print("-" * 60)
-yes_ct = (output_df['has_ecomm_capability'] == 'YES').sum()
+has_ecomm = (output_df['ecomm_string'] != '').sum()
 print(f"Total IDN_EON: {len(output_df):,}")
-print(f"E-comm YES: {yes_ct:,}")
-print(f"E-comm NO: {len(output_df) - yes_ct:,}")
+print(f"With e-comm capability: {has_ecomm:,}")
+print(f"Without e-comm: {len(output_df) - has_ecomm:,}")
 
 # Write output
 print("\n" + "-" * 60)
