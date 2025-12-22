@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 # ================================================================================
-# INPUT AND OUTPUT TABLES - CONFIGURE THESE
+# input and output tables - configure these
 # ================================================================================
 
 INPUT_TABLE_1 = 'table1'
@@ -12,21 +12,21 @@ INPUT_TABLE_5 = 'table5'
 OUTPUT_TABLE = 'ecomm_detection_results'
 
 # ================================================================================
-# FALSE POSITIVES - Strings incorrectly flagged (add as you find them)
+# false positives - strings incorrectly flagged (add as you find them)
 # ================================================================================
 
 FALSE_POSITIVES = [
 ]
 
 # ================================================================================
-# FALSE NEGATIVES - Strings that should be flagged (add as you find them)
+# false negatives - strings that should be flagged (add as you find them)
 # ================================================================================
 
 FALSE_NEGATIVES = [
 ]
 
 # ================================================================================
-# END OF CONFIGURATION
+# end of configuration
 # ================================================================================
 
 import dataiku
@@ -34,270 +34,291 @@ import pandas as pd
 import re
 from collections import defaultdict
 
-"""
-DETECTION STRATEGY:
-
-The key question: Can users ACTIVELY COMMUNICATE through this app?
-
-TRUE E-COMM indicators (action-oriented):
-- Sending: send, compose, write, reply, forward, broadcast
-- Receiving: inbox, receive, incoming
-- UI elements: send button, compose window, message box, chat window
-- Recipients: to:, recipient, addressee
-- Conversations: thread, conversation, chat history, correspondence
-- Real-time: live chat, video call, voice call, conference
-- Features: messaging feature, chat capability, calling enabled
-
-FALSE indicators (passive/storage):
-- Storage: stored, saved, collected, database, field, column
-- Display: displayed, shown, view, profile
-- Input: enter email, email field, form
-- Validation: validate, verify, format check
-- Settings: preferences, settings, enable/disable notifications
-- Auth: login, register, 2FA, OTP, verification code
-- Lists: email, phone (comma-separated = data fields)
-"""
-
 # ================================================================================
-# STRONG POSITIVE SIGNALS - These strongly indicate real e-comm capability
+# positive signals - any of these suggest e-comm capability
+# these are intentionally broad to catch more
 # ================================================================================
 
-STRONG_POSITIVE_PATTERNS = [
-    # === ACTIVE SENDING VERBS WITH CONTEXT ===
-    r'(?:can|able to|allow(?:s|ing)?|let(?:s)?|enable(?:s|d)?)\s+(?:user|customer|member|people|you)s?\s+(?:to\s+)?(?:send|compose|write|create|draft)',
-    r'(?:user|customer|member|people)s?\s+(?:can|may|could)\s+(?:send|compose|write|reply|forward)',
-    r'(?:send|compose|write|draft|reply|forward)\s+(?:a\s+)?(?:message|email|text|sms|chat|response)',
-    r'(?:message|email|text|sms)\s+(?:can be|is|are)\s+(?:sent|composed|written|drafted)',
+POSITIVE_PATTERNS = [
+    # sending actions (broad)
+    r'sends?\s+(?:an?\s+)?(?:email|e-mail|message|text|sms|mms|notification|alert)',
+    r'(?:email|message|text|sms|notification|alert)s?\s+(?:are\s+)?sent',
+    r'(?:deliver|transmit|dispatch|push)(?:es|s|ing)?\s+(?:email|message|notification|alert)',
+    r'(?:email|message|notification|alert)\s+delivery',
+    r'outbound\s+(?:email|message|sms|communication)',
+    r'outgoing\s+(?:email|message|call)',
     
-    # === INBOX/OUTBOX (implies sending AND receiving) ===
-    r'\b(?:inbox|outbox|sent\s*(?:folder|items|messages|mail)|drafts?\s*folder)\b',
-    r'(?:message|email|chat)\s+(?:inbox|outbox)',
-    r'(?:view|check|open)\s+(?:your\s+)?(?:inbox|messages|emails)',
+    # user communication actions
+    r'(?:user|customer|member)s?\s+(?:can\s+)?(?:send|message|contact|reach|chat|call)',
+    r'(?:send|compose|write|draft|reply|forward)\s+(?:a\s+)?(?:message|email|text)',
+    r'(?:message|email|chat|call)\s+(?:other\s+)?(?:user|customer|member|people)',
+    r'(?:contact|reach|message)\s+(?:us|support|customer\s+service)',
     
-    # === COMPOSE/WRITE ACTIONS ===
-    r'\b(?:compose|composing)\s+(?:a\s+)?(?:new\s+)?(?:message|email|text|mail)\b',
-    r'(?:new|create)\s+(?:message|email|conversation|chat)',
-    r'(?:write|draft)\s+(?:a\s+)?(?:message|email|response|reply)',
-    r'(?:message|email)\s+(?:composer|composition|editor)',
+    # messaging and chat
+    r'\bmessaging\b',
+    r'\bchat\b',
+    r'\bchatting\b',
+    r'\bim\b',
+    r'\bdirect\s+message',
+    r'\binstant\s+message',
+    r'\bprivate\s+message',
+    r'\bin-app\s+messag',
+    r'\breal-time\s+messag',
+    r'\blive\s+chat\b',
     
-    # === REPLY/FORWARD/RESPOND ===
-    r'\b(?:reply|replying|respond|responding)\s+(?:to\s+)?(?:message|email|sender|user)',
-    r'\bforward(?:ing)?\s+(?:message|email|mail)',
-    r'(?:can|able to)\s+(?:reply|respond|forward)',
-    
-    # === RECIPIENT INDICATORS ===
-    r'\b(?:recipient|addressee|receiver)s?\b',
-    r'\bto:\s*(?:field|line|address)',
-    r'(?:select|choose|add|enter)\s+(?:a\s+)?recipient',
-    r'(?:send|message)\s+to\s+(?:user|customer|member|contact|friend|recipient)',
-    
-    # === CONVERSATION/THREAD ===
-    r'\b(?:conversation|thread|chat\s*history|message\s*history|correspondence)\b',
-    r'(?:start|begin|initiate|open)\s+(?:a\s+)?(?:conversation|chat|dialogue)',
-    r'(?:conversation|chat|thread)\s+(?:with|between)\s+(?:user|customer|member)',
-    
-    # === REAL-TIME COMMUNICATION ===
-    r'\b(?:live\s*chat|real[\s-]*time\s+(?:chat|messaging|communication))\b',
-    r'\b(?:video\s*call|voice\s*call|phone\s*call|audio\s*call)(?:ing)?\b',
-    r'\b(?:video|voice|audio)\s+(?:conference|conferencing|meeting)\b',
-    r'(?:make|place|start|initiate|join)\s+(?:a\s+)?(?:call|video|voice)',
-    r'(?:call|ring|dial)\s+(?:user|customer|contact|someone)',
-    
-    # === INSTANT MESSAGING ===
-    r'\b(?:instant\s*messag(?:e|ing)|im|direct\s*messag(?:e|ing)|dm|private\s*messag(?:e|ing)|pm)\b',
-    r'(?:send|receive)\s+(?:instant|direct|private)\s+message',
-    r'(?:chat|message)\s+(?:with|to)\s+(?:other\s+)?(?:user|customer|member|friend)',
-    
-    # === MESSAGING FEATURES ===
-    r'(?:messaging|chat|communication|calling)\s+(?:feature|capability|function(?:ality)?|module)',
-    r'(?:built[\s-]*in|integrated|native)\s+(?:messaging|chat|email|calling)',
-    r'(?:in[\s-]*app)\s+(?:messaging|chat|email|calling|communication)',
-    
-    # === PUSH/SEND NOTIFICATIONS (app actively sends) ===
-    r'(?:app|system|platform|we)\s+(?:send|push|deliver)s?\s+(?:notification|alert|message)',
-    r'(?:push|send)\s+notification\s+to\s+(?:user|device|customer)',
-    r'(?:notification|alert|message)\s+(?:is|are)\s+(?:sent|pushed|delivered)\s+to',
-    
-    # === UI ELEMENTS FOR COMMUNICATION ===
-    r'\b(?:send\s*button|compose\s*button|reply\s*button|chat\s*button|call\s*button)\b',
-    r'(?:click|tap|press)\s+(?:to\s+)?(?:send|compose|reply|call|chat)',
-    r'(?:message|chat|compose)\s+(?:window|box|panel|screen|interface)',
-    r'(?:chat|message|call)\s+(?:icon|button|widget)',
-    
-    # === BROADCAST/BULK SENDING ===
-    r'(?:broadcast|mass[\s-]*send|bulk[\s-]*send|send\s+to\s+(?:all|multiple|many))',
-    r'(?:send|email|message)\s+(?:campaign|newsletter|announcement|blast)',
-    
-    # === SPECIFIC COMMUNICATION TYPES ===
-    r'\b(?:sms|mms)\s+(?:messaging|sending|capability)\b',
-    r'\b(?:voip|sip)\s+(?:call|capability|enabled)\b',
+    # calling
+    r'\bvideo\s+call',
+    r'\bvoice\s+call',
+    r'\bphone\s+call',
+    r'\baudio\s+call',
+    r'\bvideo\s+chat\b',
+    r'\bvoip\b',
+    r'\bsip\s+call',
     r'\bwebrtc\b',
-    r'(?:toll[\s-]*free|1[\s-]*800|customer\s+service)\s+(?:call|line|number)',
+    r'\bconference\s+call',
+    r'\bvideo\s+conference',
+    r'\btelephone\b',
+    r'\bcaller\b',
+    r'\bcalling\s+feature',
+    r'\bmake\s+(?:a\s+)?call',
+    r'\bplace\s+(?:a\s+)?call',
     
-    # === EXPLICIT E-COMMUNICATION ===
-    r'\be[\s-]*comm(?:unication)?s?\b',
+    # inbox/outbox (strong signal)
+    r'\binbox\b',
+    r'\boutbox\b',
+    r'\bsent\s+(?:folder|items|mail|messages)',
+    r'\bdrafts?\b',
+    r'\bmailbox\b',
+    
+    # compose/write
+    r'\bcompose\b',
+    r'\bcomposer\b',
+    r'\breply\b',
+    r'\bforward\b',
+    r'\brespond\b',
+    
+    # recipients
+    r'\brecipient',
+    r'\baddressee',
+    r'\bto:\s*field',
+    r'\bcc:\b',
+    r'\bbcc:\b',
+    
+    # notifications (app sending to users)
+    r'push\s+notification',
+    r'mobile\s+notification',
+    r'app\s+notification',
+    r'(?:send|push|deliver).*notification',
+    r'notification.*(?:sent|delivered|pushed)',
+    r'notifies?\s+(?:user|customer)',
+    r'alerts?\s+(?:user|customer)',
+    
+    # sms/text specific
+    r'\bsms\b',
+    r'\bmms\b',
+    r'\btext\s+message',
+    r'\btext\s+alert',
+    r'\bsms\s+gateway',
+    r'\btwilio\b',
+    r'\bsendgrid\b',
+    r'\bmailchimp\b',
+    r'\bmailgun\b',
+    
+    # email specific (sending context)
+    r'email\s+(?:campaign|blast|newsletter|marketing)',
+    r'(?:send|deliver)\s+email',
+    r'email\s+(?:notification|alert|reminder)',
+    r'transactional\s+email',
+    r'automated\s+email',
+    r'bulk\s+email',
+    r'mass\s+email',
+    
+    # communication features
+    r'(?:communication|messaging|chat|calling)\s+(?:feature|capability|platform|system|module)',
+    r'(?:e-?comm(?:unication)?)\b',
     r'electronic\s+communication',
+    r'unified\s+communication',
+    r'omnichannel',
+    r'multi-?channel\s+(?:communication|messaging)',
+    
+    # conversation/thread
+    r'\bconversation\b',
+    r'\bthread\b',
+    r'\bdialogue\b',
+    r'\bcorrespondence\b',
+    
+    # broadcast
+    r'\bbroadcast\b',
+    r'\bannouncement\b',
+    r'\bbulletin\b',
+    
+    # customer communication
+    r'customer\s+(?:communication|contact|outreach|engagement)',
+    r'(?:contact|reach)\s+customer',
+    r'user\s+communication',
 ]
 
 # ================================================================================
-# STRONG NEGATIVE SIGNALS - These indicate NOT e-comm (just data/storage)
+# negative signals - these indicate data storage, not e-comm capability
+# only reject if these match AND no strong positive signal
 # ================================================================================
 
-STRONG_NEGATIVE_PATTERNS = [
-    # === DATA FIELD FORMATS (lists of fields) ===
-    r'(?:email|phone|name|address)\s*[,;/&|]\s*(?:email|phone|name|address)',
-    r'(?:field|column|attribute|property|data)s?\s*:\s*(?:.*\s+)?(?:email|phone)',
-    r'(?:email|phone)\s+(?:field|column|attribute|property|input|textbox)',
+NEGATIVE_PATTERNS = [
+    # field/data lists (very strong negative)
+    r'(?:email|phone|name|address)\s*[,;/&]\s*(?:email|phone|name|address)',
+    r'fields?\s*:\s*.*(?:email|phone)',
+    r'(?:email|phone)\s*:\s*$',
     
-    # === COLLECTION/STORAGE VERBS ===
-    r'(?:collect|gather|capture|harvest|store|save|record|retain|maintain|keep|hold|log)s?\s+(?:(?:the|user.?s?|customer.?s?)\s+)?(?:email|phone|contact)',
-    r'(?:email|phone|contact)\s+(?:is|are|was|were)\s+(?:collected|gathered|captured|stored|saved|recorded|retained|kept|logged)',
-    r'(?:email|phone)\s+(?:storage|collection|retention|database|repository)',
+    # storage verbs
+    r'(?:collect|gather|capture|store|save|record|retain|log)s?\s+(?:the\s+)?(?:user.?s?\s+)?(?:email|phone)',
+    r'(?:email|phone)\s+(?:is\s+)?(?:stored|saved|collected|recorded|logged)',
     
-    # === FORM/INPUT CONTEXTS ===
-    r'(?:enter|input|type|provide|fill|submit)\s+(?:your\s+)?(?:email|phone)',
-    r'(?:email|phone)\s+(?:is\s+)?(?:required|optional|mandatory|needed)',
-    r'(?:email|phone)\s+(?:form|input|entry|box|field)',
-    r'(?:valid|invalid|correct|incorrect)\s+(?:email|phone)',
+    # form/input
+    r'(?:enter|input|type|provide|fill)\s+(?:your\s+)?(?:email|phone)',
+    r'(?:email|phone)\s+(?:field|input|textbox|form)',
+    r'(?:email|phone)\s+(?:is\s+)?(?:required|optional|mandatory)',
+    
+    # database/schema
+    r'(?:varchar|nvarchar|char|text|string|int)\s*\(?\d*\)?\s*(?:email|phone)',
+    r'(?:email|phone)\s+(?:column|table|schema|database)',
+    r'(?:create|alter|insert|update|select)\s+.*(?:email|phone)',
+    
+    # auth/login
+    r'(?:login|signin|register|signup)\s+(?:with|using)\s+(?:email|phone)',
+    r'(?:email|phone)\s+(?:as|for)\s+(?:username|login|account)',
+    r'(?:forgot|reset)\s+password',
+    
+    # 2fa/otp
+    r'(?:2fa|two-?factor|mfa|otp|one-?time)',
+    r'verification\s+code',
+    
+    # validation
     r'(?:validate|verify|check)\s+(?:email|phone)',
+    r'(?:email|phone)\s+(?:validation|verification|format)',
+    r'(?:valid|invalid)\s+(?:email|phone)',
     
-    # === DATABASE/SCHEMA ===
-    r'(?:varchar|nvarchar|char|string|text|int|blob)\s*\(?.*\)?\s*(?:email|phone)',
-    r'(?:email|phone)\s+(?:varchar|column|table|schema|database|index)',
-    r'(?:create|alter|drop|insert|update|delete|select)\s+.*(?:email|phone)',
-    r'(?:primary|foreign)\s+key.*(?:email|phone)',
-    r'(?:email|phone).*(?:primary|foreign)\s+key',
+    # display only
+    r'(?:display|show|view)s?\s+(?:the\s+)?(?:email|phone)',
+    r'(?:email|phone)\s+(?:displayed|shown|visible)',
     
-    # === AUTH/LOGIN ===
-    r'(?:login|log\s*in|signin|sign\s*in|register|sign\s*up)\s+(?:with|using|via)\s+(?:email|phone)',
-    r'(?:email|phone)\s+(?:as|is|for)\s+(?:username|user\s*id|login|account)',
-    r'(?:forgot|reset|change|recover)\s+password.*(?:email|phone)',
-    r'(?:email|phone)\s+(?:verification|confirmation)\s+(?:for\s+)?(?:account|registration|signup)',
+    # settings/preferences
+    r'notification\s+(?:setting|preference|option)',
+    r'(?:enable|disable)\s+notification',
+    r'(?:opt-?in|opt-?out|unsubscribe)',
     
-    # === 2FA/OTP ===
-    r'(?:2fa|two[\s-]*factor|mfa|multi[\s-]*factor|otp|one[\s-]*time)',
-    r'(?:verification|security|auth(?:entication)?)\s+(?:code|token|pin)',
-    r'(?:code|token|pin)\s+(?:via|by|through)\s+(?:sms|text|email)',
-    
-    # === DISPLAY ONLY ===
-    r'(?:display|show|view|see|present|render)s?\s+(?:(?:the|user.?s?)\s+)?(?:email|phone)',
-    r'(?:email|phone)\s+(?:is\s+)?(?:displayed|shown|visible|hidden|masked)',
-    r'(?:email|phone)\s+(?:in|on)\s+(?:profile|account|settings|screen|page)',
-    
-    # === NOTIFICATION SETTINGS (configuring, not sending) ===
-    r'(?:notification|email|sms)\s+(?:setting|preference|option|configuration)',
-    r'(?:enable|disable|turn\s+on|turn\s+off)\s+(?:notification|email|sms)',
-    r'(?:opt[\s-]*in|opt[\s-]*out|subscribe|unsubscribe)',
-    r'(?:manage|configure|customize)\s+(?:notification|email|alert)',
-    
-    # === CONTACT INFO CONTEXTS ===
-    r'(?:contact|personal|user|customer|account)\s+(?:info(?:rmation)?|details?|data)',
-    r'(?:email|phone)\s+(?:info(?:rmation)?|details?|address)',
-    r'(?:business|work|home|personal|office|mobile)\s+(?:email|phone)',
-    
-    # === LOGS/HISTORY (records, not capability) ===
-    r'(?:email|call|message|notification)\s+(?:log|history|record|audit)',
-    r'(?:log|history|record)\s+of\s+(?:email|call|message|notification)',
-    
-    # === PASSIVE/STATIC ===
-    r'(?:email|phone)\s+(?:is\s+)?(?:blank|empty|null|missing|n/?a)',
-    r'(?:no|without|missing)\s+(?:email|phone)',
-    r'(?:email|phone)\s+(?:not\s+)?(?:provided|available|specified)',
-    
-    # === TEMPLATES (not actual sending) ===
-    r'(?:email|message|notification)\s+template',
-    r'template\s+(?:for\s+)?(?:email|message|notification)',
-    
-    # === ERROR/BOUNCE ===
-    r'(?:email|message)\s+(?:bounce|bounced|failed|error|undeliverable)',
-    r'(?:invalid|bad|wrong)\s+(?:email|phone)',
-    r'(?:spam|junk|block).*(?:email|message)',
-    
-    # === TECHNICAL/SYSTEM ===
-    r'(?:smtp|pop3?|imap|mail\s*server|mx\s*record)',
-    r'(?:email|phone)\s+(?:format|regex|pattern|validation)',
-    r'(?:plaintext|encrypted)\s+(?:email|password)',
+    # templates
+    r'(?:email|message)\s+template',
 ]
 
 # ================================================================================
-# CONTEXT KEYWORDS - Must have at least one for consideration
+# simple keyword check - must have at least one
 # ================================================================================
 
-CONTEXT_KEYWORDS = [
+KEYWORDS = [
     'email', 'e-mail', 'mail',
-    'sms', 'text message', 'texting', 'mms',
-    'message', 'messaging', 'msg',
-    'call', 'calling', 'phone', 'telephone',
-    'video', 'voice', 'voip', 'sip',
-    'chat', 'chatting', 'im',
-    'notification', 'notify', 'alert', 'push',
+    'sms', 'mms', 'text',
+    'message', 'messaging',
+    'call', 'calling', 'caller', 'phone', 'telephone',
+    'video', 'voice', 'voip',
+    'chat', 'chatting',
+    'notification', 'notify', 'alert',
+    'push',
     'communication', 'communicate',
-    'inbox', 'outbox', 'compose', 'send', 'reply',
-    'conversation', 'thread', 'dialogue',
-    'conference', 'conferencing', 'meeting',
-    'webrtc', 'telephony',
+    'inbox', 'outbox', 'compose', 'reply',
+    'conversation', 'thread',
+    'conference',
+    'broadcast',
+    'twilio', 'sendgrid', 'mailchimp',
 ]
 
 INVALID_IDN = {'nan', 'none', '', 'null', 'n/a', 'na', '-', 'unknown', ' ', 'undefined', 'test', 'example'}
 
-# Compile patterns
-POSITIVE_RE = [re.compile(p, re.IGNORECASE) for p in STRONG_POSITIVE_PATTERNS]
-NEGATIVE_RE = [re.compile(p, re.IGNORECASE) for p in STRONG_NEGATIVE_PATTERNS]
+# compile patterns
+POSITIVE_RE = [re.compile(p, re.IGNORECASE) for p in POSITIVE_PATTERNS]
+NEGATIVE_RE = [re.compile(p, re.IGNORECASE) for p in NEGATIVE_PATTERNS]
 FALSE_POS_SET = set(x.lower().strip() for x in FALSE_POSITIVES if x and x.strip())
 FALSE_NEG_SET = set(x.lower().strip() for x in FALSE_NEGATIVES if x and x.strip())
 
-def has_context_keyword(text_lower):
-    """Check if text has any communication-related keyword."""
-    for kw in CONTEXT_KEYWORDS:
+def has_keyword(text_lower):
+    for kw in KEYWORDS:
         if kw in text_lower:
             return True
     return False
 
+def count_positive_matches(text_lower):
+    count = 0
+    for pattern in POSITIVE_RE:
+        if pattern.search(text_lower):
+            count += 1
+    return count
+
+def count_negative_matches(text_lower):
+    count = 0
+    for pattern in NEGATIVE_RE:
+        if pattern.search(text_lower):
+            count += 1
+    return count
+
 def is_ecomm(text):
     """
-    Determine if text indicates ACTUAL e-communication capability.
+    determine if text indicates e-communication capability.
     
-    Logic:
-    1. Check learned patterns (false pos/neg)
-    2. Must have context keyword
-    3. Check strong negative patterns - if match, return False
-    4. Check strong positive patterns - if match, return True
-    5. Default: return False (conservative)
+    logic:
+    1. check learned patterns first
+    2. must have at least one keyword
+    3. count positive and negative matches
+    4. if more positive than negative, or any strong positive -> e-comm
+    5. if only negative matches -> not e-comm
     """
-    if not text or len(text) < 15:  # Need enough context
+    if not text or len(text) < 10:
         return False
     
     text_lower = text.lower()
     
-    # Learned false positives - always reject
+    # learned false positives - always reject
     for fp in FALSE_POS_SET:
         if fp and fp in text_lower:
             return False
     
-    # Learned false negatives - always accept
+    # learned false negatives - always accept
     for fn in FALSE_NEG_SET:
         if fn and fn in text_lower:
             return True
     
-    # Must have at least one context keyword
-    if not has_context_keyword(text_lower):
+    # must have keyword
+    if not has_keyword(text_lower):
         return False
     
-    # Check strong negative patterns first (reject if any match)
-    for pattern in NEGATIVE_RE:
-        if pattern.search(text_lower):
-            return False
+    # count matches
+    pos_count = count_positive_matches(text_lower)
+    neg_count = count_negative_matches(text_lower)
     
-    # Check strong positive patterns (accept if any match)
-    for pattern in POSITIVE_RE:
-        if pattern.search(text_lower):
+    # if any positive match and not overwhelmed by negatives -> e-comm
+    if pos_count > 0 and pos_count >= neg_count:
+        return True
+    
+    # if only negatives -> not e-comm
+    if neg_count > 0 and pos_count == 0:
+        return False
+    
+    # edge case: has keyword but no pattern matches
+    # check for very simple signals that patterns might miss
+    simple_signals = [
+        'sends email', 'sends text', 'sends sms', 'sends message',
+        'send email', 'send text', 'send sms', 'send message',
+        'email sent', 'text sent', 'sms sent', 'message sent',
+        'can email', 'can text', 'can message', 'can call',
+        'video call', 'voice call', 'phone call',
+        'live chat', 'chat with', 'message to',
+        'inbox', 'outbox', 'compose',
+    ]
+    for signal in simple_signals:
+        if signal in text_lower:
             return True
     
-    # Default: not e-comm (be conservative to reduce false positives)
     return False
 
 def find_idn_col(df):
-    """Find IDN_EON column (case-insensitive)."""
     for col in df.columns:
         normalized = col.upper().replace(' ', '_').replace('-', '_')
         if 'IDN_EON' in normalized:
@@ -305,16 +326,16 @@ def find_idn_col(df):
     return None
 
 # ================================================================================
-# MAIN
+# main
 # ================================================================================
 
 print("=" * 60)
-print("E-COMMUNICATION CAPABILITY DETECTION")
+print("e-communication capability detection")
 print("=" * 60)
-print(f"Positive patterns: {len(STRONG_POSITIVE_PATTERNS)}")
-print(f"Negative patterns: {len(STRONG_NEGATIVE_PATTERNS)}")
+print(f"positive patterns: {len(POSITIVE_PATTERNS)}")
+print(f"negative patterns: {len(NEGATIVE_PATTERNS)}")
 
-# Load tables
+# load tables
 tables = {}
 for name in [INPUT_TABLE_1, INPUT_TABLE_2, INPUT_TABLE_3, INPUT_TABLE_4, INPUT_TABLE_5]:
     try:
@@ -322,15 +343,15 @@ for name in [INPUT_TABLE_1, INPUT_TABLE_2, INPUT_TABLE_3, INPUT_TABLE_4, INPUT_T
         for c in df.columns:
             df[c] = df[c].astype(str)
         tables[name] = df
-        print(f"✓ {name}: {len(df):,} rows")
+        print(f"[ok] {name}: {len(df):,} rows")
     except Exception as e:
-        print(f"✗ {name}: {e}")
+        print(f"[fail] {name}: {e}")
 
 if not tables:
-    raise ValueError("No tables loaded!")
+    raise ValueError("no tables loaded")
 
-# Process
-print("\nProcessing...")
+# process
+print("\nprocessing...")
 
 idn_sources = defaultdict(set)
 idn_ecomm = defaultdict(list)
@@ -339,7 +360,7 @@ total_rows = 0
 for tname, df in tables.items():
     idn_col = find_idn_col(df)
     if not idn_col:
-        print(f"  ⚠ {tname}: No IDN_EON column")
+        print(f"  [warn] {tname}: no idn_eon column")
         continue
     
     other_cols = [c for c in df.columns if c != idn_col]
@@ -364,10 +385,10 @@ for tname, df in tables.items():
                     idn_ecomm[idn_val].append((txt, loc))
                     ecomm_count += 1
     
-    print(f"  ✓ {tname}: {ecomm_count:,} e-comm capabilities")
+    print(f"  [ok] {tname}: {ecomm_count:,} e-comm found")
 
-# Build output - only IDN_EON with e-comm
-print("\nBuilding output...")
+# build output
+print("\nbuilding output...")
 
 results = []
 for idn, ecomm_list in idn_ecomm.items():
@@ -382,16 +403,16 @@ for idn, ecomm_list in idn_ecomm.items():
 
 output_df = pd.DataFrame(results)
 
-print(f"\nTotal IDN_EON with e-comm capability: {len(output_df):,}")
+print(f"\ntotal idn_eon with e-comm capability: {len(output_df):,}")
 
 if len(output_df) > 0:
-    print("\nSample detections:")
+    print("\nsample detections:")
     for idx, row in output_df.head(5).iterrows():
         idn_short = row['IDN_EON'][:30] + "..." if len(row['IDN_EON']) > 30 else row['IDN_EON']
         ecomm_short = row['ecomm_string'][:70] + "..." if len(row['ecomm_string']) > 70 else row['ecomm_string']
-        print(f"  • {idn_short}")
+        print(f"  - {idn_short}")
         print(f"    \"{ecomm_short}\"")
 
-print(f"\nWriting to {OUTPUT_TABLE}...")
+print(f"\nwriting to {OUTPUT_TABLE}...")
 dataiku.Dataset(OUTPUT_TABLE).write_with_schema(output_df)
-print("✓ Done!")
+print("[ok] done")
