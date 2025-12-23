@@ -178,10 +178,6 @@ def analyze_dataset_columns(input_dataset_name, output_dataset_name):
         column_name_matches, _ = find_keywords_in_column(col_name)
         
         # Check cell content for matches
-        cell_content_matches = {}
-        matched_cell_values = {}
-        cell_value_counts = {}
-        
         # Get all non-null values from this column
         non_null_values = df[col_name].dropna()
         
@@ -194,116 +190,52 @@ def analyze_dataset_columns(input_dataset_name, output_dataset_name):
                 # For each unique value, check if it contains keywords
                 for cell_value in unique_values:
                     if cell_value and str(cell_value).strip():  # Skip empty strings
-                        value_matches, _ = find_keywords_in_column(str(cell_value))
+                        cell_matches, _ = find_keywords_in_column(str(cell_value))
                         
-                        if value_matches:
+                        if cell_matches:
                             # Count how many times this value appears
                             value_count = (df[col_name].astype(str) == cell_value).sum()
                             
-                            for category, keywords in value_matches.items():
-                                if category not in cell_content_matches:
-                                    cell_content_matches[category] = []
-                                    matched_cell_values[category] = []
-                                    cell_value_counts[category] = []
-                                
-                                # Store the matched keywords
-                                cell_content_matches[category].extend(keywords)
-                                
-                                # Store the actual cell value and its count
-                                matched_cell_values[category].append(cell_value)
-                                cell_value_counts[category].append(value_count)
+                            # Get all matched keywords across all categories for this cell
+                            all_cell_keywords = []
+                            matched_categories = []
+                            for category, keywords in cell_matches.items():
+                                matched_categories.append(category)
+                                all_cell_keywords.extend(keywords)
+                            
+                            # Create a row for this specific cell value
+                            row = {
+                                'column_name': col_name,
+                                'normalized_column_name': normalize_column_name(col_name),
+                                'matched_cell_value': cell_value,
+                                'cell_value_occurrences': value_count,
+                                'matched_categories': ', '.join(matched_categories),
+                                'total_categories_matched': len(cell_matches),
+                                'all_matched_keywords': ', '.join(sorted(set(all_cell_keywords))),
+                                'column_name_has_keywords': 'Yes' if column_name_matches else 'No'
+                            }
+                            
+                            # Add column name keywords if any
+                            if column_name_matches:
+                                all_column_keywords = []
+                                for keywords in column_name_matches.values():
+                                    all_column_keywords.extend(keywords)
+                                row['column_name_keywords'] = ', '.join(sorted(set(all_column_keywords)))
+                            else:
+                                row['column_name_keywords'] = ''
+                            
+                            # Add category-specific information
+                            for category in KEYWORD_CATEGORIES.keys():
+                                if category in cell_matches:
+                                    row[f'{category}_matched'] = 'Yes'
+                                    row[f'{category}_keywords'] = ', '.join(sorted(set(cell_matches[category])))
+                                else:
+                                    row[f'{category}_matched'] = 'No'
+                                    row[f'{category}_keywords'] = ''
+                            
+                            results.append(row)
             except Exception as e:
                 print(f"  Could not analyze content for column {col_name}: {e}")
-        
-        # Combine column name matches and cell content matches
-        all_matches = {}
-        for category in KEYWORD_CATEGORIES.keys():
-            if category in column_name_matches or category in cell_content_matches:
-                all_matches[category] = {
-                    'column_name_keywords': column_name_matches.get(category, []),
-                    'cell_content_keywords': list(set(cell_content_matches.get(category, []))),
-                    'matched_cell_values': matched_cell_values.get(category, []),
-                    'cell_value_counts': cell_value_counts.get(category, [])
-                }
-        
-        if all_matches:  # Only include columns with matches
-            # Calculate total occurrences across all cells
-            total_cell_occurrences = sum(
-                sum(all_matches[cat]['cell_value_counts']) 
-                for cat in all_matches 
-                if all_matches[cat]['cell_value_counts']
-            )
-            
-            # Create a row for this column
-            row = {
-                'column_name': col_name,
-                'normalized_column_name': normalize_column_name(col_name),
-                'total_categories_matched': len(all_matches),
-                'total_keywords_matched_in_column_name': sum(len(column_name_matches.get(cat, [])) for cat in column_name_matches),
-                'total_keywords_matched_in_cells': sum(len(all_matches[cat]['cell_content_keywords']) for cat in all_matches),
-                'total_cell_value_occurrences': total_cell_occurrences,
-                'unique_matched_cell_values': sum(len(all_matches[cat]['matched_cell_values']) for cat in all_matches)
-            }
-            
-            # Add category-specific information
-            for category in KEYWORD_CATEGORIES.keys():
-                if category in all_matches:
-                    cat_data = all_matches[category]
-                    
-                    row[f'{category}_matched'] = 'Yes'
-                    
-                    # Column name keywords
-                    row[f'{category}_column_keywords'] = ', '.join(cat_data['column_name_keywords']) if cat_data['column_name_keywords'] else ''
-                    
-                    # Cell content keywords
-                    row[f'{category}_cell_keywords'] = ', '.join(cat_data['cell_content_keywords']) if cat_data['cell_content_keywords'] else ''
-                    
-                    # Matched cell values sorted by frequency (most common first)
-                    if cat_data['matched_cell_values']:
-                        # Sort by count (descending)
-                        sorted_pairs = sorted(
-                            zip(cat_data['matched_cell_values'], cat_data['cell_value_counts']),
-                            key=lambda x: x[1],
-                            reverse=True
-                        )
-                        
-                        # Show ALL values sorted by frequency (most common first)
-                        num_values = len(sorted_pairs)
-                        
-                        # Format as "value (count)"
-                        cell_values_formatted = []
-                        for val, count in sorted_pairs:  # Use all pairs, not limited
-                            # Truncate very long cell values to 100 characters
-                            truncated_val = val[:100] + '...' if len(val) > 100 else val
-                            cell_values_formatted.append(f"{truncated_val} ({count})")
-                        
-                        row[f'{category}_matched_cell_values'] = ' | '.join(cell_values_formatted)
-                        row[f'{category}_total_cell_occurrences'] = sum(cat_data['cell_value_counts'])
-                        row[f'{category}_unique_values_count'] = num_values
-                    else:
-                        row[f'{category}_matched_cell_values'] = ''
-                        row[f'{category}_total_cell_occurrences'] = 0
-                        row[f'{category}_unique_values_count'] = 0
-                        
-                else:
-                    row[f'{category}_matched'] = 'No'
-                    row[f'{category}_column_keywords'] = ''
-                    row[f'{category}_cell_keywords'] = ''
-                    row[f'{category}_matched_cell_values'] = ''
-                    row[f'{category}_total_cell_occurrences'] = 0
-                    row[f'{category}_unique_values_count'] = 0
-            
-            # Add all matched keywords combined
-            all_column_keywords = []
-            all_cell_keywords = []
-            for cat in all_matches:
-                all_column_keywords.extend(all_matches[cat]['column_name_keywords'])
-                all_cell_keywords.extend(all_matches[cat]['cell_content_keywords'])
-            
-            row['all_column_keywords'] = ', '.join(sorted(set(all_column_keywords)))
-            row['all_cell_keywords'] = ', '.join(sorted(set(all_cell_keywords)))
-            
-            results.append(row)
     
     # Create results dataframe
     if results:
@@ -311,58 +243,50 @@ def analyze_dataset_columns(input_dataset_name, output_dataset_name):
         
         # Reorder columns for better readability
         column_order = [
-            'column_name', 
-            'normalized_column_name',
-            'total_categories_matched', 
-            'total_cell_value_occurrences',  # Sort by this - most important
-            'unique_matched_cell_values',
-            'total_keywords_matched_in_column_name',
-            'total_keywords_matched_in_cells',
-            'all_column_keywords',
-            'all_cell_keywords'
+            'column_name',
+            'matched_cell_value',
+            'cell_value_occurrences',
+            'matched_categories',
+            'total_categories_matched',
+            'all_matched_keywords',
+            'column_name_has_keywords',
+            'column_name_keywords',
+            'normalized_column_name'
         ]
         
         for category in KEYWORD_CATEGORIES.keys():
             column_order.extend([
-                f'{category}_matched', 
-                f'{category}_total_cell_occurrences',
-                f'{category}_unique_values_count',
-                f'{category}_matched_cell_values',
-                f'{category}_column_keywords', 
-                f'{category}_cell_keywords'
+                f'{category}_matched',
+                f'{category}_keywords'
             ])
         
         results_df = results_df[column_order]
         
-        # Sort by total cell occurrences (most to least), then by column name
+        # Sort by cell value occurrences (most to least), then by column name, then by cell value
         results_df = results_df.sort_values(
-            ['total_cell_value_occurrences', 'unique_matched_cell_values', 'column_name'],
-            ascending=[False, False, True]
+            ['cell_value_occurrences', 'column_name', 'matched_cell_value'],
+            ascending=[False, True, True]
         )
         
     else:
         # Create empty dataframe with correct schema if no matches found
         print("No columns matched any keywords")
         column_order = [
-            'column_name', 
-            'normalized_column_name',
-            'total_categories_matched', 
-            'total_cell_value_occurrences',
-            'unique_matched_cell_values',
-            'total_keywords_matched_in_column_name',
-            'total_keywords_matched_in_cells',
-            'all_column_keywords',
-            'all_cell_keywords'
+            'column_name',
+            'matched_cell_value',
+            'cell_value_occurrences',
+            'matched_categories',
+            'total_categories_matched',
+            'all_matched_keywords',
+            'column_name_has_keywords',
+            'column_name_keywords',
+            'normalized_column_name'
         ]
         
         for category in KEYWORD_CATEGORIES.keys():
             column_order.extend([
-                f'{category}_matched', 
-                f'{category}_total_cell_occurrences',
-                f'{category}_unique_values_count',
-                f'{category}_matched_cell_values',
-                f'{category}_column_keywords', 
-                f'{category}_cell_keywords'
+                f'{category}_matched',
+                f'{category}_keywords'
             ])
         
         results_df = pd.DataFrame(columns=column_order)
@@ -379,22 +303,23 @@ def analyze_dataset_columns(input_dataset_name, output_dataset_name):
     print("ANALYSIS SUMMARY")
     print("="*60)
     print(f"Total columns in dataset: {len(df.columns)}")
-    print(f"Columns with matches: {len(results_df)}")
+    print(f"Total matched cell values (rows in output): {len(results_df)}")
+    print(f"Unique columns with matches: {results_df['column_name'].nunique()}")
     
     if len(results_df) > 0:
-        total_cell_matches = results_df['total_cell_value_occurrences'].sum()
-        print(f"Total cell value occurrences containing keywords: {total_cell_matches}")
+        total_cell_occurrences = results_df['cell_value_occurrences'].sum()
+        print(f"Total cell occurrences containing keywords: {total_cell_occurrences}")
         
-        print("\nTop 10 columns by cell content occurrences (most to least):")
-        top_cols = results_df[['column_name', 'total_cell_value_occurrences', 'unique_matched_cell_values', 'all_cell_keywords']].head(10)
-        print(top_cols.to_string(index=False))
+        print("\nTop 10 matched cell values by occurrence count:")
+        top_cells = results_df[['column_name', 'matched_cell_value', 'cell_value_occurrences', 'matched_categories']].head(10)
+        print(top_cells.to_string(index=False))
         
         print("\nCategory breakdown:")
         for category in KEYWORD_CATEGORIES.keys():
-            col_count = (results_df[f'{category}_matched'] == 'Yes').sum()
-            if col_count > 0:
-                total_occurrences = results_df[f'{category}_total_cell_occurrences'].sum()
-                print(f"  {category}: {col_count} columns, {total_occurrences} total cell occurrences")
+            row_count = (results_df[f'{category}_matched'] == 'Yes').sum()
+            if row_count > 0:
+                total_occurrences = results_df[results_df[f'{category}_matched'] == 'Yes']['cell_value_occurrences'].sum()
+                print(f"  {category}: {row_count} cell values, {total_occurrences} total occurrences")
     
     return results_df
 
