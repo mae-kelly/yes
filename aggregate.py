@@ -9,53 +9,20 @@ import pandas as pd
 import re
 from collections import defaultdict
 
-# Define comprehensive keyword lists for e-communication capabilities
+# Define ONLY the specific keywords from the requirements
 KEYWORD_CATEGORIES = {
-    'messaging': [
-        'message', 'messages', 'messaging', 'messenger',
-        'msg', 'msgs', 'dm', 'dms', 'direct_message',
-        'pm', 'pms', 'private_message',
-        'chat', 'chats', 'chatting', 'chatroom',
-        'instant_message', 'im',
-        'text_message', 'texting', 'sms', 'mms',
-        'whatsapp', 'telegram', 'wechat', 'imessage',
-        'slack', 'discord', 'teams_chat'
-    ],
-    'email': [
-        'email', 'emails', 'e_mail', 'e_mails',
-        'mail', 'mails', 'mailing', 'mailer',
-        'inbox', 'outbox',
-        'gmail', 'outlook', 'yahoo_mail'
-    ],
-    'video_calling': [
-        'videocall', 'videocalls', 'video_call', 'video_calls',
-        'videoconference', 'videoconferencing', 'video_conference', 'video_conferencing',
-        'videochat', 'video_chat',
-        'webcam', 'facetime', 
-        'zoom', 'zoom_meeting',
-        'google_meet', 'meet',
-        'skype', 'skype_call',
-        'microsoft_teams', 'teams_meeting', 'teams_call',
-        'webex', 'gotomeeting',
-        'video_meeting'
-    ],
-    'voice_calling': [
-        'voicecall', 'voice_call', 'voice_calls',
-        'phone_call', 'phonecall',
-        'voip', 'voice_over_ip',
-        'voicemail', 'voice_mail',
-        'telephone', 'telephony',
-        'skype_call', 'teams_call',
-        'whatsapp_call', 'facetime_audio'
-    ],
-    'social_media': [
-        'twitter', 'tweet', 'tweets',
-        'facebook', 'fb_messenger',
-        'instagram', 'insta', 'instagram_dm',
-        'linkedin', 'linkedin_message',
-        'tiktok', 'snapchat', 'snap',
-        'pinterest', 'reddit',
-        'social_media', 'social_network'
+    'electronic_communication': [
+        'message', 'messages',
+        'messaging',
+        'comment', 'comments',
+        'email', 'emails',
+        'text',
+        'video', 'videos',
+        'electronic_communication', 'electronic_communications',
+        'e_comm', 'ecomm',
+        'sms',
+        'social_media', 'socialmedia',
+        'chat'
     ]
 }
 
