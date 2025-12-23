@@ -177,56 +177,95 @@ def analyze_dataset_columns(input_dataset_name, output_dataset_name):
         # Check column name for matches
         column_name_matches, _ = find_keywords_in_column(col_name)
         
-        # Check cell content for matches - iterate through EVERY row
-        for idx, cell_value in df[col_name].items():
-            # Skip null values
-            if pd.isna(cell_value):
-                continue
-            
-            # Convert to string
+        # Get all non-null values from this column
+        non_null_values = df[col_name].dropna()
+        
+        if len(non_null_values) > 0:
             try:
-                cell_str = str(cell_value).strip()
-                if not cell_str:  # Skip empty strings
-                    continue
+                # First, find unique values that match keywords (fast)
+                unique_values = non_null_values.astype(str).unique()
+                matching_values = {}  # Store {cell_value: {category: keywords}}
                 
-                # Check if this cell contains keywords
-                cell_matches, _ = find_keywords_in_column(cell_str)
+                for cell_value in unique_values:
+                    if cell_value and str(cell_value).strip():
+                        cell_matches, _ = find_keywords_in_column(str(cell_value))
+                        if cell_matches:
+                            matching_values[cell_value] = cell_matches
                 
-                if cell_matches:
-                    # Create a separate row for EACH category that matched in this cell
-                    for category, keywords in cell_matches.items():
-                        row = {
-                            'row_number': idx,
-                            'column_name': col_name,
-                            'normalized_column_name': normalize_column_name(col_name),
-                            'cell_value': cell_str,
-                            'matched_category': category,
-                            'matched_keywords': ', '.join(sorted(set(keywords))),
-                            'column_name_has_keywords': 'Yes' if column_name_matches else 'No'
-                        }
+                # If we found matching values, get all their row numbers
+                if matching_values:
+                    print(f"  Found {len(matching_values)} unique matching values in column {col_name}")
+                    
+                    # Convert column to string for matching
+                    col_as_string = df[col_name].astype(str)
+                    
+                    # For each matching value, find all rows where it appears
+                    for cell_value, cell_matches in matching_values.items():
+                        # Get all row indices where this value appears
+                        matching_rows = df[col_as_string == cell_value].index.tolist()
                         
-                        # Add column name keywords if any
-                        if column_name_matches:
-                            all_column_keywords = []
-                            for kw_list in column_name_matches.values():
-                                all_column_keywords.extend(kw_list)
-                            row['column_name_keywords'] = ', '.join(sorted(set(all_column_keywords)))
-                            
-                            # Check if this specific category matched in column name
-                            if category in column_name_matches:
-                                row['column_name_matched_this_category'] = 'Yes'
-                                row['column_name_keywords_this_category'] = ', '.join(sorted(set(column_name_matches[category])))
-                            else:
-                                row['column_name_matched_this_category'] = 'No'
-                                row['column_name_keywords_this_category'] = ''
-                        else:
-                            row['column_name_keywords'] = ''
-                            row['column_name_matched_this_category'] = 'No'
-                            row['column_name_keywords_this_category'] = ''
+                        # Create a row for each occurrence and each category
+                        for row_idx in matching_rows:
+                            for category, keywords in cell_matches.items():
+                                row = {
+                                    'row_number': row_idx,
+                                    'column_name': col_name,
+                                    'normalized_column_name': normalize_column_name(col_name),
+                                    'cell_value': cell_value,
+                                    'matched_category': category,
+                                    'matched_keywords': ', '.join(sorted(set(keywords))),
+                                    'column_name_has_keywords': 'Yes' if column_name_matches else 'No'
+                                }
+                                
+                                # Add column name keywords if any
+                                if column_name_matches:
+                                    all_column_keywords = []
+                                    for kw_list in column_name_matches.values():
+                                        all_column_keywords.extend(kw_list)
+                                    row['column_name_keywords'] = ', '.join(sorted(set(all_column_keywords)))
+                                    
+                                    # Check if this specific category matched in column name
+                                    if category in column_name_matches:
+                                        row['column_name_matched_this_category'] = 'Yes'
+                                        row['column_name_keywords_this_category'] = ', '.join(sorted(set(column_name_matches[category])))
+                                    else:
+                                        row['column_name_matched_this_category'] = 'No'
+                                        row['column_name_keywords_this_category'] = ''
+                                else:
+                                    row['column_name_keywords'] = ''
+                                    row['column_name_matched_this_category'] = 'No'
+                                    row['column_name_keywords_this_category'] = ''
+                                
+                                results.append(row)
                         
-                        results.append(row)
             except Exception as e:
-                print(f"  Could not analyze cell at row {idx}, column {col_name}: {e}")
+                print(f"  Could not analyze content for column {col_name}: {e}")
+    
+    # Create results dataframe
+    if results:
+        results_df = pd.DataFrame(results)
+        
+        # Reorder columns for better readability
+        column_order = [
+            'row_number',
+            'column_name',
+            'cell_value',
+            'matched_category',
+            'matched_keywords',
+            'column_name_has_keywords',
+            'column_name_matched_this_category',
+            'column_name_keywords',
+            'column_name_keywords_this_category',
+            'normalized_column_name'
+        ]
+        
+        results_df = results_df[column_order]
+        
+        # Sort by row number first, then column name, then category
+        results_df = results_df.sort_values(
+            ['row_number', 'column_name', 'matched_category'],
+            ascending=[True, True, True]
+        )
     
     # Create results dataframe
     if results:
