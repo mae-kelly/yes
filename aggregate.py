@@ -102,45 +102,74 @@ def analyze_ecommunication_capabilities(input_dataset_name, output_dataset_name)
     
     print(f"Analyzing {len(df.columns)} columns and {len(df)} rows")
     
-    # Dictionary to store: {cell_value: {'count': X, 'columns': [col1, col2], 'categories': [...], 'keywords': [...]}}
+    # Dictionary to store: {cell_value: {'count': X, 'columns': {col: {'col_keywords': [], 'col_categories': []}}, 'categories': [...], 'keywords': [...]}}
     cell_value_data = defaultdict(lambda: {
         'count': 0, 
-        'columns': set(), 
-        'categories': set(),
-        'keywords': set()
+        'columns': {},  # Changed to dict to store column-specific keyword info
+        'cell_categories': set(),
+        'cell_keywords': set()
     })
     
     # Analyze each column
     for col_name in df.columns:
         print(f"Analyzing column: {col_name}")
         
+        # Check if column name has keywords
+        col_has_match, col_categories, col_keywords = contains_ecommunication_keywords(col_name)
+        
         # Get value counts for this column
         value_counts = df[col_name].value_counts()
         
         # Check each unique value
         for cell_value, count in value_counts.items():
-            has_match, categories, keywords = contains_ecommunication_keywords(cell_value)
+            cell_has_match, cell_categories, cell_keywords = contains_ecommunication_keywords(cell_value)
             
-            if has_match:
+            if cell_has_match:
                 # Convert to string for consistent storage
                 cell_str = str(cell_value)
                 
                 # Update the data for this cell value
                 cell_value_data[cell_str]['count'] += count
-                cell_value_data[cell_str]['columns'].add(col_name)
-                cell_value_data[cell_str]['categories'].update(categories)
-                cell_value_data[cell_str]['keywords'].update(keywords)
+                
+                # Store column-specific info
+                if col_name not in cell_value_data[cell_str]['columns']:
+                    cell_value_data[cell_str]['columns'][col_name] = {
+                        'col_has_keywords': col_has_match,
+                        'col_keywords': col_keywords if col_has_match else [],
+                        'col_categories': col_categories if col_has_match else []
+                    }
+                
+                cell_value_data[cell_str]['cell_categories'].update(cell_categories)
+                cell_value_data[cell_str]['cell_keywords'].update(cell_keywords)
     
     # Convert to list of rows for dataframe
     results = []
     for cell_value, data in cell_value_data.items():
+        # Build columns info with keyword details
+        columns_with_keywords = []
+        columns_without_keywords = []
+        all_col_keywords = set()
+        
+        for col_name, col_info in data['columns'].items():
+            if col_info['col_has_keywords']:
+                col_kw = ', '.join(sorted(col_info['col_keywords']))
+                columns_with_keywords.append(f"{col_name} (keywords: {col_kw})")
+                all_col_keywords.update(col_info['col_keywords'])
+            else:
+                columns_without_keywords.append(col_name)
+        
+        # Combine all columns
+        all_columns = columns_with_keywords + columns_without_keywords
+        
         row = {
             'cell_value': cell_value,
             'total_occurrences': data['count'],
             'num_columns_found_in': len(data['columns']),
-            'columns_found_in': ' | '.join(sorted(data['columns'])),
-            'matched_categories': ', '.join(sorted(data['categories'])),
-            'matched_keywords': ', '.join(sorted(data['keywords']))
+            'columns_found_in': ' | '.join(all_columns),
+            'cell_matched_categories': ', '.join(sorted(data['cell_categories'])),
+            'cell_matched_keywords': ', '.join(sorted(data['cell_keywords'])),
+            'column_names_with_keywords': ' | '.join(columns_with_keywords) if columns_with_keywords else 'None',
+            'all_column_keywords_found': ', '.join(sorted(all_col_keywords)) if all_col_keywords else 'None'
         }
         results.append(row)
     
@@ -160,8 +189,10 @@ def analyze_ecommunication_capabilities(input_dataset_name, output_dataset_name)
             'total_occurrences',
             'num_columns_found_in',
             'columns_found_in',
-            'matched_categories',
-            'matched_keywords'
+            'cell_matched_categories',
+            'cell_matched_keywords',
+            'column_names_with_keywords',
+            'all_column_keywords_found'
         ])
     
     # Write to output dataset
@@ -179,14 +210,15 @@ def analyze_ecommunication_capabilities(input_dataset_name, output_dataset_name)
         print(f"Columns analyzed: {len(df.columns)}")
         
         print("\nTop 20 most common e-communication cell values:")
-        top_20 = results_df[['cell_value', 'total_occurrences', 'num_columns_found_in', 'matched_categories']].head(20)
+        top_20 = results_df[['cell_value', 'total_occurrences', 'num_columns_found_in', 'cell_matched_keywords', 'all_column_keywords_found']].head(20)
         print(top_20.to_string(index=False))
         
         print("\nCategory breakdown:")
         category_counts = defaultdict(int)
-        for categories in results_df['matched_categories']:
+        for categories in results_df['cell_matched_categories']:
             for cat in categories.split(', '):
-                category_counts[cat] += 1
+                if cat:
+                    category_counts[cat] += 1
         
         for category, count in sorted(category_counts.items(), key=lambda x: x[1], reverse=True):
             print(f"  {category}: {count} unique cell values")
