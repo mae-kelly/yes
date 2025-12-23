@@ -11,46 +11,51 @@ from collections import defaultdict
 
 # Define comprehensive keyword lists for e-communication capabilities
 KEYWORD_CATEGORIES = {
-    'messages': [
-        'message', 'messages', 'messaging', 'messaged', 'messenger', 'messengers',
-        'msg', 'msgs', 'mssg', 'mssgs', 'mesg', 'mesgs',
-        'dm', 'dms', 'direct_message', 'direct_messages', 'directmessage', 'directmessages',
-        'pm', 'pms', 'private_message', 'private_messages', 'privatemessage', 'privatemessages',
-        'inbox', 'outbox', 'sent', 'received', 'unread',
-        'chat', 'chats', 'chatting', 'chatted', 'chatter', 'chatroom', 'chatrooms',
-        'conversation', 'conversations', 'conversational', 'convo', 'convos',
-        'thread', 'threads', 'threaded', 'threading',
-        'instant_message', 'instant_messages', 'instantmessage', 'im', 'ims',
-        'sms', 'text_message', 'text_messages', 'textmessage', 'textmessages',
-        'mms', 'mobile_message', 'mobile_messages', 'mobilemessage', 'mobilemessages',
-        'slack', 'discord', 'whatsapp', 'telegram', 'wechat', 'teams', 'skype'
+    'messaging': [
+        'message', 'messages', 'messaging', 'messenger',
+        'msg', 'msgs', 'dm', 'dms', 'direct_message',
+        'pm', 'pms', 'private_message',
+        'chat', 'chats', 'chatting', 'chatroom',
+        'instant_message', 'im',
+        'text_message', 'texting', 'sms', 'mms',
+        'whatsapp', 'telegram', 'wechat', 'imessage',
+        'slack', 'discord', 'teams_chat'
     ],
     'email': [
-        'email', 'emails', 'e_mail', 'e_mails', 'mail', 'mails', 'mailing',
-        'electronic_mail', 'electronicmail',
-        'notification', 'notifications', 'notify', 'notified', 'notif', 'notifs',
-        'alert', 'alerts', 'alerted', 'alerting',
-        'newsletter', 'newsletters', 'bulletin', 'bulletins',
-        'correspondence', 'correspond'
+        'email', 'emails', 'e_mail', 'e_mails',
+        'mail', 'mails', 'mailing', 'mailer',
+        'inbox', 'outbox',
+        'gmail', 'outlook', 'yahoo_mail'
     ],
-    'video': [
-        'video', 'videos', 'vid', 'vids', 'vdo', 'vdos',
+    'video_calling': [
         'videocall', 'videocalls', 'video_call', 'video_calls',
-        'videoconference', 'videoconferencing', 'video_conference',
-        'stream', 'streams', 'streaming', 'streamed', 'streamer',
-        'recording', 'recordings', 'recorded', 'record',
-        'webcam', 'camera', 'zoom', 'meet', 'facetime', 
-        'skype', 'teams', 'webex', 'gotomeeting'
+        'videoconference', 'videoconferencing', 'video_conference', 'video_conferencing',
+        'videochat', 'video_chat',
+        'webcam', 'facetime', 
+        'zoom', 'zoom_meeting',
+        'google_meet', 'meet',
+        'skype', 'skype_call',
+        'microsoft_teams', 'teams_meeting', 'teams_call',
+        'webex', 'gotomeeting',
+        'video_meeting'
     ],
-    'communication': [
-        'communication', 'communications', 'communicate', 'communicated',
-        'contact', 'contacts', 'contactable',
-        'call', 'calls', 'calling', 'called', 'caller',
-        'voice', 'voicemail', 'audio',
-        'share', 'shares', 'shared', 'sharing',
-        'post', 'posts', 'posting', 'posted',
-        'comment', 'comments', 'reply', 'replies',
-        'social', 'social_media', 'socialmedia'
+    'voice_calling': [
+        'voicecall', 'voice_call', 'voice_calls',
+        'phone_call', 'phonecall',
+        'voip', 'voice_over_ip',
+        'voicemail', 'voice_mail',
+        'telephone', 'telephony',
+        'skype_call', 'teams_call',
+        'whatsapp_call', 'facetime_audio'
+    ],
+    'social_media': [
+        'twitter', 'tweet', 'tweets',
+        'facebook', 'fb_messenger',
+        'instagram', 'insta', 'instagram_dm',
+        'linkedin', 'linkedin_message',
+        'tiktok', 'snapchat', 'snap',
+        'pinterest', 'reddit',
+        'social_media', 'social_network'
     ]
 }
 
