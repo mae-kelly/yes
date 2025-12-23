@@ -66,24 +66,34 @@ def normalize_text(text):
 def contains_ecommunication_keywords(text):
     """
     Check if text contains any e-communication keywords.
-    Returns matched categories and keywords.
+    Returns matched categories and keywords that are actually present in the text.
     """
     if not text or pd.isna(text):
         return False, [], []
     
-    normalized = normalize_text(text)
-    original_lower = str(text).lower()
+    text_str = str(text)
+    normalized = normalize_text(text_str)
+    original_lower = text_str.lower()
     
     matched_categories = []
     matched_keywords = []
     
     for category, keywords in KEYWORD_CATEGORIES.items():
         for keyword in keywords:
-            # Check both normalized and original versions
-            if keyword in normalized or keyword in original_lower:
-                if category not in matched_categories:
-                    matched_categories.append(category)
-                matched_keywords.append(keyword)
+            found = False
+            
+            # Check if keyword actually appears in the text
+            if keyword in normalized:
+                found = True
+            elif keyword in original_lower:
+                found = True
+            
+            if found:
+                # Verify the keyword is actually in one of the text versions
+                if keyword in normalized or keyword in original_lower:
+                    if category not in matched_categories:
+                        matched_categories.append(category)
+                    matched_keywords.append(keyword)
     
     has_match = len(matched_categories) > 0
     return has_match, matched_categories, matched_keywords
@@ -163,6 +173,8 @@ def analyze_ecommunication_capabilities(input_dataset_name, output_dataset_name)
         
         row = {
             'cell_value': cell_value,
+            'cell_value_normalized': normalize_text(cell_value),  # Show normalized version for verification
+            'cell_value_lowercase': str(cell_value).lower(),  # Show lowercase version too
             'total_occurrences': data['count'],
             'num_columns_found_in': len(data['columns']),
             'columns_found_in': ' | '.join(all_columns),
@@ -186,6 +198,8 @@ def analyze_ecommunication_capabilities(input_dataset_name, output_dataset_name)
         print("No e-communication related cell values found")
         results_df = pd.DataFrame(columns=[
             'cell_value',
+            'cell_value_normalized',
+            'cell_value_lowercase',
             'total_occurrences',
             'num_columns_found_in',
             'columns_found_in',
@@ -210,7 +224,7 @@ def analyze_ecommunication_capabilities(input_dataset_name, output_dataset_name)
         print(f"Columns analyzed: {len(df.columns)}")
         
         print("\nTop 20 most common e-communication cell values:")
-        top_20 = results_df[['cell_value', 'total_occurrences', 'num_columns_found_in', 'cell_matched_keywords', 'all_column_keywords_found']].head(20)
+        top_20 = results_df[['cell_value', 'cell_value_normalized', 'total_occurrences', 'cell_matched_keywords']].head(20)
         print(top_20.to_string(index=False))
         
         print("\nCategory breakdown:")
