@@ -1,5 +1,5 @@
 WITH base_table AS (
-    -- First, get all unique ID from primary dataset
+    -- Get all unique IDs from primary dataset
     SELECT DISTINCT 
         CAST(ID_FIELD AS VARCHAR) AS ID_FIELD
     FROM dataset1
@@ -7,16 +7,12 @@ WITH base_table AS (
 ),
 
 all_ids AS (
-    -- Start with primary dataset IDs, then add any others from source tables
-    SELECT ID_FIELD FROM base_table
-    
-    UNION ALL
-    
+    -- Collect ALL unique IDs from all sources
     SELECT DISTINCT
         CAST(ID_FIELD AS VARCHAR) AS ID_FIELD,
         'dataset1' AS source_table
     FROM dataset1
-    WHERE ID_FIELD IS NOT NULL AND CAST(ID_FIELD AS VARCHAR) NOT IN (SELECT ID_FIELD FROM base_table)
+    WHERE ID_FIELD IS NOT NULL
     
     UNION ALL
     
@@ -24,7 +20,7 @@ all_ids AS (
         CAST(ID_FIELD AS VARCHAR) AS ID_FIELD,
         'dataset2' AS source_table
     FROM dataset2
-    WHERE ID_FIELD IS NOT NULL AND CAST(ID_FIELD AS VARCHAR) NOT IN (SELECT ID_FIELD FROM base_table)
+    WHERE ID_FIELD IS NOT NULL
     
     UNION ALL
     
@@ -32,7 +28,7 @@ all_ids AS (
         CAST(ID_FIELD AS VARCHAR) AS ID_FIELD,
         'dataset3' AS source_table
     FROM dataset3
-    WHERE ID_FIELD IS NOT NULL AND CAST(ID_FIELD AS VARCHAR) NOT IN (SELECT ID_FIELD FROM base_table)
+    WHERE ID_FIELD IS NOT NULL
     
     UNION ALL
     
@@ -40,7 +36,7 @@ all_ids AS (
         CAST(ID_FIELD AS VARCHAR) AS ID_FIELD,
         'dataset4' AS source_table
     FROM dataset4
-    WHERE ID_FIELD IS NOT NULL AND CAST(ID_FIELD AS VARCHAR) NOT IN (SELECT ID_FIELD FROM base_table)
+    WHERE ID_FIELD IS NOT NULL
     
     UNION ALL
     
@@ -48,11 +44,27 @@ all_ids AS (
         CAST(ID_FIELD AS VARCHAR) AS ID_FIELD,
         'dataset5' AS source_table
     FROM dataset5
-    WHERE ID_FIELD IS NOT NULL AND CAST(ID_FIELD AS VARCHAR) NOT IN (SELECT ID_FIELD FROM base_table)
+    WHERE ID_FIELD IS NOT NULL
+),
+
+aggregated AS (
+    -- Aggregate sources for each unique ID
+    SELECT
+        ID_FIELD,
+        LISTAGG(source_table, ', ') WITHIN GROUP (ORDER BY source_table) AS present_in_tables
+    FROM all_ids
+    GROUP BY ID_FIELD
+),
+
+ids_only_in_dataset1 AS (
+    -- Identify IDs that ONLY appear in dataset1
+    SELECT ID_FIELD
+    FROM aggregated
+    WHERE present_in_tables = 'dataset1'
 ),
 
 filtered_data AS (
-    -- Filter and extract relevant text from primary table
+    -- ONLY extract keywords for IDs that are ONLY in dataset1
     SELECT
         ID_FIELD,
         FIELD_A,
@@ -93,21 +105,13 @@ filtered_data AS (
                 ELSE NULL
             END AS keyword
         FROM dataset1
+        WHERE ID_FIELD IN (SELECT ID_FIELD FROM ids_only_in_dataset1)  -- ONLY process IDs exclusive to dataset1
     ) sub
     WHERE keyword IS NOT NULL
     GROUP BY ID_FIELD, FIELD_A
-),
-
-aggregated AS (
-    -- Aggregate sources for each unique ID
-    SELECT
-        ID_FIELD,
-        LISTAGG(source_table, ', ') WITHIN GROUP (ORDER BY source_table) AS present_in_tables
-    FROM all_ids
-    GROUP BY ID_FIELD
 )
 
--- Final SELECT with all JOINs
+-- Final SELECT - all IDs from dataset1, but keyword extraction only for exclusive IDs
 SELECT
     base_table.ID_FIELD,
     a.present_in_tables,
