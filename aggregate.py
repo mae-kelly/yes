@@ -109,6 +109,25 @@ filtered_data AS (
     ) sub
     WHERE keyword IS NOT NULL
     GROUP BY id_col, col_a
+),
+
+table1_additional_cols AS (
+    -- Get 10 additional columns from table1 for each id_col
+    SELECT
+        CAST(id_col AS VARCHAR) AS id_col,
+        MAX(col_g) AS col_g,
+        MAX(col_h) AS col_h,
+        MAX(col_i) AS col_i,
+        MAX(col_j) AS col_j,
+        MAX(col_k) AS col_k,
+        MAX(col_l) AS col_l,
+        MAX(col_m) AS col_m,
+        MAX(col_n) AS col_n,
+        MAX(col_o) AS col_o,
+        MAX(col_p) AS col_p
+    FROM "DB"."SCHEMA"."table1"
+    WHERE id_col IS NOT NULL
+    GROUP BY id_col
 )
 
 -- Final SELECT - all IDs from table1, but keyword extraction only for exclusive IDs
@@ -121,7 +140,17 @@ SELECT
     MAX(p.col_e) AS col_e,
     MAX(f.extracted_text) AS extracted_text,
     MAX(f.col_a) AS col_a,
-    MAX(m.col_f) AS col_f
+    MAX(m.col_f) AS col_f,
+    MAX(t1.col_g) AS col_g,
+    MAX(t1.col_h) AS col_h,
+    MAX(t1.col_i) AS col_i,
+    MAX(t1.col_j) AS col_j,
+    MAX(t1.col_k) AS col_k,
+    MAX(t1.col_l) AS col_l,
+    MAX(t1.col_m) AS col_m,
+    MAX(t1.col_n) AS col_n,
+    MAX(t1.col_o) AS col_o,
+    MAX(t1.col_p) AS col_p
 FROM base_table
 LEFT JOIN aggregated a ON base_table.id_col = a.id_col
 LEFT JOIN "DB"."SCHEMA"."table3" d
@@ -134,5 +163,7 @@ LEFT JOIN "DB"."SCHEMA"."table4" m
     ON base_table.id_col = CAST(m.id_col AS VARCHAR)
 LEFT JOIN "DB"."SCHEMA"."table5" e
     ON base_table.id_col = CAST(e.id_col AS VARCHAR)
+LEFT JOIN table1_additional_cols t1
+    ON base_table.id_col = t1.id_col
 GROUP BY base_table.id_col, a.present_in_tables
 ORDER BY base_table.id_col;
