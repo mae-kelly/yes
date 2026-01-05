@@ -1,138 +1,138 @@
 WITH base_table AS (
     -- Get all unique IDs from primary dataset
     SELECT DISTINCT 
-        CAST(ID_FIELD AS VARCHAR) AS ID_FIELD
-    FROM dataset1
-    WHERE ID_FIELD IS NOT NULL
+        CAST(id_col AS VARCHAR) AS id_col
+    FROM "DB"."SCHEMA"."table1"
+    WHERE id_col IS NOT NULL
 ),
 
 all_ids AS (
     -- Collect ALL unique IDs from all sources
     SELECT DISTINCT
-        CAST(ID_FIELD AS VARCHAR) AS ID_FIELD,
-        'dataset1' AS source_table
-    FROM dataset1
-    WHERE ID_FIELD IS NOT NULL
+        CAST(id_col AS VARCHAR) AS id_col,
+        'table1' AS source_table
+    FROM "DB"."SCHEMA"."table1"
+    WHERE id_col IS NOT NULL
     
     UNION ALL
     
     SELECT DISTINCT
-        CAST(ID_FIELD AS VARCHAR) AS ID_FIELD,
-        'dataset2' AS source_table
-    FROM dataset2
-    WHERE ID_FIELD IS NOT NULL
+        CAST(id_col AS VARCHAR) AS id_col,
+        'table2' AS source_table
+    FROM "DB"."SCHEMA"."table2"
+    WHERE id_col IS NOT NULL
     
     UNION ALL
     
     SELECT DISTINCT
-        CAST(ID_FIELD AS VARCHAR) AS ID_FIELD,
-        'dataset3' AS source_table
-    FROM dataset3
-    WHERE ID_FIELD IS NOT NULL
+        CAST(id_col AS VARCHAR) AS id_col,
+        'table3' AS source_table
+    FROM "DB"."SCHEMA"."table3"
+    WHERE id_col IS NOT NULL
     
     UNION ALL
     
     SELECT DISTINCT
-        CAST(ID_FIELD AS VARCHAR) AS ID_FIELD,
-        'dataset4' AS source_table
-    FROM dataset4
-    WHERE ID_FIELD IS NOT NULL
+        CAST(id_col AS VARCHAR) AS id_col,
+        'table4' AS source_table
+    FROM "DB"."SCHEMA"."table4"
+    WHERE id_col IS NOT NULL
     
     UNION ALL
     
     SELECT DISTINCT
-        CAST(ID_FIELD AS VARCHAR) AS ID_FIELD,
-        'dataset5' AS source_table
-    FROM dataset5
-    WHERE ID_FIELD IS NOT NULL
+        CAST(id_col AS VARCHAR) AS id_col,
+        'table5' AS source_table
+    FROM "DB"."SCHEMA"."table5"
+    WHERE id_col IS NOT NULL
 ),
 
 aggregated AS (
     -- Aggregate sources for each unique ID
     SELECT
-        ID_FIELD,
+        id_col,
         LISTAGG(source_table, ', ') WITHIN GROUP (ORDER BY source_table) AS present_in_tables
     FROM all_ids
-    GROUP BY ID_FIELD
+    GROUP BY id_col
 ),
 
-ids_only_in_dataset1 AS (
-    -- Identify IDs that ONLY appear in dataset1
-    SELECT ID_FIELD
+ids_only_in_table1 AS (
+    -- Identify IDs that ONLY appear in table1 dataset
+    SELECT id_col
     FROM aggregated
-    WHERE present_in_tables = 'dataset1'
+    WHERE present_in_tables = 'table1'
 ),
 
 filtered_data AS (
-    -- ONLY extract keywords for IDs that are ONLY in dataset1
+    -- ONLY extract keywords for IDs that are ONLY in table1
     SELECT
-        ID_FIELD,
-        FIELD_A,
-        LISTAGG(DISTINCT REGEXP_SUBSTR(TEXT_FIELD, '[^.!?]*\b(keyword)\b[^.!?]*[.!?]', 1, 1, 'i'), ' ')
-        WITHIN GROUP (ORDER BY REGEXP_SUBSTR(TEXT_FIELD, '[^.!?]*\b(keyword)\b[^.!?]*[.!?]', 1, 1, 'i')) AS extracted_text
+        id_col,
+        col_a,
+        LISTAGG(DISTINCT REGEXP_SUBSTR(text_col, '[^.!?]*\b(keyword)\b[^.!?]*[.!?]', 1, 1, 'i'), ' ')
+        WITHIN GROUP (ORDER BY REGEXP_SUBSTR(text_col, '[^.!?]*\b(keyword)\b[^.!?]*[.!?]', 1, 1, 'i')) AS extracted_text
     FROM (
         SELECT
-            ID_FIELD,
-            TEXT_FIELD,
-            FIELD_A,
+            id_col,
+            text_col,
+            col_a,
             CASE
-                WHEN LOWER(TEXT_FIELD) LIKE '%connect with%' THEN 'connect with'
-                WHEN LOWER(TEXT_FIELD) LIKE '%communicate with%' THEN 'communicate with'
-                WHEN LOWER(TEXT_FIELD) LIKE '%mailing list%' THEN 'mailing list'
-                WHEN LOWER(TEXT_FIELD) LIKE '%send email%' THEN 'send emails'
-                WHEN LOWER(TEXT_FIELD) LIKE '%over email%' THEN 'over email'
-                WHEN LOWER(TEXT_FIELD) LIKE '%through emails%' THEN 'through emails'
-                WHEN LOWER(TEXT_FIELD) LIKE '%messaging%' THEN 'messaging'
-                WHEN LOWER(TEXT_FIELD) LIKE '%through text messages%' THEN 'through text messages'
-                WHEN LOWER(TEXT_FIELD) LIKE '%text messages%' THEN 'text messages'
-                WHEN LOWER(TEXT_FIELD) LIKE '%via email%' THEN 'via email'
-                WHEN LOWER(TEXT_FIELD) LIKE '%live chat%' THEN 'live chat'
-                WHEN LOWER(TEXT_FIELD) LIKE '%bulk emails%' THEN 'bulk emails'
-                WHEN LOWER(TEXT_FIELD) LIKE '%email notifications%' THEN 'email notifications'
-                WHEN LOWER(TEXT_FIELD) LIKE '%newsletters%' THEN 'newsletters'
-                WHEN LOWER(TEXT_FIELD) LIKE '%sms%' THEN 'sms'
-                WHEN LOWER(TEXT_FIELD) LIKE '%email to%' THEN 'email to'
-                WHEN LOWER(TEXT_FIELD) LIKE '%receive a message%' THEN 'receive a message'
-                WHEN LOWER(TEXT_FIELD) LIKE '%commentary%' THEN 'commentary'
-                WHEN LOWER(TEXT_FIELD) LIKE '%chat%' THEN 'chat'
-                WHEN LOWER(TEXT_FIELD) LIKE '%meet with%' THEN 'meet with'
-                WHEN LOWER(TEXT_FIELD) LIKE '%via sms%' THEN 'via sms'
-                WHEN LOWER(TEXT_FIELD) LIKE '%secure communication%' THEN 'secure communication'
-                WHEN LOWER(TEXT_FIELD) LIKE '%send%' THEN 'send'
-                WHEN LOWER(TEXT_FIELD) LIKE '%to an individual%' THEN 'to an individual'
-                WHEN LOWER(TEXT_FIELD) LIKE '%communicate%' THEN 'communicate'
-                WHEN LOWER(TEXT_FIELD) LIKE '%email%' THEN 'email'
+                WHEN LOWER(text_col) LIKE '%connect with%' THEN 'connect with'
+                WHEN LOWER(text_col) LIKE '%communicate with%' THEN 'communicate with'
+                WHEN LOWER(text_col) LIKE '%mailing list%' THEN 'mailing list'
+                WHEN LOWER(text_col) LIKE '%send email%' THEN 'send emails'
+                WHEN LOWER(text_col) LIKE '%over email%' THEN 'over email'
+                WHEN LOWER(text_col) LIKE '%through emails%' THEN 'through emails'
+                WHEN LOWER(text_col) LIKE '%messaging%' THEN 'messaging'
+                WHEN LOWER(text_col) LIKE '%through text messages%' THEN 'through text messages'
+                WHEN LOWER(text_col) LIKE '%text messages%' THEN 'text messages'
+                WHEN LOWER(text_col) LIKE '%via email%' THEN 'via email'
+                WHEN LOWER(text_col) LIKE '%live chat%' THEN 'live chat'
+                WHEN LOWER(text_col) LIKE '%bulk emails%' THEN 'bulk emails'
+                WHEN LOWER(text_col) LIKE '%email notifications%' THEN 'email notifications'
+                WHEN LOWER(text_col) LIKE '%newsletters%' THEN 'newsletters'
+                WHEN LOWER(text_col) LIKE '%sms%' THEN 'sms'
+                WHEN LOWER(text_col) LIKE '%email to%' THEN 'email to'
+                WHEN LOWER(text_col) LIKE '%receive a message%' THEN 'receive a message'
+                WHEN LOWER(text_col) LIKE '%commentary%' THEN 'commentary'
+                WHEN LOWER(text_col) LIKE '%chat%' THEN 'chat'
+                WHEN LOWER(text_col) LIKE '%meet with%' THEN 'meet with'
+                WHEN LOWER(text_col) LIKE '%via sms%' THEN 'via sms'
+                WHEN LOWER(text_col) LIKE '%secure communication%' THEN 'secure communication'
+                WHEN LOWER(text_col) LIKE '%send%' THEN 'send'
+                WHEN LOWER(text_col) LIKE '%to an individual%' THEN 'to an individual'
+                WHEN LOWER(text_col) LIKE '%communicate%' THEN 'communicate'
+                WHEN LOWER(text_col) LIKE '%email%' THEN 'email'
                 ELSE NULL
             END AS keyword
-        FROM dataset1
-        WHERE ID_FIELD IN (SELECT ID_FIELD FROM ids_only_in_dataset1)  -- ONLY process IDs exclusive to dataset1
+        FROM "DB"."SCHEMA"."table1"
+        WHERE id_col IN (SELECT id_col FROM ids_only_in_table1)
     ) sub
     WHERE keyword IS NOT NULL
-    GROUP BY ID_FIELD, FIELD_A
+    GROUP BY id_col, col_a
 )
 
--- Final SELECT - all IDs from dataset1, but keyword extraction only for exclusive IDs
+-- Final SELECT - all IDs from table1, but keyword extraction only for exclusive IDs
 SELECT
-    base_table.ID_FIELD,
+    base_table.id_col,
     a.present_in_tables,
-    MAX(d.FIELD_B) AS FIELD_B,
-    MAX(d.FIELD_C) AS FIELD_C,
-    MAX(d.FIELD_D) AS FIELD_D,
-    MAX(p.FIELD_E) AS FIELD_E,
-    f.extracted_text,
-    f.FIELD_A,
-    MAX(m.FIELD_F) AS FIELD_F
+    MAX(d.col_b) AS col_b,
+    MAX(d.col_c) AS col_c,
+    MAX(d.col_d) AS col_d,
+    MAX(p.col_e) AS col_e,
+    MAX(f.extracted_text) AS extracted_text,
+    MAX(f.col_a) AS col_a,
+    MAX(m.col_f) AS col_f
 FROM base_table
-LEFT JOIN aggregated a ON base_table.ID_FIELD = a.ID_FIELD
-LEFT JOIN dataset3 d
-    ON base_table.ID_FIELD = CAST(d.ID_FIELD AS VARCHAR)
-LEFT JOIN dataset2 p
-    ON base_table.ID_FIELD = CAST(p.ID_FIELD AS VARCHAR)
+LEFT JOIN aggregated a ON base_table.id_col = a.id_col
+LEFT JOIN "DB"."SCHEMA"."table3" d
+    ON base_table.id_col = CAST(d.id_col AS VARCHAR)
+LEFT JOIN "DB"."SCHEMA"."table2" p
+    ON base_table.id_col = CAST(p.id_col AS VARCHAR)
 LEFT JOIN filtered_data f
-    ON base_table.ID_FIELD = f.ID_FIELD
-LEFT JOIN dataset4 m
-    ON base_table.ID_FIELD = CAST(m.ID_FIELD AS VARCHAR)
-LEFT JOIN dataset5 e
-    ON base_table.ID_FIELD = CAST(e.ID_FIELD AS VARCHAR)
-GROUP BY base_table.ID_FIELD, a.present_in_tables, f.extracted_text, f.FIELD_A
-ORDER BY base_table.ID_FIELD;
+    ON base_table.id_col = f.id_col
+LEFT JOIN "DB"."SCHEMA"."table4" m
+    ON base_table.id_col = CAST(m.id_col AS VARCHAR)
+LEFT JOIN "DB"."SCHEMA"."table5" e
+    ON base_table.id_col = CAST(e.id_col AS VARCHAR)
+GROUP BY base_table.id_col, a.present_in_tables
+ORDER BY base_table.id_col;
