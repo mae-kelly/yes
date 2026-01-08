@@ -64,10 +64,6 @@ keyword_detection AS (
         MAX(t.[COLUMN_1]) AS GKN,
         MAX([COLUMN_2]) AS APP_NAME,
         a.detection_type AS DETECTION_TYPE,
-        CASE
-            WHEN LOWER(a.detection_type) NOT LIKE '%dlm_plan_responses%' THEN 'A'
-            ELSE NULL
-        END AS SUB_RISK,
         'YES' AS ECOMMS_CAPABILITY,
         CASE
             WHEN MAX(w.[COLUMN_3]) = 'x' THEN 'YES'
@@ -127,7 +123,18 @@ keyword_detection AS (
                  POSITION('SMS' IN MAX(t.[COLUMN_5])) > 0 THEN 'YES'
             ELSE MAX(w.[COLUMN_9])
         END AS SMS,
-        risk_b.IDN_EON AS RISK_B_CHECK
+        CASE
+            WHEN risk_b.IDN_EON IS NULL THEN 
+                CASE 
+                    WHEN LOWER(a.detection_type) NOT LIKE '%dlm_plan_responses%' THEN 'A,B'
+                    ELSE 'B'
+                END
+            ELSE 
+                CASE
+                    WHEN LOWER(a.detection_type) NOT LIKE '%dlm_plan_responses%' THEN 'A'
+                    ELSE NULL
+                END
+        END AS SUB_RISK
     FROM base_table
     LEFT JOIN aggregated a ON base_table.IDN_EON = a.IDN_EON
     LEFT JOIN "[SCHEMA_1]"."[PROJECT_1]"."[TABLE_4]" w
@@ -158,17 +165,6 @@ SELECT
     COMMENTS,
     CHAT,
     SMS,
-    CASE
-        WHEN RISK_B_CHECK IS NULL THEN 
-            CASE 
-                WHEN LOWER(DETECTION_TYPE) NOT LIKE '%dlm_plan_responses%' THEN 'A,B'
-                ELSE 'B'
-            END
-        ELSE 
-            CASE
-                WHEN LOWER(DETECTION_TYPE) NOT LIKE '%dlm_plan_responses%' THEN 'A'
-                ELSE NULL
-            END
-    END AS SUB_RISK
+    SUB_RISK
 FROM keyword_detection
 ORDER BY EON_ID;
