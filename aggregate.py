@@ -25,11 +25,10 @@ keywords = [
 
 text_column = 'TXT_RSRC_DESC'
 
-def extract_context_phrases(text, keyword):
+def extract_two_word_phrases(text, keyword):
     """
-    Extract phrases with 1 word before and 1 word after the keyword.
-    For multi-word keywords, treats the entire phrase as the keyword.
-    Returns list of tuples: (word_before, keyword, word_after)
+    Extract two-word phrases: keyword + word_after OR word_before + keyword
+    Returns list of two-word phrases
     """
     if pd.isna(text) or not isinstance(text, str):
         return []
@@ -55,49 +54,56 @@ def extract_context_phrases(text, keyword):
             
             # Get last word before
             before_words = before_text.split()
-            word_before = before_words[-1] if before_words else '<START>'
+            word_before = before_words[-1] if before_words else None
             
             # Get first word after
             after_words = after_text.split()
-            word_after = after_words[0] if after_words else '<END>'
+            word_after = after_words[0] if after_words else None
             
-            phrases.append((word_before, keyword, word_after))
+            # Create two-word phrases
+            if word_before:
+                phrases.append(f"{word_before} {keyword}")
+            if word_after:
+                phrases.append(f"{keyword} {word_after}")
     else:
         # Single word keyword - tokenize normally
         words = text_clean.split()
         
         for i, word in enumerate(words):
             if word == keyword:
-                word_before = words[i-1] if i > 0 else '<START>'
-                word_after = words[i+1] if i < len(words) - 1 else '<END>'
-                phrases.append((word_before, keyword, word_after))
+                # word_before + keyword
+                if i > 0:
+                    phrases.append(f"{words[i-1]} {keyword}")
+                
+                # keyword + word_after
+                if i < len(words) - 1:
+                    phrases.append(f"{keyword} {words[i+1]}")
     
     return phrases
 
-# Collect ALL three-word phrases across ALL keywords
-all_phrases = Counter()
+# Collect ALL two-word phrases across ALL keywords
+all_two_word_phrases = Counter()
 
 print("="*80)
-print("ANALYZING COMMUNICATION KEYWORDS...")
+print("ANALYZING COMMUNICATION KEYWORDS (2-WORD PHRASES)...")
 print("="*80)
 
 for keyword in keywords:
     for text in df[text_column]:
-        phrases = extract_context_phrases(text, keyword)
+        phrases = extract_two_word_phrases(text, keyword)
         
-        for word_before, kw, word_after in phrases:
-            phrase = f"{word_before} {kw} {word_after}"
-            all_phrases[phrase] += 1
+        for phrase in phrases:
+            all_two_word_phrases[phrase] += 1
 
 # Print all phrases from most popular to least
-total_phrases = sum(all_phrases.values())
+total_phrases = sum(all_two_word_phrases.values())
 
-print(f"\nTotal three-word phrases found: {total_phrases}")
+print(f"\nTotal two-word phrases found: {total_phrases}")
 print(f"\n{'='*80}")
-print("ALL THREE-WORD PHRASES (Most Popular to Least)")
+print("ALL TWO-WORD PHRASES (Most Popular to Least)")
 print(f"{'='*80}\n")
 
-for phrase, count in all_phrases.most_common():
+for phrase, count in all_two_word_phrases.most_common():
     print(f"{phrase:<70} {count:>6} times")
 
 print(f"\n{'='*80}")
