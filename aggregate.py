@@ -1,223 +1,239 @@
--- Step 1: Create a base table with all unique IDs from the primary dataset
-WITH base_table AS (
-    -- Get all unique IDs from primary dataset
-    -- This is our starting point - all IDs we want to analyze
-    SELECT DISTINCT
-        CAST(IDN_EON AS VARCHAR) AS IDN_EON,  -- Convert ID to text format for consistency
-        'TTAI_SYS' AS source_table             -- Label where this ID came from
-    FROM "LH_SND_DB"."WACLOUD_PRJ166"."MAEVEPERSONAL_TTAI_SYS_Active_Owning_Filter"
-    WHERE IDN_EON IS NOT NULL                  -- Only include IDs that exist
-),
+# -*- coding: utf-8 -*-
+import dataiku
+import pandas as pd
+import re
 
--- Step 2: Collect all unique IDs from multiple source tables
-all_ids AS (
-    -- Collect ALL unique IDs from all sources
-    -- This combines IDs from different tables to see which detection systems flagged each ID
-    
-    -- Get IDs from keyword filtering table
-    SELECT DISTINCT
-        CAST(IDN_EON AS VARCHAR) AS IDN_EON,
-        'TTAI' AS source_table                 -- Tag this source as 'TTAI'
-    FROM "LH_SND_DB"."WACLOUD_PRJ166"."MAEVEPERSONAL_TTAI_SYS_keyword_Filtering"
-    WHERE IDN_EON IS NOT NULL
-    
-    UNION ALL  -- Combine with next table (keeps all rows, even duplicates between tables)
-    
-    -- Get IDs from PrivacyQ table
-    SELECT DISTINCT
-        CAST(IDN_EON AS VARCHAR) AS IDN_EON,
-        'PrivacyQ' AS source_table             -- Tag this source as 'PrivacyQ'
-    FROM "LH_SND_DB"."WACLOUD_PRJ166"."MAEVEPERSONAL_PrivacyQ_for_ITSO_Att_prepared_filtered_filtered"
-    WHERE IDN_EON IS NOT NULL
-    
-    UNION ALL
-    
-    -- Get IDs from DLM WORM table
-    SELECT DISTINCT
-        CAST(IDN_EON AS VARCHAR) AS IDN_EON,
-        'DLM' AS source_table                  -- Tag this source as 'DLM'
-    FROM "LH_SND_DB"."WACLOUD_PRJ166"."MAEVEPERSONAL_DLM_WORM"
-    WHERE IDN_EON IS NOT NULL
-    
-    UNION ALL
-    
-    -- Get IDs from MYSDM table
-    SELECT DISTINCT
-        CAST(IDN_EON AS VARCHAR) AS IDN_EON,
-        'MYSDM' AS source_table                -- Tag this source as 'MYSDM'
-    FROM "LH_SND_DB"."WACLOUD_PRJ166"."MAEVEPERSONAL_MYSDM_Detections_for_Bulk_Email_prepared_filtered"
-    WHERE IDN_EON IS NOT NULL
-    
-    UNION ALL
-    
-    -- Get IDs from EPR table
-    SELECT DISTINCT
-        CAST(IDN_EON AS VARCHAR) AS IDN_EON,
-        'EPR' AS source_table                  -- Tag this source as 'EPR'
-    FROM "LH_SND_DB"."WACLOUD_PRJ166"."MAEVEPERSONAL_epr_filtered"
-    WHERE IDN_EON IS NOT NULL
-),
+# Read input dataset
+input_dataset = dataiku.Dataset("YOUR_INPUT_DATASET_NAME")
+df = input_dataset.get_dataframe()
 
--- Step 3: For each unique ID, combine all the sources that flagged it
-aggregated AS (
-    -- Aggregate sources for each unique ID
-    -- If an ID appears in multiple tables, this combines them into one comma-separated list
-    -- Example: If ID "123" is in TTAI and DLM, this creates "DLM, TTAI"
-    SELECT
-        IDN_EON,
-        LISTAGG(source_table, ', ') WITHIN GROUP (ORDER BY source_table) AS DETECTION_TYPE
-        -- LISTAGG combines multiple values into one string with ', ' between them
-        -- WITHIN GROUP (ORDER BY...) sorts them alphabetically
-    FROM all_ids
-    GROUP BY IDN_EON  -- Group by ID so we get one row per unique ID
-),
+# More precise patterns based on the actual text structure
+communication_patterns = {
+    'email': [
+        # Core email communication patterns (within 10 words)
+        r'\b(via|through|by|using|with|over)\s+(?:\w+\s+){0,3}email\b',
+        r'\bemail\s+(?:\w+\s+){0,2}(notification|alert|message|communication|delivery|transmission)\b',
+        r'\b(send|sends|sending|receive|receives|receiving|deliver|delivers|delivering)\s+(?:\w+\s+){0,3}email',
+        r'\bemail\s+(?:\w+\s+){0,2}(capability|feature|function|support|service)\b',
+        # Technical indicators
+        r'\b(smtp|imap|pop3)\s+(server|protocol|service|gateway)\b',
+        r'\bemail\s+(server|gateway|relay|client|integration|api|system)\b',
+        r'\b(outbound|inbound)\s+email\b',
+        r'\bemail-based\s+(notification|communication|alert|system)\b',
+        r'\belectronic\s+mail\s+(notification|communication|system|delivery)\b',
+        # Action patterns
+        r'\btransmit\s+(?:\w+\s+){0,3}email\b',
+        r'\bemail\s+(?:\w+\s+){0,2}to\s+(users|customers|clients|recipients|parties)\b',
+        r'\b(automated|automatic)\s+email\b',
+        r'\bemail\s+distribution\b',
+    ],
+    
+    'sms': [
+        # Core SMS patterns (within 10 words)
+        r'\b(via|through|by|using|with|over)\s+(?:\w+\s+){0,3}(sms|text\s+message)\b',
+        r'\bsms\s+(?:\w+\s+){0,2}(notification|alert|message|communication|delivery|transmission)\b',
+        r'\b(send|sends|sending|receive|receives|receiving|deliver|delivers|delivering)\s+(?:\w+\s+){0,3}(sms|text\s+message)',
+        r'\bsms\s+(?:\w+\s+){0,2}(capability|feature|function|support|service)\b',
+        r'\btext\s+message\s+(?:\w+\s+){0,2}(notification|alert|communication|delivery)\b',
+        # Technical indicators  
+        r'\b(twilio|nexmo|vonage|plivo|bandwidth)\b',
+        r'\bsms\s+(gateway|api|service|integration|platform|system)\b',
+        r'\b(outbound|inbound)\s+sms\b',
+        r'\bshort\s+message\s+service\b',
+        r'\btext\s+messaging\s+(capability|service|feature|platform|system)\b',
+        r'\bmobile\s+(?:\w+\s+){0,2}text\s+(notification|message|alert)\b',
+    ],
+    
+    'chat': [
+        # Core chat patterns (within 10 words)
+        r'\b(via|through|by|using|with|over)\s+(?:\w+\s+){0,3}chat\b',
+        r'\bchat\s+(?:\w+\s+){0,2}(notification|message|communication|interface|window)\b',
+        r'\b(provide|provides|providing|enable|enables|enabling|support|supports|supporting)\s+(?:\w+\s+){0,3}chat',
+        r'\bchat\s+(?:\w+\s+){0,2}(capability|feature|function|functionality|system)\b',
+        # Specific chat types
+        r'\b(in-app|live|real-time|instant|web-based)\s+chat\b',
+        r'\binstant\s+messaging\b',
+        r'\bdirect\s+messaging\b',
+        r'\bmessaging\s+(?:\w+\s+){0,2}(capability|feature|platform|system|service)\b',
+        # Technical indicators
+        r'\b(websocket|socket\.io|xmpp|mqtt)\b',
+        r'\bchat\s+(platform|system|integration|api|service|client|server)\b',
+        r'\b(slack|teams|discord|intercom|zendesk)\s+(integration|chat|messaging)\b',
+        r'\bpeer-to-peer\s+(chat|messaging)\b',
+        r'\btwo-way\s+(chat|messaging|communication)\b',
+    ],
+    
+    'comments': [
+        # Core comment patterns (within 10 words)
+        r'\b(via|through|by|using|with)\s+(?:\w+\s+){0,3}comment\b',
+        r'\bcomment\s+(?:\w+\s+){0,2}(notification|feature|system|functionality|thread)\b',
+        r'\b(post|posts|posting|leave|leaves|leaving|add|adds|adding|submit|submits|submitting|make|makes|making)\s+(?:\w+\s+){0,3}comment',
+        r'\bcomment\s+(?:\w+\s+){0,2}(capability|function|support)\b',
+        # Commenting features
+        r'\buser\s+(?:\w+\s+){0,2}comment\b',
+        r'\bcomment(?:ing|s)?\s+(?:\w+\s+){0,2}(section|area|box|field|system|feature)\b',
+        r'\bcomment\s+thread\b',
+        r'\breply\s+to\s+comment\b',
+        r'\bcomment-based\s+(communication|feedback|interaction)\b',
+        r'\ballow\s+(?:\w+\s+){0,3}comment\b',
+    ]
+}
 
--- Step 4: Detect specific keywords and capabilities for each ID
-keyword_detection AS (
-    -- Detect keywords and record their source
-    -- This is where we analyze the actual content to determine what capabilities exist
-    SELECT
-        base_table.IDN_EON AS EON_ID,          -- The unique ID we're analyzing
-        MAX(t.TXT_DSPLY_LABEL) AS GKN,         -- Get the display label (MAX just picks one if there are multiple)
-        MAX(NME_TAI_ASSET_DSPLY) AS APP_NAME,  -- Get the app name
-        a.detection_type AS DETECTION_TYPE,    -- Which detection systems flagged this ID
-        'YES' AS ECOMMS_CAPABILITY,            -- All records get marked as having ecomms capability
-        
-        -- EMAIL DETECTION: Check multiple tables and columns for email-related keywords
-        CASE
-            -- First check: Does the WORM table have 'x' in the email column?
-            WHEN MAX(w.Email) = 'x' THEN 'YES'
-            -- Second check: Does MYSDM mention bulk email?
-            WHEN MAX(m.TXT_RSRC_GAP_DESC) LIKE '%bulk email%' THEN 'YES'
-            -- Third check: Search for email keywords in the description field
-            -- POSITION finds if a word exists in text, returns >0 if found
-            WHEN POSITION('mailing list' IN MAX(t.TXT_RSRC_DESC)) > 0 OR
-                 POSITION('send email' IN MAX(t.TXT_RSRC_DESC)) > 0 OR
-                 POSITION('over email' IN MAX(t.TXT_RSRC_DESC)) > 0 OR
-                 POSITION('through emails' IN MAX(t.TXT_RSRC_DESC)) > 0 OR
-                 POSITION('via email' IN MAX(t.TXT_RSRC_DESC)) > 0 OR
-                 POSITION('bulk emails' IN MAX(t.TXT_RSRC_DESC)) > 0 OR
-                 POSITION('email notifications' IN MAX(t.TXT_RSRC_DESC)) > 0 OR
-                 POSITION('newsletters' IN MAX(t.TXT_RSRC_DESC)) > 0 OR
-                 POSITION('email to' IN MAX(t.TXT_RSRC_DESC)) > 0 OR
-                 POSITION('emails' IN MAX(t.TXT_RSRC_DESC)) > 0 OR
-                 POSITION('e-comm' IN MAX(t.TXT_RSRC_DESC)) > 0 OR
-                 POSITION('e-comms' IN MAX(t.TXT_RSRC_DESC)) > 0 OR
-                 POSITION('ecomm' IN MAX(t.TXT_RSRC_DESC)) > 0 OR
-                 POSITION('ecomms' IN MAX(t.TXT_RSRC_DESC)) > 0 OR
-                 POSITION('email' IN MAX(t.TXT_RSRC_DESC)) > 0 THEN 'YES'
-            -- Fourth check: Search for same keywords in a different table/column
-            WHEN POSITION('mailing list' IN MAX(d.TXT_DATA_LIFECYCL_MANG_ANSW)) > 0 OR
-                 POSITION('send email' IN MAX(d.TXT_DATA_LIFECYCL_MANG_ANSW)) > 0 OR
-                 POSITION('over email' IN MAX(d.TXT_DATA_LIFECYCL_MANG_ANSW)) > 0 OR
-                 POSITION('through emails' IN MAX(d.TXT_DATA_LIFECYCL_MANG_ANSW)) > 0 OR
-                 POSITION('via email' IN MAX(d.TXT_DATA_LIFECYCL_MANG_ANSW)) > 0 OR
-                 POSITION('bulk emails' IN MAX(d.TXT_DATA_LIFECYCL_MANG_ANSW)) > 0 OR
-                 POSITION('email notifications' IN MAX(d.TXT_DATA_LIFECYCL_MANG_ANSW)) > 0 OR
-                 POSITION('newsletters' IN MAX(d.TXT_DATA_LIFECYCL_MANG_ANSW)) > 0 OR
-                 POSITION('email to' IN MAX(d.TXT_DATA_LIFECYCL_MANG_ANSW)) > 0 OR
-                 POSITION('emails' IN MAX(d.TXT_DATA_LIFECYCL_MANG_ANSW)) > 0 OR
-                 POSITION('e-comm' IN MAX(d.TXT_DATA_LIFECYCL_MANG_ANSW)) > 0 OR
-                 POSITION('e-comms' IN MAX(d.TXT_DATA_LIFECYCL_MANG_ANSW)) > 0 OR
-                 POSITION('ecomm' IN MAX(d.TXT_DATA_LIFECYCL_MANG_ANSW)) > 0 OR
-                 POSITION('ecomms' IN MAX(d.TXT_DATA_LIFECYCL_MANG_ANSW)) > 0 OR
-                 POSITION('email' IN MAX(d.TXT_DATA_LIFECYCL_MANG_ANSW)) > 0 THEN 'YES'
-            -- If none of the above, return whatever value was in the email column
-            ELSE MAX(w.Email)
-        END AS EMAIL,
-        
-        -- COMMENTS DETECTION: Similar logic to email, but looking for comment-related keywords
-        CASE
-            WHEN MAX(w.Comments) = 'x' THEN 'YES'
-            WHEN POSITION('commentary' IN MAX(t.TXT_RSRC_DESC)) > 0 OR
-                 POSITION('comment' IN MAX(t.TXT_RSRC_DESC)) > 0 OR
-                 POSITION('comments' IN MAX(t.TXT_RSRC_DESC)) > 0 THEN 'YES'
-            ELSE MAX(w.Comments)
-        END AS COMMENTS,
-        
-        -- CHAT DETECTION: Looking for chat-related keywords
-        CASE
-            WHEN MAX(w.Chat) = 'x' THEN 'YES'
-            WHEN POSITION('live chat' IN MAX(t.TXT_RSRC_DESC)) > 0 OR
-                 POSITION('chat' IN MAX(t.TXT_RSRC_DESC)) > 0 THEN 'YES'
-            ELSE MAX(w.Chat)
-        END AS CHAT,
-        
-        -- SMS DETECTION: Looking for SMS/text message keywords
-        CASE
-            WHEN MAX(w.SMS) = 'x' THEN 'YES'
-            WHEN POSITION('through text messages' IN MAX(t.TXT_RSRC_DESC)) > 0 OR
-                 POSITION('text message' IN MAX(t.TXT_RSRC_DESC)) > 0 OR
-                 POSITION('sms' IN MAX(t.TXT_RSRC_DESC)) > 0 OR
-                 POSITION('via sms' IN MAX(t.TXT_RSRC_DESC)) > 0 OR
-                 POSITION('text' IN MAX(t.TXT_RSRC_DESC)) > 0 OR
-                 POSITION('SMS' IN MAX(t.TXT_RSRC_DESC)) > 0 THEN 'YES'
-            ELSE MAX(w.SMS)
-        END AS SMS
-        
-    -- Join all the tables we need to check
-    FROM base_table
-    LEFT JOIN aggregated a ON base_table.IDN_EON = a.IDN_EON
-    -- LEFT JOIN means: keep all rows from base_table even if no match in the other table
-    LEFT JOIN "LH_SND_DB"."WACLOUD_PRJ166"."MAEVEPERSONAL_DLM_WORM" w
-        ON base_table.IDN_EON = CAST(w.IDN_EON AS VARCHAR)
-    LEFT JOIN "LH_SND_DB"."WACLOUD_PRJ166"."MAEVEPERSONAL_DLM_Plan_Responses22" d
-        ON base_table.IDN_EON = CAST(d.IDN_EON AS VARCHAR)
-    LEFT JOIN "LH_SND_DB"."WACLOUD_PRJ166"."MAEVEPERSONAL_PrivacyQ_for_ITSO_Att_prepared_filtered_filtered" p
-        ON base_table.IDN_EON = CAST(p.IDN_EON AS VARCHAR)
-    LEFT JOIN "LH_SND_DB"."WACLOUD_PRJ166"."MAEVEPERSONAL_MYSDM_Detections_for_Bulk_Email_prepared_filtered" m
-        ON base_table.IDN_EON = CAST(m.IDN_EON AS VARCHAR)
-    LEFT JOIN "LH_SND_DB"."WACLOUD_PRJ166"."MAEVEPERSONAL_epr_filtered" e
-        ON base_table.IDN_EON = CAST(e.IDN_EON AS VARCHAR)
-    LEFT JOIN "LH_SND_DB"."WACLOUD_PRJ166"."MAEVEPERSONAL_TTAI_SYS_Active_Owning_Filter" t
-        ON base_table.IDN_EON = CAST(t.IDN_EON AS VARCHAR)
+# Strict exclusion patterns
+exclusion_patterns = {
+    'email': [
+        # Registration/input related
+        r'\b(enter|entering|provide|providing|input|inputting|type|typing|specify|specifying|submit|submitting)\s+(?:\w+\s+){0,5}email',
+        r'\bemail\s+(?:\w+\s+){0,2}(address|field|input|box|form)\b',
+        r'\bemail\s+(?:\w+\s+){0,2}(required|optional|mandatory|needed)\b',
+        r'\brequire(?:s|d)?\s+(?:\w+\s+){0,3}email\s+address\b',
+        r'\buser(?:\'s|s)?\s+email\s+address\b',
+        r'\bvalid\s+email\s+address\b',
+        # Authentication related
+        r'\bemail\s+(?:\w+\s+){0,2}(login|signup|registration|account|credential|authentication)\b',
+        r'\bverify\s+(?:\w+\s+){0,3}email\b',
+        r'\bemail\s+verification\b',
+        r'\b(register|login|sign\s+in)\s+(?:\w+\s+){0,3}email\b',
+    ],
     
-    -- Filter: Only include rows that have a detection type and it's not just TTAI_SYS
-    WHERE a.detection_type IS NOT NULL AND a.detection_type <> 'TTAI_SYS'
+    'sms': [
+        # Verification codes
+        r'\bsms\s+(?:\w+\s+){0,2}(code|verification|authentication|2fa|otp|pin)\b',
+        r'\bverification\s+(?:\w+\s+){0,2}(via|through|by)\s+sms\b',
+        r'\breceive\s+(?:\w+\s+){0,3}verification\s+(?:\w+\s+){0,2}(code|sms)\b',
+        r'\benter\s+(?:\w+\s+){0,3}sms\s+code\b',
+        r'\bsms-based\s+(verification|authentication)\b',
+    ],
     
-    -- GROUP BY: Combine multiple rows for the same ID+detection_type into one row
-    GROUP BY base_table.IDN_EON, a.detection_type
-)
+    'chat': [
+        # AI assistants
+        r'\bchat\s*gpt\b',
+        r'\bchatgpt\b',
+        r'\bai\s+chat(?:bot)?\b',
+        r'\bchat\s+(?:bot|assistant)\s+(?:named|called)\b',
+        r'\bvirtual\s+(?:assistant|agent)\s+chat\b',
+    ],
+    
+    'comments': [
+        # Code comments
+        r'\bcomment\s+out\b',
+        r'\bcode\s+comment\b',
+        r'\bcommented\s+(?:code|line|section)\b',
+        r'\binline\s+comment\b',
+        r'\b(source\s+)?code\s+(?:\w+\s+){0,2}comment\b',
+    ]
+}
 
--- Step 5: Final output - add the SUB_RISK column based on risk B table
-SELECT 
-    EON_ID,
-    DETECTION_TYPE,
-    GKN,
-    APP_NAME,
-    ECOMMS_CAPABILITY,
-    EMAIL,
-    COMMENTS,
-    CHAT,
-    SMS,
+def detect_communication_type(text):
+    """
+    Detect if text contains true e-communication capability indicators.
+    Uses proximity-based matching optimized for long descriptive paragraphs.
+    """
+    if pd.isna(text) or not isinstance(text, str):
+        return {
+            'has_email': False,
+            'has_sms': False,
+            'has_chat': False,
+            'has_comments': False,
+            'has_any_ecomm': False,
+            'matched_email_pattern': '',
+            'matched_sms_pattern': '',
+            'matched_chat_pattern': '',
+            'matched_comments_pattern': ''
+        }
     
-    -- SUB_RISK LOGIC: Determine if this ID should be flagged as A, B, or A,B
-    CASE
-        -- First check: Is this ID NOT in the risk B table?
-        -- NOT EXISTS returns true if the subquery finds no matching rows
-        WHEN NOT EXISTS (
-            SELECT 1 
-            FROM "LH_SND_DB"."WACLOUD_PRJ166"."MAEVEPERSONAL_Risk_B_Output_2_prepared" risk_b
-            WHERE risk_b.IDN_EON = keyword_detection.EON_ID
-        ) THEN
-            -- ID is NOT in risk B table, so we need to add 'B'
-            CASE 
-                -- If detection type doesn't contain 'dlm_plan_responses', it gets 'A'
-                -- So if it already has 'A', we add ',B' to make 'A,B'
-                WHEN LOWER(DETECTION_TYPE) NOT LIKE '%dlm_plan_responses%' THEN 'A,B'
-                -- If it does contain 'dlm_plan_responses', it doesn't get 'A'
-                -- So we just put 'B'
-                ELSE 'B'
-            END
-        ELSE
-            -- ID IS in risk B table, so we don't add 'B'
-            CASE
-                -- If detection type doesn't contain 'dlm_plan_responses', it gets 'A'
-                WHEN LOWER(DETECTION_TYPE) NOT LIKE '%dlm_plan_responses%' THEN 'A'
-                -- If it does contain 'dlm_plan_responses', it gets nothing (NULL)
-                ELSE NULL
-            END
-    END AS SUB_RISK
+    text_lower = text.lower()
+    results = {}
     
-FROM keyword_detection
-ORDER BY EON_ID;  -- Sort the final results by ID
+    for comm_type, patterns in communication_patterns.items():
+        # Find which patterns match
+        matched_pattern = None
+        has_match = False
+        
+        for pattern in patterns:
+            match = re.search(pattern, text_lower, re.IGNORECASE)
+            if match:
+                has_match = True
+                matched_pattern = match.group()
+                break
+        
+        # Check exclusions
+        has_exclusion = False
+        if has_match:
+            for excl_pattern in exclusion_patterns.get(comm_type, []):
+                if re.search(excl_pattern, text_lower, re.IGNORECASE):
+                    has_exclusion = True
+                    break
+        
+        # Determine if detected
+        is_detected = has_match and not has_exclusion
+        results[f'has_{comm_type}'] = is_detected
+        results[f'matched_{comm_type}_pattern'] = matched_pattern if is_detected else ''
+    
+    # Overall flag
+    results['has_any_ecomm'] = any([
+        results['has_email'],
+        results['has_sms'],
+        results['has_chat'],
+        results['has_comments']
+    ])
+    
+    return results
+
+# Apply detection
+text_column = 'TXT_RSRC_DESC'
+
+print("Starting e-communication detection on long-form text...")
+detection_results = df[text_column].apply(detect_communication_type)
+detection_df = pd.DataFrame(detection_results.tolist())
+
+# Combine with original dataframe
+output_df = pd.concat([df, detection_df], axis=1)
+
+# Create summary column
+def get_comm_types(row):
+    types = []
+    if row['has_email']:
+        types.append('email')
+    if row['has_sms']:
+        types.append('sms')
+    if row['has_chat']:
+        types.append('chat')
+    if row['has_comments']:
+        types.append('comments')
+    return ', '.join(types) if types else 'none'
+
+output_df['detected_comm_types'] = output_df.apply(get_comm_types, axis=1)
+
+# Write output
+output_dataset = dataiku.Dataset("YOUR_OUTPUT_DATASET_NAME")
+output_dataset.write_with_schema(output_df)
+
+# Print detailed summary
+print(f"\n{'='*70}")
+print(f"E-COMMUNICATION DETECTION SUMMARY")
+print(f"{'='*70}")
+print(f"Total rows processed: {len(output_df):,}")
+print(f"Rows with e-communication: {output_df['has_any_ecomm'].sum():,} ({output_df['has_any_ecomm'].sum()/len(output_df)*100:.1f}%)")
+print(f"\nDetection breakdown:")
+print(f"  Email:    {output_df['has_email'].sum():5,} ({output_df['has_email'].sum()/len(output_df)*100:.1f}%)")
+print(f"  SMS:      {output_df['has_sms'].sum():5,} ({output_df['has_sms'].sum()/len(output_df)*100:.1f}%)")
+print(f"  Chat:     {output_df['has_chat'].sum():5,} ({output_df['has_chat'].sum()/len(output_df)*100:.1f}%)")
+print(f"  Comments: {output_df['has_comments'].sum():5,} ({output_df['has_comments'].sum()/len(output_df)*100:.1f}%)")
+print(f"{'='*70}\n")
+
+# Show examples
+if output_df['has_any_ecomm'].sum() > 0:
+    print("Sample detections (first 5):")
+    samples = output_df[output_df['has_any_ecomm']].head(5)
+    for idx, row in samples.iterrows():
+        print(f"\n  [{row['detected_comm_types'].upper()}]")
+        if row['matched_email_pattern']:
+            print(f"    Email match: '{row['matched_email_pattern']}'")
+        if row['matched_sms_pattern']:
+            print(f"    SMS match: '{row['matched_sms_pattern']}'")
+        if row['matched_chat_pattern']:
+            print(f"    Chat match: '{row['matched_chat_pattern']}'")
+        if row['matched_comments_pattern']:
+            print(f"    Comments match: '{row['matched_comments_pattern']}'")
+        print(f"    Text preview: {row[text_column][:150]}...")
