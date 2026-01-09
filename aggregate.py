@@ -7,231 +7,241 @@ import re
 input_dataset = dataiku.Dataset("YOUR_INPUT_DATASET_NAME")
 df = input_dataset.get_dataframe()
 
-# EXTREMELY restrictive patterns - must explicitly mention the communication type
-communication_patterns = {
-    'email': [
-        # Must have "email" + clear sending/receiving action (within 3 words)
-        r'\bsend(?:s|ing)?\s+(?:\w+\s+){0,2}emails?\b',
-        r'\breceive(?:s|d|ing)?\s+(?:\w+\s+){0,2}emails?\b',
-        r'\bdeliver(?:s|y|ing|ed)?\s+(?:\w+\s+){0,2}emails?\b',
-        r'\btransmit(?:s|ting|ted)?\s+(?:\w+\s+){0,2}emails?\b',
-        # Via/through email (within 2 words)
-        r'\b(via|through)\s+(?:\w+\s+)?emails?\b',
-        # Email + notification/alert/message (must be adjacent or 1 word apart)
-        r'\bemail\s+(notification|alert|message)s?\b',
-        r'\bemail\s+\w+\s+(notification|alert|message)s?\b',
-        r'\b(notification|alert|message)s?\s+(via|through)\s+email\b',
-        # Technical infrastructure (very specific)
-        r'\bsmtp\s+(server|gateway|relay)\b',
-        r'\bemail\s+(server|gateway|relay|api)\b',
-    ],
-    
-    'sms': [
-        # Must have "sms" or "text message" + clear sending/receiving action (within 3 words)
-        r'\bsend(?:s|ing)?\s+(?:\w+\s+){0,2}(sms|text\s+messages?)\b',
-        r'\breceive(?:s|d|ing)?\s+(?:\w+\s+){0,2}(sms|text\s+messages?)\b',
-        r'\bdeliver(?:s|y|ing|ed)?\s+(?:\w+\s+){0,2}(sms|text\s+messages?)\b',
-        # Via/through SMS (within 2 words)
-        r'\b(via|through)\s+(?:\w+\s+)?(sms|text)\b',
-        # SMS + notification/alert (must be adjacent or 1 word apart)
-        r'\bsms\s+(notification|alert|message)s?\b',
-        r'\bsms\s+\w+\s+(notification|alert|message)s?\b',
-        r'\btext\s+message\s+(notification|alert)s?\b',
-        r'\b(notification|alert)s?\s+(via|through)\s+(sms|text)\b',
-        # Technical infrastructure
-        r'\b(twilio|nexmo|vonage|plivo)\b',
-        r'\bsms\s+(gateway|api)\b',
-    ],
-    
-    'chat': [
-        # Must have "chat" + clear feature/functionality words (within 2 words max)
-        # NOT AI/bot related
-        r'\bin-app\s+chat\b',
-        r'\blive\s+chat\b',
-        r'\breal-?time\s+chat\b',
-        r'\binstant\s+chat\b',
-        r'\bchat\s+feature\b',
-        r'\bchat\s+functionality\b',
-        r'\bchat\s+capability\b',
-        r'\bchat\s+messaging\b',
-        r'\bchat\s+interface\b',
-        r'\bchat\s+system\b',
-        # Messaging (must be clear it's a feature)
-        r'\binstant\s+messaging\b',
-        r'\bdirect\s+messaging\b',
-        r'\bin-app\s+messaging\b',
-        # User-to-user chat
-        r'\buser(?:-to-user)?\s+chat\b',
-        r'\bpeer-to-peer\s+chat\b',
-        r'\btwo-way\s+chat\b',
-    ],
-    
-    'comments': [
-        # Must have "comment" + clear action/feature words (within 2 words max)
-        r'\bpost(?:s|ing|ed)?\s+(?:\w+\s+)?comments?\b',
-        r'\bleave(?:s|ing)?\s+(?:\w+\s+)?comments?\b',
-        r'\bsubmit(?:s|ting|ted)?\s+(?:\w+\s+)?comments?\b',
-        r'\badd(?:s|ing)?\s+(?:\w+\s+)?comments?\b',
-        # Comment features
-        r'\bcomment\s+feature\b',
-        r'\bcomment\s+functionality\b',
-        r'\bcomment\s+section\b',
-        r'\bcomment\s+thread\b',
-        r'\bcomment\s+system\b',
-        r'\buser\s+comments?\b',
-        r'\ballow(?:s|ing)?\s+(?:users?\s+to\s+)?comments?\b',
-    ]
-}
-
-# VERY aggressive exclusion patterns
-exclusion_patterns = {
-    'email': [
-        # Registration/input - ANY mention of entering/providing email
-        r'\benter(?:s|ing|ed)?\s+(?:\w+\s+){0,10}email',
-        r'\bprovide(?:s|d|ing)?\s+(?:\w+\s+){0,10}email',
-        r'\binput(?:s|ting|ted)?\s+(?:\w+\s+){0,10}email',
-        r'\btype(?:s|d|ing)?\s+(?:\w+\s+){0,10}email',
-        r'\bspecify(?:ing|ied)?\s+(?:\w+\s+){0,10}email',
-        r'\bsubmit(?:s|ting|ted)?\s+(?:\w+\s+){0,10}email',
-        r'\bsupply(?:ing|ied)?\s+(?:\w+\s+){0,10}email',
-        r'\binclude(?:s|d|ing)?\s+(?:\w+\s+){0,10}email',
-        # Email address/field mentions
-        r'\bemail\s+address\b',
-        r'\bemail\s+field\b',
-        r'\bemail\s+(?:\w+\s+){0,2}(input|form|box|information|data|details)\b',
-        r'\bvalid\s+email\b',
-        r'\bemail\s+format\b',
-        # Authentication/verification
-        r'\bemail\s+(?:\w+\s+){0,5}(login|signup|sign-up|registration|register|account|credential|authentication|password|verify|verification|confirm|confirmation)\b',
-        r'\b(login|signup|sign-up|register|authenticate|verify|confirmation)\s+(?:\w+\s+){0,10}email',
-        r'\bemail\s+verification\b',
-        r'\bverify\s+(?:\w+\s+){0,5}email',
-        # Requirements
-        r'\brequire(?:s|d|ment)?\s+(?:\w+\s+){0,10}email',
-        r'\bemail\s+(?:is\s+)?(required|optional|mandatory|needed|necessary)\b',
-        # Contact information
-        r'\bcontact\s+(?:\w+\s+){0,5}email\b',
-        r'\bemail\s+contact\b',
-        r'\b(personal|business|work|company)\s+email\b',
-        r'\buser\'?s?\s+email\b',
-    ],
-    
-    'sms': [
-        # Verification/2FA - ANY mention of codes or authentication
-        r'\bsms\s+(?:\w+\s+){0,5}(code|verification|verify|authenticate|authentication|2fa|two-factor|otp|one-time|pin|confirm|confirmation)\b',
-        r'\b(verification|verify|authenticate|authentication|2fa|two-factor|otp|one-time|confirm|confirmation)\s+(?:\w+\s+){0,10}(sms|text)',
-        r'\breceive(?:s|d|ing)?\s+(?:\w+\s+){0,10}(verification|authentication|confirmation)\s+(?:\w+\s+){0,5}(code|sms|text)',
-        r'\benter(?:s|ing|ed)?\s+(?:\w+\s+){0,5}sms\s+code\b',
-        r'\bsms-based\s+(verification|authentication)\b',
-    ],
-    
-    'chat': [
-        # AI/Bot related - exclude ALL AI chat
-        r'\bchat\s*gpt\b',
-        r'\bchatgpt\b',
-        r'\bai\s+(?:\w+\s+){0,3}chat\b',
-        r'\bchat\s+(?:\w+\s+){0,2}(bot|assistant|agent|ai)\b',
-        r'\b(bot|assistant|agent)\s+(?:\w+\s+){0,3}chat\b',
-        r'\bvirtual\s+(?:assistant|agent)\b',
-        r'\bconversational\s+ai\b',
-        r'\b(automated|automatic)\s+chat\b',
-        r'\bchatbot\b',
-        r'\bartificial\s+intelligence\s+(?:\w+\s+){0,3}chat\b',
-    ],
-    
-    'comments': [
-        # Code comments - exclude ALL code-related
-        r'\bcomment\s+out\b',
-        r'\bcode\s+(?:\w+\s+){0,3}comment',
-        r'\bcomment(?:s|ing|ed)?\s+(?:\w+\s+){0,3}(code|line|section|block)\b',
-        r'\binline\s+comment\b',
-        r'\bsource\s+code\s+comment\b',
-        r'\bprogramming\s+comment\b',
-        r'\bjavascript\s+comment\b',
-        r'\bhtml\s+comment\b',
-        r'\b(//|/\*|\*/|<!--)\b',
-    ]
-}
-
-def detect_communication_type(text):
+def detect_email_communication(text):
     """
-    ULTRA STRICT detection - only matches explicit e-communication capabilities.
+    Only returns True if text clearly describes email as a communication/notification feature.
+    Uses WHITELIST approach - must match specific phrases.
     """
     if pd.isna(text) or not isinstance(text, str):
-        return {
-            'has_email': False,
-            'has_sms': False,
-            'has_chat': False,
-            'has_comments': False,
-            'has_any_ecomm': False,
-            'match_details': ''
-        }
+        return False
     
     text_lower = text.lower()
-    results = {}
-    match_details = []
     
-    for comm_type, patterns in communication_patterns.items():
-        # Find matches
-        matched = False
-        matched_text = None
-        
-        for pattern in patterns:
-            match = re.search(pattern, text_lower, re.IGNORECASE)
-            if match:
-                matched = True
-                matched_text = match.group()
-                break
-        
-        # If we have a match, check ALL exclusions
-        is_excluded = False
-        if matched:
-            for excl_pattern in exclusion_patterns.get(comm_type, []):
-                if re.search(excl_pattern, text_lower, re.IGNORECASE):
-                    is_excluded = True
-                    break
-        
-        # Only mark as detected if we have a match AND no exclusions
-        is_detected = matched and not is_excluded
-        results[f'has_{comm_type}'] = is_detected
-        
-        if is_detected and matched_text:
-            match_details.append(f"{comm_type}:{matched_text}")
+    # HARD STOP words - if these appear ANYWHERE, immediately return False
+    hard_stops = [
+        'enter your email', 'enter an email', 'enter email',
+        'provide your email', 'provide an email', 'provide email',
+        'input your email', 'input email',
+        'email address required', 'email required', 'valid email address',
+        'email login', 'login with email', 'sign up with email',
+        'email verification', 'verify your email', 'verify email',
+        'email and password', 'email credential'
+    ]
     
-    results['has_any_ecomm'] = any([
-        results['has_email'],
-        results['has_sms'],
-        results['has_chat'],
-        results['has_comments']
-    ])
+    if any(stop in text_lower for stop in hard_stops):
+        return False
     
-    results['match_details'] = ' | '.join(match_details) if match_details else ''
+    # WHITELIST - Only these specific phrases indicate email communication
+    whitelist = [
+        'send email notification',
+        'send email alert',
+        'sends email notification',
+        'sends email alert',
+        'email notifications to',
+        'email alerts to',
+        'notify via email',
+        'notifies via email',
+        'alert via email',
+        'alerts via email',
+        'communicate via email',
+        'communicates via email',
+        'notification via email',
+        'notifications via email',
+        'send automated email',
+        'sends automated email',
+        'email delivery system',
+        'email notification system',
+        'smtp server',
+        'smtp gateway',
+        'outbound email',
+        'inbound email'
+    ]
     
-    return results
+    return any(phrase in text_lower for phrase in whitelist)
+
+def detect_sms_communication(text):
+    """
+    Only returns True if text clearly describes SMS as a communication/notification feature.
+    Excludes ALL 2FA/verification use cases.
+    """
+    if pd.isna(text) or not isinstance(text, str):
+        return False
+    
+    text_lower = text.lower()
+    
+    # HARD STOP words
+    hard_stops = [
+        'sms code', 'sms verification', 'verification code',
+        'sms authentication', '2fa', 'two factor', 'two-factor',
+        'otp', 'one time password', 'one-time password',
+        'verification via sms', 'authenticate via sms',
+        'sms to verify', 'confirm via sms'
+    ]
+    
+    if any(stop in text_lower for stop in hard_stops):
+        return False
+    
+    # WHITELIST
+    whitelist = [
+        'send sms notification',
+        'send sms alert',
+        'sends sms notification',
+        'sends sms alert',
+        'sms notifications to',
+        'sms alerts to',
+        'notify via sms',
+        'notifies via sms',
+        'alert via sms',
+        'alerts via sms',
+        'communicate via sms',
+        'communicates via sms',
+        'notification via sms',
+        'notifications via sms',
+        'text message notification',
+        'text message alert',
+        'send text message notification',
+        'sends text message notification',
+        'sms delivery system',
+        'sms notification system',
+        'sms gateway',
+        'twilio integration',
+        'outbound sms',
+        'inbound sms'
+    ]
+    
+    return any(phrase in text_lower for phrase in whitelist)
+
+def detect_chat_communication(text):
+    """
+    Only returns True if text describes user-to-user chat feature.
+    Excludes ALL AI/bot/assistant chat.
+    """
+    if pd.isna(text) or not isinstance(text, str):
+        return False
+    
+    text_lower = text.lower()
+    
+    # HARD STOP words
+    hard_stops = [
+        'chatgpt', 'chat gpt', 'gpt',
+        'chatbot', 'chat bot',
+        'ai chat', 'ai assistant', 'ai-powered chat',
+        'virtual assistant', 'virtual agent',
+        'conversational ai', 'conversational agent',
+        'automated chat', 'bot chat'
+    ]
+    
+    if any(stop in text_lower for stop in hard_stops):
+        return False
+    
+    # WHITELIST
+    whitelist = [
+        'live chat feature',
+        'live chat functionality',
+        'in-app chat',
+        'in app chat',
+        'real-time chat',
+        'real time chat',
+        'instant messaging feature',
+        'instant messaging functionality',
+        'direct messaging feature',
+        'direct messaging functionality',
+        'user to user chat',
+        'user-to-user chat',
+        'peer to peer chat',
+        'peer-to-peer chat',
+        'two-way chat',
+        'two way chat',
+        'chat between users',
+        'users can chat',
+        'enables chat between',
+        'chat capability for users',
+        'chat interface for users',
+        'messaging between users',
+        'user messaging feature',
+        'user chat feature'
+    ]
+    
+    return any(phrase in text_lower for phrase in whitelist)
+
+def detect_comment_communication(text):
+    """
+    Only returns True if text describes user comment/feedback feature.
+    Excludes ALL code-related comments.
+    """
+    if pd.isna(text) or not isinstance(text, str):
+        return False
+    
+    text_lower = text.lower()
+    
+    # HARD STOP words
+    hard_stops = [
+        'comment out',
+        'code comment',
+        'inline comment',
+        'source code comment',
+        'commented code',
+        'javascript comment',
+        'html comment',
+        '//', '/*', '*/'
+    ]
+    
+    if any(stop in text_lower for stop in hard_stops):
+        return False
+    
+    # WHITELIST
+    whitelist = [
+        'post comment',
+        'post comments',
+        'leave comment',
+        'leave comments',
+        'submit comment',
+        'submit comments',
+        'add comment',
+        'add comments',
+        'user comment',
+        'user comments',
+        'users can comment',
+        'allow users to comment',
+        'allows users to comment',
+        'comment feature',
+        'comment functionality',
+        'commenting feature',
+        'commenting functionality',
+        'comment section',
+        'comments section',
+        'comment thread',
+        'comment system',
+        'commenting system'
+    ]
+    
+    return any(phrase in text_lower for phrase in whitelist)
 
 # Apply detection
 text_column = 'TXT_RSRC_DESC'
 
-print("Starting ULTRA STRICT e-communication detection...")
-print("Only detecting explicit mentions of email/sms/chat/comment features\n")
+print("Starting WHITELIST-BASED detection...")
+print("Only matching exact phrases that indicate e-communication\n")
 
-detection_results = df[text_column].apply(detect_communication_type)
-detection_df = pd.DataFrame(detection_results.tolist())
+output_df = df.copy()
+output_df['has_email'] = df[text_column].apply(detect_email_communication)
+output_df['has_sms'] = df[text_column].apply(detect_sms_communication)
+output_df['has_chat'] = df[text_column].apply(detect_chat_communication)
+output_df['has_comments'] = df[text_column].apply(detect_comment_communication)
 
-# Combine with original dataframe
-output_df = pd.concat([df, detection_df], axis=1)
+output_df['has_any_ecomm'] = (
+    output_df['has_email'] | 
+    output_df['has_sms'] | 
+    output_df['has_chat'] | 
+    output_df['has_comments']
+)
 
-# Create summary column
 def get_comm_types(row):
     types = []
-    if row['has_email']:
-        types.append('email')
-    if row['has_sms']:
-        types.append('sms')
-    if row['has_chat']:
-        types.append('chat')
-    if row['has_comments']:
-        types.append('comments')
+    if row['has_email']: types.append('email')
+    if row['has_sms']: types.append('sms')
+    if row['has_chat']: types.append('chat')
+    if row['has_comments']: types.append('comments')
     return ', '.join(types) if types else 'none'
 
 output_df['detected_comm_types'] = output_df.apply(get_comm_types, axis=1)
@@ -240,27 +250,26 @@ output_df['detected_comm_types'] = output_df.apply(get_comm_types, axis=1)
 output_dataset = dataiku.Dataset("YOUR_OUTPUT_DATASET_NAME")
 output_dataset.write_with_schema(output_df)
 
-# Print summary
+# Print results
 total = len(output_df)
 detected = output_df['has_any_ecomm'].sum()
-print(f"\n{'='*70}")
-print(f"ULTRA STRICT DETECTION RESULTS")
+
+print(f"{'='*70}")
+print(f"WHITELIST DETECTION RESULTS")
 print(f"{'='*70}")
 print(f"Total rows: {total:,}")
-print(f"Detected e-comm: {detected:,} ({detected/total*100:.2f}%)")
-print(f"\nBy type:")
+print(f"Detected e-communication: {detected:,} ({detected/total*100:.1f}%)")
+print(f"\nBreakdown:")
 print(f"  Email:    {output_df['has_email'].sum():,}")
 print(f"  SMS:      {output_df['has_sms'].sum():,}")
 print(f"  Chat:     {output_df['has_chat'].sum():,}")
 print(f"  Comments: {output_df['has_comments'].sum():,}")
-print(f"{'='*70}\n")
+print(f"{'='*70}")
 
-# Show examples if any detected
+# Show samples if any detected
 if detected > 0:
-    print(f"First {min(10, detected)} TRUE POSITIVES:\n")
-    samples = output_df[output_df['has_any_ecomm']].head(10)
-    for i, (idx, row) in enumerate(samples.iterrows(), 1):
-        print(f"{i}. [{row['detected_comm_types'].upper()}]")
-        print(f"   Match: {row['match_details']}")
-        print(f"   Text: {row[text_column][:250]}...")
-        print()
+    print(f"\nSample detections:")
+    samples = output_df[output_df['has_any_ecomm']].head(5)
+    for idx, row in samples.iterrows():
+        print(f"\n[{row['detected_comm_types'].upper()}]")
+        print(f"{row[text_column][:300]}...")
