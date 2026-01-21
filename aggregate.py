@@ -1,183 +1,206 @@
-# -*- coding: utf-8 -*-
-import dataiku
-import pandas as pd
-import re
-from collections import Counter
+– Step 1: Create a base table with all unique IDs from the primary dataset
+WITH base_table AS (
+SELECT DISTINCT
+CAST(IDN_EON AS VARCHAR) AS IDN_EON,
+‘ITAT’ AS source_table
+FROM “LH_SND_DB”.“WMCLOUD_PRJ166”.“MAEVEPERSONAL_ITAT_SYS_Active_Owning_Filter”
+WHERE IDN_EON IS NOT NULL
+),
 
-# Read input dataset
-input_dataset = dataiku.Dataset("YOUR_INPUT_DATASET_NAME")
-df = input_dataset.get_dataframe()
+– Step 2: Collect all unique IDs from multiple source tables
+all_ids AS (
+SELECT DISTINCT
+CAST(IDN_EON AS VARCHAR) AS IDN_EON,
+‘ITAT’ AS source_table
+FROM “LH_SND_DB”.“WMCLOUD_PRJ166”.“MAEVEPERSONAL_ITAT_SYS_prepared_filtered”
+WHERE IDN_EON IS NOT NULL
 
-# Define keywords to search for
-keywords = [
-    'message', 
-    'comment', 
-    'email', 
-    'text', 
-    'video', 
-    'electronic communication',
-    'ecomm',
-    'e-comm',
-    'sms',
-    'social media',
-    'chat'
-]
+```
+UNION ALL
 
-text_column = 'TXT_RSRC_DESC'
+SELECT DISTINCT
+    CAST(IDN_EON AS VARCHAR) AS IDN_EON,
+    'PrivacyQ' AS source_table
+FROM "LH_SND_DB"."WMCLOUD_PRJ166"."MAEVEPERSONAL_PrivacyQ_for_ITSO_Att_prepared_filtered_filtered"
+WHERE IDN_EON IS NOT NULL
 
-def extract_two_word_phrases_from_text(text, keyword):
-    """
-    Extract two-word phrases: keyword + word_after OR word_before + keyword
-    Returns list of two-word phrases found in this text
-    """
-    if pd.isna(text) or not isinstance(text, str):
-        return []
-    
-    # Clean text
-    text_lower = text.lower()
-    # Replace punctuation with spaces to avoid weird tokens
-    text_clean = re.sub(r'[^\w\s-]', ' ', text_lower)  # Keep hyphens for e-comm
-    
-    phrases = []
-    
-    # For multi-word keywords, find the exact phrase
-    if ' ' in keyword or '-' in keyword:
-        # Find all occurrences of the multi-word keyword
-        pattern = r'\b' + re.escape(keyword) + r'\b'
-        for match in re.finditer(pattern, text_lower):
-            start_pos = match.start()
-            end_pos = match.end()
-            
-            # Get text before and after
-            before_text = text_lower[:start_pos].strip()
-            after_text = text_lower[end_pos:].strip()
-            
-            # Get last word before
-            before_words = before_text.split()
-            word_before = before_words[-1] if before_words else None
-            
-            # Get first word after
-            after_words = after_text.split()
-            word_after = after_words[0] if after_words else None
-            
-            # Create two-word phrases
-            if word_before:
-                phrases.append(f"{word_before} {keyword}")
-            if word_after:
-                phrases.append(f"{keyword} {word_after}")
-    else:
-        # Single word keyword - tokenize normally
-        words = text_clean.split()
-        
-        for i, word in enumerate(words):
-            if word == keyword:
-                # word_before + keyword
-                if i > 0:
-                    phrases.append(f"{words[i-1]} {keyword}")
-                
-                # keyword + word_after
-                if i < len(words) - 1:
-                    phrases.append(f"{keyword} {words[i+1]}")
-    
-    return phrases
+UNION ALL
 
-def extract_sentences(text):
-    """
-    Split text into sentences.
-    """
-    if pd.isna(text) or not isinstance(text, str):
-        return []
-    
-    # Simple sentence splitting on period, exclamation, question mark
-    sentences = re.split(r'[.!?]+', text)
-    # Clean up whitespace
-    sentences = [s.strip() for s in sentences if s.strip()]
-    return sentences
+SELECT DISTINCT
+    CAST(IDN_EON AS VARCHAR) AS IDN_EON,
+    'SOURCE_CODE' AS source_table
+FROM "LH_SND_DB"."WMCLOUD_PRJ166"."MAEVEPERSONAL_DLM_WORM"
+WHERE IDN_EON IS NOT NULL
 
-def find_sentence_with_phrase(text, phrase):
-    """
-    Find the sentence(s) containing the given phrase.
-    Returns list of sentences.
-    """
-    if pd.isna(text) or not isinstance(text, str):
-        return []
-    
-    sentences = extract_sentences(text)
-    matching_sentences = []
-    
-    phrase_lower = phrase.lower()
-    
-    for sentence in sentences:
-        if phrase_lower in sentence.lower():
-            matching_sentences.append(sentence)
-    
-    return matching_sentences
+UNION ALL
 
-def process_row(text):
-    """
-    Process a single row to find all 2-word keyword phrases and their sentences.
-    Returns: (matched_keywords_str, matched_sentences_str)
-    """
-    if pd.isna(text) or not isinstance(text, str):
-        return ('', '')
-    
-    all_matched_phrases = []
-    all_matched_sentences = []
-    
-    # Check each keyword
-    for keyword in keywords:
-        # Get all 2-word phrases for this keyword in this text
-        two_word_phrases = extract_two_word_phrases_from_text(text, keyword)
-        
-        # For each 2-word phrase found, get the sentence(s) containing it
-        for phrase in two_word_phrases:
-            if phrase not in all_matched_phrases:
-                all_matched_phrases.append(phrase)
-                
-                # Get sentences containing this phrase
-                sentences = find_sentence_with_phrase(text, phrase)
-                for sentence in sentences:
-                    if sentence not in all_matched_sentences:
-                        all_matched_sentences.append(sentence)
-    
-    # Join multiple matches with separator
-    keywords_str = ' | '.join(all_matched_phrases) if all_matched_phrases else ''
-    sentences_str = ' | '.join(all_matched_sentences) if all_matched_sentences else ''
-    
-    return (keywords_str, sentences_str)
+SELECT DISTINCT
+    CAST(IDN_EON AS VARCHAR) AS IDN_EON,
+    'MYSDM' AS source_table
+FROM "LH_SND_DB"."WMCLOUD_PRJ166"."MAEVEPERSONAL_MYSDM_Detections_for_Bulk_Email_prepared_filtered"
+WHERE IDN_EON IS NOT NULL
 
-print("Processing text for 2-word keyword matches...")
+UNION ALL
 
-# Apply the function to create new columns
-results = df[text_column].apply(process_row)
+SELECT DISTINCT
+    CAST(IDN_EON AS VARCHAR) AS IDN_EON,
+    'DLM' AS source_table
+FROM "LH_SND_DB"."WMCLOUD_PRJ166"."MAEVEPERSONAL_DLM_Plan_Responses_filtered2"
+WHERE IDN_EON IS NOT NULL
 
-# Unpack the results into two columns
-output_df = df.copy()
-output_df['matched_2word_keywords'] = results.apply(lambda x: x[0])
-output_df['matched_sentences'] = results.apply(lambda x: x[1])
+UNION ALL
 
-# Write output dataset
-output_dataset = dataiku.Dataset("YOUR_OUTPUT_DATASET_NAME")
-output_dataset.write_with_schema(output_df)
+SELECT DISTINCT
+    CAST(IDN_EON AS VARCHAR) AS IDN_EON,
+    'EPR' AS source_table
+FROM "LH_SND_DB"."WMCLOUD_PRJ166"."MAEVEPERSONAL_epr_filtered"
+WHERE IDN_EON IS NOT NULL
+```
 
-# Print summary
-total_rows = len(output_df)
-matched_rows = len(output_df[output_df['matched_2word_keywords'] != ''])
+),
 
-print(f"\n{'='*70}")
-print(f"PROCESSING COMPLETE")
-print(f"{'='*70}")
-print(f"Total rows processed: {total_rows:,}")
-print(f"Rows with keyword matches: {matched_rows:,}")
-print(f"Match rate: {matched_rows/total_rows*100:.1f}%")
-print(f"{'='*70}")
+– Step 3: For each unique ID, combine all the sources that flagged it
+aggregated AS (
+SELECT
+IDN_EON,
+LISTAGG(source_table, ’, ’) WITHIN GROUP (ORDER BY source_table) AS DETECTION_TYPE
+FROM all_ids
+GROUP BY IDN_EON
+),
 
-# Show sample matches
-if matched_rows > 0:
-    print(f"\nSample matches (first 5):\n")
-    samples = output_df[output_df['matched_2word_keywords'] != ''].head(5)
-    for idx, row in samples.iterrows():
-        print(f"Row {idx}:")
-        print(f"  Keywords: {row['matched_2word_keywords']}")
-        print(f"  Sentences: {row['matched_sentences'][:300]}...")
-        print()
+– Step 4: Detect specific keywords and capabilities for each ID
+keyword_detection AS (
+SELECT
+base_table.IDN_EON AS EON_ID,
+MAX(t.TXT_DSPLY_LABEL) AS GRN,
+MAX(NME_TAI_ASSET_DSPLY) AS APP_NAME,
+a.detection_type AS DETECTION_TYPE,
+‘YES’ AS ECOMMS_CAPABILITY,
+MAX(t.TXT_RSRC_DESC) AS TXT_RSRC_DESC,
+MAX(t.TXT_APPL_DESC) AS TXT_APPL_DESC,
+CASE
+WHEN MAX(w.Email) = ‘x’ THEN ‘YES’
+WHEN MAX(TXT_RSRC_CAP_DESC) ILIKE ‘%b2b email%’ THEN ‘YES’
+WHEN POSITION(‘mailing list’ IN MAX(t.TXT_RSRC_DESC)) > 0 OR
+POSITION(‘send email’ IN MAX(t.TXT_RSRC_DESC)) > 0 OR
+POSITION(‘over email’ IN MAX(t.TXT_RSRC_DESC)) > 0 OR
+POSITION(‘through emails’ IN MAX(t.TXT_RSRC_DESC)) > 0 OR
+POSITION(‘via email’ IN MAX(t.TXT_RSRC_DESC)) > 0 OR
+POSITION(‘bulk emails’ IN MAX(t.TXT_RSRC_DESC)) > 0 OR
+POSITION(‘email notifications’ IN MAX(t.TXT_RSRC_DESC)) > 0 OR
+POSITION(‘save-receipts’ IN MAX(t.TXT_RSRC_DESC)) > 0 OR
+POSITION(‘email to’ IN MAX(t.TXT_RSRC_DESC)) > 0 OR
+POSITION(‘send to’ IN MAX(t.TXT_RSRC_DESC)) > 0 OR
+POSITION(‘e-comm’ IN MAX(t.TXT_RSRC_DESC)) > 0 OR
+POSITION(‘e-comms’ IN MAX(t.TXT_RSRC_DESC)) > 0 OR
+POSITION(‘ecomm’ IN MAX(t.TXT_RSRC_DESC)) > 0 OR
+POSITION(‘ecomms’ IN MAX(t.TXT_RSRC_DESC)) > 0 THEN ‘YES’
+WHEN POSITION(‘mailing list’ IN d.TXT_DATA_LIFECYCL_MANG_QSTN) > 0 OR
+POSITION(‘Email’ IN d.TXT_DATA_LIFECYCL_MANG_QSTN) > 0 OR
+POSITION(‘email’ IN d.TXT_DATA_LIFECYCL_MANG_ANSW) > 0 THEN ‘YES’
+ELSE MAX(w.Email)
+END AS EMAIL,
+CASE
+WHEN MAX(w.Comments) = ‘x’ THEN ‘YES’
+WHEN POSITION(‘commentary’ IN MAX(t.TXT_RSRC_DESC)) > 0 OR
+POSITION(‘comment’ IN MAX(t.TXT_RSRC_DESC)) > 0 OR
+POSITION(‘Comments’ IN d.TXT_DATA_LIFECYCL_MANG_QSTN) > 0 OR
+POSITION(‘comments’ IN MAX(t.TXT_RSRC_DESC)) > 0 THEN ‘YES’
+ELSE MAX(w.Comments)
+END AS COMMENTS,
+CASE
+WHEN MAX(w.Chat) = ‘x’ THEN ‘YES’
+WHEN POSITION(‘live chat’ IN MAX(t.TXT_RSRC_DESC)) > 0 OR
+POSITION(‘Chat’ IN d.TXT_DATA_LIFECYCL_MANG_QSTN) > 0 OR
+POSITION(‘chat’ IN MAX(t.TXT_RSRC_DESC)) > 0 THEN ‘YES’
+ELSE MAX(w.Chat)
+END AS CHAT,
+CASE
+WHEN MAX(w.SMS) = ‘x’ THEN ‘YES’
+WHEN POSITION(‘through text messages’ IN MAX(t.TXT_RSRC_DESC)) > 0 OR
+POSITION(‘text messages’ IN MAX(t.TXT_RSRC_DESC)) > 0 OR
+POSITION(‘sms’ IN MAX(t.TXT_RSRC_DESC)) > 0 OR
+POSITION(‘via sms’ IN MAX(t.TXT_RSRC_DESC)) > 0 OR
+POSITION(‘text’ IN MAX(t.TXT_RSRC_DESC)) > 0 OR
+POSITION(‘SMS’ IN d.TXT_DATA_LIFECYCL_MANG_QSTN) > 0 OR
+POSITION(‘SMS’ IN MAX(t.TXT_RSRC_DESC)) > 0 THEN ‘YES’
+ELSE MAX(w.SMS)
+END AS SMS,
+CASE
+WHEN POSITION(‘Voice’ IN d.TXT_DATA_LIFECYCL_MANG_QSTN) > 0 THEN ‘YES’
+ELSE ‘No’
+END AS VOICE
+FROM base_table
+LEFT JOIN aggregated a ON base_table.IDN_EON = a.IDN_EON
+LEFT JOIN “LH_SND_DB”.“WMCLOUD_PRJ166”.“MAEVEPERSONAL_dlm_worm” w
+ON base_table.IDN_EON = CAST(w.IDN_EON AS VARCHAR)
+LEFT JOIN “LH_SND_DB”.“WMCLOUD_PRJ166”.“MAEVEPERSONAL_DLM_Plan_Responses_filtered2” d
+ON base_table.IDN_EON = CAST(d.IDN_EON AS VARCHAR)
+LEFT JOIN “LH_SND_DB”.“WMCLOUD_PRJ166”.“MAEVEPERSONAL_PrivacyQ_for_ITSO_Att_prepared_filtered_filtered” p
+ON base_table.IDN_EON = CAST(p.IDN_EON AS VARCHAR)
+LEFT JOIN “LH_SND_DB”.“WMCLOUD_PRJ166”.“MAEVEPERSONAL_MYSDM_Detections_for_Bulk_Email_prepared_filtered” m
+ON base_table.IDN_EON = CAST(m.IDN_EON AS VARCHAR)
+LEFT JOIN “LH_SND_DB”.“WMCLOUD_PRJ166”.“MAEVEPERSONAL_epr_filtered” e
+ON base_table.IDN_EON = CAST(e.IDN_EON AS VARCHAR)
+LEFT JOIN “LH_SND_DB”.“WMCLOUD_PRJ166”.“MAEVEPERSONAL_ITAT_SYS_Active_Owning_Filter” t
+ON base_table.IDN_EON = CAST(t.IDN_EON AS VARCHAR)
+WHERE a.detection_type IS NOT NULL AND a.detection_type <> ‘ITAT-SYS’
+GROUP BY base_table.IDN_EON, a.detection_type, d.TXT_DATA_LIFECYCL_MANG_ANSW, d.TXT_DATA_LIFECYCL_MANG_QSTN
+),
+
+– Step 5: Aggregate to one row per IDN_EON with merged values
+final_output AS (
+SELECT
+EON_ID,
+DETECTION_TYPE,
+MAX(GRN) AS GRN,
+MAX(APP_NAME) AS APP_NAME,
+MAX(ECOMMS_CAPABILITY) AS ECOMMS_CAPABILITY,
+– Use MAX to merge YES values, keeping YES over other values
+MAX(CASE WHEN EMAIL = ‘YES’ THEN ‘YES’ ELSE EMAIL END) AS EMAIL,
+MAX(CASE WHEN COMMENTS = ‘YES’ THEN ‘YES’ ELSE COMMENTS END) AS COMMENTS,
+MAX(CASE WHEN CHAT = ‘YES’ THEN ‘YES’ ELSE CHAT END) AS CHAT,
+MAX(CASE WHEN SMS = ‘YES’ THEN ‘YES’ ELSE SMS END) AS SMS,
+MAX(CASE WHEN VOICE = ‘YES’ THEN ‘YES’ ELSE VOICE END) AS VOICE
+FROM keyword_detection
+GROUP BY EON_ID, DETECTION_TYPE
+)
+
+– Step 6: Add the ONBOARDED_TO_ECOMMS_ARCHIVE column based on risk B table
+SELECT
+EON_ID,
+DETECTION_TYPE,
+GRN,
+APP_NAME,
+ECOMMS_CAPABILITY,
+EMAIL,
+COMMENTS,
+CHAT,
+SMS,
+VOICE,
+CASE
+WHEN NOT EXISTS (
+SELECT 1
+FROM “LH_SND_DB”.“WMCLOUD_PRJ166”.“MAEVEPERSONAL_Risk_B_Output_2_prepared” risk_b
+WHERE risk_b.IDN_EON = keyword_detection.EON_ID
+) THEN
+CASE
+WHEN LOWER(DETECTION_TYPE) NOT LIKE ‘%dlm_plan_responses%’ THEN ‘A,B’
+ELSE ‘B’
+END
+ELSE
+CASE
+WHEN LOWER(DETECTION_TYPE) NOT LIKE ‘%dlm_plan_responses%’ THEN ‘A’
+ELSE NULL
+END
+END AS SUB_RISK,
+CASE
+WHEN EXISTS (
+SELECT 1
+FROM “LH_SND_DB”.“WMCLOUD_PRJ166”.“MAEVEPERSONAL_Risk_B_Output_2_prepared” risk_b
+WHERE risk_b.IDN_EON = keyword_detection.EON_ID
+) THEN ‘YES’
+ELSE ‘No’
+END AS ONBOARDED_TO_ECOMMS_ARCHIVE
+FROM final_output
+ORDER BY EON_ID;
