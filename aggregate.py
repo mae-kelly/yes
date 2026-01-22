@@ -16,11 +16,11 @@ for value in distinct_values:
     if len(col_name) > 255:
         col_name = col_name[:255]
     
-    df[col_name] = df.groupby('EON_IDN').apply(
-        lambda group: 'yes, ONEONEONE value: ' + ', '.join(
-            group.loc[group['ONETWOTHREE'] == value, 'ONEONEONE'].astype(str).unique()
-        ) if value in group['ONETWOTHREE'].values else ''
-    ).values
+    df[col_name] = df.groupby('EON_IDN')['ONETWOTHREE'].transform(
+        lambda x: 'yes, ONEONEONE value: ' + ', '.join(
+            df.loc[(df['EON_IDN'] == x.name) & (df['ONETWOTHREE'] == value), 'ONEONEONE'].astype(str).unique()
+        ) if value in x.values else ''
+    )
 
 # Define aggregation functions for original columns
 agg_dict = {}
