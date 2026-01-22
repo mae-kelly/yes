@@ -9,16 +9,18 @@ df = input_dataset.get_dataframe()
 # Get all distinct values from ONETWOTHREE column
 distinct_values = df['ONETWOTHREE'].unique()
 
-# Create indicator columns for each distinct ONETWOTHREE value
+# Create indicator columns for each distinct ONETWOTHREE value with ONEONEONE values
 for value in distinct_values:
     col_name = f"ONETWOTHREE_{value}"
     # Truncate column name to 255 characters if needed
     if len(col_name) > 255:
         col_name = col_name[:255]
     
-    df[col_name] = df.groupby('EON_IDN')['ONETWOTHREE'].transform(
-        lambda x: 'yes' if value in x.values else ''
-    )
+    df[col_name] = df.groupby('EON_IDN').apply(
+        lambda group: 'yes, ONEONEONE value: ' + ', '.join(
+            group.loc[group['ONETWOTHREE'] == value, 'ONEONEONE'].astype(str).unique()
+        ) if value in group['ONETWOTHREE'].values else ''
+    ).values
 
 # Define aggregation functions for original columns
 agg_dict = {}
