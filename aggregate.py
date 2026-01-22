@@ -6,8 +6,8 @@ from dataiku import pandasutils as pdu
 
 # Input datasets
 
-output_dataset = dataiku.Dataset(“your_output_dataset_name”)  # Replace with your output dataset name
-archive_inventory = dataiku.Dataset(“your_archive_inventory_name”)  # Replace with your archive inventory dataset name
+output_dataset = dataiku.Dataset(“lcd_in_scope”)
+archive_inventory = dataiku.Dataset(“Risk_B_Output_2_prepared”)
 
 # Read the datasets
 
@@ -37,9 +37,9 @@ cols.remove(‘PRESENT_IN_ARCHIVE_INVENTORY’)
 cols.insert(1, ‘PRESENT_IN_ARCHIVE_INVENTORY’)
 df_output = df_output[cols]
 
-# Write to output dataset - replace with your actual output dataset name
+# Write to output dataset
 
-output = dataiku.Dataset(“your_output_dataset_name_here”)
+output = dataiku.Dataset(“in_scope_vs_archive_inventory”)
 output.write_with_schema(df_output)
 
 print(f”Processing complete!”)
