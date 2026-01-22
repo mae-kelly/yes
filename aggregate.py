@@ -1,51 +1,47 @@
-# Import the dataiku package
+# -*- coding: utf-8 -*-
+
 import dataiku
 import pandas as pd
 
-# Read the input dataset
-input_dataset = dataiku.Dataset("your_input_dataset_name")
-df = input_dataset.get_dataframe()
+# Input datasets
 
-# Get all distinct values from ONETWOTHREE column
-distinct_values = df['ONETWOTHREE'].unique()
+output_dataset = dataiku.Dataset(“your_output_dataset_name”)  # Replace with your output dataset name
+archive_inventory = dataiku.Dataset(“your_archive_inventory_name”)  # Replace with your archive inventory dataset name
 
-# Create indicator columns for each distinct ONETWOTHREE value with ONEONEONE values
-for value in distinct_values:
-    col_name = f"ONETWOTHREE_{value}"
-    # Truncate column name to 255 characters if needed
-    if len(col_name) > 255:
-        col_name = col_name[:255]
-    
-    df[col_name] = df.groupby('EON_IDN')['ONETWOTHREE'].transform(
-        lambda x: 'yes, ONEONEONE value: ' + ', '.join(
-            df.loc[(df['EON_IDN'] == x.name) & (df['ONETWOTHREE'] == value), 'ONEONEONE'].astype(str).unique()
-        ) if value in x.values else ''
-    )
+# Read the datasets
 
-# Define aggregation functions for original columns
-agg_dict = {}
+df_output = output_dataset.get_dataframe()
+df_archive = archive_inventory.get_dataframe()
 
-for col in df.columns:
-    if col == 'EON_IDN':
-        continue
-    elif col == 'ONETWOTHREE':
-        continue
-    elif col.startswith('ONETWOTHREE_'):
-        agg_dict[col] = 'first'  # All same per group
-    else:
-        # For other columns, you can choose:
-        # 'first' - keep first value
-        # 'last' - keep last value
-        # lambda x: ', '.join(x.astype(str).unique()) - concatenate unique values
-        # lambda x: ', '.join(x.astype(str)) - concatenate all values
-        agg_dict[col] = lambda x: ', '.join(x.astype(str).unique())
+# Get unique IDN_EON values from the archive inventory
 
-# Group by EON_IDN
-final_df = df.groupby('EON_IDN', as_index=False).agg(agg_dict)
+archive_idn_eon_set = set(df_archive[‘IDN_EON’].dropna())
 
-# Rename columns in final dataframe to ensure they're all under 255 characters
-final_df.columns = [col[:255] if len(col) > 255 else col for col in final_df.columns]
+# Create the PRESENT_IN_ARCHIVE_INVENTORY column
 
-# Write the output dataset
-output_dataset = dataiku.Dataset("your_output_dataset_name")
-output_dataset.write_with_schema(final_df)
+df_output[‘PRESENT_IN_ARCHIVE_INVENTORY’] = df_output[‘IDN_EON’].apply(
+lambda x: ‘YES’ if pd.notna(x) and x in archive_idn_eon_set else ‘NO’
+)
+
+# Reorder columns to place PRESENT_IN_ARCHIVE_INVENTORY as the 2nd column
+
+cols = df_output.columns.tolist()
+
+# Remove the new column from its current position
+
+cols.remove(‘PRESENT_IN_ARCHIVE_INVENTORY’)
+
+# Insert it at position 1 (2nd column, 0-indexed)
+
+cols.insert(1, ‘PRESENT_IN_ARCHIVE_INVENTORY’)
+df_output = df_output[cols]
+
+# Write to output dataset
+
+output_with_flag = dataiku.Dataset(“output_with_archive_flag”)  # Replace with desired output dataset name
+output_with_flag.write_with_schema(df_output)
+
+print(f”Processing complete!”)
+print(f”Total records: {len(df_output)}”)
+print(f”Records present in archive: {(df_output[‘PRESENT_IN_ARCHIVE_INVENTORY’] == ‘YES’).sum()}”)
+print(f”Records NOT present in archive: {(df_output[‘PRESENT_IN_ARCHIVE_INVENTORY’] == ‘NO’).sum()}”)
