@@ -1,18 +1,23 @@
-– Dataiku SQL Recipe
-– Input datasets: lcd_in_scope, Risk_B_Output_2_prepared
-– Output dataset: in_scope_vs_archive_inventory
+# -*- coding: utf-8 -*-
+import dataiku
+import pandas as pd
 
-SELECT
-lcd.IDN_EON,
-CASE
-WHEN risk.IDN_EON IS NOT NULL THEN ‘YES’
-ELSE ‘NO’
-END AS PRESENT_IN_ARCHIVE_INVENTORY,
-lcd.*
-FROM lcd_in_scope lcd
-LEFT JOIN (
-SELECT DISTINCT IDN_EON
-FROM Risk_B_Output_2_prepared
-WHERE IDN_EON IS NOT NULL
-) risk
-ON lcd.IDN_EON = risk.IDN_EON
+# Input datasets
+dataset1 = dataiku.Dataset("dataset1_name")
+dataset2 = dataiku.Dataset("dataset2_name")
+
+# Output dataset
+output = dataiku.Dataset("output_name")
+
+# Read the datasets
+df1 = dataset1.get_dataframe()
+df2 = dataset2.get_dataframe()
+
+# Get unique idn_eon values from dataset2
+idn_eon_set = set(df2['idn_eon'].unique())
+
+# Filter dataset1 to only include rows where idn_eon is in dataset2
+filtered_df = df1[df1['idn_eon'].isin(idn_eon_set)]
+
+# Write the filtered data to output
+output.write_with_schema(filtered_df)
