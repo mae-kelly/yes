@@ -36,10 +36,11 @@ cols.remove(‘PRESENT_IN_ARCHIVE_INVENTORY’)
 cols.insert(1, ‘PRESENT_IN_ARCHIVE_INVENTORY’)
 df_output = df_output[cols]
 
-# Write to output dataset
+# Write to output dataset (gets the first output defined in the recipe)
 
-output_with_flag = dataiku.Dataset(“output_with_archive_flag”)  # Replace with desired output dataset name
-output_with_flag.write_with_schema(df_output)
+output_dataset_name = dataiku.get_output_names_for_role(‘main’)[0]
+output = dataiku.Dataset(output_dataset_name)
+output.write_with_schema(df_output)
 
 print(f”Processing complete!”)
 print(f”Total records: {len(df_output)}”)
