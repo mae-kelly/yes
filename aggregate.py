@@ -2,6 +2,7 @@
 
 import dataiku
 import pandas as pd
+from dataiku import pandasutils as pdu
 
 # Input datasets
 
@@ -36,10 +37,9 @@ cols.remove(‘PRESENT_IN_ARCHIVE_INVENTORY’)
 cols.insert(1, ‘PRESENT_IN_ARCHIVE_INVENTORY’)
 df_output = df_output[cols]
 
-# Write to output dataset (gets the first output defined in the recipe)
+# Write to output dataset - replace with your actual output dataset name
 
-output_dataset_name = dataiku.get_output_names_for_role(‘main’)[0]
-output = dataiku.Dataset(output_dataset_name)
+output = dataiku.Dataset(“your_output_dataset_name_here”)
 output.write_with_schema(df_output)
 
 print(f”Processing complete!”)
