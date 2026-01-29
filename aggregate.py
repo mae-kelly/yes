@@ -65,7 +65,7 @@ all_ids AS (
     SELECT DISTINCT
         CAST(IDN_EON AS VARCHAR) AS IDN_EON,
         'PrivacyQ' AS source_table
-    FROM "LH_SND_DB"."WMCLOUD_PRJ166"."MAEVEPERSONAL_Privacyq_for_IT50_Att_prepared_filtered_filtered"
+    FROM "LH_SND_DB"."WMCLOUD_PRJ166"."MAEVEPERSONAL_PrivacyQ_for_IT50_Att_Prepared_Filtered_Filtered"
     WHERE IDN_EON IS NOT NULL
 
     UNION ALL
@@ -335,7 +335,7 @@ keyword_detection AS (
         ON bt.IDN_EON = CAST(s.IDN_EON AS VARCHAR)
     LEFT JOIN "LH_SND_DB"."WMCLOUD_PRJ166"."MAEVEPERSONAL_in_scope_dlm_final" d
         ON bt.IDN_EON = CAST(d.IDN_EON AS VARCHAR)
-    LEFT JOIN "LH_SND_DB"."WMCLOUD_PRJ166"."MAEVEPERSONAL_Privacyq_for_IT50_Att_prepared_filtered_filtered" p
+    LEFT JOIN "LH_SND_DB"."WMCLOUD_PRJ166"."MAEVEPERSONAL_PrivacyQ_for_IT50_Att_Prepared_Filtered_Filtered" p
         ON bt.IDN_EON = CAST(p.IDN_EON AS VARCHAR)
     LEFT JOIN "LH_SND_DB"."WMCLOUD_PRJ166"."MAEVEPERSONAL_MYSDM_Detections_for_Bulk_Email_prepared_filtered" m
         ON bt.IDN_EON = CAST(m.IDN_EON AS VARCHAR)
@@ -344,7 +344,7 @@ keyword_detection AS (
     LEFT JOIN "LH_SND_DB"."WMCLOUD_PRJ166"."MAEVEPERSONAL_TTAI_SYS_Active_Owning_Filter" t
         ON bt.IDN_EON = CAST(t.IDN_EON AS VARCHAR)
     
-    -- Only include records where detection type is 'TTAI-SYS'
+    -- Only include records where detection type is not 'TTAI-SYS'
     WHERE a.DETECTION_TYPE IS NOT NULL
         AND a.DETECTION_TYPE <> 'TTAI-SYS'
     
@@ -357,9 +357,7 @@ keyword_detection AS (
 -- ============================================================================
 -- STEP 6: Create final output with risk classifications
 -- ============================================================================
--- Combines all the detection data and assigns risk categories based on:
--- - Risk A: If found in DLM plan responses
--- - Risk B: If NOT found in Risk B reference table
+-- Combines all the detection data and assigns risk categories
 
 final_output AS (
     SELECT
@@ -371,7 +369,6 @@ final_output AS (
         MAX(kd.APP_NAME) AS APP_NAME,
         
         -- Convert YES/NO flags to user-friendly format
-        -- If any value is 'YES', show 'YES', otherwise show the actual value
         MAX(CASE WHEN kd.EMAIL = 'YES' THEN 'YES' ELSE kd.EMAIL END) AS EMAIL,
         MAX(CASE WHEN kd.COMMENTS = 'YES' THEN 'YES' ELSE kd.COMMENTS END) AS COMMENTS,
         MAX(CASE WHEN kd.CHAT = 'YES' THEN 'YES' ELSE kd.CHAT END) AS CHAT,
@@ -403,57 +400,28 @@ SELECT
     fo.VOICE,
     fo.PRESENT_IN_ARCHIVE,
     
-    -- ========================================================================
     -- ONBOARDED FLAG
-    -- Shows 'YES' if application is in Risk B table, 'NO' otherwise
-    -- ========================================================================
     CASE
         WHEN rb.IDN_EON IS NOT NULL THEN 'YES'
         ELSE 'NO'
     END AS ONBOARDED_TO_ECOMMS_ARCHIVE,
 
-    -- ========================================================================
-    -- SUB_RISK CLASSIFICATION (NO SEPARATE RISK COLUMN)
-    -- ========================================================================
-    -- Logic:
-    -- 1. If application IS in DLM plan responses → Risk A (NOT LIKE means it's NOT there, so assign Risk A)
-    -- 2. If application is NOT in Risk B table → Risk B
-    -- 3. Otherwise → No risk assigned (NULL)
-    -- ========================================================================
+    -- SUB_RISK CLASSIFICATION
+    -- Risk A: if NOT in dlm_plan_response
+    -- Risk B: if NOT in Risk B table
     CASE
-        -- Check if detection type does NOT include dlm_plan_response
-        -- This means it's in the DLM plan responses and has inconsistent plans
         WHEN LOWER(fo.DETECTION_TYPE) NOT LIKE '%dlm_plan_response%' THEN 
             'A: Application with inconsistent plans and assessments for ECOMMs'
-        
-        -- Check if NOT in Risk B table (not onboarded/not archiving properly)
         WHEN rb.IDN_EON IS NULL THEN 
             'B: Application with ECOMMs features not archiving'
-        
-        -- If neither condition is met, no risk is assigned
         ELSE NULL
     END AS SUB_RISK,
     
-    -- ========================================================================
     -- CONFIDENCE SCORE
-    -- ========================================================================
-    -- This calculates a percentage score based on how many different sources
-    -- detected this application. More sources = higher confidence.
-    -- 
-    -- Scoring logic:
-    -- - Check if application exists in each of 6 possible source tables
-    -- - If exists in PrivacyQ table → 100% confidence
-    -- - If exists in DLM_WORM table → 100% confidence  
-    -- - If exists in MYSDM table → 100% confidence
-    -- - If exists in ecomm_detection table → 100% confidence
-    -- - If exists in in_scope_dlm table → 100% confidence
-    -- - Otherwise → 75% confidence if in TTAI table, 0% if not found
-    -- ========================================================================
     CASE
-        -- Full confidence if found in specific high-priority tables
         WHEN EXISTS (
             SELECT 1
-            FROM "LH_SND_DB"."WMCLOUD_PRJ166"."MAEVEPERSONAL_Privacyq_for_IT50_Att_prepared_filtered_filtered" p
+            FROM "LH_SND_DB"."WMCLOUD_PRJ166"."MAEVEPERSONAL_PrivacyQ_for_IT50_Att_Prepared_Filtered_Filtered" p
             WHERE CAST(p.IDN_EON AS VARCHAR) = fo.EON_ID
         )
         OR EXISTS (
@@ -477,30 +445,23 @@ SELECT
             WHERE CAST(d.IDN_EON AS VARCHAR) = fo.EON_ID
         )
         THEN '100%'
-        
-        -- Partial confidence if found in TTAI table
         WHEN EXISTS (
             SELECT 1
             FROM "LH_SND_DB"."WMCLOUD_PRJ166"."MAEVEPERSONAL_TTAI_SYS_Active_Owning_Filter" ttai
             WHERE CAST(ttai.IDN_EON AS VARCHAR) = fo.EON_ID
         )
         THEN '75%'
-        
-        -- Low confidence otherwise
         ELSE '0%'
     END AS CONFIDENCE
 
--- Join with risk_b_ids to determine onboarding status
 FROM final_output fo
 LEFT JOIN risk_b_ids rb
     ON rb.IDN_EON = fo.EON_ID
 
--- Only include records where at least one ECOMMS feature exists
 WHERE EXISTS (
     SELECT 1
     FROM "LH_SND_DB"."WMCLOUD_PRJ166"."MAEVEPERSONAL_TTAI_SYS_Active_Owning_Filter" ttai
     WHERE CAST(ttai.IDN_EON AS VARCHAR) = fo.EON_ID
 )
 
--- Sort results by application ID
 ORDER BY fo.EON_ID;
