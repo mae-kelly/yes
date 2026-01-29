@@ -23,12 +23,62 @@ assigned risk classification (SUB_RISK column only - no separate RISK column).
 -- ============================================================================
 -- This section gathers all distinct application IDs from various ECOMMS tables
 -- to ensure we capture every application that might be relevant
+-- IMPORTANT: Include ALL source tables here so we don't miss records that 
+-- only exist in one specific table (like PrivacyQ)
 
 WITH base_table AS (
     SELECT DISTINCT
         CAST(IDN_EON AS VARCHAR) AS IDN_EON,
         'TTAI' AS source_table
     FROM "LH_SND_DB"."WMCLOUD_PRJ166"."MAEVEPERSONAL_TTAI_SYS_Active_Owning_Filter"
+    WHERE IDN_EON IS NOT NULL
+    
+    UNION
+    
+    SELECT DISTINCT
+        CAST(IDN_EON AS VARCHAR) AS IDN_EON,
+        'PrivacyQ' AS source_table
+    FROM "LH_SND_DB"."WMCLOUD_PRJ166"."MAEVEPERSONAL_PrivacyQ_for_IT50_Att_prepared_filtered_filtered"
+    WHERE IDN_EON IS NOT NULL
+    
+    UNION
+    
+    SELECT DISTINCT
+        CAST(IDN_EON AS VARCHAR) AS IDN_EON,
+        'DLM_WORM' AS source_table
+    FROM "LH_SND_DB"."WMCLOUD_PRJ166"."MAEVEPERSONAL_dlm_worm"
+    WHERE IDN_EON IS NOT NULL
+    
+    UNION
+    
+    SELECT DISTINCT
+        CAST(IDN_EON AS VARCHAR) AS IDN_EON,
+        'DLM' AS source_table
+    FROM "LH_SND_DB"."WMCLOUD_PRJ166"."MAEVEPERSONAL_in_scope_dlm_final"
+    WHERE IDN_EON IS NOT NULL
+    
+    UNION
+    
+    SELECT DISTINCT
+        CAST(IDN_EON AS VARCHAR) AS IDN_EON,
+        'MYSDM' AS source_table
+    FROM "LH_SND_DB"."WMCLOUD_PRJ166"."MAEVEPERSONAL_MYSDM_Detections_for_Bulk_Email_prepared_filtered"
+    WHERE IDN_EON IS NOT NULL
+    
+    UNION
+    
+    SELECT DISTINCT
+        CAST(IDN_EON AS VARCHAR) AS IDN_EON,
+        'EPR' AS source_table
+    FROM "LH_SND_DB"."WMCLOUD_PRJ166"."MAEVEPERSONAL_epr_filtered"
+    WHERE IDN_EON IS NOT NULL
+    
+    UNION
+    
+    SELECT DISTINCT
+        CAST(IDN_EON AS VARCHAR) AS IDN_EON,
+        'ECOMM_DETECTION' AS source_table
+    FROM "LH_SND_DB"."WMCLOUD_PRJ166"."MAEVEPERSONAL_ecomm_detection_yes_filtered"
     WHERE IDN_EON IS NOT NULL
 ),
 
@@ -494,13 +544,6 @@ SELECT
 FROM final_output fo
 LEFT JOIN risk_b_ids rb
     ON rb.IDN_EON = fo.EON_ID
-
--- Only include records where at least one ECOMMS feature exists
-WHERE EXISTS (
-    SELECT 1
-    FROM "LH_SND_DB"."WMCLOUD_PRJ166"."MAEVEPERSONAL_TTAI_SYS_Active_Owning_Filter" ttai
-    WHERE CAST(ttai.IDN_EON AS VARCHAR) = fo.EON_ID
-)
 
 -- Sort results by application ID
 ORDER BY fo.EON_ID;
